@@ -3402,13 +3402,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.options?.setDefined) {
         let key = node.name.toString();
         if (isNode(node, N.VarDeclaration) && this._scopeFrame) {
-          let assignedValue = node.valueNode;
-          if (context) {
-            const evaluatedValue = assignedValue.eval(context);
-            if (!isThenable(evaluatedValue)) {
-              assignedValue = evaluatedValue;
-            }
-          }
           const variableHit = lookupScopeFrameVariable(this._scopeFrame, key, {
             bailOnPendingDeclarations: true,
             blockedSource: source => source === node,
@@ -3417,6 +3410,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
             if (variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
+            }
+            let assignedValue = node.valueNode;
+            if (context) {
+              const evaluatedValue = assignedValue.eval(context);
+              if (!isThenable(evaluatedValue)) {
+                assignedValue = evaluatedValue;
+              }
             }
             variableHit.cell.value = assignedValue;
             const sourceNode = variableHit.sourceNode;

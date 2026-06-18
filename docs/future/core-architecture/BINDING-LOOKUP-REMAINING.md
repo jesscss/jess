@@ -537,7 +537,7 @@ without a side coverage object. Focused callable bucket tests,
 reference-import import fixtures, namespace fast-path tests, binding hot-path
 verifier, aggressive review, and core build passed.
 
-35. [ ] Collapse remaining uncovered-callable result-state branching where it
+35. [x] Collapse remaining uncovered-callable result-state branching where it
 is now duplicated across callers. Scope: the repeated
 `UNCOVERED_CALLABLE_MISS` / `UNCOVERED_CALLABLE_UNSUPPORTED` checks in
 `findRulesetNamespacePathFast(...)`, `findCallableDescendantsWithinMixinNamespaces(...)`,
@@ -549,9 +549,13 @@ Current evidence: modeled miss now reuses one module-level empty `MixinEntry`
 array sentinel instead of a second symbol state, so callers branch only on the
 unsupported sentinel and use `length` where they need hit-vs-miss behavior.
 No wrapper helper was added; retained local unsupported checks are cheaper than
-another hot-path function call. Focused callable/reference-import tests stayed
-green. Keep this open until the remaining unsupported checks are either proven
-minimal or assigned to a cheaper caller-specific path.
+another hot-path function call. A fresh audit rejected replacing the sentinel
+with a helper object/wrapper or collapsing back to overloaded `undefined`,
+because those options either add a hot call/object or undo the item-34
+explicit unsupported state. Focused callable/reference-import tests covering
+covered sibling child surfaces, terminal mixin-only misses, ruleset path
+family skips, reference-import namespace array-path misses, selector-list
+array paths, and evaluated namespace mixin descendants stayed green.
 
 36. [x] Extend imported declaration source-order proof beyond the real
 reference fixture. Scope: selector-list reference imports, configured
@@ -592,7 +596,7 @@ compound-prefix positives. Acceptance: focused namespace/import positives and
 misses prove prefix lookup avoids child recursion when frame facts cover the
 family, and rejected shortcuts from item 12 stay guarded.
 
-39. [ ] Move `setDefined` declaration writes fully onto current live binding
+39. [x] Move `setDefined` declaration writes fully onto current live binding
 cells before occurrence fallback. Scope: `Rules.registerNode(...)`
 `setDefined`, `lookupScopeFrameVariable(...)`, readonly checks, direct
 declaration occurrence fallback, and current/output binding freshness. Goal:
@@ -601,7 +605,36 @@ and use occurrence lookup only when frame coverage is incomplete or the target
 is non-variable declaration behavior. Acceptance: focused `setDefined`
 current-cell tests prove covered writes avoid occurrence lookup/public
 declaration bridge, readonly errors still come from the live cell, and the
-existing fallback path remains for uncovered/non-variable cases.
+existing fallback path remains for uncovered/non-variable cases. Current
+evidence: `Rules.registerNode(...)` now probes the modeled variable frame
+before evaluating the assignment RHS, checks live-cell readonly first, and only
+then evaluates/writes the live cell. Existing no-crawl proof covers modeled
+live binding writes without touching `Rules.value`; a new readonly live-cell
+test proves the RHS is not evaluated and direct occurrence crawl is not entered
+when the modeled cell rejects the write. A deliberately attempted ordinary
+same-scope declaration-current no-crawl proof failed because the current cell
+is the `setDefined` node itself and the guard correctly rejects it; that case
+must keep using occurrence fallback until declaration-current slots model
+assignment targets without treating the assignment as the target.
+
+40. [ ] Model same-scope `setDefined` assignment targets without occurrence
+fallback. Scope: `ScopeFrame.currentBindingsByName`, declaration buckets that
+contain a same-scope `setDefined` node, `blockedSource` handling, and
+assignment-target cells. Goal: let ordinary same-scope `$x: ...; $x := ...`
+write the prior current declaration cell through frame state instead of
+falling back to direct occurrence search. Acceptance: a no-crawl test that
+poisons `Rules.value` after frame prep passes for same-scope declarations, and
+source-order snapshot reads still see the pre-assignment occurrence.
+
+41. [ ] Split `setDefined` fallback proof by variable/property family after
+same-scope assignment targets are modeled. Scope:
+`findWritableSetDefinedDeclarationOccurrence(...)`, variable vs property
+strategies, readonly imported child surfaces, and non-variable declaration
+insertion. Goal: keep occurrence fallback only for property/non-variable or
+uncovered dynamic cases, not for modeled variable assignments. Acceptance:
+focused tests prove variable covered writes avoid fallback while property
+`setDefined` still inserts/reuses declarations with correct readonly and
+visibility semantics.
 
 ## Latest Binding Baseline
 

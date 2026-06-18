@@ -1602,6 +1602,44 @@ describe('Rules', () => {
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
       });
 
+      it('rejects readonly modeled setDefined live cells before evaluating assignment values', () => {
+        const assignedValue = any('three');
+        assignedValue.eval = () => {
+          throw new Error('readonly setDefined current-cell path should not evaluate assignment value');
+        };
+        const assignment = vardecl(
+          { name: 'one', value: assignedValue },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        setScopeFrameLiveBinding(frame, 'one', {
+          value: any('one'),
+          readonly: true
+        });
+        const originalValue = node.value;
+
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('readonly setDefined live-cell path should not crawl Rules.value');
+          }
+        });
+
+        try {
+          expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
+        } finally {
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+      });
+
       it('does not build a scope frame just to try setDefined live binding writes', () => {
         const assignment = vardecl(
           { name: 'one', value: any('three') },

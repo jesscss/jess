@@ -103,28 +103,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass closing declaration/property
-  key-versioning dynamic promotion proof.
-- Verdict: accepted as lookup-state narrowing. `Rules.registerNode(...)` now
-  classifies static child `Rules` declaration surfaces by concrete declaration
-  key, invalidates only those direct declaration buckets/cache entries, and
-  keeps broad global invalidation for unresolved `StyleImport`/reference-import
-  uncertainty. Focused reference and real style-import promotion tests prove
-  unrelated `color`/`missing` direct declaration cache entries survive static
-  child/imported `Rules` promotion while the imported/child key is refreshed.
-  No speed claim.
-- New traversal: added one registration-time recursive classifier over the
-  child `Rules` being added. It runs only while registering a child/imported
-  surface, bails to the existing global invalidation lane on dynamic or import
-  uncertainty, and does not add lookup-time traversal. Added tests inspect
-  existing direct declaration cache/version state.
-- Review-flagged allocations: the new production `Set<string>` is a
-  registration-time scratch collection for keys on the single child surface
-  being added, not a retained registry or lookup index. The `for...of` over
-  that set immediately bumps versions/clears cache entries and discards the
-  scratch set. Review-flagged arrays, `filter(...)`, and `new Map()` calls are
-  test assertions that snapshot direct declaration cache keys; they are not
-  production lookup-path allocations.
+- Latest pass: binding implementation/audit pass closing modeled `setDefined`
+  live-cell writes and uncovered-callable result-state branching.
+- Verdict: accepted as a bounded lookup-order cut plus no-op callable audit.
+  `Rules.registerNode(...)` now checks a modeled variable live/current binding
+  cell for readonly before evaluating the `setDefined` RHS, so readonly live
+  cells reject without value evaluation or occurrence fallback. The ordinary
+  same-scope declaration-current no-crawl probe was rejected and recorded as
+  follow-up: the current frame cell is the `setDefined` node itself, so the
+  guard correctly falls back to occurrence lookup until assignment-target
+  slots are modeled. The uncovered-callable audit kept local
+  `UNCOVERED_CALLABLE_UNSUPPORTED` checks because a wrapper helper/object would
+  add hot-path machinery, while reverting to `undefined` would undo the
+  explicit unsupported state from the prior queue item. No speed claim.
+- New traversal: no production traversal was added. The `setDefined` change
+  only moves existing RHS evaluation below an existing frame lookup and
+  readonly check. The callable pass added no traversal or helper wrapper.
+- Review-flagged allocations: no production allocation was added. New
+  `rules.test.ts` scaffolding uses a throwing value override and temporary
+  `Rules.value` accessor to prove the modeled live-cell path avoids RHS
+  evaluation and direct occurrence crawl on readonly failure.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
