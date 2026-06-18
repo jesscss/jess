@@ -700,10 +700,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
+  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const mark = w.mark();
     for (let index = 0; index < value.length; index++) {
       if (index !== 0) {
         w.queueSpacer(' ');
@@ -711,7 +710,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const item = value[index]!;
       item.writeSyntax(printOptions);
     }
-    return w.getSince(mark);
   }
 
   override toTrimmedString(options?: PrintOptions) {
