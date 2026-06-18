@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Ruleset` no-trivia header direct-write reopen path.
+- Verdict: accepted as a bounded header transport cut. `serializeRulesContainer(...)`
+  now lets no-trivia `Ruleset` frame opens write the header directly into the
+  active writer instead of routing that hot render path through
+  `Ruleset.getHeaderString(...)` string transport. The compare-key path stays on
+  `getComparableHeaderString(...)`, and comment/trivia-bearing header formatting
+  remains on the detached-string path where normalization still matters. No
+  speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: no-trivia ruleset frame opens now call `Ruleset.writeHeader(...)`
+  directly from `serializeRulesContainer(...)`, so the active writer receives
+  indent, selector syntax, and ` {`/newline pieces without a temporary header
+  string. Commentless comparable-header checks remain string-based, and
+  comment/trivia-bearing header writes still use the older detached string path.
+- Helper/API surface: one node-local `Ruleset.writeHeader(...)` helper plus an
+  internal `writeHeaderSelector(...)` split so the direct writer path and the
+  existing cold string helpers share selector filtering/composition logic
+  instead of duplicating it.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: one direct-writer sentinel in the serializer frame-header
+  cache replaces storing the full header string for no-trivia ruleset opens on
+  the active path. Detached `OutputWriter` allocation remains only for
+  comparable-header reads and comment/trivia normalization paths.
+- Rejected/observed in this pass: the initial comment/trivia-bearing header
+  open path still uses `getHeaderString(...)` because `normalizeIndent(...)` /
+  `normalizeLeadingBlockTrivia(...)` remain string-shaped ownership boundaries.
+  Hoisted-parent header strings also stay detached in this pass.
+- Evidence: focused `ruleset.test.ts` and `rules.test.ts` coverage now proves
+  `serializeRulesContainer(...)` still uses ruleset header composition, repeated
+  same-selector rulesets still compare through `getComparableHeaderString(...)`
+  with zero `getHeaderString(..., true)` calls, the new no-trivia single-ruleset
+  open path avoids `getHeaderString(...)` entirely, and sibling ruleset braces
+  remain intact when declarations render through active context output. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` fallback child-local render return carry.
 - Verdict: accepted as a localized render-return cut. Plain/finalized `Call`
   render now keeps a local return string alive even after exact-text coverage

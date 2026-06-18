@@ -1401,6 +1401,37 @@ describe('Rule', () => {
     }
   });
 
+  it('serializeRulesContainer writes no-trivia ruleset headers without header string transport', () => {
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true
+    });
+    const originalGetHeaderString = node.getHeaderString;
+    let headerStringCalls = 0;
+    node.getHeaderString = function countHeaderStringCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      headerStringCalls++;
+      return originalGetHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toContain('.child');
+      expect(headerStringCalls).toBe(0);
+    } finally {
+      node.getHeaderString = originalGetHeaderString;
+    }
+  });
+
   it('serializeRulesContainer compares repeated ruleset headers through comparable header keys', async () => {
     const first = ruleset({
       selector: sel([el('.same')]),

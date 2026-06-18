@@ -120,7 +120,11 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   direct `AtRule.writeSyntax(...)` source path instead of the base
   `writeSyntax(...) -> toTrimmedString(...)` fallback. `Ruleset.writeSyntax(...)`
   now also owns container serialization directly instead of falling through the
-  base public wrapper path.
+  base public wrapper path. No-trivia ruleset frame opens in
+  `serializeRulesContainer(...)` now write headers directly through
+  `Ruleset.writeHeader(...)` instead of transporting the active render path
+  through `getHeaderString(...)`; comparable-header reads and comment/trivia
+  normalization paths stay detached.
   Eliminate or isolate `getHeaderString(...)` capture for hot frame
   render/comparison paths.
 - [ ] `Declaration`: public syntax boundary exists for callers, non-custom

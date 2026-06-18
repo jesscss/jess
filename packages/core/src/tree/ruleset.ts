@@ -1159,13 +1159,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return cached;
   }
 
-  private renderHeaderSelectorString(options: FinalPrintOptions, withoutComments: boolean): string {
+  private writeHeaderSelector(options: FinalPrintOptions, withoutComments: boolean): boolean {
     const { selector } = this;
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
     // but keep it safe for TypeScript and invariants.
     if (selector instanceof Nil) {
-      return '';
+      return false;
     }
 
     let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
@@ -1193,7 +1193,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
             : Ruleset.filterExtendedTopLevelSelectorItems(renderSelector)
       );
       if (renderSelector instanceof Nil) {
-        return '';
+        return false;
       }
     }
     const saved = savePrintState(options, ['referenceFilterTargets']);
@@ -1211,20 +1211,26 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
+    const mark = options.writer.mark();
     if (withoutComments) {
       options.trivia = createTriviaMap();
     }
-    const writer = new OutputWriter(options.compress);
     try {
-      renderSelector.writeSyntax({
-        ...options,
-        writer
-      });
-      writer.trimEndSince(0);
+      renderSelector.writeSyntax(options);
+      options.writer.trimEndSince(mark);
     } finally {
       options.trivia = savedTrivia;
+      restorePrintState(options, saved);
     }
-    restorePrintState(options, saved);
+    return options.writer.hasContentSince(mark);
+  }
+
+  private renderHeaderSelectorString(options: FinalPrintOptions, withoutComments: boolean): string {
+    const writer = new OutputWriter(options.compress);
+    this.writeHeaderSelector({
+      ...options,
+      writer
+    }, withoutComments);
     return writer.toString();
   }
 
@@ -1232,10 +1238,24 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return this.renderHeaderSelectorString(options, true);
   }
 
-  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
+  writeHeader(options: FinalPrintOptions, withoutComments?: boolean): boolean {
+    const w = options.writer;
+    const mark = w.mark();
     const idt = indent(options.depth);
-    const selOut = this.renderHeaderSelectorString(options, withoutComments === true);
-    const header = selOut + ' {';
+    if (idt) {
+      w.add(idt);
+    }
+    if (!this.writeHeaderSelector(options, withoutComments === true)) {
+      w.restore(mark);
+      return false;
+    }
+    w.add(' {\n');
+    return true;
+  }
+
+  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
+    const header = this.renderHeaderSelectorString(options, withoutComments === true) + ' {';
+    const idt = indent(options.depth);
     return (/^\s*\/\*/u.test(header)
       ? normalizeLeadingBlockTrivia(header, idt)
       : normalizeIndent(header, idt)) + '\n';
