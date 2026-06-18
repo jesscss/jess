@@ -2528,6 +2528,95 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: namespace descendant fallback-frame covered miss skips nested lookup', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const nestedLookups: string[] = [];
+      const fastPathHits: string[] = [];
+
+      try {
+        const namespaceRules = rules([]);
+        const fallbackRules = rules([
+          mixin({
+            name: any('.other-leaf'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const root = rules([
+          mixin({
+            name: any('#namespace'),
+            rules: namespaceRules
+          })
+        ]);
+        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
+        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+          if (this === namespaceRules) {
+            nestedLookups.push(String(args[0]));
+          }
+          return originalFindMixin.apply(this, args);
+        };
+        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+          const [key] = args;
+          if (key === '.missing-leaf') {
+            fastPathHits.push(key);
+          }
+          return originalFindMixinsFast.apply(this, args);
+        };
+
+        expect(root.findMixin(['#namespace', '.missing-leaf'], 'Mixin')).toBeUndefined();
+        expect(nestedLookups).toEqual([]);
+        expect(fastPathHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: namespace descendant fallback-frame hit skips nested lookup', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const nestedLookups: string[] = [];
+      const fastPathHits: string[] = [];
+
+      try {
+        const namespaceRules = rules([]);
+        const fallbackMixin = mixin({
+          name: any('.fallback-leaf'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const fallbackRules = rules([fallbackMixin]);
+        const root = rules([
+          mixin({
+            name: any('#namespace'),
+            rules: namespaceRules
+          })
+        ]);
+        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
+        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+          if (this === namespaceRules) {
+            nestedLookups.push(String(args[0]));
+          }
+          return originalFindMixin.apply(this, args);
+        };
+        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+          const [key] = args;
+          if (key === '.fallback-leaf') {
+            fastPathHits.push(key);
+          }
+          return originalFindMixinsFast.apply(this, args);
+        };
+
+        expect(root.findMixin(['#namespace', '.fallback-leaf'], 'Mixin')).toEqual([fallbackMixin]);
+        expect(nestedLookups).toEqual([]);
+        expect(fastPathHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: searchParents false stops retry frames after current candidate', () => {
       const parentMixin = mixin({
         name: any('.retry-local-only'),

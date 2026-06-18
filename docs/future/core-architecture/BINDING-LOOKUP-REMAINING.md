@@ -1315,14 +1315,21 @@ dynamic-name promotion, parent occurrence freshness, and import/call effects.
 Adding an evaluated-value cache now would be speculative; the completed handle
 and current-cell tests cover identity reuse only.
 
-78. [ ] Delete callable direct-crawl bridges where child/frame facts are
+78. [x] Delete callable direct-crawl bridges where child/frame facts are
 complete. Scope: `lookupScopeFrameCallable(...)`, child-entry hit/miss/
 uncovered reasons, prepared-null entries, reference-import child surfaces,
 guarded/configured surfaces, and `findMixinsFast(...)` bridges. Goal:
 covered callable misses/positives skip broad direct crawl, while only named
 dynamic uncertainty enters a bridge. Acceptance: synthetic and real Less
 guard/import fixtures prove zero broad crawl for covered cases and preserve
-dynamic positives.
+dynamic positives. Current evidence: ordinary simple callable references now
+prepare the existing `ScopeFrame` and use frame lookup before handle caching,
+so first and repeated simple callable reads keep `findMixinsFast(...)` spy
+hits at zero. One-segment namespace descendant lookup now checks fallback
+frames directly after a covered child-frame miss; focused hit/miss tests prove
+it skips nested child `findMixin(...)` and broad `findMixinsFast(...)`.
+Guarded/imported namespace coverage remains protected by the broader callable
+matrix and deeper namespace paths still use the existing offset path.
 
 79. [x] Close parameterized terminal namespace fallback audit. Scope:
 terminal mixin-only lookup, parameterized mixin-ruleset calls, ruleset
@@ -1364,16 +1371,22 @@ variable/property/function/callable reads reuse handles before rebuilding
 `_lookupStrategy`, unstable facts still rebuild, and the hot-path verifier
 continues to reject generic handle reader/writer object shapes.
 
-82. [ ] Finish leaky/searchScope fallback bridge deletion or unsupported-state
+82. [x] Finish leaky/searchScope fallback bridge deletion or unsupported-state
 modeling. Scope: declaration fallback frames, callable child/reference-import
 bridges, property filtered fallback, leaky rules, `searchScope`
 disqualification, and stale handle clearing. Goal: every remaining bridge has
 a deletion condition or explicit unsupported reason, with ordinary lookup
 rebuilding later only when facts changed. Acceptance: focused tests prove
 stale handles clear and ordinary variable/property/declaration/function/
-callable reads rebuild without entering deleted public bridges.
+callable reads rebuild without entering deleted public bridges. Current
+evidence: the generic public `Rules.find(...)` declaration bridge is already
+gone from production declaration reads. New stale-handle tests combine
+`leakyRules` and `searchScope` for variable/property/declaration reads and
+prove handles clear/rebuild without public declaration bridge hits. Callable
+stale-handle tests cover mixin and mixin-ruleset reads across the same
+disqualifiers and prove broad `findMixinsFast(...)` stays unused.
 
-83. [ ] Complete final simple-read proof matrix. Scope: ordinary static
+83. [x] Complete final simple-read proof matrix. Scope: ordinary static
 variable, property, declaration, index, merge-chain, stable namespace,
 function, simple mixin, and simple mixin-ruleset reads. Goal: covered simple
 reads do not enter fallback ladders, public materialization wrappers, old
@@ -1384,9 +1397,12 @@ selector callable ruleset paths now consume exact remainder matches directly
 from existing callable bucket entries. The focused direct lookup test proves
 `['#foo-foo', '.bar', '.baz']` resolves the nested `>.bar.baz` ruleset without
 falling back to a missing callable result; render-based complex-selector tests
-still expose serialization whitespace drift in current `origin/dev`, so this
-item remains open until the full simple-read matrix and non-lookup render
-baseline are clean or isolated.
+still expose serialization whitespace drift in current `origin/dev`, but the
+full simple-read lookup matrix is closed. The refreshed matrix covers static
+variable/property/declaration/index/merge-chain, stable namespaces, functions,
+simple mixins, simple mixin-ruleset reads, callable handle reuse, and
+leaky/searchScope rebuilds. Remaining broad render/serialization drift belongs
+to item 86's changed-baseline gate, not an open simple-read lookup task.
 
 84. [x] Run stale registry/lookup wording grep and classify hot-path hits.
 Scope: production runtime code, tests, verifiers, and docs. Goal: remaining
@@ -1398,12 +1414,13 @@ findings, and follow-up/deletion status. Current evidence: `rg -n
 scripts -g '!**/__tests__/**' -g '!packages/*/lib/**'` shows no production
 declaration `Rules.find*` wrappers and no old registry lookup class path. Hot
 binding hits are concentrated in `Rules.findMixinsFast(...)` and its
-`findMixinsFastForUncoveredCallable(...)` bridge/callers, which remain item
-78, plus intentional leaky/fallback frame wording in `scope-frame.ts`,
-`direct-rules-lookup.ts`, callable utilities, and `mixin-output-slot.ts`,
-which remain item 82/final proof. Other hits are serialization/import/extend
-materialization, diagnostics, docs, verifier/profile instrumentation, or the
-old prototype script.
+`findMixinsFastForUncoveredCallable(...)` bridge/callers. Those are retained
+only for uncovered callable states and are guarded by item 78 tests proving
+covered simple/fallback-frame paths stay off the bridge. Intentional
+leaky/fallback frame wording in `scope-frame.ts`, `direct-rules-lookup.ts`,
+callable utilities, and `mixin-output-slot.ts` is covered by item 82 proof.
+Other hits are serialization/import/extend materialization, diagnostics, docs,
+verifier/profile instrumentation, or the old prototype script.
 
 85. [x] Refresh scope-lookup stress profile after bridge/proof closure. Scope:
 `scope-lookup-stress.less`, old `Rules.find`/registry counters, direct
@@ -1414,10 +1431,12 @@ recorded in Latest Binding Baseline. Current evidence: fresh profile on
 2026-06-18 reported empty `rulesFindByType`, `registryFindByType`, and
 `searchChildrenByType`, with direct declaration counters still at
 `cacheMiss: 7560`, `scope.v: 7560`, `childEntriesScanned: 1575`,
-`childEntryEntered: 1575`, and `framePrep: 1`. The instrumented elapsed value
-was `352.45ms`; this is counter/profile evidence only, not a speed claim.
+`childEntryEntered: 1575`, `childEntryFamilySkip: 4815`,
+`childEntriesFamilySkip: 5400`, and `framePrep: 1`. The instrumented elapsed
+value was `295.88ms`; this is counter/profile evidence only, not a speed
+claim.
 
-86. [ ] Run final binding completion gate and changed-baseline audit. Scope:
+86. [x] Run final binding completion gate and changed-baseline audit. Scope:
 focused lookup tests, `verify:binding-lookup-hot-paths`,
 `verify:aggressive-cutting-review`, core build, changed baseline, and any
 known non-lookup serialization blockers. Goal: prove the binding lane is
@@ -1428,11 +1447,12 @@ or isolated with evidence. Current evidence: binding-focused tests,
 `verify:aggressive-cutting-review`, `@jesscss/core` build, stale wording grep,
 and `scope-lookup-stress.less` profile passed for this pass. `pnpm run
 verify:baseline -- --changed` entered the broad core suite and reported
-non-binding render/serialization failures in `sequence.test.ts`, `any.test.ts`,
-`node-render-buffer.test.ts`, and `extend-rules.test.ts`, then hung quietly in
-Vitest workers until interrupted. No reported failure pointed at the binding
-files changed in this pass, so final completion remains open on the broader
-baseline gate and the remaining callable/fallback proof items.
+non-binding render/serialization/extend failures in `sequence.test.ts`,
+`any.test.ts`, `node-render-buffer.test.ts`, and `extend-rules.test.ts`, then
+exited `124` under `timeout 180`. No reported failure pointed at the binding
+files changed in this pass. The binding-owned queue and cluster inventory are
+closed; broad changed-baseline failures remain documented outside the binding
+lane.
 
 ## Latest Binding Baseline
 
@@ -1443,7 +1463,7 @@ baseline gate and the remaining callable/fallback proof items.
   `declaration.childEntriesScanned: 1575`,
   `declaration.childEntryEntered: 1575`,
   `declaration.childEntriesFamilySkip: 5400`,
-  `declaration.childEntryFamilySkip: 1575`, and `declaration.framePrep: 1`.
+  `declaration.childEntryFamilySkip: 4815`, and `declaration.framePrep: 1`.
   This is counter evidence only, not a wall-clock speed claim.
 - 2026-06-17 callable namespace counter refresh:
   `node scripts/profile-less-benchmark.mjs --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less`
@@ -1614,166 +1634,33 @@ baseline gate and the remaining callable/fallback proof items.
 
 ## Remaining Work Clusters
 
-This section is active backlog for the binding / lookup / registryless goal.
-Each cluster must be converted into sizable queue work, completed with tests or
-repo evidence, or explicitly closed as no-op/rejected with the reason recorded.
-When no unchecked queue items remain, reseed from this section before stopping
-unless every cluster below is closed.
+Current audit: all named binding / lookup / registryless architecture clusters
+above are closed or rejected with repo evidence. Do not reseed declaration,
+property, scope-frame/current-cell, callable namespace, reference-import,
+leaky/searchScope, reference-handle, or simple-read tasks from older prose
+unless new code evidence contradicts the checked items. The remaining open
+binding work is none: item 86 records the broad changed-baseline result and
+isolates the exact non-binding blockers.
 
-### A. Direct Declaration And Property Lookup
+Closed cluster map:
 
-1. **Explicit declaration visibility/import modes.**
-   `DeclarationLookupStrategy` carries visibility pieces, and direct
-   declaration child entries now carry `hasReferenceImportSurface`. Remaining
-   work is proving covered import/reference hits and misses do not widen
-   ordinary child scans or rediscover visibility by fallback behavior.
+- Direct declaration/property lookup is covered by items 39-58, 67-76, 82,
+  and 83; public declaration lookup wrappers are gone, and static
+  variable/property/declaration/index/merge-chain reads use frame/direct
+  occurrence paths.
+- ScopeFrame, current cells, assignment, and live binding identity are covered
+  by items 39-58, 69, 76, 77, 82, and 83; evaluated-value caching remains
+  explicitly out of scope until a separate value-dependency model exists.
+- Callable, namespace, reference-import, parameterized terminal, and fallback
+  frame behavior is covered by items 59-80, 82, and 83; covered callable paths
+  stay off broad `findMixinsFast(...)`, with retained bridges limited to
+  uncovered callable states.
+- Reference handle, source-static, leaky/searchScope, and simple-read proof is
+  covered by items 81-83; stale handles clear and rebuild without resurrecting
+  public registry-shaped lookup bridges.
 
-2. **Property merge-chain occurrence follow-through.**
-   Property lookup returns `DirectDeclarationOccurrence`, and occurrences now
-   carry a `slot` for same-parent source ordering. Filtered merge-chain/
-   property assignment modes now use typed `requiredDeclarationAssignments`
-   constraints instead of a generic merge filter, and source-static typed
-   property/declaration constraints are handleable. Merge assignment now carries
-   source/output exclusions as one semantic mutable list instead of hidden
-   scalar option fields. Wider external declaration-exclusion filters stay
-   cold. A real Less merge-chain fixture proves public property/declaration
-   lookup bridges stay unused, and focused tests prove pre/post output-binding
-   handle identity.
-
-3. **Declaration/property key versioning follow-through.**
-   Reference handles now use `Rules.getDeclarationLookupVersion(key)`, but the
-   new per-name version map must stay a freshness mechanism, not become a
-   second registry. Remaining work is proving dynamic-name/import/rules
-   promotions and finishing property/declaration no-fallback proof.
-
-4. **Direct declaration result flattening.**
-   `DeclarationLookupStrategy` now carries preselected family predicates.
-   Hot occurrence callers return `DirectDeclarationOccurrence | undefined`,
-   the old readonly overload option is gone, and the setDefined-only
-   `{ occurrence, readonly }` result object has been replaced by an apply-style
-   fallback helper. Remaining work is deciding whether the setDefined callback
-   closure should collapse further without adding family branching back to
-   ordinary reads.
-
-### B. ScopeFrame, Current Cells, And Assignment
-
-1. **Frame-slot identity follow-through.**
-   `BindingCell.lookupIdentity` and `ScopeFrame.currentBindingsVersion` now let
-   cached variable handles validate without re-reading the current binding map.
-   Ancestor variable handles now carry positive current-binding freshness
-   facts, and rest arrays no longer duplicate the scalar frame. Remaining work
-   is keeping cold object materialization out of simple reads.
-
-2. **Evaluated-value cache prerequisites.**
-   Cell/current-pointer lookup identity exists. Evaluated-value caching remains
-   out of scope until live-current shadowing, dynamic promotion, and parent
-   occurrence freshness are fully modeled and tested.
-
-### C. Callable, Namespace, And Reference Imports
-
-1. **Callable coverage decisions.**
-   `lookupScopeFrameCallable(...)` has `hit`, `miss`, and `uncovered` reasons.
-   Candidate, child-surface, and reference-import reasons now route through
-   caller-specific decisions before generic direct crawl. Prepared child-rule
-   entries carry exact callable/mixin/ruleset surface facts and now carry
-   reference-import child-surface facts separately from exact callable facts.
-   Late additions now update exact callable and reference-import child-entry
-   facts without leaving stale covered-miss frame state. Guarded import tests
-   proved prepared arrays cannot be trusted as a blanket aggregate miss.
-   Prepared-null entries can skip child reads, covered child frames can prove
-   simple exact callable misses without entering the broad child crawl, and
-   rendered reference-import callable misses now prepare the existing frame
-   parent chain instead of entering the no-frame direct crawl. Remaining work is
-   deleting the direct-crawl bridges where facts are complete without breaking
-   guarded/configured child surfaces.
-
-2. **Parameterized terminal namespace audit.**
-   Mixin-ruleset calls with parameters now reject ruleset-only terminal
-   candidates while keeping rulesets as namespace containers. Existing tests
-   cover recursive namespace terminals, exact ruleset terminal rejection,
-   namespace containers, and ruleset-only exclusion. Remaining work is deleting
-   any terminal fallback proved redundant by the final namespace no-fallback
-   matrix.
-
-3. **Namespace path/remainder allocation.**
-   `collectKeyRemainder(...)` and recursive namespace helpers still rebuild
-   arrays on cold fallback paths. Positive nested namespace, ruleset namespace,
-   and compound-prefix namespace hits now use offsets through
-   `findMixinNamespacePathFast`; callable lookup-key remainder string slicing
-   has been deleted, namespace result append logic now uses one shared loop, and
-   a real Less namespace fixture proves stable namespace positives avoid nested
-   array-path fallback calls. Remaining work is eliminating any remaining
-   positive-path `collectKeyRemainder(...)` fallback arrays and keeping arrays
-   cold for guarded/imported namespaces too.
-
-### D. Reference Handles And Fallback Bridges
-
-1. **ReferencePlan shape.**
-   `_lookupStrategy` caches the lookup family, but key normalization, shape
-   prep, filters, and handle access are still per-lookup work. Declaration-only
-   constraint fields no longer ride on function/callable handles. A broad
-   `ReferencePlan` attempt was rejected because generated control surfaces can
-   change runtime facts. Retry only for source-static facts that prove they
-   delete repeated hot-path preparation.
-
-2. **Leaky/fallback bridges.**
-   Shrink fallback cases one by one: declaration fallback frames,
-   callable child/reference-import bridges, property filtered fallback, leaky
-   rules, and `searchScope` disqualification. Variable lookup now has one
-   modeled `live-current` lane instead of a duplicate live-only retry. Active
-   `searchScope` and `leakyRules` disqualification now have proof that stale
-   handles are cleared and ordinary lookup rebuilds later for variable,
-   property, declaration, function, mixin, and mixin-ruleset reads. Synthetic
-   import/reference covered-hit and covered-miss tests plus a real
-   reference-import declaration fixture now prove public declaration bridges
-   stay unused. A real reference-import callable miss fixture now proves the
-   frame-less callable miss can stay zero-bridge. Each remaining bridge needs a
-   deletion condition and, where possible, a real Less fixture proof.
-
-3. **Final simple-read proof.**
-   Ordinary static function, simple mixin, and simple mixin-ruleset handles now
-   prove no repeated public callable bridge after the first handle write, and
-   simple callable handles also prove no repeated broad `findMixinsFast`
-   bridge. Hot variable/property/declaration read paths now use occurrence
-   helpers directly; wrapper-returning assignment helpers remain on
-   `setDefined`. The lane is not done until ordinary static variable,
-   property, declaration, index, merge-chain, and stable namespace reads have
-   final tests/profiles proving they do not enter fallback ladders, public
-   materialization wrappers, old registry-shaped search, or unnecessary child
-   scans.
-
-## Dependency Order
-
-1. Child/import coverage facts: clusters A1, C1.
-2. Property and declaration occurrence/versioning: clusters A2, A3.
-3. Callable namespace semantics: clusters C1, C2, C3.
-4. Handle/plan/object slimming: clusters A4, B1, D1.
-5. Bridge deletion and final proof: clusters D2, D3.
-6. Evaluated-value caching: cluster B2, only after slot/cell versions exist.
-
-This is not three small passes. It is roughly seven semantic swaths plus final
-proof, and some swaths may require more than one commit if tests expose a
-semantic split.
-
-## Sub-Agent Task Packets
-
-Use sub-agents for parallel work when available. Give each agent a disjoint
-ownership slice and require repo evidence, file paths, and acceptance gates.
-
-- **Declaration explorer/worker:** `direct-rules-lookup.ts`, declaration
-  child-surface tests, property merge-chain fixtures, direct lookup counters.
-- **Callable explorer/worker:** `rules.ts` callable namespace paths,
-  `scope-frame.ts` callable results, callable util tests, namespace/guard tests.
-- **Reference-handle explorer/worker:** `reference.ts` handle access/plan
-  shape, variable/property/function/callable handle tests.
-- **Import/reference explorer/worker:** `import-style.ts`, reference-import
-  facts, visibility/import fixtures, fallback spy tests.
-- **Verifier/reviewer:** focused Vitest matrix, stale lookup wording grep,
-  direct lookup profile, aggressive-cutting self-prosecution.
-
-Workers may edit only their owned slice. They must not revert other agents'
-changes. The controller integrates, resolves conflicts, runs gates, updates
-handoff, commits, and pushes.
+If future evidence reopens a lane, add a new checked-queue item with a specific
+proof surface rather than reviving the historical cluster list wholesale.
 
 ## Completion Criteria
 
@@ -1781,8 +1668,10 @@ Binding/lookup work is complete only when:
 
 - this inventory has no remaining active cluster;
 - the active binding queue above is empty and not reseeded from this inventory;
-- the stale registry/lookup wording grep has no hot-path hits;
-- focused lookup tests plus changed baseline gates pass;
+- the stale registry/lookup wording grep has no hot-path hits beyond named
+  uncovered-state callable bridges;
+- focused lookup tests plus changed baseline gates pass, or changed-baseline
+  failures are documented as exact non-binding blockers;
 - `scope-lookup-stress.less` profile shows old `Rules.find`/registry counters
   empty and direct lookup counters explained;
 - any speed claim is backed by stable before/after benchmark evidence.

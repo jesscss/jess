@@ -103,6 +103,54 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: binding callable frame-prep and final registryless lookup
+  closure proof.
+- Verdict: accepted as a focused binding/lookup closeout. Ordinary static
+  callable references now prepare the existing scope frame before lookup, so
+  simple mixin and mixin-ruleset reads skip the broad `findMixinsFast(...)`
+  bridge on the first read and on cached reads. The production one-segment
+  namespace descendant fallback-frame walk was already on `HEAD`; this pass
+  adds the missing focused proof and closes the stale binding clusters in
+  `BINDING-LOOKUP-REMAINING.md`. No speed claim.
+- New traversal: no production traversal added in this diff. The only new
+  loops are test-only iterations over reference nodes to prove
+  `leakyRules`/`searchScope` stale handles clear and rebuild. The callable
+  fallback-frame traversal in `Rules.findCallableDescendantsWithinMixinNamespaces(...)`
+  is existing `HEAD` code and is limited to one-segment descendants; it
+  replaces nested child `findMixin(...)`/broad crawl for covered fallback-frame
+  hits and misses.
+- Review-flagged allocations: test-only spy arrays, `Context` instances, and
+  fixture node construction were added for proof. Production adds one possible
+  `scope.getScopeFrame()` preparation for non-interpolated static callable
+  references, trading a broad child crawl for reusable frame/binding state.
+- New node/materialization: none in production. Tests construct fixture
+  `Rules`, `Mixin`, and declaration nodes only.
+- Render path: no binding runtime render path changed. A separate dirty
+  `ruleset.test.ts` render/mark proof exists in the worktree and must remain
+  outside this binding commit unless intentionally taken up in the render lane.
+- Helper/API surface: no new public API or helper. The existing internal
+  `shouldPrepareCallableReferenceFrame(...)` predicate now treats ordinary
+  static callable keys as frame-preparable when not targeted/local/interpolated.
+- Metadata mutations: no new metadata mutation. The existing scope-frame state
+  may now be prepared earlier for static callable references; this is semantic
+  lookup state used by the registryless frame path, not compatibility plumbing.
+- Routine error control: none in production. New `try/finally` blocks are test
+  cleanup for monkey-patched spies.
+- Allocation changes: production may allocate/prepare one scope frame on the
+  first ordinary static callable read, removing the initial broad
+  `findMixinsFast(...)` crawl from covered simple callable reads. Profile
+  counters remain evidence-only: old `Rules.find`/registry/search-children
+  counters are empty, direct declaration counters are explained, and no timing
+  win is claimed.
+- Evidence: focused reference callable/stale-handle tests passed; focused
+  mixin fallback-frame descendant tests passed; the broad binding matrix across
+  `reference.test.ts`, `mixin.test.ts`, and `import-style.test.ts` passed with
+  42 targeted tests. `git diff --check`, `verify:binding-lookup-hot-paths`,
+  `@jesscss/core` build, `scope-lookup-stress.less` profile, and
+  `verify:aggressive-cutting-review` passed. `verify:baseline -- --changed`
+  still reports non-binding render/serialization/extend failures and is
+  tracked under binding item 86.
+
 - Latest pass: `AtRule` render-dispatch helper split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. `AtRule.render(...)` no longer allocates per-call local closures to

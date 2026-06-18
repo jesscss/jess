@@ -973,6 +973,9 @@ function shouldPrepareCallableReferenceFrame(
   if (typeof key !== 'string' || lookupContext.hasTarget || shape.local) {
     return false;
   }
+  if (!lookupContext.env.isInterpolatedVariable) {
+    return true;
+  }
   const root = lookupContext.context.root;
   const contextRules = lookupContext.context.rulesContext;
   return (
