@@ -1867,6 +1867,8 @@ describe('reference', () => {
         expect(clonedRules).toBe(0);
         expect(inheritedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+        expect(resolved.value[0]?.parent).toBe(resolvedSource);
+        expect(sourceDecl.parent).toBe(sourceValue);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -2390,6 +2392,8 @@ describe('reference', () => {
         expect(resolved.value[0]).not.toBe(mixinDef);
         expect(resolved.value[0]!.type).toBe('Mixin');
         expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(resolved.value[0]!.rules).toBe(mixinDef.rules);
+        expect(mixinDef.rules.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
         const resolvedAgain = resolved.resolve(context);

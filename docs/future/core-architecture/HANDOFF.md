@@ -103,6 +103,41 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Reference` preserved rules-like shell ownership.
+- Verdict: accepted as a localized public ownership cut. Preserved
+  `Rules`/`Collection`/`Mixin`/`Ruleset` reference surfaces no longer rerun
+  node constructors against canonical child payloads just to carry public
+  lookup/source metadata; they now materialize as descriptor-cloned shallow
+  shells, so canonical child parents stay on the source tree. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: one cold public shell allocation remains for
+  preserved rules-like reference values, but it now copies only the outer node
+  shell and owned option bag instead of reconstructing a new node through its
+  constructor and re-adopting canonical children.
+- Render path: no render path changed. This pass only tightens the cold public
+  preserved-surface boundary used by rules-like `Reference` results.
+- Helper/API surface: no new public API surface. `createRulesLikeReferenceSurface(...)`
+  stays in place but now uses descriptor cloning for the outer shell rather
+  than constructor replay.
+- Metadata mutations: the new preserved shell explicitly resets only its own
+  `sourceNode`/`parent`/`index` metadata. Canonical child parent/source links
+  are no longer mutated as a side effect of constructor-based shell creation.
+- Routine error control: the review-flagged thrown test errors remain the
+  existing focused `reference.test.ts` proof scaffolding around exact key
+  normalization; this preserved-shell cut added no production error/control
+  flow.
+- Allocation changes: replaces constructor-based preserved node materialization
+  plus implicit child re-adoption with one shallow shell clone and one shallow
+  options clone on the cold public boundary.
+- Rejected/observed in this pass: broader public value materialization and
+  deeper merged-assign normalization stay queued in `Reference`.
+- Evidence: focused `reference.test.ts` rules-like variable preservation,
+  canonical-child-parent proof, direct mixin-ruleset hit preservation, exact
+  key normalization, merged declaration reuse, quoted-index merged-property
+  regression checks, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Reference` merged declaration direct-reuse cutoff.
 - Verdict: accepted as a localized public materialization cut. Already-normalized
   static merged declaration values no longer go through an extra merged

@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { DeclarationFindOptions } from './util/lookup-utils.js';
@@ -124,15 +124,6 @@ export type ReferenceOptions = {
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
 // now carries the canonical source directly.
 type PreservedRulesLikeValue = Node & { sourceNode?: Node };
-type NodeValueConstructor = new (
-  value: unknown,
-  options?: unknown,
-  location?: LocationInfo
-) => Node;
-
-function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
-  return typeof value === 'function';
-}
 
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
@@ -2468,24 +2459,47 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  const options = directValue.options;
-  const nodeConstructor = directValue.constructor;
-  if (!isNodeValueConstructor(nodeConstructor)) {
-    throw new TypeError('Preserved rules-like value must have a constructable node type');
+  const descriptors = Object.getOwnPropertyDescriptors(directValue);
+  const optionsDescriptor = descriptors._options;
+  if (
+    optionsDescriptor
+    && 'value' in optionsDescriptor
+    && optionsDescriptor.value
+    && typeof optionsDescriptor.value === 'object'
+  ) {
+    optionsDescriptor.value = { ...optionsDescriptor.value };
   }
-  const constructed = new nodeConstructor(
-    directValue.value,
-    options && typeof options === 'object' ? { ...options } : undefined,
-    directValue.location.length === 0 ? undefined : directValue.location
+  delete descriptors.sourceNode;
+  delete descriptors.parent;
+  delete descriptors.index;
+  const preservedValue = Object.create(
+    Object.getPrototypeOf(directValue)
   );
-  if (!(constructed instanceof Node)) {
+  if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  const preservedValue: PreservedRulesLikeValue = constructed;
+  Object.defineProperties(preservedValue, descriptors);
   const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
-  preservedValue.parent = directValue.parent ?? sourceNode.parent;
-  preservedValue.index = directValue.index ?? sourceNode.index;
-  preservedValue.sourceNode = directValue;
+  Object.defineProperties(preservedValue, {
+    sourceNode: {
+      value: directValue,
+      writable: true,
+      enumerable: false,
+      configurable: false
+    },
+    parent: {
+      value: directValue.parent ?? sourceNode.parent,
+      writable: true,
+      enumerable: false,
+      configurable: true
+    },
+    index: {
+      value: directValue.index ?? sourceNode.index,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    }
+  });
   return preservedValue;
 }
 
