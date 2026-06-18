@@ -2426,6 +2426,35 @@ function canReturnReferenceValue(node: Node): boolean {
   return node.hasFlag(F_STATIC) && !isRulesLikeReferenceValue(node);
 }
 
+function isEmptyMergedAssignPlaceholder(node: Node): boolean {
+  if (node instanceof Nil) {
+    return true;
+  }
+  if (isNode(node, N.Any | N.Keyword)) {
+    return node.value === '';
+  }
+  if (isNode(node, N.Quoted) && typeof node.value === 'string') {
+    return node.value === '';
+  }
+  return String(node.valueOf?.() ?? '') === '';
+}
+
+function canReturnMergedAssignReferenceValue(node: Node): boolean {
+  if (!canReturnReferenceValue(node)) {
+    return false;
+  }
+  if (!(node instanceof List)) {
+    return true;
+  }
+  for (let i = 0; i < node.items.length; i++) {
+    const child = node.items[i]!;
+    if (child instanceof List || isEmptyMergedAssignPlaceholder(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
@@ -2683,8 +2712,10 @@ function finalizeDeclarationReferenceResult(
   if (
     context.calcFrames === 0
     && !hasImportant
-    && !isMergedAssign
-    && canReturnReferenceValue(declarationValue)
+    && (
+      (!isMergedAssign && canReturnReferenceValue(declarationValue))
+      || (isMergedAssign && canReturnMergedAssignReferenceValue(declarationValue))
+    )
   ) {
     context.popReference();
     return declarationValue;

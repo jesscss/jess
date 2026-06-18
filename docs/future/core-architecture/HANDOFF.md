@@ -103,6 +103,46 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Reference` merged declaration direct-reuse cutoff.
+- Verdict: accepted as a localized public materialization cut. Already-normalized
+  static merged declaration values no longer go through an extra merged
+  reference normalization/materialization pass during public resolve; they now
+  reuse the evaluated merged container directly, while nested-list or empty
+  placeholder cleanup stays on the existing normalization path. No speed claim.
+- New traversal: one direct item loop inside
+  `canReturnMergedAssignReferenceValue(...)` checks whether a static merged
+  `List` already has its final output shape. It replaces the heavier
+  normalize-then-materialize path for the exact already-normalized case and
+  does not add a new tree walk outside that cold/public boundary.
+- New node/materialization: none. This pass deletes one public merged-reference
+  materialization path for already-normalized static merged values. The
+  existing normalization path still owns real merged cleanup when nested lists
+  or placeholders are present.
+- Render path: no render path changed. This pass only short-circuits public
+  resolve/eval materialization for merged declaration references that are
+  already in final static shape.
+- Helper/API surface: two node-local predicates,
+  `isEmptyMergedAssignPlaceholder(...)` and
+  `canReturnMergedAssignReferenceValue(...)`, were added inside `reference.ts`
+  to isolate the already-normalized merged-value gate. No public API surface
+  changed.
+- Metadata mutations: none newly added. The accepted cut specifically avoids
+  the extra merged-reference public materialization pass for already-normalized
+  static merged values.
+- Routine error control: the review-flagged thrown test errors remain the
+  focused `reference.test.ts` key-normalization scaffolding from the prior
+  adjacent `Reference` pass; this merged-value cut added no production
+  error/control flow.
+- Allocation changes: deletes one public merged-reference materialization pass
+  for the exact already-normalized static path; the remaining nested-list /
+  placeholder normalization branch is unchanged.
+- Rejected/observed in this pass: rules-like surfaces, broader public value
+  materialization, and deeper merged-assign normalization beyond the exact
+  already-normalized static path stay queued in `Reference`.
+- Evidence: focused `reference.test.ts` merged declaration direct-reuse and
+  normalization proof plus quoted-index merged-property regression checks,
+  targeted ESLint, `git diff --check`, `pnpm run verify:aggressive-cutting-review`,
+  and `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Reference` exact key normalization ownership.
 - Verdict: accepted as a localized lookup-key conversion cut. Exact
   `Any`/`Quoted`/numeric/color key nodes no longer route through generic

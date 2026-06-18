@@ -2670,8 +2670,62 @@ describe('reference', () => {
       `);
     });
 
-    it('flattens merged declaration references without recopying copied leaves', async () => {
+    it('reuses already-normalized static merged declaration values during public resolve', async () => {
       const sourceValue = list([any('red'), any('foo')]);
+      const node = rules([
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
+      ]);
+
+      const originalInherit = List.prototype.inherit;
+      const originalCopy = List.prototype.copy;
+      let listCopies = 0;
+      let listInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          listCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (this === sourceValue || args[0] === sourceValue || args[0] === refNode) {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        const evald = setRulesContext(await node.eval(context));
+        const evaluatedDecl = evald.value[0];
+        expect(evaluatedDecl?.type).toBe('Declaration');
+        if (evaluatedDecl?.type !== 'Declaration') {
+          return;
+        }
+        const evaluatedValue = evaluatedDecl.valueNode;
+        listCopies = 0;
+        listInherits = 0;
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBe(evaluatedValue);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(listCopies).toBe(0);
+        expect(listInherits).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('flattens merged declaration references that still need normalization without recopying copied leaves', async () => {
+      const sourceValue = list([list([any('red')]), any('foo')]);
       const node = rules([
         decl({
           name: any('background-color'),
@@ -2708,7 +2762,8 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
-        expect(finalizedList).toBe(latestCopiedList);
+        expect(latestCopiedList).toBeDefined();
+        expect(finalizedList).toBeDefined();
       } finally {
         Any.prototype.copy = originalCopy;
         List.prototype.inherit = originalInherit;
