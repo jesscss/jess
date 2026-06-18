@@ -115,17 +115,21 @@ with `--no-verify` after the explicit gates pass.
 - Render path: duplicate declaration comparison still captures repeated
   declaration text into a detached writer for exact Less-style equality, but
   it now does so through direct `writeSyntax(...)` instead of public
-  `toTrimmedString(...)`. Emission/materialization policy is otherwise
-  unchanged.
+  `toTrimmedString(...)`. Surviving declarations no longer carry prerendered
+  output/trivia caches forward into emission; they now re-enter the normal
+  declaration emission path after comparison.
 - Helper/API surface: none.
 - Metadata mutations: none.
 - Routine error control: the review-flagged thrown errors are focused test
   scaffolding proving duplicate comparison and related leaf serialization no
-  longer call public `toTrimmedString(...)`; no production control flow
-  changed.
+  longer call public `toTrimmedString(...)`; the remaining review-flagged
+  `try/finally` is the same focused test restoration scaffold around temporary
+  method swaps. No production control flow changed.
 - Allocation changes: deletes one public string-return wrapper call per
-  repeated declaration comparison. The detached string boundary itself remains
-  because exact duplicate-policy comparison still consumes a string key.
+  repeated declaration comparison and removes the duplicate output/trivia cache
+  maps that used to carry detached declaration text forward into emission. The
+  detached compare string boundary itself remains because exact
+  duplicate-policy comparison still consumes a string key.
 - Rejected/observed in this pass: duplicate declaration skip/cache
   materialization still remains, along with broader render-mode leaf/body
   transport, remaining Ruleset header emit/cache capture, and deeper

@@ -112,11 +112,20 @@ describe('Rule', () => {
   it('renders duplicate declarations without public string transport during duplicate comparison', () => {
     const firstDecl = decl({ name: 'color', value: any('red') });
     const secondDecl = decl({ name: 'color', value: any('blue') });
-    firstDecl.toTrimmedString = () => {
-      throw new Error('Duplicate declaration comparison should write syntax directly');
+    const originalFirstToTrimmedString = firstDecl.toTrimmedString;
+    const originalSecondToTrimmedString = secondDecl.toTrimmedString;
+    let publicStringCalls = 0;
+    firstDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalFirstToTrimmedString>
+    ): ReturnType<typeof originalFirstToTrimmedString> {
+      publicStringCalls++;
+      return originalFirstToTrimmedString.apply(this, args);
     };
-    secondDecl.toTrimmedString = () => {
-      throw new Error('Duplicate declaration comparison should write syntax directly');
+    secondDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalSecondToTrimmedString>
+    ): ReturnType<typeof originalSecondToTrimmedString> {
+      publicStringCalls++;
+      return originalSecondToTrimmedString.apply(this, args);
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -126,12 +135,18 @@ describe('Rule', () => {
       ])
     });
 
-    expect(node.toTrimmedString()).toBeString(`
-      .box {
-        color: red;
-        color: blue;
-      }
-    `);
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+          color: blue;
+        }
+      `);
+      expect(publicStringCalls).toBe(2);
+    } finally {
+      firstDecl.toTrimmedString = originalFirstToTrimmedString;
+      secondDecl.toTrimmedString = originalSecondToTrimmedString;
+    }
   });
 
   it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {

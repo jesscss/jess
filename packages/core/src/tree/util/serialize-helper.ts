@@ -25,7 +25,6 @@ type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
   | 'duplicateDeclarationComparisonContainers'
   | 'duplicateDeclarationPrerenderedDeclarations'
-  | 'duplicateDeclarationCachedOutputReuses'
   | 'emissionRenderNodeTextPreviewCalls'
   | 'emissionRenderNodeTextRulesPreviewCalls'
   | 'emissionRenderNodeTextDeclarationFallbackCalls'
@@ -489,8 +488,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    const declarationOutputCache = new Map<number, string>();
-    const declarationTriviaCache = new Map<number, Set<IToken[]>>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
@@ -565,8 +562,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const declOut = declWriter.toString();
       options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
-      declarationOutputCache.set(i, declOut);
-      declarationTriviaCache.set(i, declEmittedTrivia);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       let seenValues = seenDeclarationsByProp.get(declProp);
       if (!seenValues) {
@@ -814,28 +809,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
-        const cachedDeclarationOutput = isNode(nn, N.Declaration)
-          ? declarationOutputCache.get(idx)
-          : undefined;
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
-            ? (cachedDeclarationOutput ?? renderNodeText(nn, options, 'declaration-fallback'))
+            ? renderNodeText(nn, options, 'declaration-fallback')
             : renderedRulesOutput !== undefined
               ? renderedRulesOutput
               : renderNodeText(nn, options);
-        if (isNode(nn, N.Declaration) && cachedDeclarationOutput !== undefined) {
-          if (serializeProfileCounters) {
-            incrementSerializeProfileCounter('duplicateDeclarationCachedOutputReuses');
-          }
-          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-          const cachedTrivia = declarationTriviaCache.get(idx);
-          if (cachedTrivia) {
-            for (const tokens of cachedTrivia) {
-              emittedTrivia.add(tokens);
-            }
-          }
-        } else if (renderedRulesTrivia) {
+        if (renderedRulesTrivia) {
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
           for (const tokens of renderedRulesTrivia) {
             emittedTrivia.add(tokens);
