@@ -103,6 +103,51 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` active-writer custom render text split.
+- Verdict: accepted as a bounded `Call` row cut. Custom rendered CSS-call
+  args, escaped-paren inner args, dynamic rendered names, and dynamic rendered
+  content now write through the active caller writer instead of rendering into
+  a detached `OutputWriter` and copying the resulting string back into the call
+  surface. The call row still recovers local return text for those branches,
+  but it now reads that text from the same active emitted chunk range so the
+  child render contract stays on one writer-owned path. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in
+  `getWriterTextSincePosition(...)` after a custom rendered branch writes. This
+  replaces the previous detached writer allocation plus full child re-add path
+  and stays localized to custom rendered call children that miss the known-text
+  fast path.
+- Review-flagged allocations: no new production node allocations on the hot
+  render path. Test-only tracking nodes/writers were added for proof. The
+  deleted detached `OutputWriter` allocations on custom arg/name/content
+  branches are replaced by active-writer chunk reads and existing in-place trim
+  calls.
+- New node/materialization: none.
+- Render path: call render still stringifies directly. The pass removes the
+  detached child string boundary for custom rendered args/names/content; it
+  does not materialize nodes or wrapper containers to recover text.
+- Helper/API surface: two node-local helpers,
+  `getWriterTextSincePosition(...)` and `writeCallNodeTextToActiveWriter(...)`,
+  replace repeated detached child render scaffolding across arg/name/content
+  branches. No public API added.
+- Metadata mutations: none added. One localized generic read,
+  `Reflect.get(writer, 'chunks')`, exists only because `OutputWriter`
+  currently exposes `position()` but not a cold/public tail-slice reader. This
+  pass rejected reopening detached writers or call-level readback just to
+  recover the emitted custom child text; the generic read stays boxed inside
+  the `Call` row until the writer has a cleaner internal-only tail-text
+  surface.
+- Routine error control: none added.
+- Allocation changes: deletes the detached custom arg/name/content writer path
+  from plain/finalized call render; horizontal trimming for custom args now
+  mutates the already-emitted active writer range instead of trimming a
+  temporary string before re-adding it.
+- Evidence: new focused call tests passed for `renders custom fallback CSS
+  call arguments through the caller writer`, `renders custom fallback CSS call
+  content through the caller writer`, and `renders custom fallback CSS call
+  names through the caller writer`. The adjacent existing custom render tests
+  for args/content/names and escaped custom args still passed, the full
+  `call.test.ts` suite passed, and `@jesscss/core` build passed.
+
 - Latest pass: `Declaration` important-source transport plus callable-ruleset
   merge replay split.
 - Verdict: accepted as a bounded declaration-lane fix. Context now carries the

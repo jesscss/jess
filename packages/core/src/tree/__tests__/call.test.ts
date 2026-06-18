@@ -109,6 +109,30 @@ class CustomSyntaxNode extends Node<string> {
   }
 }
 
+class WriterTrackingCustomSyntaxNode extends CustomSyntaxNode {
+  seenWriters: OutputWriter[] = [];
+
+  override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
+    const writer = getPrintOptions(options).writer;
+    this.seenWriters.push(writer);
+    super.writeSyntax(options);
+  }
+}
+
+class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
+  readonly renderedNode: WriterTrackingCustomSyntaxNode;
+
+  constructor(value: string) {
+    super(value);
+    this.renderedNode = new WriterTrackingCustomSyntaxNode(value);
+    this.addFlag(F_MAY_ASYNC);
+  }
+
+  override eval() {
+    return Promise.resolve(this.renderedNode);
+  }
+}
+
 class AsyncCustomSyntaxAny extends Any<string> {
   constructor(value: string) {
     super(value);
@@ -1627,6 +1651,18 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders custom fallback CSS call arguments through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const arg = new AsyncWriterTrackingCustomSyntaxAny('arg');
+    const rule = call({
+      name: 'fn',
+      args: list([arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn(custom-arg, 30)');
+    expect(arg.renderedNode.seenWriters).toEqual([writer]);
+  });
+
   it('renders async custom fallback CSS call content without returning prefixed writer contents', async () => {
     const writer = new CountingWriter();
     writer.add('prefix|');
@@ -1641,6 +1677,18 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders custom fallback CSS call content through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const content = new AsyncWriterTrackingCustomSyntaxAny('body');
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
+    expect(content.renderedNode.seenWriters).toEqual([writer]);
+  });
+
   it('renders custom fallback CSS call names without whole-call readback', async () => {
     const writer = new CountingWriter();
     writer.add('prefix|');
@@ -1653,6 +1701,18 @@ describe('Call', () => {
     expect(writer.toString()).toBe('prefix|custom-name(30)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders custom fallback CSS call names through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const name = new WriterTrackingCustomSyntaxNode('name');
+    const rule = call({
+      name,
+      args: list([num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
+    expect(name.seenWriters).toEqual([writer]);
   });
 
   it('renders escaped custom fallback CSS call arguments without inner trim readback', async () => {

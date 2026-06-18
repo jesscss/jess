@@ -166,6 +166,33 @@ function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions)
   return writer.toString();
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
+function writeCallNodeTextToActiveWriter(
+  node: Node,
+  printOptions: FinalPrintOptions,
+  trimHorizontal = false
+): string {
+  const writer = printOptions.writer;
+  const position = writer.position();
+  node.writeSyntax(printOptions);
+  if (trimHorizontal) {
+    writer.trimHorizontalStartSince(position);
+    writer.trimHorizontalEndSince(position);
+  }
+  return getWriterTextSincePosition(writer, position);
+}
+
 function isHorizontalWhitespace(code: number): boolean {
   return code === 9 || code === 12 || code === 13 || code === 32;
 }
@@ -941,19 +968,15 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     };
     const finishArg = (arg: Node, argText: string, next: number): void => {
-      const trimmed = trimHorizontalCallText(argText);
-      w.add(trimmed, arg);
       if (textState?.text !== undefined) {
-        textState.text += trimmed;
+        textState.text += argText;
       }
       writeArgSeparator(arg, next);
     };
     const finishEscapedParenArg = (arg: Paren, innerText: string, next: number): void => {
-      const trimmed = trimHorizontalCallText(innerText);
-      w.add(trimmed, arg);
       w.add(')', arg);
       if (textState?.text !== undefined) {
-        textState.text += `${trimmed})`;
+        textState.text += `${innerText})`;
       }
       writeArgSeparator(arg, next);
     };
@@ -998,14 +1021,14 @@ export class Call extends Node<CallValue, CallOptions> {
               finishDirectEscapedParenArg(arg, next);
               return;
             }
-            finishEscapedParenArg(arg, renderDetachedCallNodeText(value, printOptions), next);
+            finishEscapedParenArg(arg, writeCallNodeTextToActiveWriter(value, printOptions, true), next);
           });
         }
         if (appendKnownRenderedText(rendered as Node)) {
           finishDirectEscapedParenArg(arg, next);
           return;
         }
-        finishEscapedParenArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
+        finishEscapedParenArg(arg, writeCallNodeTextToActiveWriter(rendered as Node, printOptions, true), next);
         return;
       }
       if (context.calcFrames !== 0 && arg.constructor === Operation) {
@@ -1031,14 +1054,14 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isThenable(rendered)) {
         return rendered.then((value) => {
           if (!appendKnownRenderedText(value)) {
-            finishArg(arg, renderDetachedCallNodeText(value, printOptions), next);
+            finishArg(arg, writeCallNodeTextToActiveWriter(value, printOptions, true), next);
             return;
           }
           writeArgSeparator(arg, next);
         });
       }
       if (!appendKnownRenderedText(rendered as Node)) {
-        finishArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
+        finishArg(arg, writeCallNodeTextToActiveWriter(rendered as Node, printOptions, true), next);
         return;
       }
       writeArgSeparator(arg, next);
@@ -1092,9 +1115,8 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (textState.text !== undefined) {
       w.add(textState.text, name);
     } else {
-      const nameText = renderDetachedCallNodeText(name, printOptions);
+      const nameText = writeCallNodeTextToActiveWriter(name, printOptions);
       textState.text = nameText;
-      w.add(nameText, name);
     }
     if (callNode.options?.silentFail) {
       w.add('?');
@@ -1140,8 +1162,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              const contentText = renderDetachedCallNodeText(value, printOptions);
-              w.add(contentText, value);
+              const contentText = writeCallNodeTextToActiveWriter(value, printOptions);
               if (textState.text !== undefined) {
                 textState.text += contentText;
               }
@@ -1157,8 +1178,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
-          w.add(contentText, renderedContent as Node);
+          const contentText = writeCallNodeTextToActiveWriter(renderedContent as Node, printOptions);
           if (textState.text !== undefined) {
             textState.text += contentText;
           }
@@ -1221,9 +1241,8 @@ export class Call extends Node<CallValue, CallOptions> {
       if (textState.text !== undefined) {
         w.add(textState.text, name);
       } else {
-        const nameText = renderDetachedCallNodeText(name, printOptions);
+        const nameText = writeCallNodeTextToActiveWriter(name, printOptions);
         textState.text = nameText;
-        w.add(nameText, name);
       }
     } else {
       const text = stringifyValueOf(name);
@@ -1268,8 +1287,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 return textState.text;
               }
             } else {
-              const contentText = renderDetachedCallNodeText(value, printOptions);
-              w.add(contentText, value);
+              const contentText = writeCallNodeTextToActiveWriter(value, printOptions);
               if (textState.text !== undefined) {
                 textState.text += contentText;
               }
@@ -1285,8 +1303,7 @@ export class Call extends Node<CallValue, CallOptions> {
             return textState.text;
           }
         } else {
-          const contentText = renderDetachedCallNodeText(renderedContent as Node, printOptions);
-          w.add(contentText, renderedContent as Node);
+          const contentText = writeCallNodeTextToActiveWriter(renderedContent as Node, printOptions);
           if (textState.text !== undefined) {
             textState.text += contentText;
           }
