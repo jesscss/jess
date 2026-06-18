@@ -435,32 +435,44 @@ function rulesMayContainExactCallableSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactMixinSurface(rules: Rules): boolean {
+  if (rules.mayContainExactMixinSurface !== undefined) {
+    return rules.mayContainExactMixinSurface;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Mixin)) {
+      rules.mayContainExactMixinSurface = true;
       return true;
     }
     const child = childCallableRulesOf(node);
     if (child && rulesMayContainExactMixinSurface(child)) {
+      rules.mayContainExactMixinSurface = true;
       return true;
     }
   }
+  rules.mayContainExactMixinSurface = false;
   return false;
 }
 
 function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
+  if (rules.mayContainExactRulesetSurface !== undefined) {
+    return rules.mayContainExactRulesetSurface;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (isNode(node, N.Ruleset)) {
+      rules.mayContainExactRulesetSurface = true;
       return true;
     }
     const child = childCallableRulesOf(node);
     if (child && rulesMayContainExactRulesetSurface(child)) {
+      rules.mayContainExactRulesetSurface = true;
       return true;
     }
   }
+  rules.mayContainExactRulesetSurface = false;
   return false;
 }
 
@@ -865,6 +877,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasExactCallableChildSurface = false;
   hasExactMixinChildSurface = false;
   hasExactRulesetChildSurface = false;
+  mayContainExactMixinSurface: boolean | undefined;
+  mayContainExactRulesetSurface: boolean | undefined;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
@@ -956,6 +970,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasExactCallableChildSurface = false;
     this.hasExactMixinChildSurface = false;
     this.hasExactRulesetChildSurface = false;
+    this.mayContainExactMixinSurface = undefined;
+    this.mayContainExactRulesetSurface = undefined;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
@@ -1251,6 +1267,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     return false;
+  }
+
+  private invalidateExactCallableSurfaceSummaries(): void {
+    this.mayContainExactMixinSurface = undefined;
+    this.mayContainExactRulesetSurface = undefined;
+    let current = this.parent;
+    while (current) {
+      if (isNode(current, N.Rules)) {
+        current.mayContainExactMixinSurface = undefined;
+        current.mayContainExactRulesetSurface = undefined;
+      }
+      current = current.parent;
+    }
   }
 
   setFunctionBinding(name: string | undefined, node: JsFunction | Func): void {
@@ -3966,6 +3995,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (affectsCallableLookup) {
       this.callableLookupVersion++;
       this.callableLookupCache = undefined;
+      this.invalidateExactCallableSurfaceSummaries();
       if (this._scopeFrame) {
         this._scopeFrame.callableBucketsByName = undefined;
         this._scopeFrame.callablesCovered = false;

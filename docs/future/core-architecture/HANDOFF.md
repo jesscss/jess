@@ -112,28 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: header writer trim/trivia fast path.
-- Verdict: accepted as a CPU-profile-supported header-writer reduction with
-  supporting same-harness wall-clock evidence, not as completion of the Less
-  4.x speed goal. `OutputWriter.trimEndSince(...)` now returns before
-  refreshing position arrays when the marked range cannot trim anything, and
-  `Ruleset.writeHeaderSelector(..., withoutComments=true)` reuses an immutable
-  empty trivia map instead of allocating one per comment-free header render.
+- Latest pass: exact callable surface summary cache.
+- Verdict: accepted as a CPU-profile-supported recursive lookup-surface
+  reduction with supporting same-harness wall-clock evidence, not as completion
+  of the Less 4.x speed goal. `Rules` now caches
+  `mayContainExactMixinSurface` / `mayContainExactRulesetSurface` answers and
+  invalidates those summaries when callable registration changes.
 - Rejected during pass: no current-pass implementation was rejected. A broader
   declaration/query-condition grep still hits the existing property-merge
   duplicate failure (`src: one, two, one, three;`), so that grep is residual
   correctness debt rather than proof for this patch.
-- New traversal: none.
+- New traversal: `invalidateExactCallableSurfaceSummaries()` walks parent nodes
+  only when callable registration mutates. This replaces repeated recursive
+  lookup/render-time child-surface rediscovery; V8 sampled
+  `rulesMayContainExactMixinSurface(...)` fell from `90.70ms` to `1.27ms`.
 - New node/materialization: none.
 - Render path: no render path now creates nodes or arrays to stringify. The
-  changed writer path skips no-op work before string output.
-- Helper/API surface: none added.
-- Metadata mutations: none added. Position metadata is refreshed only when
-  chunks actually change.
-- Evidence: focused output-writer/ruleset header tests and selector trivia
-  tests passed. Ordered benchmark-path rebuild passed. External CPU profile
-  removed the `refreshPositions <- trimEndSince <- writeHeaderSelector` stack
-  and removed `createTriviaMap <- writeHeaderSelector`; non-profiled external
-  `benchmark.less` reported median `306.11ms` with `4.94%` variance. Stable
-  repo hotpath stayed unstable/noisy, so that command is sanity only. See
-  `PERFORMANCE-HANDOFF.md`.
+  changed path moves descendant-surface summary work from repeated lookup-time
+  recursion to sparse mutation-time invalidation.
+- Helper/API surface: none added. `copyChild(...)` mentions in
+  `PERFORMANCE-HANDOFF.md` are profiler frame names only, not new helpers or
+  API surface.
+- Metadata mutations: none added.
+- Evidence: focused callable/mixin lookup tests passed. Ordered benchmark-path
+  rebuild passed. External CPU profile dropped
+  `rulesMayContainExactMixinSurface(...)` from `90.70ms` to `1.27ms`;
+  non-profiled external `benchmark.less` reported median `279.78ms` with
+  `11.18%` variance. Stable repo hotpath had usable signals for
+  `import-reference`, `mixins-guards`, and `extend-chaining`, with `functions`
+  and `media` still unstable. See `PERFORMANCE-HANDOFF.md`.

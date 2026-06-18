@@ -668,6 +668,90 @@ timed targets should come from the remaining largest V8 clusters:
 declaration-registration copies, binding-value clone copies, and
 `processExtends(...)` / `applyExtendsToSelector(...)`.
 
+### 2026-06-18 Exact Callable Surface Summary Cache
+
+Focus: CPU-profile-selected recursive lookup-surface rediscovery. The final
+header-trim profile showed `rulesMayContainExactMixinSurface(...)` as a
+`90.70ms` self-time frame, mostly deep recursive self-calls while answering
+whether child `Rules` surfaces could contain exact mixin terminals.
+
+Kept implementation:
+
+- `Rules` now caches `mayContainExactMixinSurface` and
+  `mayContainExactRulesetSurface` summaries on the rules object.
+- Callable registration invalidates those summaries on the current `Rules` and
+  ancestor `Rules` nodes. This adds a parent walk at sparse mutation time to
+  avoid repeated recursive child-surface walks during lookup/render.
+
+Focused behavior proof:
+
+```sh
+pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "namespace fast path|mixin-ruleset calls with args|ruleset namespace path|mixin namespace path|exact mixin child surface|child surface|callable"
+```
+
+Passed: `78` tests, `117` skipped.
+
+Ordered benchmark-path rebuild passed:
+
+```sh
+pnpm --filter styles-config build &&
+pnpm --filter @jesscss/awaitable-pipe build &&
+pnpm --filter @jesscss/core build &&
+pnpm --filter @jesscss/css-parser build &&
+pnpm --filter @jesscss/less-parser build &&
+pnpm --filter @jesscss/plugin-less build &&
+pnpm --filter @jesscss/plugin-less-compat build &&
+pnpm --filter @jesscss/plugin-js build &&
+pnpm --filter jess build
+```
+
+External CPU-profiled benchmark:
+
+```sh
+node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-150130-exact-surface-cache-post-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division
+```
+
+Profile artifact:
+`profiling/core-architecture/20260618-150130-exact-surface-cache-post-cpu/CPU.20260618.150130.36115.0.001.cpuprofile`.
+
+Result: median `258.91ms`, average `265.73ms`, variance `5.89%`.
+
+Relevant V8 sampled self-time comparison against the previous
+`20260618-145644-header-trim-trivia-final-cpu` profile:
+
+- `rulesMayContainExactMixinSurface(...)`: `90.70ms` -> `1.27ms`;
+- `getCallableEntriesForKey(...)`: `33.32ms` -> `10.23ms`;
+- `processExtends(...)`: `81.17ms` -> `42.25ms`;
+- `copyChild(...)`: `431.49ms` -> `366.20ms`.
+
+Non-profiled same-harness wall-clock:
+
+```sh
+node benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=16 --warmup=6 --math=parens-division
+```
+
+Result: median `279.78ms`, average `281.32ms`, variance `11.18%`.
+
+Stable repo hotpath sanity:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result:
+
+- `import-reference.less`: `signal=usable`, `trimmedMedian=19.10ms`;
+- `mixins-guards.less`: `signal=usable`, `trimmedMedian=18.77ms`;
+- `extend-chaining.less`: `signal=usable`, `trimmedMedian=5.51ms`;
+- `functions.less`: `signal=unstable`, `trimmedMedian=14.40ms`;
+- `media.less`: `signal=unstable`, `trimmedMedian=7.97ms`.
+
+Verdict: keep as a CPU-profile-supported recursive lookup-surface reduction
+with supporting wall-clock evidence. This is still not completion of the Less
+4.x speed goal. Next timed targets from the post-cache profile are still
+copy/GC dominated: `copyChild(...)`, `Node` construction, binding-value clones,
+declaration-registration copies, plus the remaining extend path.
+
 ### 2026-06-18 Performance Evidence Focus Refresh
 
 Context: fresh isolated worktree
