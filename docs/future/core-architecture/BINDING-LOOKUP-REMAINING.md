@@ -1033,7 +1033,7 @@ implementation lets fallback frames contribute carried ruleset prefix matches
 inside `findRulesetNamespacePathFast(...)` and avoids treating a first
 remainder frame miss as final when the child frame has a fallback frame.
 
-65. [ ] Prove fallback-frame mixin ambiguity still preempts fallback ruleset
+65. [x] Prove fallback-frame mixin ambiguity still preempts fallback ruleset
 namespace prefixes. Scope: `findRulesetNamespacePathFast(...)`,
 fallback-frame exact mixin namespace hits, reference-import child entries,
 and ruleset prefix matches with the same first segment. Goal: if a fallback
@@ -1041,7 +1041,13 @@ frame has a callable mixin namespace for the segment, ruleset namespace fast
 path should return control to the mixin namespace lane without broad crawl.
 Acceptance: focused fallback-frame union/ambiguity tests prove mixin namespace
 positives still win or union correctly, and broad `findMixinsFast(...)` spies
-stay empty.
+stay empty. Current evidence: fallback-frame reference-import ambiguity now
+has a focused synthetic proof where the same imported segment exposes a mixin
+namespace and a ruleset namespace. Plain lookup preserves the callable/ruleset
+terminal union, while `terminalMixinOnly` filters out the imported ruleset
+terminal and returns the mixin terminal. Root/fallback broad
+`findMixinsFast('#imported')` and generated nested array fallback spies stay
+empty.
 
 66. [ ] Refresh callable namespace lookup counters after reference-import
 fallback bridge cuts. Scope: `scope-lookup-stress.less`, callable namespace

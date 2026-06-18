@@ -3325,6 +3325,85 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: fallback mixin namespace terminal filters fallback ruleset namespace prefixes', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const mixinLeaf = mixin({
+        name: any('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('mixin') })])
+      });
+      const rulesetLeaf = ruleset({
+        selector: el('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+      });
+      const referenceChild = rules([
+        ruleset({
+          selector: el('#imported'),
+          rules: rules([rulesetLeaf])
+        }),
+        mixin({
+          name: any('#imported'),
+          rules: rules([mixinLeaf])
+        })
+      ], { referenceMode: true });
+      const fallbackRules = rules([referenceChild]);
+      const childRules = rules([]);
+      const root = rules([
+        mixin({
+          name: any('#parent-with-fallback-ambiguous-import'),
+          rules: childRules
+        })
+      ]);
+      const broadFastHits: string[] = [];
+      let nestedArrayFallbacks = 0;
+
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === fallbackRules || this === root) && key === '#imported') {
+          broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        referenceChild.getScopeFrame();
+        fallbackRules.collectDirectChildRulesEntries();
+        expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactMixinSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        const allTerminals = root.findMixin([
+          '#parent-with-fallback-ambiguous-import',
+          '#imported',
+          '.leaf'
+        ], undefined);
+        expect(allTerminals).toContain(mixinLeaf);
+        expect(allTerminals).toContain(rulesetLeaf);
+        expect(root.findMixin([
+          '#parent-with-fallback-ambiguous-import',
+          '#imported',
+          '.leaf'
+        ], undefined, {
+          terminalMixinOnly: true
+        })).toEqual([mixinLeaf]);
+        expect(broadFastHits).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
