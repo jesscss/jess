@@ -617,6 +617,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return serializeRulesContainer(this, getPrintOptions(options));
   }
 
+  override writeSyntax(options: FinalPrintOptions): void {
+    if (!this.rules) {
+      options.writer.add(this.getHeaderString(options));
+      return;
+    }
+    this.toTrimmedString(options);
+  }
+
   getRenderRules(): Rules | undefined {
     return this.rules;
   }

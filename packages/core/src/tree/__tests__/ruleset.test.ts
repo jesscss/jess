@@ -326,6 +326,32 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders ruleset leaf at-rules without public string preview transport', () => {
+    const writer = new CountingWriter();
+    const leaf = atrule({
+      name: any('@property', { role: 'atkeyword' }),
+      prelude: any('--brand-color')
+    });
+    leaf.toTrimmedString = () => {
+      throw new Error('ruleset leaf serialization should write at-rule syntax directly');
+    };
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: rules([leaf])
+    });
+
+    try {
+      expect(node.toTrimmedString({ writer })).toBeString(`
+        .box {
+          @property --brand-color;
+        }
+      `);
+      expect(writer.previews).toBe(0);
+    } finally {
+      delete leaf.toTrimmedString;
+    }
+  });
+
   it('source-direct renders static rulesets with invisible variable declarations from source', async () => {
     const selector = sellist([sel([el('foo')])]);
     const variable = vardecl({ name: 'brand', value: any('red') });
@@ -1403,13 +1429,18 @@ describe('Rule', () => {
     ], {
       referenceMode: true
     });
+    const originalWriteSyntax = childRules.writeSyntax;
     const originalToTrimmedString = childRules.toTrimmedString;
     let childSawDetachedWriter = false;
-    childRules.toTrimmedString = function countDetachedWriter(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      childSawDetachedWriter = args[0]?.writer !== writer;
-      return originalToTrimmedString.apply(this, args);
+    childRules.writeSyntax = function countDetachedWriter(
+      this: typeof childRules,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      childSawDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+    };
+    childRules.toTrimmedString = () => {
+      throw new Error('child Rules body transport should not use public string wrappers');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -1423,6 +1454,7 @@ describe('Rule', () => {
       void serializeRulesContainer(node, options);
       expect(childSawDetachedWriter).toBe(true);
     } finally {
+      childRules.writeSyntax = originalWriteSyntax;
       childRules.toTrimmedString = originalToTrimmedString;
     }
   });

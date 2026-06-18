@@ -3101,6 +3101,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return w.getSince(mark);
   }
 
+  override writeSyntax(options: FinalPrintOptions): void {
+    if (!this.visible && !this.fullRender) {
+      return;
+    }
+    this._emitSourceRulesBody(options);
+  }
+
   toRenderString(options?: PrintOptions): MaybePromise<string> {
     if (!this.visible && !this.fullRender) {
       return '';

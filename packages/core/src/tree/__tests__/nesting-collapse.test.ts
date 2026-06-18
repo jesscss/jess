@@ -3,6 +3,7 @@ import {
   compound, type SimpleSelector, type Selector, amp, co
 } from '../index.js';
 import { Context } from '../../context.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { IToken } from 'chevrotain';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -21,10 +22,18 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  previews = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
   }
 }
 
@@ -511,6 +520,7 @@ describe('CSS Nesting Collapse', () => {
       }`
     );
     expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('streams reference rule wrappers in collapsed containers without capture scaffolding', async () => {

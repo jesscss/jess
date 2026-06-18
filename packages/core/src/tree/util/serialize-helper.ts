@@ -109,12 +109,18 @@ function renderNodeText(
   }
   if (reason === 'rules-preview') {
     const writer = new OutputWriter();
-    return node.toTrimmedString(getPrintOptions({
+    node.writeSyntax(getPrintOptions({
       ...options,
       writer
     }));
+    return writer.toString();
   }
-  return options.writer.preview(() => node.toTrimmedString(options));
+  const writer = new OutputWriter();
+  node.writeSyntax(getPrintOptions({
+    ...options,
+    writer
+  }));
+  return writer.toString();
 }
 
 type RenderRuleEntry = {

@@ -141,6 +141,14 @@ with `--no-verify` after the explicit gates pass.
   `@jesscss/core` build passed. `verify:binding-lookup-hot-paths` passed with
   guards against stale object-call shapes and deleted handle arg type names.
 - Merge-carried serialization review: latest `origin/dev` also carries the
+  child `Rules` body transport direct `writeSyntax(...)` cut in
+  `packages/core/src/tree/rules.ts` and
+  `packages/core/src/tree/util/serialize-helper.ts`. Detached child `Rules`
+  body transport now writes through `Rules.writeSyntax(...)` instead of the
+  public `toTrimmedString(...)` wrapper. Review-flagged detached writers,
+  thrown errors, and `try/finally` are serialization proof scaffolding or
+  bounded detached string boundaries. No binding lookup runtime path changed.
+- Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
   `new OutputWriter()` is the detached declaration fallback string boundary
