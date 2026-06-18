@@ -142,13 +142,9 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
     const [open, close] = this.getDelimiters();
     w.add(open);
-    let value = this.node;
+    const value = this.node;
     if (value) {
-      if (value instanceof Node) {
-        writeParenValue(value, options);
-      } else {
-        w.add(String(value), this);
-      }
+      writeParenValue(value, options);
     }
     w.add(close);
   }
@@ -334,7 +330,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (evaluatedGuardBool) {
           return evaluatedGuardBool;
         }
-        if (this._options?.escaped && value instanceof Node) {
+        if (this._options?.escaped) {
           if (value instanceof List && value.options?.sep === ';') {
             return new Any(renderListValueSyntax(value.items, {}, ','));
           }

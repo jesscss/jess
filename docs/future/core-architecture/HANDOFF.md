@@ -103,6 +103,29 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Paren` dead string-coercion branch deletion.
+- Verdict: accepted as a localized serialization guard cleanup. `Paren`
+  source/eval normalization no longer carries unreachable non-`Node`
+  string-coercion checks even though `Paren.node` is already typed and
+  constructed as `Node | undefined`. No speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Render path: no render path changed. This pass only deletes dead source/eval
+  branches around impossible non-`Node` values.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Routine error control: none in production. Focused paren tests continue to
+  prove direct child syntax and escaped-list normalization behavior.
+- Allocation changes: none.
+- Rejected/observed in this pass: segmented/async non-scalar child render, the
+  shared `renderListValueSyntax(...)` mark/readback boundary, and remaining
+  paren capture audit stay queued.
+- Evidence: focused `paren.test.ts` source child syntax plus escaped-list
+  normalization proof, targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: escaped `Paren` semicolon-list public normalization to direct
   comma text.
 - Verdict: accepted as a localized public normalization cut. Escaped
