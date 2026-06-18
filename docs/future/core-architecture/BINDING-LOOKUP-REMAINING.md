@@ -347,7 +347,7 @@ through one strategy dispatcher that supplies declaration constraints only for
 strategies that require them. Function/callable writer bodies do not receive or
 read declaration constraint plumbing, and the verifier guards that shape.
 
-25. [ ] Split generic handle reads by strategy/family so non-declaration
+25. [x] Split generic handle reads by strategy/family so non-declaration
 reads do not receive a declaration-constraint parameter at all. Scope:
 `readRulesLookupHandle(...)`, `tryReadSourceStatic*RulesLookupHandle(...)`,
 strategy-owned readers, and the sync/async reference lookup read path. Goal:
@@ -356,16 +356,74 @@ assigned family readers where function/callable read paths cannot even be
 called with declaration constraints. Acceptance: focused source-static and
 normal handle tests for declaration/property/variable/function/mixin/
 mixin-ruleset plus verifier guards against passing declaration constraints to
-function/callable readers.
+function/callable readers. Current evidence: the generic
+`readRulesLookupHandle(...)` function is gone. Strategy-owned readers now use a
+common base freshness reader plus declaration-only, variable, function, and
+callable family readers. The normal sync/async lookup path calls declaration
+strategies with declaration constraints and calls function/callable/index
+readers without that field. The verifier now forbids the old generic reader
+and checks that function/callable readers do not read declaration constraints.
 
-26. [ ] Remove `preparedDeclarationConstraints` from generic
+26. [x] Remove `preparedDeclarationConstraints` from generic
 `RulesReferenceLookupContext` or move it behind declaration-only context state.
 Scope: `prepareRulesLookupShape(...)`, `RulesReferenceLookupContext`, lookup
 adapters, and declaration writer/read preparation. Goal: keep declaration
 constraint state off the generic lookup context when function/callable/index
 lookups cannot use it. Acceptance: build, focused handle tests, and verifier
 guard that generic lookup context fields do not grow declaration-handle
-plumbing.
+plumbing. Current evidence: `RulesReferenceLookupContext` no longer has
+`preparedDeclarationConstraints`, and `prepareRulesLookupShape(...)` only
+stores target rules plus common handle shape. Declaration constraints are
+computed in the handle read/write preparation path only when a handleable
+declaration strategy needs them. The verifier now fails if generic lookup
+context state grows declaration-constraint fields again.
+
+27. [x] Split `ReferenceLookupStrategy` into declaration-capable and
+non-declaration handle strategy shapes. Scope: `ReferenceLookupStrategy`,
+`requiresHandleDeclarationConstraints`, optional
+`getHandleDeclarationConstraints`, read/write dispatch, and strategy constants.
+Goal: remove boolean/optional declaration-policy branching from non-declaration
+strategies entirely, so the type shape itself proves whether a strategy can
+carry declaration constraints. Acceptance: focused handle tests plus verifier
+guards that function/callable/index strategies cannot expose declaration
+constraint hooks or receive declaration read/write args. Current evidence:
+`ReferenceLookupStrategy` is now a union of declaration-capable and plain
+strategy shapes. The old `requiresHandleDeclarationConstraints` flag is gone,
+declaration hooks live only on declaration/property/variable strategies, and
+the verifier rejects declaration hooks on index/function/callable strategy
+constants.
+
+28. [x] Audit and slim handle read/write argument object creation in
+`lookupResolvedReference(...)`. Scope: `readArgs`, `writeStrategyRulesLookupHandle`,
+sync/async writeback, spread calls, and source-static read reuse. Goal: keep
+family-specific handle access without trading deleted generic branching for
+new hot-path objects or spread-heavy dispatch. Acceptance: focused handle
+tests, aggressive review of any retained object/spread allocation, and a
+lookup smoke/profile note if the final shape touches measured handle access
+allocation. Current evidence: the temporary `readArgs` object and stale
+`...readArgs` / `...baseArgs` spread dispatch are gone. The strategy write
+dispatcher now takes positional inputs and constructs only the family writer
+arg object it actually calls. The verifier rejects the removed temp/spread
+shapes. This is code-path/object-shape evidence only, not a measured speed
+claim.
+
+29. [ ] Decide whether strategy handle reader/writer methods should become
+positional instead of object-argument APIs. Scope: `ReadRulesLookupHandleArgs*`,
+`WriteRulesLookupHandleArgs*`, family read/write helpers, sync/async
+writeback, and source-static readers. Goal: remove the remaining per-read/
+per-write argument object allocation if the resulting call shape is simpler
+and still type-safe, or document why the current private object boundary is
+the cheapest maintainable shape. Acceptance: focused handle tests plus
+aggressive review; use a lookup smoke/profile note if the implementation keeps
+or removes measured handle-access allocation.
+
+30. [ ] Finish source-static `ReferencePlan` retry only for stable facts after
+the strategy read/write split. Scope: `_lookupStrategy`, source-static key
+identity, target/filter/read-mode/leaky/search-scope disqualifiers, handle
+shape, and source-static strategy readers. Goal: prove repeated source-static
+references can reuse only stable plan facts without caching generated or live
+surface state. Acceptance: control/mixin loop matrix plus variable/property/
+function/callable handle tests showing dynamic surfaces still fall through.
 
 ## Latest Binding Baseline
 
@@ -522,6 +580,15 @@ plumbing.
   is gone; declaration/property/variable handle freshness uses typed
   declaration-handle helpers, and function/callable handle writers do not
   receive declaration constraint fields.
+- Rules lookup handle reads are strategy-owned now. The old generic
+  `readRulesLookupHandle(...)` shape is gone, function/callable/index readers
+  do not accept declaration constraints, and generic
+  `RulesReferenceLookupContext` no longer carries declaration-constraint
+  scratch state.
+- `ReferenceLookupStrategy` now has declaration-capable and plain strategy
+  shapes instead of the old declaration-policy boolean flag. Handle read/write
+  dispatch no longer builds the extra `readArgs` object or spread-derived
+  write args.
 
 ## Remaining Work Clusters
 

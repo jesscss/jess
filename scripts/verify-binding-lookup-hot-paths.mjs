@@ -146,6 +146,21 @@ for (const token of [
 }
 
 const referenceSource = readFileSync(resolve(root, 'packages/core/src/tree/reference.ts'), 'utf8');
+function getFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  const nextFunction = start === -1 ? -1 : source.indexOf('\nfunction ', start + 1);
+  return start === -1
+    ? undefined
+    : source.slice(start, nextFunction === -1 ? undefined : nextFunction);
+}
+function getConstObjectSource(source, name) {
+  const start = source.indexOf(`const ${name}:`);
+  const end = start === -1 ? -1 : source.indexOf('\n};', start);
+  return start === -1
+    ? undefined
+    : source.slice(start, end === -1 ? undefined : end);
+}
+
 if (referenceSource.includes('getRulesLookupHandleDeclarationConstraintShape')) {
   console.error('declaration constraints should not be modeled as generic RulesLookupHandleShape fields');
   failed = true;
@@ -162,11 +177,41 @@ if (referenceSource.includes('function lookupTypeUsesDeclarationConstraints(')) 
   console.error('declaration-constraint handle policy should be on declaration helpers, not a generic lookup-type predicate');
   failed = true;
 }
+if (referenceSource.includes('requiresHandleDeclarationConstraints')) {
+  console.error('declaration-constraint handle policy should be a strategy type shape, not a boolean strategy flag');
+  failed = true;
+}
+for (const token of ['const readArgs =', '...readArgs', '...baseArgs', 'writeStrategyRulesLookupHandle({']) {
+  if (referenceSource.includes(token)) {
+    console.error(`handle read/write dispatch should not use stale temp/spread object shape ${token}`);
+    failed = true;
+  }
+}
+if (referenceSource.includes('function readRulesLookupHandle(')) {
+  console.error('rules lookup handle reads should be split by lookup strategy, not a generic reader with declaration constraints');
+  failed = true;
+}
+const rulesReferenceLookupContextMatch = referenceSource.match(/type RulesReferenceLookupContext = \{[\s\S]*?\n\};/);
+if (!rulesReferenceLookupContextMatch) {
+  console.error('could not find RulesReferenceLookupContext block');
+  failed = true;
+} else if (rulesReferenceLookupContextMatch[0].includes('DeclarationConstraints')) {
+  console.error('generic RulesReferenceLookupContext should not carry declaration handle constraints');
+  failed = true;
+}
 if (!referenceSource.includes('function writeStrategyRulesLookupHandle(')) {
   console.error('rules lookup handle writes should route through the strategy writer dispatcher');
   failed = true;
 }
 for (const token of [
+  'type ReferenceDeclarationLookupStrategy',
+  'type ReferencePlainLookupStrategy',
+  'function isReferenceDeclarationLookupStrategy(',
+  'readHandle',
+  'function readDeclarationRulesLookupHandle(args: ReadDeclarationRulesLookupHandleArgs)',
+  'function readVariableRulesLookupHandle(args: ReadDeclarationRulesLookupHandleArgs)',
+  'function readFunctionRulesLookupHandle(args: ReadRulesLookupHandleArgsBase)',
+  'function readCallableRulesLookupHandle(args: ReadRulesLookupHandleArgsBase)',
   'function writeVariableRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)',
   'function writeDeclarationRulesLookupHandle(args: WriteDeclarationRulesLookupHandleArgs)'
 ]) {
@@ -175,13 +220,29 @@ for (const token of [
     failed = true;
   }
 }
-for (const name of ['writeFunctionRulesLookupHandle', 'writeCallableRulesLookupHandle']) {
-  const start = referenceSource.indexOf(`function ${name}(`);
-  const nextFunction = start === -1 ? -1 : referenceSource.indexOf('\nfunction ', start + 1);
-  const body = start === -1
-    ? ''
-    : referenceSource.slice(start, nextFunction === -1 ? undefined : nextFunction);
-  if (start === -1) {
+for (const name of [
+  'INDEX_REFERENCE_LOOKUP_STRATEGY',
+  'FUNCTION_REFERENCE_LOOKUP_STRATEGY',
+  'MIXIN_REFERENCE_LOOKUP_STRATEGY',
+  'MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY'
+]) {
+  const body = getConstObjectSource(referenceSource, name);
+  if (body === undefined) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes('getHandleDeclarationConstraints')) {
+    console.error(`${name} should not expose declaration constraint hooks`);
+    failed = true;
+  }
+}
+for (const name of [
+  'readFunctionRulesLookupHandle',
+  'readCallableRulesLookupHandle',
+  'writeFunctionRulesLookupHandle',
+  'writeCallableRulesLookupHandle'
+]) {
+  const body = getFunctionSource(referenceSource, name);
+  if (body === undefined) {
     console.error(`could not find ${name}`);
     failed = true;
   } else if (body.includes('declarationConstraints')) {

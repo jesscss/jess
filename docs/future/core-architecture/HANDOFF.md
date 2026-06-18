@@ -138,6 +138,20 @@ with `--no-verify` after the explicit gates pass.
   `at-rule.test.ts` leaf/header slices, targeted ESLint, `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
+- Merge-carried binding review: latest `origin/dev` also carries
+  strategy-owned rules lookup handle readers, typed strategy policy, and
+  slimmer handle dispatch in `packages/core/src/tree/reference.ts` plus the
+  binding verifier. It is binding handle-policy only: the old generic
+  `readRulesLookupHandle(...)` function and
+  `preparedDeclarationConstraints` lookup-context field are deleted, each
+  `ReferenceLookupStrategy` now owns its family-specific handle reader,
+  declaration-capable readers receive declaration constraints while
+  function/callable/index readers do not, the old declaration-policy boolean
+  is gone in favor of declaration-capable/plain strategy types, and the stale
+  temp/spread dispatch is replaced with the slimmer private dispatcher guarded
+  by `verify:binding-lookup-hot-paths`. No render/stringification path
+  changed, no runtime node materialization was added, and detailed status
+  remains in `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
