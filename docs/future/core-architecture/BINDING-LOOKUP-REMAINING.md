@@ -106,7 +106,13 @@ Scope: merge normalization scalar getters, handle shape before/after
 `bindOutput`, and stale occurrence invalidation. Goal: prove scalar exclusion
 identity changes exactly when the output declaration is bound. Acceptance:
 lower-level/materialization-aware handle test; do not use the rejected
-render-level `Reference.eval` spy shape.
+render-level `Reference.eval` spy shape. Current evidence: a lower-level
+source/static property handle test now models the `bindOutput` scalar getter:
+the first lookup caches the direct occurrence, then the output identity appears
+through `excludedNode1`/`excludedNodesLength` and the stale handle is rejected.
+That proof exposed and fixed a direct declaration lookup cache bug: constrained
+lookups using scalar exclusions, `excludedNodes`, filters, or normalized
+assignment constraints no longer write/read the recursive key/family cache.
 
 8. [ ] Prove reference-import declaration/callable misses stay on modeled
 frames after retry-frame cleanup. Scope: reference import roots, rendered
@@ -129,7 +135,14 @@ Scope: `applySetDefinedDeclarationReadonlyOccurrence`, readonly propagation,
 deleted `{ occurrence, readonly }` result object from coming back, and decide
 whether setDefined can write through a tighter helper without putting family
 branching back into ordinary reads. Acceptance: setDefined/live binding tests,
-build, and hot-path guard stay green.
+build, and hot-path guard stay green. Current evidence:
+`applySetDefinedDeclarationReadonlyOccurrence(...)`,
+`SetDefinedDeclarationMatchHandler`, and the `onSetDefinedMatch` callback are
+deleted. `Rules.registerNode(...)` now receives a single writable setDefined
+occurrence from `findWritableSetDefinedDeclarationOccurrence(...)`; readonly is
+checked only when the final chosen match is returned, and mutation/splice logic
+stays in `Rules`. The hot-path verifier now forbids the old callback helper
+tokens.
 
 11. [ ] Collapse remaining `Reference.lookupVariableReference(...)` facade miss
 lane where covered source-static variable reads already have frame/handle
@@ -151,7 +164,15 @@ ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
-failure recorded with a fix.
+failure recorded with a fix. Current evidence: the changed baseline was run
+after the setDefined/direct-declaration cache pass. It built `@jesscss/core`
+and then entered the full core test suite, surfaced broader render/string
+transport failures (`node-render-buffer.test.ts`, `call.test.ts`, `any.test.ts`,
+`cloning.test.ts` in the visible output), and then stopped producing output
+while Vitest workers remained active. It was interrupted rather than left
+running. No failure in the visible output pointed at the binding lookup files
+touched in this pass; keep item 12 open until the baseline can finish or the
+non-lookup failures are separated upstream.
 
 13. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
 bridge deletion batch. Scope: `scope-lookup-stress.less`, direct lookup
