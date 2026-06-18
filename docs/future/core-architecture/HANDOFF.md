@@ -103,6 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `AtRule` layer-name identity transport split.
+- Verdict: accepted as a bounded serializer cut inside the active `AtRule`
+  row. Nested `@layer` registration no longer routes name/prelude identity
+  checks through public `toTrimmedString(...)` / `toString(...)`; it now reads
+  owned syntax text and composes `parent.child` layer names directly from the
+  invocation-record path. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: one cold detached writer boundary for non-scalar
+  layer identity text. It replaces public string transport and stays off the
+  main render path.
+- New node/materialization: none.
+- Render path: no render/body output formatting changed. The cut only removes
+  public string transport from nested layer-name extraction during at-rule body
+  registration/eval bookkeeping.
+- Helper/API surface: two small node-local helpers,
+  `getAtRuleSourceIdentityText(...)` and `normalizeAtRuleIdentityText(...)`,
+  which isolate owned syntax-text reads for `@layer` identity without adding a
+  public API.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: no new nodes, wrappers, or carried caches; only the cold
+  detached writer for non-scalar identity text.
+- Evidence: focused and full `at-rule.test.ts` coverage now prove nested layer
+  registration still records `parent` and `parent.child`, async nested layer
+  registration still works, and a new transport guard throws if public
+  `toTrimmedString(...)` / `toString(...)` are touched for layer-name
+  extraction. `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed after this handoff update.
 - Latest pass: binding declaration visibility plus compound callable remainder
   proof.
 - Verdict: accepted as a focused registryless binding pass. Declaration lookup

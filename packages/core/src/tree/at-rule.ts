@@ -110,6 +110,23 @@ function atRuleScalarTokenText(node: Node): string | undefined {
     : undefined;
 }
 
+function getAtRuleSourceIdentityText(node: Node | undefined): string {
+  if (!node) {
+    return '';
+  }
+  const scalarText = atRuleScalarTokenText(node);
+  if (scalarText !== undefined) {
+    return scalarText;
+  }
+  const writer = new OutputWriter(false);
+  node.writeSyntax(getPrintOptions({ writer }));
+  return writer.toString();
+}
+
+function normalizeAtRuleIdentityText(text: string): string {
+  return trimAtRuleTrailingWhitespace(trimAtRuleLeadingWhitespace(text));
+}
+
 function renderAtRuleLeafNodeSyntax(
   node: Node,
   printOptions: FinalPrintOptions
@@ -1161,10 +1178,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     evaluatedPrelude?: Node
   ): string | undefined {
-    const atRuleName = node.name?.toTrimmedString?.() ?? node.name?.toString?.() ?? '';
+    const atRuleName = normalizeAtRuleIdentityText(getAtRuleSourceIdentityText(node.name));
     const prelude = evaluatedPrelude ?? node.prelude;
     if (atRuleName === '@layer' && prelude) {
-      const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
+      const preludeStr = normalizeAtRuleIdentityText(getAtRuleSourceIdentityText(prelude));
       if (preludeStr) {
         let parentLayerName: string | undefined;
         const activeRecords = activeAtRuleBodyEvalRecords.get(context);
@@ -1172,7 +1189,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           for (let i = activeRecords.length - 1; i >= 0; i--) {
             const record = activeRecords[i]!;
             const frame = record.source;
-            if (frame === node || frame.name?.toTrimmedString?.() !== '@layer') {
+            if (
+              frame === node
+              || normalizeAtRuleIdentityText(getAtRuleSourceIdentityText(frame.name)) !== '@layer'
+            ) {
               continue;
             }
             const children = frame.rules?.value;

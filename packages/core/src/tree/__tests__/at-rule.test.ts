@@ -507,6 +507,62 @@ describe('AtRule', () => {
     expect(nestedLayer.rules).toBe(nestedBody);
   });
 
+  it('registers nested layer names without public string transport', async () => {
+    const outerName = any('@layer', { role: 'atkeyword' });
+    const nestedName = any('@layer', { role: 'atkeyword' });
+    const nestedPrelude = any('child');
+    const nestedBody = rules([
+      ruleset({
+        selector: el('.inner'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+    const nestedLayer = atrule({
+      name: nestedName,
+      prelude: nestedPrelude,
+      rules: nestedBody
+    });
+    const outerBody = rules([nestedLayer]);
+    const outerLayer = atrule({
+      name: outerName,
+      prelude: any('parent'),
+      rules: outerBody
+    });
+    const registeredLayers: Array<string | undefined> = [];
+    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
+      ...args: Parameters<typeof originalRegisterRoot>
+    ): ReturnType<typeof originalRegisterRoot> {
+      registeredLayers.push(args[2]?.layerName);
+      return originalRegisterRoot(...args);
+    };
+    outerName.toTrimmedString = () => {
+      throw new Error('layer extraction should not use public toTrimmedString for at-rule names');
+    };
+    outerName.toString = () => {
+      throw new Error('layer extraction should not use public toString for at-rule names');
+    };
+    nestedName.toTrimmedString = () => {
+      throw new Error('layer extraction should not use public toTrimmedString for nested at-rule names');
+    };
+    nestedName.toString = () => {
+      throw new Error('layer extraction should not use public toString for nested at-rule names');
+    };
+    nestedPrelude.toTrimmedString = () => {
+      throw new Error('layer extraction should not use public toTrimmedString for layer preludes');
+    };
+    nestedPrelude.toString = () => {
+      throw new Error('layer extraction should not use public toString for layer preludes');
+    };
+
+    const root = rules([outerLayer]);
+
+    await Promise.resolve(root.render(context));
+
+    expect(registeredLayers).toContain('parent');
+    expect(registeredLayers).toContain('parent.child');
+  });
+
   it('registers async nested layer names from invocation records without mutating source children', async () => {
     const nestedPrelude = any('child');
     nestedPrelude.addFlag(F_MAY_ASYNC);
