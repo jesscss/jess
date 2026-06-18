@@ -12,6 +12,12 @@ Current mode: **benchmark-leashed aggressive cutting**. Performance is no
 longer merely parked. The active focus decides the next target, but the
 target must be tied back to this file's benchmark/profile evidence rules.
 
+Completion target: the performance campaign is complete only when Jess exceeds
+Less 4.x speed on the canonical Less benchmark comparison with stable/usable
+wall-clock evidence. A profile refresh, hotspot report, rejected experiment, or
+next-target selection completes only that pass; it must not be recorded as
+completion of the performance goal.
+
 ## Preserved Lesson
 
 Historical transition docs were removed from the working tree. The durable
@@ -447,9 +453,12 @@ Concrete next implementation target:
    samples.
 
 Stop-rule result: Performance Evidence focus produced a current
-profile/benchmark interpretation and concrete next implementation target. The
-next focus should be an implementation focus chosen from this evidence, most
-likely direct declaration lookup scanning or serialization fallback readback.
+profile/benchmark interpretation and concrete next implementation target for
+this pass only. The performance campaign remains open until Jess beats Less 4.x
+on the canonical benchmark comparison with stable/usable wall-clock evidence.
+The next focus should be an implementation focus chosen from this evidence,
+most likely direct declaration lookup scanning or serialization fallback
+readback.
 
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 

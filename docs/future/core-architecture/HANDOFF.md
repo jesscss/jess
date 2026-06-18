@@ -23,7 +23,11 @@ and required docs.
   completion gates. This stream owns direct syntax/render emission, cold public
   string wrappers, render readback removal, and node-family row closure.
 - **Performance evidence:** use `PERFORMANCE-HANDOFF.md` for benchmark
-  protocol, profile history, rejected experiments, and speed claims.
+  protocol, profile history, rejected experiments, speed claims, and the
+  performance campaign completion target. An evidence refresh can finish a
+  pass, but the performance campaign is not complete until Jess beats Less 4.x
+  on the canonical Less benchmark comparison with stable/usable wall-clock
+  evidence.
 - **Patch-shape review:** use `AGGRESSIVE-CUTTING-REVIEW.md` before changing
   AST, eval/render, lookup, traversal, copying, inheritance, output writer,
   source/root metadata, or this router.
@@ -107,7 +111,9 @@ with `--no-verify` after the explicit gates pass.
 - Verdict: accepted as a documentation/evidence pass. No runtime code changed;
   the pass refreshed wall-clock benchmark, profiler/counter, CPU-profile, and
   external Less harness evidence in `PERFORMANCE-HANDOFF.md` and made the
-  performance-round measurement rule explicit.
+  performance-round measurement rule explicit. It did not complete the
+  performance campaign, which remains open until Jess beats Less 4.x on the
+  canonical benchmark comparison.
 - New traversal: none in production code.
 - New node/materialization: none.
 - Render path: no render/eval/output path changed.

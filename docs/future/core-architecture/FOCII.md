@@ -114,11 +114,15 @@ binding/lookup work.
 
 ## Focus: Performance Evidence
 
-**Goal prompt:** Refresh Jess core architecture performance evidence by running
-the benchmark/profile protocol in `PERFORMANCE-HANDOFF.md` for the currently
-selected implementation focus, recording only evidence-backed interpretations,
-and returning a concrete next implementation target without making unsupported
-speed claims.
+**Goal prompt:** Drive the Jess core architecture performance campaign until
+Jess exceeds Less 4.x speed on the canonical Less benchmark set with stable
+wall-clock evidence. Use `PERFORMANCE-HANDOFF.md` to run repeated
+benchmark-leashed implementation rounds: measure current speed, choose one
+evidence-backed hot target, make one focused implementation change, rerun the
+same wall-clock benchmarks and CPU/profile/counter checks, keep or revert from
+the evidence, update the tracker, commit, push, and continue. A measurement
+refresh may complete one pass, but the performance goal itself is not complete
+until the Less 4.x comparison target is beaten.
 
 **Required docs:**
 
@@ -127,8 +131,11 @@ speed claims.
 - the tracker for the selected implementation focus
 - `AGGRESSIVE-CUTTING-REVIEW.md` if code changes are made
 
-**Active queue:** no standalone code queue. Performance evidence selects or
-checks a target for another focus.
+**Active queue:** `PERFORMANCE-HANDOFF.md` owns the performance campaign state,
+current evidence, rejected experiments, and next measured target. Each
+implementation round may temporarily select another focus tracker for the
+touched code path, but it returns here for before/after evidence and the
+keep/revert decision.
 
 **Boundaries:**
 
@@ -138,10 +145,16 @@ checks a target for another focus.
   justify "less machinery."
 - Rejected experiments in `PERFORMANCE-HANDOFF.md` must not be retried without
   a new hypothesis or changed code shape.
+- Do not mark the performance focus or chat/Guildhall goal complete just
+  because the current evidence pass produced a next target. That is only a
+  pass boundary.
 
-**Stop rule:** stop after producing a current profile/benchmark interpretation,
-a rejected experiment record, or one concrete implementation target for the
-active focus.
+**Stop rule:** a single pass may stop after producing a current
+profile/benchmark interpretation, a rejected experiment record, or one concrete
+implementation target for the active focus. The overall performance campaign
+stops only when Jess beats Less 4.x on the canonical Less benchmark comparison
+with stable/usable wall-clock evidence, or when the next step needs explicit
+user/product judgment.
 
 **Gates:** the benchmark/profile commands named in `PERFORMANCE-HANDOFF.md`,
 plus focused behavior tests for any code touched during the evidence pass.
