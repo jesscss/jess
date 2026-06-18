@@ -1,6 +1,6 @@
 import type { IToken } from 'chevrotain';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, fn, list, mixin, num, op, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -218,6 +218,19 @@ describe('Call', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('func(~(a, b); c)');
     expect(writer.toString()).toBe('func(~(a, b); c)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact quoted call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
@@ -587,6 +600,19 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('renders exact quoted CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('renders evaluated CSS call content without public string transport', async () => {
     const content = any('source-content');
     const renderedContent = any('body-output');
@@ -618,6 +644,19 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('wrap(): (raw content)');
     expect(writer.toString()).toBe('wrap(): (raw content)');
+    expect(writer.marks).toBe(1);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact quoted call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: quoted('raw content')
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): "raw content"');
+    expect(writer.toString()).toBe('wrap(): "raw content"');
     expect(writer.marks).toBe(1);
     expect(writer.readbacks).toBe(0);
   });

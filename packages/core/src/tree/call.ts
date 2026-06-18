@@ -163,6 +163,17 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       }
       return `${open}${value}${close}`;
     }
+    case 'Quoted': {
+      const quote = node.quote ?? '"';
+      if (typeof node.value === 'string') {
+        return node.escaped ? node.value : `${quote}${node.value}${quote}`;
+      }
+      const value = getKnownRenderedCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return node.escaped ? value : `${quote}${value}${quote}`;
+    }
     default:
       return undefined;
   }
@@ -220,6 +231,17 @@ function getKnownSourceCallText(node: Node): string | undefined {
         return undefined;
       }
       return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+    }
+    case 'Quoted': {
+      const quote = node.quote ?? '"';
+      if (typeof node.value === 'string') {
+        return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
+      }
+      const value = getKnownSourceCallText(node.value);
+      if (value === undefined) {
+        return undefined;
+      }
+      return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
     }
     default:
       return undefined;

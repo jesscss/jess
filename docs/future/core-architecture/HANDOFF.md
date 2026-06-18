@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact quoted text carry.
+- Verdict: accepted as a localized source/render text carry cut. Exact
+  `Quoted` values now participate in `Call`'s known source/render text paths,
+  so covered quoted args and content stay off fallback writer/readback
+  boundaries. No speed claim.
+- New traversal: one recursive step in `getKnownRenderedCallText(...)` and one
+  recursive step in `getKnownSourceCallText(...)` for exact `Quoted` children.
+- New node/materialization: none.
+- Render path: covered exact quoted args and content now write known text
+  directly; non-exact/custom/interpolated quoted values still use the existing
+  generic fallback.
+- Helper/API surface: no new helper. This pass extends the existing exact-text
+  helpers instead of adding a quoted-only lane.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none beyond the existing exact-text helper recursion; the
+  pass deletes covered fallback whole-call readback reliance for exact quoted
+  args/content in both source and render paths.
+- Rejected/observed in this pass: escaped or interpolated quoted semantics stay
+  on the current generic behavior unless the quoted payload is already an exact
+  known-text surface.
+- Evidence: focused `call.test.ts` coverage now proves exact quoted source args
+  serialize as `say(\"hello\", \"world\")` with zero readbacks, and exact
+  quoted render args/content stay at one outer call mark with zero readbacks,
+  while adjacent exact paren and escaped-source fast paths remain green. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` exact paren render text carry.
 - Verdict: accepted as a localized render-text carry cut. Exact rendered
   `Paren` values now participate in `Call`'s known-text path, so covered args
