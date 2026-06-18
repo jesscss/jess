@@ -5,6 +5,11 @@ import { Sequence } from './sequence.js';
 import { Paren } from './paren.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
+import { Any, Anonymous, Keyword } from './any.js';
+import { Bool } from './bool.js';
+import { Color } from './color.js';
+import { Dimension } from './dimension.js';
+import { Num } from './number.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -169,7 +174,14 @@ export class QueryCondition extends Sequence {
    */
   private canTrustDynamicChildRenderText(node: Node): boolean {
     return (
-      node.constructor === QueryCondition
+      node.constructor === Any
+      || node.constructor === Anonymous
+      || node.constructor === Keyword
+      || node.constructor === Dimension
+      || node.constructor === Num
+      || node.constructor === Bool
+      || node.constructor === Color
+      || node.constructor === QueryCondition
       || node.constructor === Paren
       || node.constructor === Condition
       || node.constructor === Operation
@@ -289,7 +301,7 @@ export class QueryCondition extends Sequence {
         );
       }
       if (typeof out === 'string') {
-        if (!w.hasContentSince(before)) {
+        if (w.position() === before) {
           w.add(out);
         } else if (!canTrustText) {
           return w.getSince(before);

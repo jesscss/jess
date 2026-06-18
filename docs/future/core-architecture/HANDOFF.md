@@ -399,6 +399,40 @@ with `--no-verify` after the explicit gates pass.
   `verify:aggressive-cutting-review` run still reports the unrelated carried
   diff tokens listed above, but this pass adds no new hot-path ownership
   machinery beyond the retained detached header writer.
+- Latest pass: `QueryCondition` dynamic scalar position contract split.
+- Verdict: accepted as a bounded serializer cut inside the active
+  `QueryCondition` row. Exact dynamic scalar children whose render contract
+  already writes and returns the same text no longer pay the sync-path
+  `hasContentSince(...)` content scan before `QueryCondition` decides whether
+  to reuse emitted text or fall back to localized readback. That branch now
+  uses the same plain writer-position ownership check the async path already
+  used, while custom/per-instance children stay on the localized readback
+  path. No speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the dynamic query render path.
+- Review-flagged diff tokens: the focused test still contributes cold
+  `new CountingWriter()` construction and `expect(...)` arrays, but this pass
+  adds no new production node construction, array staging, or wrapper state.
+- New node/materialization: none.
+- Render path: exact dynamic scalar children (`Any`/`Anonymous`/`Keyword`,
+  `Dimension`/`Num`, `Bool`, and string-backed `Color`) now share the trusted
+  emitted-text contract already used by exact dynamic `QueryCondition`,
+  `Paren`, `Condition`, and `Operation` children, so the sync path stays off
+  the content-scan branch when the child has already written its own text.
+  Custom and per-instance dynamic children still keep the localized readback
+  branch when they may return text different from what they emitted.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the sync-path `hasContentSince(...)` probe in
+  `renderQueryConditionChild(...)` for exact dynamic children and widened the
+  exact-child trust contract to concrete scalar classes that already own direct
+  render/write behavior.
+- Evidence: focused red-to-green proof came from
+  `query-condition.test.ts` case
+  `trusts exact dynamic scalar children that write their rendered text`.
+  Full `query-condition.test.ts` still needs to be rerun after this handoff
+  update.
 - Latest pass: `AtRule` no-trivia frame-header direct write split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no

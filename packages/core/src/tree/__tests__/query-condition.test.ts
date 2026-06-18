@@ -228,6 +228,24 @@ describe('QueryCondition', () => {
     expect(writer.reads).toBe(0);
   });
 
+  it('trusts exact dynamic scalar children that write their rendered text', () => {
+    const writer = new CountingWriter();
+    const dynamicItem = any('screen');
+    dynamicItem.removeFlag(F_STATIC);
+    const queryNode = query([
+      dynamicItem,
+      any('and'),
+      any('(color)')
+    ]);
+    queryNode.removeFlag(F_STATIC);
+
+    expect(queryNode.render(context, { writer })).toBe('screen and (color)');
+    expect(writer.toString()).toBe('screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+  });
+
   it('renders resolved query-condition values through render(context)', async () => {
     const root = rules([
       vardecl({
@@ -601,7 +619,7 @@ describe('QueryCondition', () => {
     expect(writer.hasContentReads).toBe(0);
   });
 
-  it('probes only custom dynamic children that return without writing', () => {
+  it('keeps custom dynamic children that return without writing on the local ownership check', () => {
     const writer = new CountingWriter();
     const node = query([
       any('screen'),
@@ -615,7 +633,7 @@ describe('QueryCondition', () => {
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
-    expect(writer.hasContentReads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
 
@@ -633,7 +651,7 @@ describe('QueryCondition', () => {
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(1);
-    expect(writer.hasContentReads).toBe(1);
+    expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
 });
