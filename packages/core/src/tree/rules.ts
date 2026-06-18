@@ -733,8 +733,12 @@ function addAssignmentTargetBinding(
   target: AssignmentTargetBindingTarget,
   name: string,
   cell: BindingCell,
-  readonlyOverlay: boolean
+  readonlyOverlay: boolean,
+  shadowingFrame?: ScopeFrame
 ): void {
+  if (shadowingFrame?.currentBindingsByName.has(name)) {
+    return;
+  }
   const bindings = target.assignmentBindingsByName ?? (target.assignmentBindingsByName = new Map());
   if (bindings.has(name)) {
     return;
@@ -757,24 +761,6 @@ function setAssignmentTargetBinding(
     (target.assignmentReadonlyByName ??= new Set()).add(name);
   } else {
     target.assignmentReadonlyByName?.delete(name);
-  }
-}
-
-function addFrameAssignmentTargetBinding(
-  frame: ScopeFrame,
-  name: string,
-  cell: BindingCell,
-  readonlyOverlay: boolean
-): void {
-  if (frame.currentBindingsByName.has(name)) {
-    return;
-  }
-  if (frame.assignmentBindingsByName?.has(name)) {
-    return;
-  }
-  (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
-  if (readonlyOverlay && !cell.readonly) {
-    (frame.assignmentReadonlyByName ??= new Set()).add(name);
   }
 }
 
@@ -1050,7 +1036,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
-    this.collectPublicChildVariableAssignmentBindingsIntoFrame(false, frame);
+    this.collectPublicChildVariableAssignmentBindingsInto(false, frame, frame);
     frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface();
   }
 
@@ -1087,7 +1073,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private collectPublicChildVariableAssignmentBindingsInto(
     inheritedReadonly: boolean,
-    target: RulesEntryLike
+    target: AssignmentTargetBindingTarget,
+    shadowingFrame?: ScopeFrame
   ): void {
     const childEntries = this.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
@@ -1119,47 +1106,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           target,
           name,
           cell,
-          inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name))
-        );
-      }
-    }
-  }
-
-  private collectPublicChildVariableAssignmentBindingsIntoFrame(
-    inheritedReadonly: boolean,
-    frame: ScopeFrame
-  ): void {
-    const childEntries = this.collectDirectDeclarationChildEntries();
-    if (!childEntries?.length) {
-      return;
-    }
-    for (let i = childEntries.length - 1; i >= 0; i--) {
-      const entry = childEntries[i]!;
-      if (
-        entry.hasVarDeclarationSurface === false
-        && entry.hasReferenceImportSurface !== true
-      ) {
-        continue;
-      }
-      if (!canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })) {
-        continue;
-      }
-      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })) {
-        continue;
-      }
-      if (!isPublicRulesEntry(entry, 'VarDeclaration')) {
-        continue;
-      }
-      const entryBindings = entry.assignmentBindingsByName;
-      if (!entryBindings?.size) {
-        continue;
-      }
-      for (const [name, cell] of entryBindings) {
-        addFrameAssignmentTargetBinding(
-          frame,
-          name,
-          cell,
-          inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name))
+          inheritedReadonly || Boolean(entry.assignmentReadonlyByName?.has(name)),
+          shadowingFrame
         );
       }
     }

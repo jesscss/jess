@@ -848,7 +848,7 @@ source-order against later child entries. Focused setDefined tests prove both
 current-binding shadow and later-child shadow keep the modeled winning target,
 while the earlier winning late-registration proof still updates the new cell.
 
-54. [ ] Collapse duplicated assignment child-entry scan between entry targets
+54. [x] Collapse duplicated assignment child-entry scan between entry targets
 and frame targets without reintroducing temporary summary objects. Scope:
 `collectPublicChildVariableAssignmentBindingsInto(...)`,
 `collectPublicChildVariableAssignmentBindingsIntoFrame(...)`,
@@ -857,7 +857,12 @@ Goal: avoid maintaining two near-identical child-entry loops while preserving
 the frame-specific current-binding shadow skip and no summary-object
 allocation. Acceptance: focused setDefined tests stay green, aggressive review
 shows no new callback/helper ladder on ordinary lookup, and current-shadow
-frame map allocation remains avoided.
+frame map allocation remains avoided. Current evidence:
+`collectPublicChildVariableAssignmentBindingsIntoFrame(...)` was deleted.
+`collectPublicChildVariableAssignmentBindingsInto(...)` now writes into either
+child-entry targets or the destination `ScopeFrame`, with an optional
+frame-shadow guard that skips current bindings before assignment maps allocate.
+Focused setDefined tests keep current-shadow and later-child-shadow cases green.
 
 55. [ ] Move assignment target binding cell creation onto declaration
 registration/adoption when the declaration is already known static. Scope:
@@ -868,6 +873,16 @@ objects during summary collection when registration already has the canonical
 declaration and can carry or reuse a cell. Acceptance: focused setDefined tests
 stay green, ordinary reads still ignore assignment targets, and aggressive
 review accounts for any remaining cell allocation as semantic placement state.
+
+56. [ ] Decide whether assignment target maps can store `BindingEntry`
+directly instead of bare `BindingCell`. Scope:
+`ScopeFrame.assignmentBindingsByName`, `RulesEntryLike.assignmentBindingsByName`,
+`lookupScopeFrameVariable(...includeAssignmentTargets)`, and reference handle
+identity. Goal: see if assignment targets can reuse declaration bucket entries
+and avoid parallel source-node/value cell construction without making ordinary
+reads consult assignment targets. Acceptance: focused setDefined tests stay
+green, handle identity remains stable, and the tracker records whether this
+unblocks item 55 or is rejected as too much hot-path shape churn.
 
 ## Latest Binding Baseline
 

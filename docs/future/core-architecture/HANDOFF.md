@@ -104,7 +104,8 @@ with `--no-verify` after the explicit gates pass.
 ## Aggressive Cutting Self-Prosecution
 
 - Latest pass: binding implementation pass deleting assignment-summary object
-  allocation and tightening late static assignment frame patches.
+  allocation, collapsing duplicate assignment child-entry scans, and tightening
+  late static assignment frame patches.
 - Verdict: accepted as an allocation cleanup on the registryless
   assignment-target path. `RulesEntryLike` now carries canonical
   `assignmentBindingsByName` plus an `assignmentReadonlyByName` overlay when an
@@ -115,21 +116,20 @@ with `--no-verify` after the explicit gates pass.
   public child targets stay uncovered so `setDefined` can use the existing
   direct fallback. Assignment target collection now writes into caller-owned
   child entries or directly into the destination `ScopeFrame`; the temporary
-  `{ bindingsByName, readonlyByName }` summary object is gone. Late static
-  public child variable registration patches the parent child-entry summary and
-  frame assignment target by key only when that key can be consulted. No speed
-  claim.
+  `{ bindingsByName, readonlyByName }` summary object is gone. The frame and
+  entry assignment-target paths now share the same child-entry scan, with an
+  optional frame-shadow guard for current bindings. Late static public child
+  variable registration patches the parent child-entry summary and frame
+  assignment target by key only when that key can be consulted. No speed claim.
 - New traversal: no new ordinary lookup traversal was added. This pass keeps
-  the existing child-entry scan for assignment summary construction, but splits
-  the frame-target scan from the entry-target scan so frame prep can skip
-  current-binding shadows without allocating a temporary summary object. The
+  the existing child-entry scan for assignment summary construction; the
+  duplicate frame-target scan was collapsed back into the same accumulator path
+  with an optional frame-shadow guard. The
   `directDeclarationChildEntryWinsAssignmentName(...)` loop still scans later
   sibling entries only on late static variable registration, not ordinary
   lookup, to preserve source-order winner semantics without rebuilding the
   child summary. The inner assignment-map loops copy carried entry facts into
-  caller-owned targets and replace the deleted summary object handoff. Follow-up
-  item 54 exists to collapse duplicated child-entry loop text without
-  reintroducing a summary object or callback ladder.
+  caller-owned targets and replace the deleted summary object handoff.
 - Review-flagged allocations: the previous cloned readonly assignment map was
   deleted. Production still lazily allocates `assignmentBindingsByName` only
   for `ScopeFrame`s that have modeled public child/import variable assignment
@@ -162,7 +162,7 @@ with `--no-verify` after the explicit gates pass.
   The late static variable patch avoids frame assignment map allocation when a
   current binding or later child entry shadows the key, but still may allocate
   or touch assignment maps and one `BindingCell` when the patched key wins.
-  Items 54 and 55 track remaining loop/cell allocation tightening. The
+  Items 55 and 56 track remaining binding-cell ownership tightening. The
   frame-owned assignment map remains lazy and ordinary reads still do not
   consult assignment cells.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
