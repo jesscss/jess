@@ -92,6 +92,18 @@ function getKnownQueryConditionSourceText(node: Node): string | undefined {
   }
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 /**
  * Used by `@media`, `@supports`, and `@container`
  *
@@ -351,9 +363,9 @@ export class QueryCondition extends Sequence {
         return out;
       }
     }
-    const mark = printOptions.writer.mark();
+    const position = printOptions.writer.position();
     this.writeSyntax(printOptions);
-    return printOptions.writer.getSince(mark);
+    return getWriterTextSincePosition(printOptions.writer, position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -385,9 +397,9 @@ export class QueryCondition extends Sequence {
         prepared.writer.add(directText, this);
         return directText;
       }
-      const mark = prepared.writer.mark();
+      const position = prepared.writer.position();
       this.writeQueryConditionSyntax(this.items, prepared);
-      const rendered = prepared.writer.getSince(mark);
+      const rendered = getWriterTextSincePosition(prepared.writer, position);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;

@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` whole-query static fallback recovery split.
+- Verdict: accepted as a bounded `QueryCondition` serializer cut. Static
+  fallback queries with custom/subclass source children no longer open a
+  whole-query `mark()/getSince()` boundary just to recover the text already
+  written into the active writer; they now read the active writer tail
+  directly after emission while preserving the existing localized child
+  fallback ownership checks. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in
+  `getWriterTextSincePosition(...)`. This replaces the previous whole-query
+  `mark()/getSince()` recovery boundary for static fallback queries and does
+  not add a new scan over unrelated query state.
+- Review-flagged allocations: none added on the production path.
+- New node/materialization: none.
+- Render path: query-condition render still stringifies directly. The pass
+  deletes the whole-query recovery boundary for static fallback queries; it
+  does not materialize intermediate nodes, arrays, or wrapper queries to
+  recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/query-condition.ts`. It replaces repeated
+  whole-query `mark()/getSince()` recovery in static fallback source/render
+  paths; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, stays boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader. This pass rejected reopening whole-query marks or public
+  string wrappers just to recover already-emitted fallback text.
+- Routine error control: none added.
+- Allocation changes: deletes the whole-query static fallback
+  `mark()/getSince()` recovery boundary from `QueryCondition.toTrimmedString`
+  and static `render(...)` when direct known text is unavailable.
+- Evidence: focused `query-condition.test.ts` cases for custom operation,
+  custom condition, custom paren, prefixed-writer static fallback recovery,
+  shared-flat-buffer static output, and prefixed shared-buffer static output
+  all passed.
+
 - Latest pass: declaration merge-list active-writer spacing split.
 - Verdict: accepted as a bounded `Declaration` serializer cut. Non-custom
   merge-list value output no longer opens an inner declaration value
