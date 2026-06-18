@@ -132,9 +132,10 @@ with `--no-verify` after the explicit gates pass.
   stale `unrelated` miss is cleared; focused setDefined tests still pass.
   Full gates are required before commit.
 - Merge note: latest `origin/dev` also carries serialization work for
-  `Operation` and `QueryCondition`; keep that progress in
-  `NODE-REWRITE-TRACKER.md` while this worktree continues binding/lookup.
-  Review-flagged `CountingWriter` constructions, the custom `Operation`
-  subclass construction, and empty-arg `call(...)` test fixtures are test-only
-  proof scaffolding from that merge for no-readback/custom-fallback behavior;
-  they are not new binding runtime machinery.
+  `Operation`, `QueryCondition`, and scalar token-family dynamic leaf at-rule
+  syntax readback cuts; keep that progress in `NODE-REWRITE-TRACKER.md` while
+  this worktree continues binding/lookup. Review-flagged `CountingWriter`
+  constructions, custom syntax subclass constructions, scalar `any(...)`
+  fixtures, explicit `new Anonymous('html')`, and empty-arg `call(...)` test
+  fixtures are test-only proof scaffolding from serialization merges; they are
+  not new binding runtime machinery.
