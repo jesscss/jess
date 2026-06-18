@@ -3202,6 +3202,129 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset hit skips broad start crawl', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const leaf = mixin({
+        name: any('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const referenceChild = rules([
+        ruleset({
+          selector: el('#imported'),
+          rules: rules([leaf])
+        })
+      ], { referenceMode: true });
+      const fallbackRules = rules([referenceChild]);
+      const childRules = rules([]);
+      const root = rules([
+        mixin({
+          name: any('#parent-with-fallback-ruleset-import'),
+          rules: childRules
+        })
+      ]);
+      const broadFastHits: string[] = [];
+      let nestedArrayFallbacks = 0;
+
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === fallbackRules || this === root) && key === '#imported') {
+          broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        referenceChild.getScopeFrame();
+        fallbackRules.collectDirectChildRulesEntries();
+        expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        expect(root.findMixin([
+          '#parent-with-fallback-ruleset-import',
+          '#imported',
+          '.leaf'
+        ], undefined)).toEqual([leaf]);
+        expect(broadFastHits).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset miss skips broad start crawl', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const referenceChild = rules([
+        ruleset({
+          selector: el('#imported'),
+          rules: rules([
+            mixin({
+              name: any('.other-leaf'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        })
+      ], { referenceMode: true });
+      const fallbackRules = rules([referenceChild]);
+      const childRules = rules([]);
+      const root = rules([
+        mixin({
+          name: any('#parent-with-fallback-ruleset-import'),
+          rules: childRules
+        })
+      ]);
+      const broadFastHits: string[] = [];
+      let nestedArrayFallbacks = 0;
+
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === fallbackRules || this === root) && key === '#imported') {
+          broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        referenceChild.getScopeFrame();
+        fallbackRules.collectDirectChildRulesEntries();
+        expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        expect(root.findMixin([
+          '#parent-with-fallback-ruleset-import',
+          '#imported',
+          '.missing-leaf'
+        ], undefined)).toBeUndefined();
+        expect(broadFastHits).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];
@@ -4938,6 +5061,97 @@ describe('Mixin', () => {
       expect(root.findMixin(['#theme', '.dark', '.button'], undefined, {
         terminalMixinOnly: true
       })).toBeUndefined();
+    });
+
+    it('mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const terminalMixin = mixin({
+        name: any('.button'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+      });
+      const terminalRuleset = ruleset({
+        selector: el('.button'),
+        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+      });
+      const referenceChild = rules([
+        ruleset({
+          selector: el('#imported'),
+          rules: rules([
+            terminalRuleset,
+            terminalMixin
+          ])
+        })
+      ], { referenceMode: true });
+      const root = rules([referenceChild]);
+      const broadFastHits: string[] = [];
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && (key === '#imported' || key === '.button')) {
+          broadFastHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        const allTerminals = root.findMixin(['#imported', '.button'], undefined, {
+          searchParents: false
+        });
+        expect(allTerminals).toContain(terminalRuleset);
+        expect(allTerminals).toContain(terminalMixin);
+        expect(root.findMixin(['#imported', '.button'], undefined, {
+          searchParents: false,
+          terminalMixinOnly: true
+        })).toEqual([terminalMixin]);
+        expect(broadFastHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('mixin-ruleset calls with args reject imported exact ruleset terminals after namespace resolution', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const referenceChild = rules([
+        ruleset({
+          selector: compound([el('#imported'), el('.dark'), el('.button')]),
+          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        })
+      ], { referenceMode: true });
+      const root = rules([referenceChild]);
+      const broadFastHits: string[] = [];
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && (key === '#imported' || key === '.button')) {
+          broadFastHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.findMixin(['#imported', '.dark', '.button'], undefined, {
+          searchParents: false
+        })).toHaveLength(1);
+        expect(root.findMixin(['#imported', '.dark', '.button'], undefined, {
+          searchParents: false,
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(broadFastHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {

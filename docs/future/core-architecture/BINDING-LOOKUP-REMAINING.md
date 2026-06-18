@@ -124,8 +124,12 @@ before broad `findMixinsFast(...)`; a callable namespace reference-import
 offset-path test proves `#parent-namespace -> #imported -> .leaf` avoids both
 broad start crawl and generated array fallback. Fallback-frame imported mixin
 namespace hit/miss tests now prove the same narrow child-entry route for
-callable-only namespace offsets. Keep this open for terminal mixin-only
-imported namespace cases, fallback-frame ruleset namespace offsets, and any
+callable-only namespace offsets. Fallback-frame imported ruleset namespace
+hit/miss tests now prove `#parent -> #imported -> .leaf` resolves/misses
+through carried fallback prefix facts instead of broad start crawl. Imported
+terminal mixin-only tests prove parameterized terminal lookup keeps imported
+ruleset namespace containers while excluding imported terminal rulesets. Keep
+this open for fallback-frame mixin ambiguity around ruleset prefixes and any
 imported namespace positive/miss shape not covered by the current
 reference-import fixtures.
 
@@ -986,7 +990,7 @@ broad `findMixinsFast('#imported')` and zero generated array fallback. A
 diagnostic attempt showed ruleset namespace fallback is a separate
 `findRulesetNamespacePathFast(...)` lane, now tracked below.
 
-62. [ ] Split terminal mixin-only imported namespace proof from generic
+62. [x] Split terminal mixin-only imported namespace proof from generic
 reference-import namespace coverage. Scope: parameterized mixin-ruleset calls,
 terminal ruleset exclusion after namespace resolution, reference-import
 ruleset namespaces, and `terminalMixinOnly` propagation through offset paths.
@@ -995,7 +999,13 @@ lookup should consider only mixins at the terminal unless an explicit Less
 error path requires a cold secondary search. Acceptance: focused imported
 namespace terminal mixin-only hit/miss tests show ruleset terminals are skipped
 without broad fallback, while existing parameterized namespace Less semantics
-stay green.
+stay green. Current evidence: imported namespace tests now prove a
+reference-import ruleset namespace still acts as a container while
+`terminalMixinOnly` excludes the imported terminal ruleset and returns the
+imported terminal mixin. A second imported compound-prefix test proves an exact
+imported terminal ruleset path returns `undefined` under `terminalMixinOnly`.
+Both spy on broad root `findMixinsFast(...)`, and existing parameterized
+mixin-ruleset call tests stayed green.
 
 63. [ ] Collapse duplicated namespace-offset fallback checks if the remaining
 fallback-frame proof matches the current-frame proof. Scope:
@@ -1007,7 +1017,7 @@ Acceptance: either a small direct local reshaping with focused namespace tests
 green, or a documented rejection that the duplication is cheaper than another
 hot helper layer.
 
-64. [ ] Prove or design fallback-frame ruleset namespace offsets. Scope:
+64. [x] Prove or design fallback-frame ruleset namespace offsets. Scope:
 `findRulesetNamespacePathFast(...)`, fallback frames, reference-import child
 rulesets, selector-list/compound prefixes, and exact ruleset path misses.
 Goal: imported ruleset namespace fallback should either use carried fallback
@@ -1015,7 +1025,31 @@ prefix facts without broad crawl or be explicitly recorded as unsupported
 semantics. Acceptance: focused fallback-frame ruleset namespace hit/miss tests
 with broad `findMixinsFast(...)` and generated array-fallback spies, or a
 documented rejection explaining why ruleset namespace fallback cannot share
-the callable mixin namespace path.
+the callable mixin namespace path. Current evidence: fallback-frame imported
+ruleset namespace hit/miss tests now resolve/miss through the parent mixin
+body's fallback frame with zero root/fallback broad
+`findMixinsFast('#imported')` and zero generated nested array fallback. The
+implementation lets fallback frames contribute carried ruleset prefix matches
+inside `findRulesetNamespacePathFast(...)` and avoids treating a first
+remainder frame miss as final when the child frame has a fallback frame.
+
+65. [ ] Prove fallback-frame mixin ambiguity still preempts fallback ruleset
+namespace prefixes. Scope: `findRulesetNamespacePathFast(...)`,
+fallback-frame exact mixin namespace hits, reference-import child entries,
+and ruleset prefix matches with the same first segment. Goal: if a fallback
+frame has a callable mixin namespace for the segment, ruleset namespace fast
+path should return control to the mixin namespace lane without broad crawl.
+Acceptance: focused fallback-frame union/ambiguity tests prove mixin namespace
+positives still win or union correctly, and broad `findMixinsFast(...)` spies
+stay empty.
+
+66. [ ] Refresh callable namespace lookup counters after reference-import
+fallback bridge cuts. Scope: `scope-lookup-stress.less`, callable namespace
+counter hooks, reference-import namespace fixtures, and one-iteration hotpath
+smoke. Goal: record whether the new carried fallback/prefix paths reduced
+direct-crawl bridge counters without making a wall-clock claim. Acceptance:
+counter snapshot in `Latest Binding Baseline` or `PERFORMANCE-HANDOFF.md`
+labels timings as smoke-only and identifies the next highest lookup bridge.
 
 ## Latest Binding Baseline
 

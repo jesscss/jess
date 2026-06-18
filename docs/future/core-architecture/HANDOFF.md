@@ -103,23 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass extending namespace-offset
-  uncovered handling to fallback-frame imported mixin namespaces.
-- Verdict: accepted as registryless callable lookup cleanup. The prior batch
-  closed selector-list reference-import prefix proof, deleted late empty
-  callable child-entry allocation, and routed current-frame namespace-offset
-  uncovered child/reference states through the narrow child-entry helper. This
-  batch keeps fallback-frame retry alive after a covered current-frame
-  namespace miss and lets reference-import child entries with exact callable
-  surfaces use the same narrow child-entry direct search. No speed claim.
-- New traversal: no new recursive lookup traversal was added. The namespace
-  offset path reuses the existing fallback-frame loop and existing narrow
-  child-entry scan only when a scope frame reported covered current-frame
-  miss/uncertainty. The new exact-surface guard prevents unresolved
-  reference-only children from turning into broad direct searches.
+- Latest pass: binding implementation pass extending fallback-frame
+  reference-import namespace coverage to imported ruleset namespaces and
+  imported terminal mixin-only lookups.
+- Verdict: accepted as registryless callable lookup cleanup. Fallback-frame
+  imported ruleset namespace prefixes now use carried fallback prefix facts
+  inside `findRulesetNamespacePathFast(...)` instead of returning a definite
+  miss before the descendant namespace path can run. Descendant lookup no
+  longer treats a first-remainder frame miss as final when that child frame has
+  a fallback frame. Imported terminal mixin-only tests prove parameterized
+  terminal lookup keeps imported ruleset namespace containers while excluding
+  imported terminal rulesets. No speed claim.
+- New traversal: one fallback-frame loop was added inside
+  `findRulesetNamespacePathFast(...)`, but it runs only after the current
+  frame/prefix facts have produced no mixin namespace hit and no current
+  ruleset prefix. It reuses existing fallback frames and
+  `findVisibleCallableRulesetPrefixMatches(...)`, replacing the previous
+  early miss that forced unresolved behavior. The descendant first-remainder
+  change adds no traversal; it permits the existing offset path to run when a
+  fallback frame is present.
 - Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects. Tests add spy arrays and a small
-  snapshot object for parity assertions only.
+  `Rules`, side maps, or result objects. Tests add spy arrays and synthetic
+  fixture nodes only.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
@@ -127,21 +132,18 @@ with `--no-verify` after the explicit gates pass.
   pass reuses existing child-entry, fallback-frame, and namespace-offset
   functions.
 - Metadata mutations: none.
-- Allocation changes: late empty/non-callable child `Rules` no longer allocate
-  a callable child-entry record after `directChildRuleEntries` has been
-  prepared. Fallback-frame namespace lookup adds no allocation and reuses
-  existing direct results/sentinels. No public materialization changed.
-- Evidence: focused `mixin.test.ts` slices prove selector-list
-  reference-import prefix hits/misses avoid root start-key
-  `findMixinsFast(...)` and generated nested array fallback; initial and late
-  child aggregate facts match for mixin, ruleset, mixed callable,
-  reference-import, and empty child shapes; current-frame and fallback-frame
-  imported mixin namespace offset paths avoid broad `#imported` crawl plus
-  generated array fallback; and unresolved/reference-only miss guards still
-  avoid broad fallback. Adjacent reference-import, terminal mixin-only,
-  namespace offset, and ruleset namespace slices stayed green. Ruleset
-  namespace fallback is tracked separately because it is preempted by
-  `findRulesetNamespacePathFast(...)`. No performance measurement was run.
+- Allocation changes: no new production allocation. Existing fallback-frame
+  records, prefix match arrays, and direct result arrays are reused. No public
+  materialization changed.
+- Evidence: focused `mixin.test.ts` slices prove fallback-frame imported
+  ruleset namespace hit/miss paths avoid root/fallback
+  `findMixinsFast('#imported')` and generated nested array fallback; imported
+  terminal mixin-only lookup keeps imported ruleset namespace containers while
+  excluding imported terminal rulesets; imported exact terminal ruleset paths
+  miss under `terminalMixinOnly`; and existing fallback imported mixin
+  namespace, compound/selector-list reference-import prefix, recursive
+  fallback miss, and ruleset namespace union slices stayed green. No
+  performance measurement was run.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

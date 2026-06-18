@@ -2382,7 +2382,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!segment) {
         return DEFINITE_MISS;
       }
-      const prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
+      let prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
         hasTarget: options.hasTarget,
         local: options.local,
         searchParents
@@ -2436,6 +2436,55 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             )
           ) {
             mixinNamespaceCovered = true;
+          }
+        }
+        if (!hasMixinNamespace && mixinNamespaceCovered) {
+          let fallbackFrame = scopeFrame.fallbackFrame;
+          while (fallbackFrame) {
+            if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+              fallbackFrame.rulesNode.prepareCallableLookupFrame(fallbackFrame, segment, false);
+              const fallbackHit = lookupScopeFrameCallable(fallbackFrame, segment, {
+                includeRulesets: false,
+                searchParents: false
+              });
+              if (fallbackHit.kind === 'hit') {
+                hasMixinNamespace = true;
+                break;
+              }
+              if (
+                fallbackHit.kind === 'uncovered'
+                && (fallbackHit.reason === 'child-surface' || fallbackHit.reason === 'reference-import')
+              ) {
+                const uncovered = fallbackFrame.rulesNode.findMixinsFastForUncoveredCallable(
+                  segment,
+                  fallbackHit.reason,
+                  false,
+                  options
+                );
+                if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+                  hasMixinNamespace = uncovered.length > 0;
+                  break;
+                }
+              }
+            }
+            fallbackFrame = fallbackFrame.fallbackFrame;
+          }
+        }
+        if (!hasMixinNamespace && prefixMatches.length === 0) {
+          let fallbackFrame = scopeFrame.fallbackFrame;
+          while (fallbackFrame) {
+            if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+              const fallbackPrefixMatches = fallbackFrame.rulesNode.findVisibleCallableRulesetPrefixMatches(path, {
+                hasTarget: options.hasTarget,
+                local: options.local,
+                searchParents: false
+              });
+              if (fallbackPrefixMatches.length > 0) {
+                prefixMatches = fallbackPrefixMatches;
+                break;
+              }
+            }
+            fallbackFrame = fallbackFrame.fallbackFrame;
           }
         }
       }
@@ -2660,8 +2709,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (firstRemainderHit.kind === 'hit' && keys.length === 2) {
           nested = collectCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
         } else if (firstRemainderHit.kind === 'miss') {
-          descendantMissCovered = true;
-          continue;
+          if (!childFrame.fallbackFrame) {
+            descendantMissCovered = true;
+            continue;
+          }
         } else if (
           firstRemainderHit.kind === 'uncovered'
           && keys.length === 2
