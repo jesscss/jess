@@ -99,7 +99,15 @@ function renderNodeText(
       incrementSerializeProfileCounter('emissionRenderNodeTextLeafCalls');
     }
   }
-  if (reason !== 'leaf') {
+  if (reason === 'declaration-fallback') {
+    const writer = new OutputWriter();
+    node.writeSyntax(getPrintOptions({
+      ...options,
+      writer
+    }));
+    return writer.toString();
+  }
+  if (reason === 'rules-preview') {
     const writer = new OutputWriter();
     return node.toTrimmedString(getPrintOptions({
       ...options,

@@ -77,16 +77,8 @@ describe('Rule', () => {
     const writer = new CountingWriter();
     const colorDecl = decl({ name: 'color', value: any('red') });
     const sizeDecl = decl({ name: 'font-size', value: any('12px') });
-    const originalToTrimmedString = colorDecl.toTrimmedString;
-    let colorUsedCallerWriter = false;
-    colorDecl.toTrimmedString = function countCallerWriterUse(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      const options = args[0];
-      if (options?.writer === writer) {
-        colorUsedCallerWriter = true;
-      }
-      return originalToTrimmedString.apply(this, args);
+    colorDecl.toTrimmedString = () => {
+      throw new Error('Unique declaration emission should write syntax directly');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
@@ -103,9 +95,8 @@ describe('Rule', () => {
           font-size: 12px;
         }
       `);
-      expect(colorUsedCallerWriter).toBe(false);
     } finally {
-      colorDecl.toTrimmedString = originalToTrimmedString;
+      delete colorDecl.toTrimmedString;
     }
   });
 
@@ -142,7 +133,7 @@ describe('Rule', () => {
           color: blue;
         }
       `);
-      expect(publicStringCalls).toBe(2);
+      expect(publicStringCalls).toBe(0);
     } finally {
       firstDecl.toTrimmedString = originalFirstToTrimmedString;
       secondDecl.toTrimmedString = originalSecondToTrimmedString;

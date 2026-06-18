@@ -103,21 +103,21 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: duplicate declaration comparison writer cut in
+- Latest pass: declaration fallback direct-writer cut in
   `packages/core/src/tree/util/serialize-helper.ts`.
 - Verdict: accepted as localized serialization transport deletion. No speed
   claim.
 - New traversal: none.
 - New node/materialization: none. The review-flagged `new OutputWriter()` is
-  the existing detached duplicate-comparison string boundary, and the focused
+  declaration fallback / duplicate-comparison string boundary, and the focused
   `new WholeBufferCountingWriter()` / thrown test errors are rules/ruleset
   proof scaffolding only.
-- Render path: duplicate declaration comparison still captures repeated
-  declaration text into a detached writer for exact Less-style equality, but
-  it now does so through direct `writeSyntax(...)` instead of public
-  `toTrimmedString(...)`. Surviving declarations no longer carry prerendered
-  output/trivia caches forward into emission; they now re-enter the normal
-  declaration emission path after comparison.
+- Render path: declaration fallback inside container serialization now writes
+  declarations through `writeSyntax(...)` into its detached writer instead of
+  calling public `toTrimmedString(...)`. Duplicate declaration comparison
+  stays on the same detached string key, also fed by `writeSyntax(...)`, and
+  surviving declarations no longer carry prerendered output/trivia caches
+  forward into emission.
 - Helper/API surface: none.
 - Metadata mutations: none.
 - Routine error control: the review-flagged thrown errors are focused test
@@ -126,16 +126,17 @@ with `--no-verify` after the explicit gates pass.
   `try/finally` is the same focused test restoration scaffold around temporary
   method swaps. No production control flow changed.
 - Allocation changes: deletes one public string-return wrapper call per
-  repeated declaration comparison and removes the duplicate output/trivia cache
-  maps that used to carry detached declaration text forward into emission. The
-  detached compare string boundary itself remains because exact
-  duplicate-policy comparison still consumes a string key.
+  declaration fallback plus one per repeated declaration comparison, and
+  removes the duplicate output/trivia cache maps that used to carry detached
+  declaration text forward into emission. The detached string boundary itself
+  remains because exact duplicate-policy comparison still consumes a string
+  key.
 - Rejected/observed in this pass: duplicate declaration skip/cache
   materialization still remains, along with broader render-mode leaf/body
   transport, remaining Ruleset header emit/cache capture, and deeper
   Declaration seams.
-- Evidence: focused `ruleset.test.ts` duplicate-comparison slices plus targeted
-  ESLint,
+- Evidence: focused `ruleset.test.ts` unique/duplicate declaration slices plus
+  targeted ESLint,
   `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
