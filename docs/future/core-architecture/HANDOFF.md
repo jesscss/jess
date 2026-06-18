@@ -103,126 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: setDefined callback closure deletion plus constrained direct
-  declaration cache guard.
-- Verdict: accepted as a binding/lookup machinery cut with behavior proof. No
-  speed claim.
-- New traversal: no new runtime traversal, recursion, sort, map/filter, parent
-  walk, or child scan. The setDefined fallback still uses the existing direct
-  declaration parent/fallback walk. Constrained declaration lookups now avoid
-  the recursive direct-declaration cache instead of adding a replacement cache.
-- New node/materialization: no runtime node materialization. No render-only or
-  eval-to-string nodes were added. One focused test constructs declarations and
-  a reference to prove scalar output-binding identity invalidation.
-- Render path: no render/stringification path change. Reference/property
-  lookup still returns the same occurrence or fallback value; the changed cache
-  guard only prevents constrained lookups from reusing a key/family recursive
-  match that ignored scalar exclusions.
-- Helper/API surface: deleted
-  `applySetDefinedDeclarationReadonlyOccurrence(...)`,
-  `SetDefinedDeclarationMatchHandler`, and the `onSetDefinedMatch` callback
-  lane. Added one setDefined-only
-  `findWritableSetDefinedDeclarationOccurrence(...)` helper that returns the
-  final occurrence or throws readonly for the final chosen match. Mutation
-  still lives in `Rules.registerNode(...)`. Review-flagged `throw new Error`
-  and `foundRules.adopt(newDeclaration)` lines are the pre-existing
-  non-variable setDefined fallback mutation/error path moved out of the
-  callback closure, not new hot-path machinery.
-- Metadata mutations: none. No source/parent/frozen metadata changed.
-- Allocation changes: setDefined fallback no longer allocates a callback
-  closure to carry the selected occurrence/readonly state back into `Rules`.
-  Direct declaration recursive cache entries are skipped for constrained
-  lookups (`excludedNode0/1`, `excludedNodes`, `excludedNodesLength`, filters,
-  or `requiredNormalizedFromAssign`) so scalar bind-output identity changes
-  cannot reuse stale unconstrained cache state.
-- Rejected/observed in this pass: a broader callable child-surface cut was
-  inspected but not forced without a sharper failing proof; the existing tests
-  already cover many simple callable miss surfaces. The changed baseline run
-  surfaced broader render/string transport failures and then stopped producing
-  output while core Vitest workers stayed active, so it was interrupted and
-  recorded in `BINDING-LOOKUP-REMAINING.md` rather than claimed green.
-- Review-flagged objects/errors: the new `ReferenceOptions` object is test
-  scaffolding to model the existing `bindOutput` scalar getter shape. The new
-  `ReferenceError` creation is the existing readonly semantic exception moved
-  into the returned-occurrence helper; misses still use `undefined`/fallback,
-  not routine error control.
-- Evidence: focused `rules.test.ts`, `reference.test.ts`, `mixin.test.ts`, and
-  `control.test.ts` setDefined slices passed. Focused `reference.test.ts`
-  static property handle/constraint slices passed, including the new
-  bind-output scalar exclusion invalidation proof. `verify:binding-lookup-hot-paths`
-  passed with guards against the deleted setDefined callback shape.
-  `@jesscss/core` build passed before tracker updates. No speed claim.
-- Merge note: the branch also incorporates the latest serialization transport
-  work from `origin/dev`; keep that progress tracked in
-  `NODE-REWRITE-TRACKER.md` so this handoff remains the binding/lookup router.
-- Merge-carried serialization review: `origin/dev` also includes Ruleset
-  source-direct/bare-ampersand callback predicate cleanup in
-  `packages/core/src/tree/ruleset.ts`. `canRenderSourceDirectly(...)` and
-  `isBareAmpersandSelector(...)` now use indexed loops over existing child
-  arrays instead of `.every(...)` callback predicates. That is tracked in the
-  serialization focus, not new binding lookup logic. No speed claim.
-- Merge-carried serialization review: `origin/dev` also includes the AtRule
-  no-op eval rethrow deletion in `packages/core/src/tree/at-rule.ts` plus
-  serialization tracker updates. That removes catch/rethrow scaffolding and is
-  tracked in `NODE-REWRITE-TRACKER.md`; it is not new binding logic. The
-  review-flagged AtRule loops and `slice(...)` calls are direct whitespace
-  scans replacing regex trim/probe work, the `OutputWriter` constructions are
-  isolated header-fragment writers for source syntax capture, and the `try` is
-  paired with trivia restoration around that cold header capture. No speed
-  claim.
-- Merge-carried serialization review: `origin/dev` also includes the
-  QueryCondition nested static direct-child cut in
-  `packages/core/src/tree/query-condition.ts` plus serialization tracker
-  updates. Exact nested query-condition children now write directly instead of
-  entering the unknown-child fallback mark/readback path; custom/subclassed
-  children keep the fallback. The review-flagged `CountingWriter` construction
-  is test-only instrumentation for mark/readback assertions. This is tracked in
-  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
-- Merge-carried serialization review: `origin/dev` also includes the
-  QueryCondition exact `Condition` source/static child cut. Exact condition
-  children now write directly on the query source/static syntax path; exact
-  `Operation` remains out because it does not own a direct syntax writer, and
-  custom/subclassed children still use fallback readback. The review-flagged
-  `CountingWriter` and custom condition constructions are test-only proof
-  instrumentation. This is tracked in `NODE-REWRITE-TRACKER.md` and is not new
-  binding logic. No speed claim.
-- Merge-carried serialization review: `origin/dev` also includes declaration
-  narrowed-thenable continuation cleanup in
-  `packages/core/src/tree/declaration.ts`. Declaration render-assignment and
-  custom-interpolated replacement eval now call already-narrowed thenables
-  directly instead of adding promise wrapper allocations, while preserving the
-  custom-property restoration branch. This is tracked in
-  `NODE-REWRITE-TRACKER.md` and is not new binding logic. No speed claim.
-- Merge-carried serialization review: `origin/dev` also includes Ampersand
-  append-placement dead string snapshot deletion in
-  `packages/core/src/tree/ampersand.ts`. Append placement no longer fills
-  unused selector text snapshots through public `toTrimmedString(...)`; broader
-  Ampersand raw string assembly remains tracked in `NODE-REWRITE-TRACKER.md`.
-  The review-flagged test exception assertion and empty rules fixture are
-  proof scaffolding for the no-snapshot assertion, and the flagged generic
-  construction / null-child-key text is an existing tracker row note carried by
-  the serialization update. This is not new binding logic. No speed claim.
-- Merge-carried binding review: the scoped diff still includes the prior
-  `RulesLookupHandleShape` object from the source-static handle pass as remote
-  baseline context; this pass removes the temporary source-static shape
-  allocation by comparing stored handle fields directly.
-- Merge-carried serialization review: `origin/dev` also includes Ampersand
-  exact `BasicSelector` template text work in `packages/core/src/tree/ampersand.ts`.
-  Exact basic selector template replacement and comma checks read owned scalar
-  text instead of public string conversion; broader Ampersand raw string
-  assembly remains tracked in `NODE-REWRITE-TRACKER.md`. The review-flagged
-  loop, selector construction/inheritance, result array, cleanup block, and
-  test exception are serialization proof/placement machinery from that merge,
-  not binding lookup logic. No speed claim.
-- Merge-carried serialization review: `origin/dev` also includes AtRule
-  narrowed thenable continuation cleanup in
-  `packages/core/src/tree/at-rule.ts`. Async at-rule name/prelude/body
-  continuations now call the already-thenable value directly instead of adding
-  promise wrapper calls; the pre-existing at-rule comment-trivia failure remains
-  tracked outside this binding pass. This is not new binding logic. No speed
-  claim.
-- Merge-carried serialization review: `origin/dev` also includes Rules static
-  registration narrowed-thenable cleanup in `packages/core/src/tree/rules.ts`.
-  Static child registration prep now calls the already-thenable prepared-node
-  result directly instead of adding a promise wrapper call. This is not new
-  binding lookup logic. No speed claim.
+- Latest pass: Declaration source-free assignment child predicate cleanup in
+  `packages/core/src/tree/declaration.ts`.
+- Verdict: accepted as a localized callback-allocation cut matching the
+  Declaration tracker row. No speed claim.
+- New traversal: one indexed loop over the existing source-free
+  `List`/`Sequence` child array, replacing the prior `.every(...)` callback
+  scan in `canReuseSourceFreeAssignmentInput(...)`. No new parent/source walk
+  or additional collection is introduced; the loop carries the same boolean
+  predicate result without callback allocation.
+- New node/materialization: none.
+- Render path: source-free static assignment input reuse keeps the same
+  `reuseLeaf(...)`/copy decision, but checks reusable child leaves directly
+  instead of allocating a predicate callback. No declaration output,
+  merge-adapter state, or custom-property text path changed.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Allocation changes: removes one `.every(...)` callback allocation from the
+  source-free assignment input reuse predicate.
+- Rejected/observed in this pass: custom-property raw source,
+  duplicate-comparison/materialization, and merge-state boundaries remain open
+  in the Declaration row.
+- Merge-carried binding review: merging `origin/dev` also brought the variable
+  reference facade collapse and source-static handle read allocation trim in
+  `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
+  updates. It is lookup-only: no render/stringification path changed, no
+  runtime node materialization was added, and detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
+  `NODE-REWRITE-TRACKER.md` as the active queue.
+- Evidence: focused `declaration.test.ts` custom-property/source-free reuse
+  slices and `reference.test.ts` declaration-container/source-static slices
+  passed. Full gates are required before commit.
+- Merge-carried binding review: merging `origin/dev` also brought setDefined
+  callback closure deletion plus constrained direct declaration cache guards in
+  `packages/core/src/tree/rules.ts` and `util/direct-rules-lookup.ts`, with
+  focused reference tests and binding verifier updates. It is lookup-only: no
+  render/stringification path changed, no runtime node materialization was
+  added, and detailed status remains in `BINDING-LOOKUP-REMAINING.md`. The
+  serialization pass keeps `NODE-REWRITE-TRACKER.md` as the active queue.
+  Review-flagged `throw new Error`, `ReferenceError`, and
+  `foundRules.adopt(newDeclaration)` are the incoming setDefined semantic
+  mutation/error path, not serialization transport; the flagged object literal
+  is test scaffolding for the existing bind-output scalar getter shape.
