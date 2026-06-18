@@ -103,27 +103,27 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Ruleset source-direct/bare-ampersand callback predicate cleanup
-  in `packages/core/src/tree/ruleset.ts`.
+- Latest pass: Declaration source-free assignment child predicate cleanup in
+  `packages/core/src/tree/declaration.ts`.
 - Verdict: accepted as a localized callback-allocation cut matching the
-  existing Ruleset tracker row. No speed claim.
-- New traversal: two indexed loops over existing `rules.rules` and
-  `sel.selectors` arrays, replacing the prior `.every(...)` callback scans in
-  the same methods. No new parent/source walk or additional collection is
-  introduced; the loops carry the same boolean predicate result without
-  callback allocation.
+  Declaration tracker row. No speed claim.
+- New traversal: one indexed loop over the existing source-free
+  `List`/`Sequence` child array, replacing the prior `.every(...)` callback
+  scan in `canReuseSourceFreeAssignmentInput(...)`. No new parent/source walk
+  or additional collection is introduced; the loop carries the same boolean
+  predicate result without callback allocation.
 - New node/materialization: none.
-- Render path: `canRenderSourceDirectly(...)` and
-  `isBareAmpersandSelector(...)` now use the same existing child arrays with
-  indexed loops instead of callback predicates. No render string output path,
-  selector materialization, or frame state changed.
+- Render path: source-free static assignment input reuse keeps the same
+  `reuseLeaf(...)`/copy decision, but checks reusable child leaves directly
+  instead of allocating a predicate callback. No declaration output,
+  merge-adapter state, or custom-property text path changed.
 - Helper/API surface: none.
 - Metadata mutations: none.
-- Allocation changes: removes two `.every(...)` callback allocations from
-  Ruleset source-direct and bare-ampersand checks.
-- Rejected/observed in this pass: deeper Ruleset header capture,
-  duplicate-declaration comparison, hoisted frame state, and selector
-  materialization paths remain open in the Ruleset row.
+- Allocation changes: removes one `.every(...)` callback allocation from the
+  source-free assignment input reuse predicate.
+- Rejected/observed in this pass: custom-property raw source,
+  duplicate-comparison/materialization, and merge-state boundaries remain open
+  in the Declaration row.
 - Merge-carried binding review: merging `origin/dev` also brought the variable
   reference facade collapse and source-static handle read allocation trim in
   `packages/core/src/tree/reference.ts`, plus binding tracker/verifier
@@ -131,6 +131,6 @@ with `--no-verify` after the explicit gates pass.
   runtime node materialization was added, and detailed status remains in
   `BINDING-LOOKUP-REMAINING.md`. The serialization pass keeps
   `NODE-REWRITE-TRACKER.md` as the active queue.
-- Evidence: focused `ruleset.test.ts`, `ampersand.test.ts`, and
-  `extend-import-style.test.ts` slices passed. Full gates are required before
-  commit.
+- Evidence: focused `declaration.test.ts` custom-property/source-free reuse
+  slices and `reference.test.ts` declaration-container/source-static slices
+  passed. Full gates are required before commit.

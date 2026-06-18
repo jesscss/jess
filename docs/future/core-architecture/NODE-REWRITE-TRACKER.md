@@ -130,7 +130,9 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   prepared writer instead of the cold `declValueTrimmedString(...)` wrapper,
   scalar custom-property values without terminal newline normalization write
   directly without a value mark/readback window, and merge-adapter render state
-  no longer carries the stale `value` field.
+  no longer carries the stale `value` field. Source-free assignment input reuse
+  now checks child leaf reuse with an indexed loop instead of a callback
+  predicate.
   Custom-property raw source,
   duplicate-comparison/materialization, and merge-state boundaries remain.
 - [x] `Any` / `Keyword` / `Anonymous`: scalar token emission is owned by

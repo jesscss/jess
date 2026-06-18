@@ -276,7 +276,13 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.items.every(child => child instanceof Node && canReuseLeaf(child));
+  for (let i = 0; i < node.items.length; i++) {
+    const child = node.items[i];
+    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 type LessFunctionFallbackCall = Call & {
