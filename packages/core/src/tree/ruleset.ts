@@ -1211,18 +1211,18 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
-    const mark = options.writer.mark();
+    const position = options.writer.position();
     if (withoutComments) {
       options.trivia = createTriviaMap();
     }
     try {
       renderSelector.writeSyntax(options);
-      options.writer.trimEndSince(mark);
+      options.writer.trimEndSince(position);
     } finally {
       options.trivia = savedTrivia;
       restorePrintState(options, saved);
     }
-    return options.writer.hasContentSince(mark);
+    return options.writer.position() !== position;
   }
 
   private renderHeaderSelectorString(options: FinalPrintOptions, withoutComments: boolean): string {

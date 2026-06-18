@@ -1259,6 +1259,40 @@ describe('Rule', () => {
     }
   });
 
+  it('does not spend a detached mark to trim header selector trailing whitespace', () => {
+    const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
+    const node = ruleset({
+      selector,
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+    const originalMark = OutputWriter.prototype.mark;
+    let detachedMarks = 0;
+    OutputWriter.prototype.mark = function countDetachedMarks(this: OutputWriter): number {
+      if (this !== writer) {
+        detachedMarks++;
+      }
+      return originalMark.call(this);
+    };
+    const originalWriteSyntax = selector.writeSyntax;
+    selector.writeSyntax = function writeSyntaxWithTrailingWhitespace(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
+    };
+
+    try {
+      expect(node.getHeaderString(options)).toBe('.foo {\n');
+      expect(detachedMarks).toBe(0);
+    } finally {
+      OutputWriter.prototype.mark = originalMark;
+      selector.writeSyntax = originalWriteSyntax;
+    }
+  });
+
   it('getComparableHeaderString keeps selector capture off the caller writer', () => {
     const writer = new CountingWriter();
     const selector = sellist([sel([el('.foo')])]);

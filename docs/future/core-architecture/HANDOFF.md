@@ -163,8 +163,8 @@ with `--no-verify` after the explicit gates pass.
 - New node/materialization: none.
 - Render path: child `Ruleset`/`AtRule` containers still render and serialize
   through their owned container paths, preserve sibling block separation, and
-  keep the existing resolved-string append fallback only when the child wrote
-  nothing. The change only deletes the container-local emission probe
+  keep the existing resolved-string append cold branch only when the child
+  wrote nothing. The change only deletes the container-local emission probe
   scaffolding.
 - Helper/API surface: none added.
 - Metadata mutations: none added.
@@ -311,6 +311,46 @@ with `--no-verify` after the explicit gates pass.
   `Rules.find`/registry/search-children counters with direct counters
   explained in `BINDING-LOOKUP-REMAINING.md`. Full batch gates still need to
   run after this handoff update.
+- Latest pass: `Ruleset` header-selector position probe split.
+- Verdict: accepted as a bounded serializer cut inside the active `Ruleset`
+  row. `writeHeaderSelector(...)` no longer opens a detached-writer
+  `mark()`/`hasContentSince(...)` probe just to trim trailing selector
+  whitespace and answer whether the selector wrote anything; it now snapshots
+  plain writer position, trims from that position, and checks position delta
+  afterward. The detached writer boundary remains the owned final shape for
+  header capture; this pass only deletes unnecessary probe scaffolding. No
+  speed claim.
+- New traversal: none.
+- Review-flagged allocations: none added on the header path. The existing
+  detached writer stays in place because `getHeaderString(...)` still captures
+  header selector text off the caller writer by design.
+- Review-flagged diff tokens: the current `verify:aggressive-cutting-review`
+  run still reports unrelated existing diff tokens from the in-progress
+  binding/reference worktree files (`reference.ts`,
+  `reference.test.ts`, `mixin.test.ts`, and
+  `BINDING-LOOKUP-REMAINING.md`), plus this focused test's cold
+  `new CountingWriter()` and `try/finally` restoration scaffolding. This
+  `Ruleset` pass adds no new production traversal, node construction, or
+  materialized array/object state on the hot header path.
+- New node/materialization: none.
+- Render path: `getHeaderString(...)` and `getComparableHeaderString(...)`
+  still capture concrete selector syntax through the detached header writer,
+  preserve trailing-whitespace trimming, and leave the caller writer untouched.
+  The only change is deleting the real writer mark where a plain position
+  snapshot already carried the needed fact.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the detached `mark()` probe in
+  `Ruleset.writeHeaderSelector(...)`; the path now uses `writer.position()`
+  for both trim start and write detection.
+- Evidence: focused `ruleset.test.ts` proof
+  `does not spend a detached mark to trim header selector trailing whitespace`
+  passed red-to-green. Full `ruleset.test.ts`, `git diff --check`,
+  and `pnpm --filter @jesscss/core build` also passed. The current
+  `verify:aggressive-cutting-review` run still reports the unrelated carried
+  diff tokens listed above, but this pass adds no new hot-path ownership
+  machinery beyond the retained detached header writer.
 - Latest pass: `AtRule` no-trivia frame-header direct write split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. No-trivia at-rule frame opens in `serializeRulesContainer(...)` no
