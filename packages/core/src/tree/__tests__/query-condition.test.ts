@@ -225,6 +225,7 @@ describe('QueryCondition', () => {
     expect(queryNode.render(context, { writer })).toBe('3 and (color)');
     expect(writer.toString()).toBe('prefix|3 and (color)');
     expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('renders resolved query-condition values through render(context)', async () => {

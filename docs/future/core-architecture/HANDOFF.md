@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` built-in dynamic child readback cut.
+- Verdict: accepted as a localized dynamic child render cut. Covered built-in
+  `QueryCondition` children now trust their own returned render text when they
+  write into the active writer, instead of reading the child slice back through
+  `getSince(...)`. Custom subclasses and instance-owned dynamic render
+  overrides still keep the localized fallback when written text may differ from
+  returned text. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: built-in dynamic `Operation`, `Condition`, base `Paren`, and
+  nested `QueryCondition` children now return their own rendered text even when
+  they emitted into the shared writer first; only custom/instance-owned
+  children still read the writer back on divergence-sensitive paths.
+- Helper/API surface: one node-local whitelist helper,
+  `canTrustDynamicChildRenderText(...)`, to keep the covered built-in contract
+  narrow and leave custom overrides on the existing fallback.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new; this pass deletes the localized `getSince(...)`
+  readback for covered built-in dynamic children and leaves the custom
+  divergence fallback in place.
+- Rejected/observed in this pass: this does not widen to `Reference` or other
+  nodes whose render contract can still depend on delegated/custom output.
+  Custom dynamic children that write different text than they return continue
+  to use the existing readback path.
+- Evidence: focused `query-condition.test.ts` coverage now proves the dynamic
+  sync prefixed-writer `Operation` path returns `3 and (color)` with zero
+  reads, the async prefixed-writer path remains at zero reads, and the custom
+  dynamic write-different-text fallback test still reads once as intended. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `QueryCondition` dynamic render return-text carry.
 - Verdict: accepted as a localized render-return cut. Covered dynamic
   `QueryCondition` renders now carry their local query text through the sync

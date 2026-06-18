@@ -159,6 +159,23 @@ export class QueryCondition extends Sequence {
     }
   }
 
+  /**
+   * Dynamic query children can only skip the localized writer readback when
+   * their concrete render contract is known to return the same text they emit.
+   *
+   * Keep this exact-constructor whitelist narrow so custom subclasses and
+   * instance-owned render overrides continue to use the readback fallback when
+   * they write different text than they return.
+   */
+  private canTrustDynamicChildRenderText(node: Node): boolean {
+    return (
+      node.constructor === QueryCondition
+      || node.constructor === Paren
+      || node.constructor === Condition
+      || node.constructor === Operation
+    );
+  }
+
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
     const w = options.writer;
     const length = value.length;
@@ -250,6 +267,7 @@ export class QueryCondition extends Sequence {
 
     const before = w.position();
     let asyncOut = false;
+    const canTrustText = this.canTrustDynamicChildRenderText(node);
     try {
       const out = node.render(context, options);
       if (isThenable(out)) {
@@ -258,6 +276,8 @@ export class QueryCondition extends Sequence {
           (rendered) => {
             if (w.position() === before) {
               w.add(rendered);
+            } else if (!canTrustText) {
+              return w.getSince(before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -271,7 +291,7 @@ export class QueryCondition extends Sequence {
       if (typeof out === 'string') {
         if (!w.hasContentSince(before)) {
           w.add(out);
-        } else {
+        } else if (!canTrustText) {
           return w.getSince(before);
         }
       }
