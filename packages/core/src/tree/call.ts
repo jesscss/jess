@@ -770,6 +770,17 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
+    const args = syntax && 'args' in syntax ? syntax.args : state.args;
+    const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
+    if (
+      typeof name === 'string'
+      && (!args || args.items.length === 0)
+      && !contentNode
+    ) {
+      const out = `${name}()${this._options?.markImportant ? ' !important' : ''}`;
+      w.add(out, state.source);
+      return out;
+    }
     const mark = w.mark();
     const textState: CallRenderTextState = {
       text: typeof name === 'string'
@@ -778,8 +789,6 @@ export class Call extends Node<CallValue, CallOptions> {
           ? getKnownRenderedCallText(name)
           : undefined
     };
-    const args = syntax && 'args' in syntax ? syntax.args : state.args;
-    const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {

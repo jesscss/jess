@@ -2673,7 +2673,7 @@ describe('Call', () => {
   it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
     const writer = new CountingWriter();
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('bad', new JsFunction({
       name: 'bad',
       fn: () => {
         throw new Error('bad function');

@@ -103,6 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` empty finalized fallback direct text.
+- Verdict: accepted as a localized render transport cut. Exact string-name
+  finalized fallback calls with empty args and no content now write their known
+  `name()` or `name() !important` text directly in
+  `renderFinalizedCallSyntax(...)` instead of opening a whole-call
+  mark/readback window just to return text the caller already knows. No speed
+  claim.
+- New traversal: none. This pass adds one exact fast path before the existing
+  finalized render logic and reuses the current arg/content branches for every
+  other case.
+- New node/materialization: none. No new node copies, wrappers, arg
+  containers, or detached writers were introduced.
+- Render path: exact empty finalized fallback syntax now writes directly into
+  the active writer and returns the same known text without a call-level
+  `mark()` / `getSince(...)` readback.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Routine error control: none added. Existing optional fallback, calc cleanup,
+  and dynamic finalized branches stay where they were.
+- Allocation changes: deletes one call-level writer mark/readback boundary for
+  the exact empty finalized fallback path.
+- Rejected/observed in this pass: non-empty finalized fallback output, broader
+  callable output value selection, remaining `evalArgNodes(...)` copy pressure,
+  and non-scalar/custom/trivia arg trim-mark cleanup remain queued in `Call`.
+- Evidence: focused `call.test.ts` fallback subset covering important optional
+  CSS fallback, optional JS fallback content without fallback-Call ownership,
+  optional JS fallback render/resolve without source-surface eval, and the new
+  empty optional JS fallback no-readback case passed; the broader adjacent
+  `Call` render subset covering shared flat-buffer output, rendered arg
+  streaming, scalar arg/content no-readback, dynamic arg streaming, async arg
+  buffer/render paths, calc-frame rejection cleanup, and escaped rendered args
+  also passed; targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` remain the commit-boundary gates.
+  Review-flagged JS function-wrapper construction in
+  `packages/core/src/tree/__tests__/call.test.ts` is focused optional-fallback
+  proof scaffolding only and does not add runtime-path node construction.
 - Latest pass: `Call` shared flat-buffer direct streaming.
 - Verdict: accepted as a localized render transport cut. Shared flat-buffer call
   render no longer writes one whole rendered string back into `buffer.parts`
