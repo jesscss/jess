@@ -370,6 +370,27 @@ describe('AtRule', () => {
     `);
   });
 
+  it('writes non-leaf at-rule syntax without public string wrapper transport', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.toTrimmedString = () => {
+      throw new Error('AtRule.writeSyntax should not call the public string wrapper');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBeString(`
+      @media screen {
+        color: red;
+      }
+    `);
+  });
+
   it('writes finalized at-rule output into segmented buffers', async () => {
     const root = rules([
       vardecl({
@@ -552,7 +573,7 @@ describe('AtRule', () => {
     };
 
     try {
-      expect(evald.render(context)).toBeString(`
+      await expect(Promise.resolve(evald.render(context))).resolves.toBeString(`
         @media screen {
           color: red;
         }

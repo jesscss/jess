@@ -190,6 +190,26 @@ describe('Rule', () => {
     `);
   });
 
+  it('writes ruleset syntax without public string wrapper transport', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.toTrimmedString = () => {
+      throw new Error('Ruleset.writeSyntax should not call the public string wrapper');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBeString(`
+      .box {
+        color: red;
+      }
+    `);
+  });
+
   it('writes finalized ruleset output into segmented buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = ruleset({

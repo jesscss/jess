@@ -622,7 +622,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       options.writer.add(this.getHeaderString(options));
       return;
     }
-    this.toTrimmedString(options);
+    serializeRulesContainer(this, options);
   }
 
   getRenderRules(): Rules | undefined {
