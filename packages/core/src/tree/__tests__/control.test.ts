@@ -46,6 +46,17 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
     name: new Any(name, { role: 'property' }),
@@ -154,6 +165,25 @@ describe('Control Nodes', () => {
         color: blue;
       }
     `);
+  });
+
+  it('captures $if source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = new If({
+      branches: [
+        {
+          condition: bool(true),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }
+      ]
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $if (true) {
+        color: red;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('writes $if branch conditions without public toString transport', () => {
@@ -399,6 +429,22 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('captures $for source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $for ($value of a, b) {
+        item: $value;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(0);
+  });
+
   it('writes $for source header children without public toString transport', () => {
     const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
     const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
@@ -525,6 +571,21 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
+  });
+
+  it('captures $while source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('writes $while condition syntax without public toString transport', () => {

@@ -9,7 +9,7 @@ import { Condition } from './condition.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import {
@@ -33,6 +33,18 @@ const PUBLIC_RULE_VISIBILITY = {
   Mixin: 'public'
 } as const;
 const MAX_WHILE_ITERATIONS = 10000;
+
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
 
 function throwWhileIterationLimitExceeded(): never {
   throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
@@ -468,9 +480,9 @@ export class If extends Node<IfValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   /** @internal */
@@ -644,9 +656,9 @@ export class For extends Node<StructuredLoopValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   /** @internal */
@@ -757,9 +769,9 @@ export class While extends Node<WhileValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   /** @internal */

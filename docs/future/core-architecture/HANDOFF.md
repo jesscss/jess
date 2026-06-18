@@ -103,6 +103,41 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `If` / `For` / `While` outer source-capture readback split.
+- Verdict: accepted as a bounded control-node serializer cut. Public source
+  capture for `If`, `For`, and `While` no longer wraps `writeSyntax(...)` in
+  an outer whole-buffer `mark()/getSince()` readback window just to return the
+  emitted directive text; each now recovers its local control syntax from the
+  active writer tail while preserving the existing direct child writers and
+  loop/branch render behavior. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  shared node-local helper inside `packages/core/src/tree/control.ts`. This
+  replaces the outer control capture windows; it does not add a new scan over
+  branch selection, loop iteration, or binding state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `control.test.ts` to confirm the
+  outer whole-buffer readback is gone for all three directive families.
+- New node/materialization: none.
+- Render path: control render/eval behavior is unchanged. The pass changes
+  only public source capture and does not materialize replacement branch,
+  iteration, or state wrapper nodes to recover text.
+- Helper/API surface: one shared node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/control.ts`. It replaces the outer
+  `If` / `For` / `While` `toTrimmedString(...)` readback wrappers; no public
+  API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the shared node-local
+  helper because `OutputWriter` still exposes `position()` but not a
+  cold/internal tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `If.toTrimmedString(...)`, `For.toTrimmedString(...)`, and
+  `While.toTrimmedString(...)`.
+- Evidence: focused `control.test.ts` source-serialization and whole-buffer
+  readback cases for `If`, `For`, and `While` passed, and full
+  `control.test.ts` passed.
+
 - Latest pass: `VarDeclaration` outer source-capture readback split.
 - Verdict: accepted as a bounded `VarDeclaration` serializer cut. Public
   variable-declaration source capture no longer wraps `writeSyntax(...)` in an
