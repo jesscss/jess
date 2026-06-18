@@ -3261,7 +3261,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     this.lookupVersion++;
     let directDeclarationInvalidationKey: string | undefined;
+    let directDeclarationInvalidationKeys: Set<string> | undefined;
     let directDeclarationInvalidationIsGlobal = false;
+    let directDeclarationGlobalVersionBumped = false;
     if (isNode(node, N.Declaration)) {
       if (this._hasStaticName(node)) {
         directDeclarationInvalidationKey = String(node.name.valueOf());
@@ -3269,6 +3271,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       } else {
         directDeclarationInvalidationIsGlobal = true;
         this.bumpDeclarationLookupVersion();
+        directDeclarationGlobalVersionBumped = true;
       }
     } else if (isNode(node, N.VarDeclaration)) {
       if (this._hasStaticName(node)) {
@@ -3277,6 +3280,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       } else {
         directDeclarationInvalidationIsGlobal = true;
         this.bumpDeclarationLookupVersion();
+        directDeclarationGlobalVersionBumped = true;
       }
     }
     const directChildRules = childCallableRulesOf(node);
@@ -3305,13 +3309,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.addDirectChildRuleEntry(directChildRules);
     }
     const declarationChildRules = childRulesOf(node);
-    if (declarationChildRules || isStyleImportRegistrationNode(node) || isNode(node, N.Rules)) {
+    if (declarationChildRules) {
+      const keys = directDeclarationInvalidationKeys ??= new Set<string>();
+      if (!this.collectStaticDeclarationInvalidationKeys(declarationChildRules, keys)) {
+        directDeclarationInvalidationIsGlobal = true;
+      }
+    }
+    if (isStyleImportRegistrationNode(node)) {
       directDeclarationInvalidationIsGlobal = true;
     }
     if (directDeclarationInvalidationIsGlobal) {
+      if (!directDeclarationGlobalVersionBumped) {
+        this.bumpDeclarationLookupVersion();
+      }
       this.invalidateDirectDeclarationLookup();
     } else if (directDeclarationInvalidationKey !== undefined) {
       this.invalidateDirectDeclarationLookup(directDeclarationInvalidationKey);
+      if (directDeclarationInvalidationKeys !== undefined) {
+        directDeclarationInvalidationKeys.delete(directDeclarationInvalidationKey);
+        this.addDirectDeclarationInvalidationKeys(directDeclarationInvalidationKeys);
+      }
+    } else if (directDeclarationInvalidationKeys !== undefined) {
+      this.addDirectDeclarationInvalidationKeys(directDeclarationInvalidationKeys);
     }
     if (declarationChildRules && !isNode(node, N.Rules)) {
       this.addDirectDeclarationChildRuleEntry(declarationChildRules);
@@ -3320,7 +3339,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._hasExtends = true;
     }
     if (node.type === 'StyleImport') {
-      this.bumpDeclarationLookupVersion();
       const importOptions = 'importOptions' in node.options
         ? node.options.importOptions
         : undefined;
@@ -3336,7 +3354,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     if (isNode(node, N.Rules)) {
-      this.bumpDeclarationLookupVersion();
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -3863,6 +3880,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _isRegisterableType(node: Node): boolean {
     return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset | N.Func) || isStyleImportRegistrationNode(node);
+  }
+
+  private collectStaticDeclarationInvalidationKeys(rules: Rules, keys: Set<string>): boolean {
+    if (rulesHasCarriedReferenceImportSurface(rules)) {
+      return false;
+    }
+    const value = rules.rules;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i]!;
+      if (node.type === 'StyleImport') {
+        return false;
+      }
+      if (isNode(node, N.Declaration | N.VarDeclaration) && !node.options?.setDefined) {
+        if (!this._hasStaticName(node)) {
+          return false;
+        }
+        keys.add(String(node.name.valueOf()));
+        continue;
+      }
+      const child = childRulesOf(node);
+      if (child && !this.collectStaticDeclarationInvalidationKeys(child, keys)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private addDirectDeclarationInvalidationKeys(keys: Set<string>): void {
+    for (const key of keys) {
+      this.bumpDeclarationLookupVersion(key);
+      this.invalidateDirectDeclarationLookup(key);
+    }
   }
 
   private _storePreparedRegistrationNode(

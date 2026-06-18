@@ -85,6 +85,53 @@ describe('Style import', () => {
   });
 
   describe('variable visibility', () => {
+    it('style import Rules promotion preserves unrelated direct declaration cache entries', async () => {
+      const importedPath = resolve(process.cwd(), 'imported-direct-declaration-cache.jess');
+      context.sourceTrees.set(importedPath, rules([
+        decl({ name: any('imported-color'), value: any('green') })
+      ]));
+      const node = rules([
+        style({
+          path: quoted(any('imported-direct-declaration-cache.jess'))
+        }, {
+          type: 'import'
+        }),
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.prepareRegistration(context);
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'imported-color')).toBeUndefined();
+      const buckets = node.directDeclarationsByName;
+      const colorBucket = buckets?.get('color');
+      const cache = node.directDeclarationLookupCache;
+      const colorCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('color\u001f'));
+      const missingCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('missing\u001f'));
+      const importedLookupVersion = node.getDeclarationLookupVersion('imported-color');
+      const declarationLookupVersion = node.declarationLookupVersion;
+      expect(colorBucket).toBeDefined();
+      expect(colorCacheKeys.length).toBeGreaterThan(0);
+      expect(missingCacheKeys.length).toBeGreaterThan(0);
+
+      await node.eval(context);
+
+      expect(node.declarationLookupVersion).toBe(declarationLookupVersion);
+      expect(node.getDeclarationLookupVersion('imported-color')).toBeGreaterThan(importedLookupVersion);
+      expect(node.directDeclarationsByName).toBe(buckets);
+      expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('color\u001f')
+      )).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('missing\u001f')
+      )).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('imported-color\u001f')
+      )).toEqual([]);
+      expect(findPropertyDeclarationOccurrence(node, 'imported-color')?.node.valueNode.valueOf()).toBe('green');
+    });
+
     it('tracks reference-import presence on evaluated Rules wrappers', async () => {
       const importedPath = resolve(process.cwd(), 'tracked-reference-import.jess');
       context.sourceTrees.set(importedPath, rules([

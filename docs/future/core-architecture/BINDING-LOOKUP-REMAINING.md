@@ -227,7 +227,7 @@ source/output exclusion identity mutation after `bindOutput`, and wider
 external exclusion lists staying cold; the real Less merge-chain fixture still
 avoids public property/declaration lookup bridges.
 
-15. [ ] Finish declaration/property key-versioning dynamic promotion proof.
+15. [x] Finish declaration/property key-versioning dynamic promotion proof.
 Scope: `Rules.getDeclarationLookupVersion(key)`, dynamic names, import/rules
 promotions, and per-name invalidation. Goal: per-name versions remain freshness
 state, not a second registry, and ordinary static reads avoid broad version
@@ -239,10 +239,14 @@ unrelated `color`/`missing` direct lookup cache entries and the `color` bucket
 survive an `unrelated` static declaration write while the stale `unrelated`
 miss is removed. Pending dynamic declarations that become static now bump the
 resolved key's declaration lookup version, clear only the resolved key's bucket
-and lookup-cache entries, and preserve unrelated miss cache entries. Nested
-`Rules` child declaration surfaces still clear the whole direct declaration
-bucket/cache and bump the global declaration lookup version. Style import
-promotion remains open.
+and lookup-cache entries, and preserve unrelated miss cache entries. Static
+child `Rules` declaration surfaces now collect concrete declaration keys,
+invalidate only those per-key declaration buckets/cache entries, and preserve
+unrelated cache entries; child surfaces with unresolved `StyleImport`/
+reference-import uncertainty still bump the global declaration lookup version
+and clear the broad cache. A real style-import eval promotion test proves the
+imported `Rules` replacement invalidates only the imported declaration key
+after registration prep has populated unrelated direct declaration caches.
 
 16. [x] Audit and slim private declaration-constraint handle snapshots. Scope:
 `ReferenceRulesLookupDeclarationConstraints`, `RulesLookupHandleShape`,
@@ -587,6 +591,17 @@ prefix walks where no prefix can exist, without losing selector-list and
 compound-prefix positives. Acceptance: focused namespace/import positives and
 misses prove prefix lookup avoids child recursion when frame facts cover the
 family, and rejected shortcuts from item 12 stay guarded.
+
+39. [ ] Move `setDefined` declaration writes fully onto current live binding
+cells before occurrence fallback. Scope: `Rules.registerNode(...)`
+`setDefined`, `lookupScopeFrameVariable(...)`, readonly checks, direct
+declaration occurrence fallback, and current/output binding freshness. Goal:
+write to the current live declaration cell when a covered frame binding exists,
+and use occurrence lookup only when frame coverage is incomplete or the target
+is non-variable declaration behavior. Acceptance: focused `setDefined`
+current-cell tests prove covered writes avoid occurrence lookup/public
+declaration bridge, readonly errors still come from the live cell, and the
+existing fallback path remains for uncovered/non-variable cases.
 
 ## Latest Binding Baseline
 

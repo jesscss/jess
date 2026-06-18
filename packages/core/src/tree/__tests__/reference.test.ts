@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
@@ -3296,7 +3296,7 @@ describe('reference', () => {
       expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.valueNode.valueOf()).toBe('1');
     });
 
-    it('direct declaration cache resets for child declaration surface writes', async () => {
+    it('direct declaration cache survives unrelated static child declaration surface writes', async () => {
       const node = rules([
         decl({ name: any('color'), value: any('blue') })
       ]);
@@ -3305,18 +3305,60 @@ describe('reference', () => {
 
       expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'child-color')).toBeUndefined();
+      const buckets = node.directDeclarationsByName;
+      const colorBucket = buckets?.get('color');
+      const cache = node.directDeclarationLookupCache;
+      const colorCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('color\u001f'));
+      const missingCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('missing\u001f'));
+      const childColorLookupVersion = node.getDeclarationLookupVersion('child-color');
       const declarationLookupVersion = node.declarationLookupVersion;
-      expect(node.directDeclarationsByName).toBeDefined();
-      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
+      expect(colorBucket).toBeDefined();
+      expect(colorCacheKeys.length).toBeGreaterThan(0);
+      expect(missingCacheKeys.length).toBeGreaterThan(0);
 
       node.push(rules([
         decl({ name: any('child-color'), value: any('green') })
       ]));
 
+      expect(node.declarationLookupVersion).toBe(declarationLookupVersion);
+      expect(node.getDeclarationLookupVersion('child-color')).toBeGreaterThan(childColorLookupVersion);
+      expect(node.directDeclarationsByName).toBe(buckets);
+      expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('color\u001f')
+      )).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('missing\u001f')
+      )).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('child-color\u001f')
+      )).toEqual([]);
+      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.valueNode.valueOf()).toBe('green');
+    });
+
+    it('direct declaration cache resets for unknown child declaration surface writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'dynamic-color')).toBeUndefined();
+      const declarationLookupVersion = node.declarationLookupVersion;
+      expect(node.directDeclarationsByName).toBeDefined();
+      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
+
+      const unknownChild = rules([
+        style({ path: quoted(any('unknown.jess')) }, { type: 'import' })
+      ]);
+
+      node.push(unknownChild);
+
       expect(node.declarationLookupVersion).toBeGreaterThan(declarationLookupVersion);
       expect(node.directDeclarationsByName).toBeUndefined();
       expect(node.directDeclarationLookupCache).toBeUndefined();
-      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.valueNode.valueOf()).toBe('green');
     });
 
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {

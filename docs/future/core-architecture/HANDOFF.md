@@ -103,21 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof pass closing simple callable child-scan coverage
-  and broader imported declaration source-order coverage.
-- Verdict: accepted as proof-only queue closure. Existing callable tests prove
-  simple exact misses do not enter broad `findMixinsFast(...)` child scans when
-  frame/child-entry facts cover no-child, covered-child, no-callable-child,
-  terminal mixin-only, and no-frame ruleset-only cases. Import/reference tests
-  now prove selector-list, nested imported child, configured `with`, and
-  configured `set` property hits avoid public `Rules.find(...)`. No speed
-  claim.
-- New traversal: no production traversal was added. Added tests exercise
-  existing direct declaration child-entry lookup, existing same-parent
-  source-order guards, and existing callable spy paths only. Review-flagged
-  `try/finally` blocks and `declarationBridgeHits` spy arrays are test
-  scaffolding for restoring prototypes and proving no public declaration
-  bridge.
+- Latest pass: binding implementation pass closing declaration/property
+  key-versioning dynamic promotion proof.
+- Verdict: accepted as lookup-state narrowing. `Rules.registerNode(...)` now
+  classifies static child `Rules` declaration surfaces by concrete declaration
+  key, invalidates only those direct declaration buckets/cache entries, and
+  keeps broad global invalidation for unresolved `StyleImport`/reference-import
+  uncertainty. Focused reference and real style-import promotion tests prove
+  unrelated `color`/`missing` direct declaration cache entries survive static
+  child/imported `Rules` promotion while the imported/child key is refreshed.
+  No speed claim.
+- New traversal: added one registration-time recursive classifier over the
+  child `Rules` being added. It runs only while registering a child/imported
+  surface, bails to the existing global invalidation lane on dynamic or import
+  uncertainty, and does not add lookup-time traversal. Added tests inspect
+  existing direct declaration cache/version state.
+- Review-flagged allocations: the new production `Set<string>` is a
+  registration-time scratch collection for keys on the single child surface
+  being added, not a retained registry or lookup index. The `for...of` over
+  that set immediately bumps versions/clears cache entries and discards the
+  scratch set. Review-flagged arrays, `filter(...)`, and `new Map()` calls are
+  test assertions that snapshot direct declaration cache keys; they are not
+  production lookup-path allocations.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
