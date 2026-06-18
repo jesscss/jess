@@ -103,6 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` exact negative text carry.
+- Verdict: accepted as a localized exact-text carry cut. Built-in `Negative`
+  nodes now participate in `Call`'s known source/render text helpers, so exact
+  negative args/content stay off both the source arg fallback path and the
+  render-side fallback readback boundary. No speed claim.
+- New traversal: one recursive step in `getKnownRenderedCallText(...)` and one
+  recursive step in `getKnownSourceCallText(...)` for `Negative.node`.
+- New node/materialization: none.
+- Render path: covered negative args/content now write their carried text
+  directly on plain/finalized render instead of dropping into the fallback
+  child mark/readback path.
+- Helper/API surface: no new helper; this pass only widens the existing known
+  source/render text helpers.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new beyond the existing helper recursion; this pass
+  deletes covered negative fallback readback reliance instead of adding a new
+  boundary.
+- Rejected/observed in this pass: this only covers built-in `Negative` syntax
+  surfaces that recursively resolve to known call text. It does not widen to
+  arbitrary wrapper nodes or custom negative-like subclasses.
+- Evidence: focused `call.test.ts` coverage now proves exact negative source
+  args write with zero marks/readbacks, and exact negative args/content render
+  with zero marks/readbacks on the covered path. Full commit-boundary gates
+  still need to run after this handoff update.
 - Latest pass: `Call` trivia-bearing source arg direct-write path.
 - Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
   now writes trivia-bearing source args item-by-item with explicit separator

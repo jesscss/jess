@@ -1,7 +1,7 @@
 import type { IToken } from 'chevrotain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -381,6 +381,20 @@ describe('Call', () => {
     rule.writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('wrap(): raw content');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes exact negative source call args without arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([negative(num(20)), negative(any('token'))])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('fn(-20, -token)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });
@@ -770,6 +784,32 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn(screen and (color))');
     expect(writer.toString()).toBe('fn(screen and (color))');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact negative CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([negative(num(20)), negative(any('token'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(-20, -token)');
+    expect(writer.toString()).toBe('fn(-20, -token)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact negative call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: negative(num(20))
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): -20');
+    expect(writer.toString()).toBe('wrap(): -20');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });

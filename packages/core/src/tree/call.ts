@@ -25,6 +25,7 @@ import { copyWithReusableLeaves } from './util/cloning.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
 import { QueryCondition } from './query-condition.js';
+import { Negative } from './negative.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -266,6 +267,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
         }
         return `${left} ${node.operator} ${right}`;
       }
+      if (node.constructor === Negative) {
+        const value = getKnownRenderedCallText(node.node);
+        return value === undefined ? undefined : `-${value}`;
+      }
       return undefined;
   }
 }
@@ -380,6 +385,10 @@ function getKnownSourceCallText(node: Node): string | undefined {
           return undefined;
         }
         return `${left} ${node.operator} ${right}`;
+      }
+      if (node.constructor === Negative) {
+        const value = getKnownSourceCallText(node.node);
+        return value === undefined ? undefined : `-${value}`;
       }
       return undefined;
   }
