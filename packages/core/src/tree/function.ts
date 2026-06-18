@@ -4,10 +4,22 @@ import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
+
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
 
 /**
  * Stylesheet-defined function with a return value.
@@ -63,24 +75,30 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return String(name.valueOf());
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    const mark = w.mark();
     const { name, params, body } = this;
 
     w.add('$function', this);
     w.add(' ');
-    w.add(name ? `${name}` : '@', this);
-    w.add('(');
-    if (params) {
-      params.toString(options);
+    if (name) {
+      name.writeSyntax(options);
+    } else {
+      w.add('@', this);
     }
+    w.add('(');
+    params?.writeSyntax(options);
     w.add(') ');
-
     body.writeBraced(options);
+  }
 
-    return w.getSince(mark);
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const position = w.position();
+    this.writeSyntax(options);
+    return getWriterTextSincePosition(w, position);
   }
 
   override resolve(_context: Context): this {

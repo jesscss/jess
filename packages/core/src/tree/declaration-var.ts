@@ -7,8 +7,20 @@ import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
+
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -48,19 +60,19 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     if (this._options?.paramVar && this.valueNode instanceof Nil) {
       if (this.name instanceof Any) {
         const nameText = this.name.value.replace(/\s+$/u, '');
         w.add('$', this);
         w.add(nameText, this.name);
-        return `$${nameText}`;
+        return getWriterTextSincePosition(w, position);
       }
       this.writeBareParameterSyntax(options);
-      return w.getSince(mark);
+      return getWriterTextSincePosition(w, position);
     }
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   private writeBareParameterSyntax(options: FinalPrintOptions): void {

@@ -103,6 +103,75 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `VarDeclaration` outer source-capture readback split.
+- Verdict: accepted as a bounded `VarDeclaration` serializer cut. Public
+  variable-declaration source capture no longer wraps `writeSyntax(...)` in an
+  outer whole-buffer `mark()/getSince()` readback window just to return the
+  emitted declaration text; it now recovers the local declaration text from
+  the active writer tail while preserving the existing variable-prefix and
+  shared declaration-body ownership. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/declaration-var.ts`. This
+  replaces the outer declaration capture window; it does not add a new scan
+  over unrelated declaration registration or binding state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `var-declaration.test.ts` to confirm
+  the outer whole-buffer readback is gone.
+- New node/materialization: none.
+- Render path: variable-declaration render/eval behavior is unchanged. The
+  pass changes only public source capture and does not materialize replacement
+  declaration nodes or binding wrappers to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/declaration-var.ts`. It replaces the outer
+  `VarDeclaration.toTrimmedString(...)` readback wrapper; no public API
+  changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `VarDeclaration.toTrimmedString(...)`.
+- Evidence: focused `var-declaration.test.ts` cases for public source syntax
+  and source capture without outer whole-buffer readback passed, and full
+  `var-declaration.test.ts` passed.
+
+- Latest pass: `Func` outer source-capture readback split.
+- Verdict: accepted as a bounded `Func` serializer cut. Public function source
+  capture no longer wraps `writeSyntax(...)` in an outer whole-buffer
+  `mark()/getSince()` readback window just to return the emitted definition
+  text; it now recovers the local function text from the active writer tail
+  while preserving the direct name/param/body writer shape and existing call
+  evaluation behavior. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/function.ts`. This
+  replaces the outer function capture window; it does not add a new scan over
+  unrelated callable evaluation state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `func.test.ts` to confirm the outer
+  whole-buffer readback is gone.
+- New node/materialization: none.
+- Render path: function render/eval behavior is unchanged. The pass changes
+  only public source capture and direct source child writing; it does not
+  materialize replacement params, wrapper rules, or callable collections to
+  recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/function.ts`. It replaces the outer
+  `Func.toTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` whole-buffer
+  capture from `Func.toTrimmedString(...)` and removes public child string
+  transport for function name/params on the direct source path.
+- Evidence: focused `func.test.ts` cases for public source syntax and source
+  capture without outer whole-buffer readback passed, and full `func.test.ts`
+  passed.
+
 - Latest pass: `Operation` outer source-capture readback split.
 - Verdict: accepted as a bounded `Operation` serializer cut. Public operation
   source capture no longer wraps `writeSyntax(...)` in an outer whole-buffer
