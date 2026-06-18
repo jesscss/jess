@@ -558,17 +558,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
-      const declEmittedTrivia = new Set<IToken[]>();
-      const previousEmittedTrivia = options.emittedTrivia;
       options.writer = declWriter;
       options.depth = options.depth + 1;
-      options.emittedTrivia = declEmittedTrivia;
       if (serializeProfileCounters) {
         incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
       }
-      node.writeSyntax(options);
+      withScratchEmittedTrivia(options, () => {
+        node.writeSyntax(options);
+      });
       const declOut = declWriter.toString();
-      options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       let seenValues = seenDeclarationsByProp.get(declProp);

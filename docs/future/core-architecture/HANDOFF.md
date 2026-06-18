@@ -103,15 +103,15 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration fallback direct-writer cut in
+- Latest pass: duplicate declaration scratch-trivia cut in
   `packages/core/src/tree/util/serialize-helper.ts`.
 - Verdict: accepted as localized serialization transport deletion. No speed
   claim.
 - New traversal: none.
 - New node/materialization: none. The review-flagged `new OutputWriter()` is
-  declaration fallback / duplicate-comparison string boundary, and the focused
-  `new WholeBufferCountingWriter()` / thrown test errors are rules/ruleset
-  proof scaffolding only.
+  still the declaration fallback / duplicate-comparison string boundary, and
+  the focused `new WholeBufferCountingWriter()` / thrown test errors are
+  rules/ruleset proof scaffolding only.
 - Render path: declaration fallback inside container serialization now writes
   declarations through `writeSyntax(...)` into its detached writer instead of
   calling public `toTrimmedString(...)`. Duplicate declaration comparison
@@ -128,9 +128,11 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: deletes one public string-return wrapper call per
   declaration fallback plus one per repeated declaration comparison, and
   removes the duplicate output/trivia cache maps that used to carry detached
-  declaration text forward into emission. The detached string boundary itself
-  remains because exact duplicate-policy comparison still consumes a string
-  key.
+  declaration text forward into emission. Duplicate comparison now also reuses
+  `withScratchEmittedTrivia(...)` instead of allocating a bespoke
+  `Set<IToken[]>` per repeated declaration. The detached string boundary
+  itself remains because exact duplicate-policy comparison still consumes a
+  string key.
 - Rejected/observed in this pass: duplicate declaration skip/cache
   materialization still remains, along with broader render-mode leaf/body
   transport, remaining Ruleset header emit/cache capture, and deeper
