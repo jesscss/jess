@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Rules` root document render transport split.
+- Verdict: accepted as a bounded serializer cut inside the active `Rules`
+  row. Root `Rules.render(...)` and render-buffer output no longer route
+  `@charset` / hoisted import document output through the public
+  `Rules.toString(...)` wrapper; they now use a cold internal document-string
+  boundary while keeping the existing source document serializer intact. No
+  speed claim.
+- New traversal: none.
+- Review-flagged allocations: none beyond the pre-existing writer mark/readback
+  at the cold root document-string boundary.
+- New node/materialization: none.
+- Render path: root render/string and root render-buffer output now call the
+  internal `Rules._toDocumentString(...)` boundary instead of public
+  `Rules.toString(...)` when root document semantics own `@charset` /
+  top-import ordering. Non-root `Rules` render behavior is unchanged.
+- Helper/API surface: one internal helper, `Rules._toDocumentString(...)`,
+  which isolates the existing root document serializer from the public
+  `toString(...)` wrapper so render paths can bypass the public transport
+  without duplicating document-order logic.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: no new nodes, wrappers, or carried caches.
+- Evidence: focused and full `rules.test.ts` coverage now proves root
+  string render and render-buffer output preserve `@charset` / `@import`
+  ordering while staying off public `Rules.toString(...)`, and the existing
+  root no-capture serializer test still passes. `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` still need to run after this handoff update.
 - Latest pass: `AtRule` comparable-header and boundary-trivia split.
 - Verdict: accepted as a bounded serializer cut inside the active `AtRule`
   row. Frame comparison in `serializeRulesContainer(...)` no longer routes the
