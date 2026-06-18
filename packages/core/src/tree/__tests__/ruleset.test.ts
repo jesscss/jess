@@ -1258,6 +1258,70 @@ describe('Rule', () => {
     }
   });
 
+  it('serializeRulesContainer keeps child Rules body transport off the caller writer', () => {
+    const writer = new CountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ], {
+      referenceMode: true
+    });
+    const originalToTrimmedString = childRules.toTrimmedString;
+    let childSawDetachedWriter = false;
+    childRules.toTrimmedString = function countDetachedWriter(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      childSawDetachedWriter = args[0]?.writer !== writer;
+      return originalToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        childRules
+      ])
+    });
+    const options = getPrintOptions({ writer });
+
+    try {
+      void serializeRulesContainer(node, options);
+      expect(childSawDetachedWriter).toBe(true);
+    } finally {
+      childRules.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('serializeRulesContainer keeps declaration fallback transport off the caller writer', () => {
+    const writer = new CountingWriter();
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalToTrimmedString = colorDecl.toTrimmedString;
+    let declarationSawDetachedWriter = false;
+    colorDecl.toTrimmedString = function countDetachedWriter(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      declarationSawDetachedWriter = args[0]?.writer !== writer;
+      return originalToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        colorDecl
+      ])
+    });
+    const options = getPrintOptions({ writer });
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toBeString(`
+        .box {
+          color: red;
+        }
+      `);
+      expect(declarationSawDetachedWriter).toBe(true);
+    } finally {
+      colorDecl.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {
     const node = ruleset({
       selector: sel([el('.foo')]),

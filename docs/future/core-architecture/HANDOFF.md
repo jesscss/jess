@@ -139,6 +139,24 @@ with `--no-verify` after the explicit gates pass.
   baseline was retried; it still surfaces non-lookup render/serialization
   family failures and then stalls, so it remains open in
   `BINDING-LOOKUP-REMAINING.md` rather than counted as a pass.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  declaration fallback preview-transport cut in
+  `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
+  `new OutputWriter()` is the detached declaration fallback string boundary
+  that replaces caller-writer preview transport. Review-flagged
+  `new CountingWriter()` and `try/finally` are focused `ruleset.test.ts`
+  scaffolding for restoring swapped methods around detached-writer assertions.
+  No binding lookup runtime path changed.
+- Merge-carried binding review: latest `origin/dev` also carries
+  declaration-constraint handle snapshot slimming and proof in
+  `packages/core/src/tree/reference.ts` and related lookup helpers. It is
+  binding handle-shape only: private declaration/property/variable lookup
+  handles no longer store the scalar `excludedDeclarationCount` field, and the
+  existing handleability gate keeps only the declaration-assignment key plus
+  the first two excluded declaration identities when forming fresh handles.
+  No render/stringification path changed, no runtime node materialization was
+  added, and the focused exclusion-array mutation proof remains in the binding
+  lane. Detailed status remains in `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint option cleanup and merge-chain output-binding proof
   in `packages/core/src/tree/reference.ts` and related lookup helpers. It is
