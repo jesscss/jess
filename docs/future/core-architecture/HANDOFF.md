@@ -109,6 +109,36 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: rules-like reference surface descriptor cut.
+- Verdict: accepted as a CPU-profile-backed hot surface reduction, not as a
+  wall-clock speed claim. `createRulesLikeReferenceSurface(...)` no longer
+  builds a full property descriptor map and no longer deletes entries from
+  that descriptor object; it creates the shallow surface with the same
+  prototype, copies own string properties directly, still skips
+  `sourceNode`/`parent`/`index`, still clones `_options`, and then defines the
+  placement metadata explicitly.
+- New traversal: one `Object.getOwnPropertyNames(...)` array walk over the
+  node's own fields, replacing `Object.getOwnPropertyDescriptors(...)` plus
+  descriptor deletion and `Object.defineProperties(...)` for all fields. This
+  is a smaller traversal on the same shallow owned-surface boundary.
+- New node/materialization: no new AST node construction. The existing shallow
+  preserved rules-like surface remains because mixin-ruleset/reference
+  semantics need placement-local `sourceNode`, `parent`, and `index` without
+  mutating the canonical source node.
+- Render path: no render/stringification path changed.
+- Helper/API surface: none added.
+- Metadata mutations: existing explicit preserved-surface metadata definitions
+  remain; this pass removes descriptor-map mutation around that metadata.
+- Evidence: ordered benchmark-path rebuild passed. Focused preserved
+  rules-like reference tests and namespace/mixin-ruleset tests passed. The
+  broader two complex-selector reference indentation tests are baseline-red
+  with the old descriptor implementation too, so they were not used as the
+  pass/fail gate. Matched external `benchmark.less` CPU profiles moved
+  `createRulesLikeReferenceSurface(...)` self-time from `243.12ms` before to
+  `47.43ms` after. External runner median moved `713.73ms` -> `628.40ms`, but
+  variance remained high; stable hot-path wall-clock stayed mixed/noisy. No
+  speed claim. See `PERFORMANCE-HANDOFF.md`.
+
 - Latest pass: merge declaration surface pruning plus terminal mixin parse
   classification.
 - Verdict: accepted as a counter-proven traversal cut and parser

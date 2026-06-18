@@ -2525,26 +2525,25 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  const descriptors = Object.getOwnPropertyDescriptors(directValue);
-  const optionsDescriptor = descriptors._options;
-  if (
-    optionsDescriptor
-    && 'value' in optionsDescriptor
-    && optionsDescriptor.value
-    && typeof optionsDescriptor.value === 'object'
-  ) {
-    optionsDescriptor.value = { ...optionsDescriptor.value };
-  }
-  delete descriptors.sourceNode;
-  delete descriptors.parent;
-  delete descriptors.index;
   const preservedValue = Object.create(
     Object.getPrototypeOf(directValue)
   );
   if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  Object.defineProperties(preservedValue, descriptors);
+  const ownKeys = Object.getOwnPropertyNames(directValue);
+  for (let i = 0; i < ownKeys.length; i++) {
+    const key = ownKeys[i]!;
+    if (key === 'sourceNode' || key === 'parent' || key === 'index') {
+      continue;
+    }
+    const value = (directValue as unknown as Record<string, unknown>)[key];
+    (preservedValue as unknown as Record<string, unknown>)[key] = (
+      key === '_options' && value && typeof value === 'object'
+    )
+      ? { ...value }
+      : value;
+  }
   const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
   Object.defineProperties(preservedValue, {
     sourceNode: {

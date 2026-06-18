@@ -327,6 +327,76 @@ reshape it.
 
 ## Current Evidence Log
 
+### 2026-06-18 Rules-Like Reference Surface Descriptor Cut
+
+Focus: CPU-profile-backed cut to `createRulesLikeReferenceSurface(...)`, which
+the fresh external `benchmark.less` profile showed as a hot self-time frame.
+
+Pre-edit evidence:
+
+- `pnpm run measure:less:hotpath -- --stable` was not decision-quality:
+  `functions` unstable median `23.21ms`, `import-reference` noisy median
+  `37.06ms`, `mixins-guards` noisy median `32.55ms`, `extend-chaining` noisy
+  median `10.36ms`, and `media` unstable median `11.16ms`.
+- Sequential external benchmark CPU profile:
+  `node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-141212-external-benchmark-less-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division`
+  from `/Users/matthew/git/worktrees/jess/less.js/packages/less`.
+- Pre-edit external runner output: median `713.73ms`, average `729.73ms`,
+  stddev `62.38ms`, variance `8.55%`, samples `8`.
+- Pre-edit CPU artifact:
+  `profiling/core-architecture/20260618-141212-external-benchmark-less-cpu/CPU.20260618.141212.27117.0.001.cpuprofile`.
+  Relevant self-time: `createRulesLikeReferenceSurface(...)` `243.12ms`,
+  `Node` constructor `1060.59ms`, garbage collector `552.18ms`, `copyChild`
+  `543.54ms`, `isNode` `428.32ms`, and `_processNodes` `256.31ms`.
+
+Patch kept:
+
+- `createRulesLikeReferenceSurface(...)` no longer calls
+  `Object.getOwnPropertyDescriptors(...)`, deletes descriptor entries, and
+  defines all copied descriptors.
+- It now creates the same prototype-preserving shallow surface, walks own
+  property names, skips `sourceNode`/`parent`/`index`, clones `_options`, copies
+  direct values, and then defines preserved `sourceNode`, `parent`, and `index`
+  metadata explicitly.
+
+Behavior evidence:
+
+- Ordered benchmark-path rebuild passed:
+  `styles-config`, `@jesscss/awaitable-pipe`, `@jesscss/core`,
+  `@jesscss/css-parser`, `@jesscss/less-parser`, `@jesscss/plugin-less`,
+  `@jesscss/plugin-less-compat`, `@jesscss/plugin-js`, and `jess`.
+- Focused reference surface tests passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts -t "preserves direct mixin-ruleset hits|preserves rules-like variable references|renders rules-like variable references|keeps canonical rules-like sources|keeps referenced source value containers canonical|keeps fallback value containers canonical|direct complex selector callable lookup consumes compound selector remainder entries|should resolve nested mixin-ruleset reference chains"`.
+- Focused namespace/mixin tests passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "mixin-ruleset calls with args|namespace fast path|ruleset namespace path|mixin namespace path"`.
+- The two complex-selector reference indentation expectations still fail after
+  restoring the old descriptor implementation and rebuilding, so they are
+  baseline-red in this worktree and not a regression from this patch.
+
+Post-edit evidence:
+
+- Sequential external benchmark CPU profile:
+  `node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-141643-surface-copy-post-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division`.
+- Post-edit external runner output: median `628.40ms`, average `624.61ms`,
+  stddev `96.51ms`, variance `15.45%`, samples `8`. Directionally better than
+  the immediate pre-edit runner, but still noisy.
+- Post-edit CPU artifact:
+  `profiling/core-architecture/20260618-141643-surface-copy-post-cpu/CPU.20260618.141643.8247.0.001.cpuprofile`.
+  `createRulesLikeReferenceSurface(...)` self-time dropped to `47.43ms`.
+- Post-edit diagnostic profile:
+  `node scripts/profile-less-benchmark.mjs --file=benchmark.less` reported
+  unchanged lookup counters and `Reference.evalNode` `3567` calls /
+  `104.04ms`.
+- Post-edit `pnpm run measure:less:hotpath -- --stable` stayed mixed:
+  `functions` unstable median `27.54ms`, `import-reference` noisy median
+  `39.39ms`, `mixins-guards` usable median `31.21ms`, `extend-chaining`
+  unstable median `8.45ms`, and `media` unstable median `9.27ms`.
+
+Verdict: keep as a measured CPU self-time reduction on a named hot frame, not
+as a real wall-clock speed win. Next timed targets remain the largest CPU
+clusters: generic node construction/copying, GC pressure, and extend root or
+selector work.
+
 ### 2026-06-18 CPU Attribution Policy Correction
 
 Prompt: counters had been over-weighted as target-selection evidence. Policy is
