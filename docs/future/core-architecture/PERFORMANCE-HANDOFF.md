@@ -517,6 +517,64 @@ it is reducing the still-hot property child-entry traversal:
 `declaration.scope.p` about `50318`, `childEntryEntered` about `51551`, and
 `childEntriesScanned` about `18527` on broad `benchmark.less`.
 
+### 2026-06-18 Rejected Declaration Child-Entry / Filter Cache Prototypes
+
+Focus: follow-up on the still-hot broad `benchmark.less` property lookup
+traversal after the property-merge typed lookup pass.
+
+Rejected prototype 1: split `directDeclarationChildEntries` into a
+lookup-only child-entry list that omitted child rules without declaration,
+variable, reference-import, or callable surfaces.
+
+- Focused property/variable lookup tests initially passed, but broader
+  `reference.test.ts` and `import-style.test.ts -t "reference|import"` failed
+  reference-import namespace/callable suppression cases and complex selector
+  rendering.
+- Diagnosis: `directDeclarationChildEntries` is not only a declaration lookup
+  list. It also carries import/setDefined/callable bridge and placement
+  suppression state. Filtering it before the direct lookup layer can make
+  reference-import namespace rules emit or force broad callable fallback.
+- Verdict: reverted. Do not retry by filtering the shared child-entry list.
+  A future cut must either split the semantic carrier cleanly or avoid the
+  child-entry path from a higher-level merge/reference specialization.
+
+Rejected prototype 2: skip the synthetic reference filter wrapper for ordinary
+property references when there is no user filter and `context.searchScope` is
+empty.
+
+- Behavior gate passed after rebuilding `@jesscss/core`, `@jesscss/css-parser`,
+  `@jesscss/less-parser`, and `jess`:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts -t "property handles|merge-chain|property refs|direct property lookup|static property"`
+  (`17` passed, `189` skipped).
+- Broad `benchmark.less` counters were unchanged:
+  `declaration.cacheMiss` `54780`, `declaration.scope.p` `50318`,
+  `declaration.childEntryEntered` `51551`, and
+  `declaration.childEntriesScanned` `18527`.
+- Stable hot-path wall-clock did not show a usable win:
+  only `mixins-guards.less` was usable (`trimmedMedian` `22.58ms`), while
+  other fixtures were unstable/noisy and counters did not move.
+- Verdict: reverted. The broad property-merge path has a real original filter,
+  exclusion list, and assignment constraint; the synthetic wrapper is not the
+  broad-benchmark problem.
+
+Diagnostic result from temporary cache-bypass counters:
+
+- broad `benchmark.less`: all `declaration.scope.p` work was merge-shaped:
+  `cacheBypass.filter` `54780`, `cacheBypass.excludedDeclarations` `50318`,
+  and `cacheBypass.requiredAssignments` `50318`;
+- `scope-lookup-stress.less`: variable lookup bypassed through live-binding
+  and filter requirements (`cacheBypass.liveBindings` `7560`,
+  `cacheBypass.filter` `7560`).
+
+Next implementation target: specialize or replace merge-reference lookup in
+`Declaration._normalizeAssignmentValue(...)`. The current merge path fabricates
+a `Reference` with `filter`, `excludedDeclarations`, and
+`requiredDeclarationAssignments`, so the generic direct lookup cache cannot
+help the broad `benchmark.less` property hotspot. A worthwhile next patch must
+preserve the copied/output self-exclusion semantics currently implemented by
+the merge filter while avoiding the generic recursive declaration lookup for
+every merge item.
+
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 
 Hypothesis: simple static callable hits, and the subset of simple misses whose

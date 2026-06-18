@@ -107,6 +107,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: rejected declaration child-entry/filter-cache prototypes.
+- Verdict: rejected as a performance implementation pass; accepted only as
+  evidence. Runtime code is back to clean. The shared
+  `directDeclarationChildEntries` list cannot be filtered for lookup without
+  breaking reference-import/callable placement semantics, and skipping the
+  synthetic no-op property filter did not move broad counters or produce a
+  usable wall-clock win.
+- New traversal: none kept.
+- New node/materialization: none kept.
+- Render path: no render/stringification path changed.
+- Helper/API surface: none kept.
+- Metadata mutations: none kept.
+- Evidence: focused property/reference tests passed for the no-op-filter
+  prototype, but broad `benchmark.less` counters stayed at
+  `declaration.cacheMiss` `54780`, `declaration.scope.p` `50318`,
+  `childEntryEntered` `51551`, and `childEntriesScanned` `18527`. Temporary
+  cache-bypass counters showed the broad property hotspot is merge-shaped:
+  real `filter`, `excludedDeclarations`, and `requiredDeclarationAssignments`.
+  See `PERFORMANCE-HANDOFF.md` for the next target:
+  specialize `Declaration._normalizeAssignmentValue(...)` merge-reference
+  lookup without losing copied/output self-exclusion semantics.
+
 - Latest pass: property-merge typed lookup.
 - Verdict: accepted as a semantic lookup-family narrowing and counter cut, not
   as a wall-clock speed claim. Property merge normalization now asks for the
