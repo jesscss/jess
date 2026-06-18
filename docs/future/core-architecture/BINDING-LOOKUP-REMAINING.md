@@ -280,7 +280,7 @@ tests still prove ignored declaration options do not get stored or invalidate
 their handles. The verifier now fails if declaration constraints move back
 into the generic shape.
 
-21. [ ] Split source-static handle readers by lookup family instead of
+21. [x] Split source-static handle readers by lookup family instead of
 branching through `lookupTypeUsesDeclarationConstraints(...)`. Scope:
 `tryReadSourceStaticRulesLookupHandle(...)`, source-static variable/property/
 declaration/function/callable reads, and `_lookupStrategy` rebuild avoidance.
@@ -289,9 +289,16 @@ function/callable source-static reads do not evaluate declaration-constraint
 eligibility or helper branches. Acceptance: focused source-static handle tests
 for variable/property/declaration/function/callable reads plus verifier guard
 against declaration-constraint checks in the function/callable source-static
-reader path.
+reader path. Current evidence: the old generic
+`tryReadSourceStaticRulesLookupHandle(...)` is gone. Each lookup strategy now
+owns `tryReadSourceStaticHandle`, with declaration/property/variable readers
+doing declaration-constraint checks and function/mixin/mixin-ruleset readers
+using only common handle freshness. The early read still uses an uncached
+strategy lookup, so a source-static cache hit does not rebuild `_lookupStrategy`.
+Focused source-static/function/callable handle tests and
+`verify:binding-lookup-hot-paths` passed.
 
-22. [ ] Move handle eligibility onto lookup strategies instead of the generic
+22. [x] Move handle eligibility onto lookup strategies instead of the generic
 `isRulesLookupHandleEligible(...)` branch ladder. Scope:
 `ReferenceLookupStrategy`, per-family handle key eligibility, declaration
 constraint handleability, callable array-path eligibility, and read/write
@@ -300,7 +307,35 @@ lookup strategy, preserving the Chevrotain-style assigned-function direction
 and shrinking generic string/type branching on every reference eval.
 Acceptance: focused reference strategy/cache tests, handle cold-path tests for
 searchScope/leaky/semantic filters, function/callable ignored-constraint
-tests, and `verify:binding-lookup-hot-paths`.
+tests, and `verify:binding-lookup-hot-paths`. Current evidence: the old
+`isRulesLookupHandleEligible(...)` function is gone. `ReferenceLookupStrategy`
+now owns `handleLookupType`, `getHandleValueKey`, optional declaration
+constraints, and source-static handle reading. Focused cold-path tests for
+searchScope/leaky disqualification, strategy-cache type changes, terminal
+mixin-only mode, and ignored declaration constraints stayed green; the verifier
+now forbids the old generic eligibility helper and requires strategy-owned
+handle policy fields.
+
+23. [ ] Collapse `lookupTypeUsesDeclarationConstraints(...)` to declaration
+strategy/type guards only. Scope: `prepareRulesLookupShape(...)`,
+`readRulesLookupHandle(...)`, declaration handle unions, and declaration
+constraint freshness checks. Goal: eliminate remaining generic lookup-type
+branching by giving declaration-capable strategies/readers a typed declaration
+handle path, while preserving function/callable fast reads. Acceptance:
+focused declaration/property/variable/function/callable handle tests plus a
+verifier guard that declaration-constraint checks do not run through generic
+lookup-type predicates outside declaration-only helpers.
+
+24. [ ] Split handle write args or writer functions by family so
+function/callable writes do not receive declaration-constraint plumbing. Scope:
+`WriteRulesLookupHandleArgs`, `writeVariableRulesLookupHandle`,
+`writeDeclarationRulesLookupHandle`, `writeFunctionRulesLookupHandle`,
+`writeCallableRulesLookupHandle`, and async writeback in
+`lookupResolvedReference(...)`. Goal: avoid passing declaration-only fields to
+function/callable writers and make each writer's required inputs match its
+handle family. Acceptance: focused async/sync handle write tests for variable,
+property/declaration, function, mixin, and mixin-ruleset plus
+`verify:binding-lookup-hot-paths`.
 
 ## Latest Binding Baseline
 

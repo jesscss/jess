@@ -103,42 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: generic rules lookup handle shape split.
-- Verdict: accepted as a binding handle-shape cut. `RulesLookupHandleShape`
-  now carries only common start/local/parent/terminal facts. Declaration
-  constraints are computed into a separate
-  `ReferenceRulesLookupDeclarationConstraints` object and passed only to
-  declaration-capable handle read/write paths. No speed claim.
-- New traversal: no new production traversal. The pass moves existing
-  declaration-constraint pointer/key comparisons out of the generic shape; it
-  does not add a new tree walk, parent walk, child scan, map/filter/sort, or
-  side-map lookup. The only review-flagged loop is the verifier's static token
-  scan that rejects declaration-constraint fields returning to
-  `RulesLookupHandleShape`.
+- Latest pass: strategy-owned rules lookup handle policy.
+- Verdict: accepted as a binding handle-policy cut. The old generic
+  `isRulesLookupHandleEligible(...)` and generic
+  `tryReadSourceStaticRulesLookupHandle(...)` helpers are deleted. Each
+  `ReferenceLookupStrategy` now owns its handle lookup type, handle key shape,
+  optional declaration-constraint policy, and source-static handle reader. No
+  speed claim.
+- New traversal: no new production traversal. This pass adds no tree walk,
+  parent walk, child scan, map/filter/sort, or side-map lookup. The only
+  review-flagged loops are verifier token scans that reject the deleted generic
+  helper names and require strategy-owned handle policy fields.
 - New node/materialization: no runtime nodes, wrappers, copied rules, inherited
-  metadata, frozen state, or production arrays were added.
+  metadata, frozen state, or production arrays were added. Review-flagged
+  `string[]` entries are existing handle key type annotations and the new
+  `SourceStaticRulesLookupHandleArgs` type shape, not materialized runtime
+  arrays or objects.
 - Render path: no render/stringification path changed.
-- Helper/API surface: the old private
-  `getRulesLookupHandleDeclarationConstraintShape(...)` helper was replaced
-  with `getRulesLookupHandleDeclarationConstraints(...)` so the name no longer
-  implies declaration fields belong to the generic shape. No public method was
-  added. `verify:binding-lookup-hot-paths` now guards that declaration
-  constraint fields do not return to `RulesLookupHandleShape`.
+- Helper/API surface: removes two private generic helpers and replaces them
+  with family-specific private source-static readers plus strategy fields. The
+  new helpers do not create public API; they assign the existing handle read
+  path by lookup family so function/callable reads do not evaluate declaration
+  constraint eligibility.
 - Metadata mutations: none.
-- Allocation changes: removes three optional declaration-constraint fields
-  from every generic handle shape object. Declaration-capable paths still use
-  one small constraints object that already reflects semantic handle freshness;
-  function/callable paths no longer carry those fields through the common
-  shape.
-- Evidence: focused reference handle tests prove source-static handle reuse,
-  declaration assignment constraints, declaration exclusions, two-slot
-  exclusion mutation, `bindOutput` invalidation, function handles ignoring
-  declaration-only options, callable handles ignoring declaration-only options,
-  and mixin-ruleset handles skipping public/broad lookup after cache write.
-  `verify:binding-lookup-hot-paths` and `@jesscss/core` build passed. Changed
-  baseline was retried; it still surfaces non-lookup render/serialization
-  family failures and then stalls, so it remains open in
-  `BINDING-LOOKUP-REMAINING.md` rather than counted as a pass.
+- Allocation changes: no new runtime allocation is introduced. Declaration
+  constraints are computed once for eligible declaration-capable writes; source
+  static hits still read through an uncached strategy and avoid rebuilding
+  `_lookupStrategy`.
+- Evidence: focused reference tests prove source-static handle reuse, cold
+  handle disqualification under searchScope/leaky contexts, reference strategy
+  cache type changes, terminal mixin-only invalidation, function/callable
+  ignored declaration options, and mixin-ruleset cached lookup reuse.
+  `verify:binding-lookup-hot-paths` passed with new guards for strategy-owned
+  handle policy.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   declaration fallback preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged

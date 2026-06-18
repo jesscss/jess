@@ -516,14 +516,29 @@ type PreparedReferenceLookup = {
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
 type ScopeFrameVariableBindingMode = 'full' | 'live-current';
+type SourceStaticRulesLookupHandleArgs = {
+  referenceNode: Reference;
+  targetRules: Rules | undefined;
+  valueKey: NormalizedLookupKey;
+  env: RulesLookupAdapterEnv;
+};
 type ReferenceLookupStrategy = {
   readonly lookupType: LookupType;
+  readonly handleLookupType?: RulesLookupHandleLookupType;
   readonly performRulesLookup: (
     scope: Rules,
     lookupContext: RulesReferenceLookupContext,
     shape: RulesLookupHandleShape
   ) => ReferenceLookupReturnValue;
   readonly writeHandle: (args: WriteRulesLookupHandleArgs) => void;
+  readonly getHandleValueKey: (valueKey: NormalizedLookupKey) => string | string[] | undefined;
+  readonly getHandleDeclarationConstraints?: (
+    referenceNode: Reference
+  ) => ReferenceRulesLookupDeclarationConstraints | undefined;
+  readonly requiresHandleDeclarationConstraints?: boolean;
+  readonly tryReadSourceStaticHandle: (
+    args: SourceStaticRulesLookupHandleArgs
+  ) => RulesLookupHandleReadResult;
 };
 
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
@@ -1089,10 +1104,6 @@ function performRulesReferenceLookup(
   return lookupContext.strategy.performRulesLookup(scope, lookupContext, shape);
 }
 
-function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is string | string[] {
-  return typeof valueKey === 'string' || Array.isArray(valueKey);
-}
-
 type RulesLookupHandleLookupType = 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
 
 function lookupTypeUsesDeclarationConstraints(
@@ -1152,45 +1163,55 @@ function hasHandleableDeclarationConstraints(referenceNode: Reference): boolean 
   );
 }
 
-function isRulesLookupHandleEligible(
+function getStringRulesLookupHandleValueKey(valueKey: NormalizedLookupKey): string | undefined {
+  return typeof valueKey === 'string' ? valueKey : undefined;
+}
+
+function getCallableRulesLookupHandleValueKey(valueKey: NormalizedLookupKey): string | string[] | undefined {
+  return typeof valueKey === 'string' || Array.isArray(valueKey) ? valueKey : undefined;
+}
+
+function getNoRulesLookupHandleValueKey(_valueKey: NormalizedLookupKey): undefined {
+  return undefined;
+}
+
+function getHandleableDeclarationConstraints(
   referenceNode: Reference,
-  lookupType: LookupType,
-  valueKey: NormalizedLookupKey,
+): ReferenceRulesLookupDeclarationConstraints | undefined {
+  return hasHandleableDeclarationConstraints(referenceNode)
+    ? getRulesLookupHandleDeclarationConstraints(referenceNode)
+    : undefined;
+}
+
+function rulesLookupHandleCommonEligible(
   target: ReferenceValue['target'],
   originalFilter: ReferenceOptions['filter'] | undefined,
   env: RulesLookupAdapterEnv,
   context: Context
-): valueKey is string | string[] {
-  const handleableKey = (
-    lookupType === 'declaration'
-    || lookupType === 'function'
-    || lookupType === 'property'
-    || lookupType === 'variable'
-  )
-    ? typeof valueKey === 'string'
-    : isHandleableLookupKey(valueKey);
+): boolean {
   return (
-    (
-      lookupType === 'declaration'
-      || lookupType === 'function'
-      || lookupType === 'mixin'
-      || lookupType === 'mixin-ruleset'
-      || lookupType === 'property'
-      || lookupType === 'variable'
-    )
-    && handleableKey
-    && target === undefined
+    target === undefined
     && originalFilter === undefined
     && !env.semanticFilter
-    && (
-      !lookupTypeUsesDeclarationConstraints(lookupType)
-      || hasHandleableDeclarationConstraints(referenceNode)
-    )
     && !env.hasTarget
     && !env.isInterpolatedVariable
     && context.leakyRules !== true
     && context.searchScope.size === 0
   );
+}
+
+function getStrategyRulesLookupHandleValueKey(args: {
+  strategy: ReferenceLookupStrategy;
+  valueKey: NormalizedLookupKey;
+  target: ReferenceValue['target'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  env: RulesLookupAdapterEnv;
+  context: Context;
+}): string | string[] | undefined {
+  if (!rulesLookupHandleCommonEligible(args.target, args.originalFilter, args.env, args.context)) {
+    return undefined;
+  }
+  return args.strategy.getHandleValueKey(args.valueKey);
 }
 
 type RulesLookupHandleShape = {
@@ -1401,24 +1422,21 @@ function readRulesLookupHandle(
   return readCurrentRulesLookupHandleValue(handle);
 }
 
-function tryReadSourceStaticRulesLookupHandle(args: {
-  referenceNode: Reference;
-  targetRules: Rules | undefined;
-  lookupType: LookupType;
-  valueKey: NormalizedLookupKey;
-  env: RulesLookupAdapterEnv;
-}): RulesLookupHandleReadResult {
+function readSourceStaticRulesLookupHandleBase(
+  args: SourceStaticRulesLookupHandleArgs,
+  lookupType: RulesLookupHandleLookupType,
+  valueKey: string | string[] | undefined
+): ReferenceRulesLookupHandle | undefined {
   const {
     referenceNode,
     targetRules,
-    lookupType,
-    valueKey,
     env
   } = args;
   const handle = referenceNode._rulesLookupHandle;
   if (
     !handle
     || !targetRules
+    || !valueKey
     || handle.start !== undefined
     || handle.local !== false
     || handle.ignoreParentScopeStart !== false
@@ -1431,50 +1449,100 @@ function tryReadSourceStaticRulesLookupHandle(args: {
     || env.isInterpolatedVariable
     || referenceNode.options.readMode !== undefined
     || referenceNode.options.resolution !== undefined
-    || typeof referenceNode.key !== 'string'
     || valueKey !== referenceNode.key
-  ) {
-    return undefined;
-  }
-  const handleableLookupType: RulesLookupHandleLookupType | undefined = (
-    lookupType === 'declaration'
-    || lookupType === 'function'
-    || lookupType === 'mixin'
-    || lookupType === 'mixin-ruleset'
-    || lookupType === 'property'
-    || lookupType === 'variable'
-  )
-    ? lookupType
-    : undefined;
-  if (
-    !handleableLookupType
-    || (
-      lookupTypeUsesDeclarationConstraints(handleableLookupType)
-      && !hasHandleableDeclarationConstraints(referenceNode)
-    )
   ) {
     return undefined;
   }
   if (
     handle.targetRules !== targetRules
-    || !isRulesLookupHandleVersionCurrent(handle, targetRules, handleableLookupType, valueKey)
-    || handle.lookupType !== handleableLookupType
+    || !isRulesLookupHandleVersionCurrent(handle, targetRules, lookupType, valueKey)
+    || handle.lookupType !== lookupType
     || handle.inCall !== env.inCall
     || handle.valueKey !== valueKey
   ) {
     return undefined;
   }
-  if (lookupTypeUsesDeclarationConstraints(handleableLookupType)) {
-    const declarationConstraints = getRulesLookupHandleDeclarationConstraints(referenceNode);
-    if (
-      handle.requiredDeclarationAssignmentsKey !== declarationConstraints.requiredDeclarationAssignmentsKey
-      || handle.excludedDeclaration0 !== declarationConstraints.excludedDeclaration0
-      || handle.excludedDeclaration1 !== declarationConstraints.excludedDeclaration1
-    ) {
-      return undefined;
-    }
+  return handle;
+}
+
+function tryReadSourceStaticDeclarationRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs,
+  lookupType: 'declaration' | 'property' | 'variable'
+): RulesLookupHandleReadResult {
+  const valueKey = getStringRulesLookupHandleValueKey(args.valueKey);
+  if (!hasHandleableDeclarationConstraints(args.referenceNode)) {
+    return undefined;
+  }
+  const handle = readSourceStaticRulesLookupHandleBase(args, lookupType, valueKey);
+  if (!handle) {
+    return undefined;
+  }
+  const declarationConstraints = getRulesLookupHandleDeclarationConstraints(args.referenceNode);
+  if (
+    handle.requiredDeclarationAssignmentsKey !== declarationConstraints.requiredDeclarationAssignmentsKey
+    || handle.excludedDeclaration0 !== declarationConstraints.excludedDeclaration0
+    || handle.excludedDeclaration1 !== declarationConstraints.excludedDeclaration1
+  ) {
+    return undefined;
   }
   return readCurrentRulesLookupHandleValue(handle);
+}
+
+function tryReadSourceStaticFunctionRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  const valueKey = getStringRulesLookupHandleValueKey(args.valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(args, 'function', valueKey);
+  if (!handle || handle.lookupType !== 'function') {
+    return undefined;
+  }
+  return readCurrentRulesLookupHandleValue(handle);
+}
+
+function tryReadSourceStaticMixinRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  const valueKey = getCallableRulesLookupHandleValueKey(args.valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(args, 'mixin', valueKey);
+  if (!handle || handle.lookupType !== 'mixin') {
+    return undefined;
+  }
+  return readCurrentRulesLookupHandleValue(handle);
+}
+
+function tryReadSourceStaticMixinRulesetRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  const valueKey = getCallableRulesLookupHandleValueKey(args.valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(args, 'mixin-ruleset', valueKey);
+  if (!handle || handle.lookupType !== 'mixin-ruleset') {
+    return undefined;
+  }
+  return readCurrentRulesLookupHandleValue(handle);
+}
+
+function tryReadNoSourceStaticRulesLookupHandle(
+  _args: SourceStaticRulesLookupHandleArgs
+): undefined {
+  return undefined;
+}
+
+function tryReadSourceStaticPropertyRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(args, 'property');
+}
+
+function tryReadSourceStaticVariableRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(args, 'variable');
+}
+
+function tryReadSourceStaticAnyDeclarationRulesLookupHandle(
+  args: SourceStaticRulesLookupHandleArgs
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(args, 'declaration');
 }
 
 function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
@@ -1625,37 +1693,63 @@ function clearRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
 const INDEX_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'index',
   performRulesLookup: performIndexRulesLookup,
-  writeHandle: clearRulesLookupHandle
+  writeHandle: clearRulesLookupHandle,
+  getHandleValueKey: getNoRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadNoSourceStaticRulesLookupHandle
 };
 const PROPERTY_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'property',
+  handleLookupType: 'property',
   performRulesLookup: performPropertyRulesLookup,
-  writeHandle: writeDeclarationRulesLookupHandle
+  writeHandle: writeDeclarationRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  requiresHandleDeclarationConstraints: true,
+  tryReadSourceStaticHandle: tryReadSourceStaticPropertyRulesLookupHandle
 };
 const VARIABLE_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'variable',
+  handleLookupType: 'variable',
   performRulesLookup: performVariableRulesLookup,
-  writeHandle: writeVariableRulesLookupHandle
+  writeHandle: writeVariableRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  requiresHandleDeclarationConstraints: true,
+  tryReadSourceStaticHandle: tryReadSourceStaticVariableRulesLookupHandle
 };
 const DECLARATION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'declaration',
+  handleLookupType: 'declaration',
   performRulesLookup: performDeclarationRulesLookup,
-  writeHandle: writeDeclarationRulesLookupHandle
+  writeHandle: writeDeclarationRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  requiresHandleDeclarationConstraints: true,
+  tryReadSourceStaticHandle: tryReadSourceStaticAnyDeclarationRulesLookupHandle
 };
 const FUNCTION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'function',
+  handleLookupType: 'function',
   performRulesLookup: performFunctionRulesLookup,
-  writeHandle: writeFunctionRulesLookupHandle
+  writeHandle: writeFunctionRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticFunctionRulesLookupHandle
 };
 const MIXIN_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'mixin',
+  handleLookupType: 'mixin',
   performRulesLookup: performMixinRulesLookup,
-  writeHandle: writeCallableRulesLookupHandle
+  writeHandle: writeCallableRulesLookupHandle,
+  getHandleValueKey: getCallableRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticMixinRulesLookupHandle
 };
 const MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'mixin-ruleset',
+  handleLookupType: 'mixin-ruleset',
   performRulesLookup: performMixinRulesetRulesLookup,
-  writeHandle: writeCallableRulesLookupHandle
+  writeHandle: writeCallableRulesLookupHandle,
+  getHandleValueKey: getCallableRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticMixinRulesetRulesLookupHandle
 };
 
 function getReferenceLookupStrategy(lookupType: LookupType): ReferenceLookupStrategy {
@@ -1712,6 +1806,7 @@ function lookupResolvedReference(args: {
     context
   } = args;
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
+  const uncachedStrategy = getReferenceLookupStrategy(lookupType);
   const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
@@ -1720,10 +1815,9 @@ function lookupResolvedReference(args: {
     originalFilter,
     context
   });
-  const sourceStaticHandleResult = tryReadSourceStaticRulesLookupHandle({
+  const sourceStaticHandleResult = uncachedStrategy.tryReadSourceStaticHandle({
     referenceNode,
     targetRules,
-    lookupType,
     valueKey,
     env
   });
@@ -1756,20 +1850,24 @@ function lookupResolvedReference(args: {
   let handleValueKey: string | string[] | undefined;
   if (targetRules) {
     handleShape = prepareRulesLookupShape(lookupContext, targetRules);
-    if (isRulesLookupHandleEligible(
-      referenceNode,
-      lookupType,
+    handleValueKey = getStrategyRulesLookupHandleValueKey({
+      strategy,
       valueKey,
       target,
       originalFilter,
       env,
       context
-    )) {
-      handleLookupType = lookupType;
-      handleValueKey = valueKey;
-      handleDeclarationConstraints = lookupTypeUsesDeclarationConstraints(handleLookupType)
-        ? lookupContext.preparedDeclarationConstraints
-        : undefined;
+    });
+    if (handleValueKey !== undefined && strategy.handleLookupType !== undefined) {
+      handleDeclarationConstraints = strategy.getHandleDeclarationConstraints?.(referenceNode);
+      if (
+        strategy.requiresHandleDeclarationConstraints !== true
+        || handleDeclarationConstraints !== undefined
+      ) {
+        handleLookupType = strategy.handleLookupType;
+      } else {
+        handleValueKey = undefined;
+      }
     }
     const handleResult = readRulesLookupHandle(
       referenceNode,
