@@ -147,6 +147,16 @@ with `--no-verify` after the explicit gates pass.
   `new CountingWriter()` and `try/finally` are focused `ruleset.test.ts`
   scaffolding for restoring swapped methods around detached-writer assertions.
   No binding lookup runtime path changed.
+- Merge-carried serialization review: latest `origin/dev` also carries the
+  Ruleset frame-header compare-key split in
+  `packages/core/src/tree/ruleset.ts` and
+  `packages/core/src/tree/util/serialize-helper.ts`.
+  Review-flagged `new OutputWriter()` boundaries are detached selector/header
+  comparison writers; `new CountingWriter()`, `try/finally`, and
+  `TypeError(...)` throws are focused `ruleset.test.ts` monkeypatch/restore
+  proof scaffolding. The flagged `composedSelectorStack: []` reset is semantic
+  print-state isolation for hoisted comparable headers, and `rules: rules([])`
+  is focused test fixture construction. No binding lookup runtime path changed.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint handle snapshot slimming and proof in
   `packages/core/src/tree/reference.ts` and related lookup helpers. It is

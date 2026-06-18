@@ -406,6 +406,21 @@ function renderHoistedParentHeader(
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
+function renderHoistedParentComparableHeader(
+  parent: { frame: Ruleset; selector: Selector },
+  options: FinalPrintOptions
+): string {
+  const writer = new OutputWriter();
+  parent.selector.writeSyntax({
+    ...options,
+    writer,
+    collapseNesting: false,
+    composedSelectorStack: []
+  });
+  writer.trimEndSince(0);
+  return writer.toString();
+}
+
 function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
   const w = options.writer;
   let inFrames = options.inFrames;
@@ -607,13 +622,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             (
               hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
             )
-              ? renderHoistedParentHeader(hoistedParent, options, i)
-              : currentFrame.getHeaderString(options, true),
+              ? renderHoistedParentComparableHeader(hoistedParent, options)
+              : isNode(currentFrame, N.Ruleset)
+                ? currentFrame.getComparableHeaderString(options)
+                : currentFrame.getHeaderString(options, true),
             (
               hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
             )
-              ? renderHoistedParentHeader(hoistedParent, options, i)
-              : priorFrame.getHeaderString(options, true)
+              ? renderHoistedParentComparableHeader(hoistedParent, options)
+              : isNode(priorFrame, N.Ruleset)
+                ? priorFrame.getComparableHeaderString(options)
+                : priorFrame.getHeaderString(options, true)
           ]);
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
