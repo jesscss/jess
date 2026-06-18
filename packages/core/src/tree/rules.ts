@@ -2973,22 +2973,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         closeRenderedFramesToBaseline();
         const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
         const childEmittedTrivia = options.emittedTrivia;
+        const childMark = w.mark();
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const childRule = w.preview(() => (
-          mode === 'render' && context
-            ? n.render(context, options)
-            : n.toTrimmedString(options)
-        ), true);
-        const finishChildRule = (resolvedChildRule: string): void => {
+        emitBoundaryIfNeeded(n);
+        const childRule = mode === 'render' && context
+          ? n._emitRenderRulesBody(options)
+          : n._emitSourceRulesBody(options);
+        const finishChildRule = (): void => {
           options.emittedTrivia = childEmittedTrivia;
           restorePrintState(options, childSaved);
-          if (!resolvedChildRule) {
+          if (!w.hasContentSince(childMark)) {
+            w.restore(childMark);
             return;
           }
-          const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-          emitCaptured(resolvedChildRule, n, prefix);
+          markEmitted(n);
         };
         return isThenable(childRule)
           ? childRule.then(finishChildRule)

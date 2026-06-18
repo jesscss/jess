@@ -103,37 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: control source syntax writer cut in
-  `packages/core/src/tree/control.ts`, with the required bare parameter
-  `VarDeclaration.writeSyntax(...)` support and stale Paren helper deletion.
-- Verdict: accepted as localized source/writeSyntax string-transport cleanup.
-  No speed claim.
-- New traversal: no new production traversal; existing If branch and For tuple
-  loops moved from public string wrappers into `writeSyntax(...)`. The
-  review-flagged loop is test-only monkeypatch setup for source-header
-  children.
-- New node/materialization: no production nodes. Review-flagged `new If`,
-  `new For`, `new While`, `new Nil`, and `rules([])` are focused test fixtures.
-- Render path: no render output path changed. `$if`, `$for`, and `$while`
-  source serialization now writes child syntax through `writeSyntax(...)`;
-  runtime render/eval paths are untouched.
-- Helper/API surface: added `writeControlChildSyntax(...)` to replace the old
-  per-call range-bound closure and added private
-  `VarDeclaration.writeBareParameterSyntax(...)` so public wrappers and
-  control patterns share the same direct writer path.
-- Metadata mutations: no node metadata changes. `writeControlChildSyntax(...)`
-  temporarily saves/restores `suppressBoundaryTrivia`, preserving the old
-  range-bound closure behavior; the review-flagged `try` is that restoration,
-  not routine error control.
-- Allocation changes: removes the `$for` range-bound closure allocation and
-  deletes Paren's dead pre-writer child `toString(...)` helper. The remaining
-  public wrapper mark/readback boundaries are cold public string APIs.
-- Rejected/observed in this pass: control loop state/body surfaces and async
-  branch audit remain open; Paren's shared escaped-list string boundary remains
-  tied to `renderListValueSyntax(...)`. The review-flagged array-helper hit is
-  tracker-row wording, not production code.
-- Evidence: focused `control.test.ts`, `paren.test.ts`, and
-  `var-declaration.test.ts`, targeted ESLint, `git diff --check`, and
+- Latest pass: child `Rules` wrapper preview-transport cut in
+  `packages/core/src/tree/rules.ts`.
+- Verdict: accepted as localized source/render direct-emission cleanup. No
+  speed claim.
+- New traversal: none in production. Existing child-body loops still live in
+  `_emitSourceRulesBody(...)` / `_emitRenderRulesBody(...)`; the cut deletes
+  preview/public-string transport around them rather than adding scans.
+- New node/materialization: no production nodes or wrapper materialization.
+  The review-flagged `new WholeBufferCountingWriter()` and test-only thrown
+  errors live only in focused source/render fixtures for child `Rules`
+  wrappers.
+- Render path: child `Rules` wrappers now emit `_emitSourceRulesBody(...)` and
+  `_emitRenderRulesBody(...)` directly into the active writer instead of
+  previewing public `toTrimmedString(...)` or public `render(...)` output and
+  replaying the returned string.
+- Helper/API surface: none.
+- Metadata mutations: none beyond the existing save/restore of print-state
+  fields already required around child wrapper emission.
+- Allocation changes: deletes `writer.preview(...)` transport and the returned
+  child wrapper strings on both source and render paths. Remaining public
+  string-return boundaries stay on root/container/leaf paths not touched here.
+- Rejected/observed in this pass: broader Rules body render, container
+  indentation capture, placement state, merge output, duplicate declaration
+  materialization, and remaining root serializer capture stay open in the
+  Rules row.
+- Evidence: focused `rules.test.ts` slices for child wrappers, root charset
+  imports, render-local flags, and unprepared rules plus targeted ESLint,
+  `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
 - Merge-carried binding review: latest `origin/dev` also carries binding/lookup

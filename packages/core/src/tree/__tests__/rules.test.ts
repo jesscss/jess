@@ -605,6 +605,37 @@ describe('Rules', () => {
     expect(charsetSawActiveWriter).toBe(true);
   });
 
+  it('streams child Rules wrappers without previewing public source strings', () => {
+    const writer = new WholeBufferCountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    childRules.toTrimmedString = () => {
+      throw new Error('Child Rules source serializer should emit its body directly');
+    };
+    const node = rules([
+      childRules
+    ]);
+
+    expect(node.toString({ writer })).toBe('color: red;\n');
+  });
+
+  it('streams child Rules wrappers without previewing public render output', async () => {
+    const writer = new WholeBufferCountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    childRules.render = () => {
+      throw new Error('Child Rules render serializer should emit its body directly');
+    };
+    const node = rules([
+      childRules
+    ]);
+
+    await expect(Promise.resolve(node.render(context, { writer }))).resolves.toBe('color: red;\n');
+    expect(writer.toString()).toBe('color: red;');
+  });
+
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
     const root = rules([
       ruleset({
