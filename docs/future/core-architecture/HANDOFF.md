@@ -132,6 +132,17 @@ with `--no-verify` after the explicit gates pass.
   `git diff --check`,
   `pnpm run verify:aggressive-cutting-review`, and
   `pnpm --filter @jesscss/core build` passed.
+- Merge-carried binding review: latest `origin/dev` also carries generic rules
+  lookup handle shape split in `packages/core/src/tree/reference.ts` and the
+  binding verifier script. It is binding handle-shape only:
+  `RulesLookupHandleShape` now keeps only common start/local/parent/terminal
+  facts, while declaration-specific freshness data is carried through a
+  separate `ReferenceRulesLookupDeclarationConstraints` object only on
+  declaration-capable read/write paths. No render/stringification path
+  changed, no runtime node materialization was added, and
+  `verify:binding-lookup-hot-paths` now guards that declaration-constraint
+  fields do not flow back into the generic shape. Detailed status remains in
+  `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint handle snapshot slimming and proof in
   `packages/core/src/tree/reference.ts` and related lookup helpers. It is
