@@ -222,7 +222,7 @@ export class QueryCondition extends Sequence {
       try {
         const rendered = node.render(context, options);
         if (isThenable(rendered)) {
-          const before = w.mark();
+          const before = w.position();
           return rendered.then(
             (out) => {
               if (!w.hasContentSince(before)) {
@@ -245,7 +245,7 @@ export class QueryCondition extends Sequence {
       }
     }
 
-    const before = w.mark();
+    const before = w.position();
     let asyncOut = false;
     try {
       const out = node.render(context, options);

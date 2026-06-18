@@ -210,7 +210,7 @@ describe('QueryCondition', () => {
 
     expect(queryNode.render(context, { writer })).toBe('3 and (color)');
     expect(writer.toString()).toBe('3 and (color)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
   });
 
   it('renders resolved query-condition values through render(context)', async () => {
@@ -345,7 +345,7 @@ describe('QueryCondition', () => {
 
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
     expect(writer.toString()).toBe('print and (color)');
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
   });
 
   it('resolves query-condition values without touching render state', async () => {
@@ -557,7 +557,7 @@ describe('QueryCondition', () => {
 
     expect(rendered).toBe('screen and custom');
     expect(writer.toString()).toBe(rendered);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(1);
     expect(writer.captures).toBe(0);
@@ -575,7 +575,7 @@ describe('QueryCondition', () => {
 
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(1);
     expect(writer.captures).toBe(0);

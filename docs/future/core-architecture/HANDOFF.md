@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` dynamic probe mark demotion.
+- Verdict: accepted as a localized render-probe cut. Dynamic
+  `QueryCondition` child probing now snapshots plain writer positions instead of
+  opening real `mark()` boundaries just to detect whether a child wrote, while
+  preserving the fallback `getSince(...)` readback when custom children emit
+  different text than they return. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: sync/async dynamic child probes still use `hasContentSince(...)`
+  and fallback `getSince(...)` where needed, but they no longer allocate mark
+  count on ordinary exact/dynamic paths.
+- Helper/API surface: no new helper.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deletes probe-only mark usage on dynamic child render
+  paths; covered custom return-only / custom-write fallback behavior is
+  preserved.
+- Rejected/observed in this pass: custom static fallback still keeps its
+  explicit mark/readback path, and this pass does not change the broader custom
+  render semantics.
+- Evidence: focused `query-condition.test.ts` coverage now proves sync and
+  async dynamic query renders no longer increment `writer.marks`, while custom
+  dynamic return-only and custom dynamic write-different-text cases still keep
+  their `hasContentSince(...)` / `getSince(...)` semantics and the custom
+  static paren fallback remains unchanged. Full commit-boundary gates still
+  need to run after this handoff update.
 - Latest pass: `QueryCondition` exact static render return carry.
 - Verdict: accepted as a localized render-return cut. Covered static query
   conditions now return their own exact text directly instead of reading whole
