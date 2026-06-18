@@ -1582,9 +1582,9 @@ export class Call extends Node<CallValue, CallOptions> {
         }
       }
     }
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   /** @internal */

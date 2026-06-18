@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` outer source-capture readback split.
+- Verdict: accepted as a bounded `Call` serializer cut. Public call source
+  capture no longer wraps `writeSyntax(...)` in an outer whole-call
+  `mark()/getSince()` readback window once the exact-text fast path falls
+  cold; it now recovers the local call text from the active writer tail while
+  preserving the existing direct child-writer contract. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in the
+  existing node-local helper `getWriterTextSincePosition(...)` inside
+  `packages/core/src/tree/call.ts`. This replaces the outer whole-call capture
+  window; it does not add a new scan over unrelated call state.
+- Review-flagged allocations: no production node allocations. Focused proof
+  adds one `WholeBufferCountingWriter` in `call.test.ts` to confirm the outer
+  whole-call readback is gone.
+- New node/materialization: none.
+- Render path: call render behavior is unchanged. The pass changes only public
+  source capture and does not materialize fallback `Call` nodes, arg lists, or
+  content nodes to recover text.
+- Helper/API surface: no new helper surface. The pass reuses the existing
+  node-local active-writer tail reader already present in
+  `packages/core/src/tree/call.ts`.
+- Metadata mutations: no new metadata mutation. The existing boxed
+  `Reflect.get(writer, 'chunks')` stays where it already was; this pass does
+  not add a new generic writer probe.
+- Routine error control: none added.
+- Allocation changes: deletes the outer whole-call `mark()/getSince()`
+  capture from `Call.toTrimmedString(...)`.
+- Evidence: focused `call.test.ts` cases for direct child-writer source
+  syntax and custom call source syntax without outer whole-call readback both
+  passed, and full `call.test.ts` passed.
+
 - Latest pass: `Rules` outer source-capture readback split.
 - Verdict: accepted as a bounded `Rules` serializer cut. Public `Rules`
   source capture no longer wraps `writeSyntax(...)` in an outer

@@ -40,6 +40,19 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  readbacks = 0;
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
@@ -301,6 +314,18 @@ describe('Call', () => {
     }, { markImportant: true });
 
     expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
+  });
+
+  it('serializes custom call source syntax without outer whole-call readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const rule = call({
+      name: ref('rgb', { fallbackValue: true }),
+      args: list([num(100), num(100), num(100)]),
+      contentNode: any('raw body')
+    }, { markImportant: true });
+
+    expect(rule.toTrimmedString({ writer })).toBe('$rgb?(100, 100, 100) !important: raw body');
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('serializes exact call source syntax without falling through writeSyntax', () => {
