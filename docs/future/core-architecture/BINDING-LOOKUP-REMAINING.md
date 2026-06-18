@@ -110,9 +110,17 @@ No-prefix reference-import namespace-start misses use those states to skip both
 broad start-key `findMixinsFast(...)` and generated nested array fallback.
 Focused synthetic and real import tests cover namespaced reference-import
 rulesets, selector-list imported rulesets, and misses staying off direct crawl.
-Keep this open for `findMixinNamespacePathFast(...)` unsupported returns,
-prefix-heavy ruleset namespace cases, and any imported namespace positive/miss
-shape not covered by the current reference-import fixtures.
+Initial direct child-entry collection now carries the same exact callable/
+ruleset aggregate flags as late registration, so prefix lookup does not skip
+reference-import child ruleset surfaces. Prefix ownership now recognizes
+prefixes found inside the child entry itself, not only one-segment parent-owned
+prefixes. Focused compound reference-import prefix hit/miss tests prove
+`#imported .branch -> .leaf` paths avoid both root start-key
+`findMixinsFast(...)` and generated nested array fallback. Keep this open for
+`findMixinNamespacePathFast(...)` unsupported returns, selector-list namespace
+prefixes, terminal mixin-only imported namespace cases, and any imported
+namespace positive/miss shape not covered by the current reference-import
+fixtures.
 
 6. [ ] Extend stable namespace no-fallback proof to imported namespace
 surfaces. Scope: namespace path offsets, reference imports, terminal
@@ -925,6 +933,25 @@ records clone retention or deletion. Current evidence: clone deleted.
 late registration updates the current binding explicitly after pushing, and
 new names after frame creation still allocate their frame bucket. Focused
 source-order, pending-dynamic, setDefined, and scope-frame tests are green.
+
+59. [ ] Prove selector-list reference-import namespace prefixes use the same
+carried prefix ownership as compound prefixes. Scope:
+`findVisibleCallableRulesetPrefixMatches(...)`, `prefixOwnsChildRules(...)`,
+selector-list imported rulesets, and hit/miss spies for broad
+`findMixinsFast(...)` plus nested array fallback. Goal: selector-list
+reference-import namespace positives and misses stay on carried prefix facts
+without reopening generated fallback. Acceptance: focused selector-list
+reference-import prefix hit/miss tests and adjacent callable namespace slices
+stay green.
+
+60. [ ] Audit initial-vs-late callable child aggregate parity after carrying
+exact child flags during `collectDirectChildRulesEntries(...)`. Scope:
+`collectDirectChildRulesEntries(...)`, `addDirectChildRuleEntry(...)`,
+`registerNode(...)`, StyleImport/reference children, mixin-output children, and
+frame miss coverage bits. Goal: ensure initial collection and late registration
+set the same aggregate facts without broad child rediscovery. Acceptance:
+focused tests prove initial and late exact mixin/ruleset/reference child
+surfaces expose identical aggregate flags and miss coverage behavior.
 
 ## Latest Binding Baseline
 

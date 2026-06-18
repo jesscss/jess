@@ -103,76 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass moving static variable binding-cell
-  ownership into registration/indexing, sharing that constructor with dynamic
-  declaration-name promotion, and rejecting assignment-map entry-shape churn.
-- Verdict: accepted as an allocation cleanup on the registryless
-  assignment-target path. `RulesEntryLike` now carries canonical
-  `assignmentBindingsByName` plus an `assignmentReadonlyByName` overlay when an
-  import/child edge adds readonly semantics without changing the source cell.
-  `ScopeFrame` carries the same overlay for assignment-target hits, and
-  `lookupScopeFrameVariable(...)` reports readonly on the resolved hit. Public
-  assignment cells still win over uncovered surfaces; optional-only and dynamic
-  public child targets stay uncovered so `setDefined` can use the existing
-  direct fallback. `Rules.varsByName` now stores `BindingEntry` records instead
-  of bare `VarDeclaration`s, so static registration/indexing owns the canonical
-  cell before frame construction. Assignment maps keep the simpler
-  `BindingCell` value shape and reuse those cells instead of switching to
-  `BindingEntry` values. Dynamic declaration-name promotion now uses the same
-  `createVarDeclarationBindingEntry(...)` primitive. No speed claim.
-- New traversal: no new ordinary lookup traversal was added. Static
-  assignment-target collection now iterates `varsByName` binding entries rather
-  than rescanning `Rules.value`, so the existing static registration index
-  feeds both frame buckets and assignment targets. `buildScopeFrame(...)` now
-  reuses the `varsByName` entry arrays directly instead of cloning them; late
-  registration still updates the current binding explicitly after appending.
-- Review-flagged allocations: the previous cloned readonly assignment map was
-  deleted. Production still lazily allocates `assignmentBindingsByName` only
-  for `ScopeFrame`s that have modeled public child/import variable assignment
-  facts, and may allocate `assignmentReadonlyByName` Sets when an edge carries
-  readonly semantics not already present on the canonical cell. The per-name
-  overlay is retained because a child-entry target can mix writable own
-  assignment targets with readonly child-edge targets. `varsByName` now
-  allocates `BindingEntry` cells as semantic binding state during static
-  declaration indexing; assignment targets reuse those cells. Focused tests
-  prove ordinary current reads do not see assignment-only cells,
-  writable/readonly imported assignments do not crawl parent/imported/child
-  `Rules.value`, duplicate public assignment targets use the later target, late
-  static child registration does not rebuild child `Rules.value`,
-  current-binding shadows avoid frame assignment map allocation, later child
-  assignment targets keep winning when an earlier child registers late,
-  assignment target cells are identical to the child current-binding cells, and
-  readonly assignment rejects before RHS eval. The test-only `adopt(...)` calls
-  create late-registration fixtures; the thrown errors and `try/finally` blocks
-  are test-only crawl guards.
+- Latest pass: binding implementation pass carrying initial callable child
+  aggregate flags and closing a reference-import compound-prefix namespace
+  fallback.
+- Verdict: accepted as a registryless callable lookup correction. Initial
+  `collectDirectChildRulesEntries(...)` now carries the same exact callable,
+  mixin, and ruleset child-surface aggregate facts that late
+  `addDirectChildRuleEntry(...)` already carried. That lets prefix lookup trust
+  existing child-entry facts instead of falling through to broad start-key
+  callable search. `prefixOwnsChildRules(...)` now recognizes prefix matches
+  found inside the child entry itself, so reference-import compound ruleset
+  prefixes can prove namespace uncertainty is limited to that prefix path. No
+  speed claim.
+- New traversal: no new ordinary lookup traversal was added. The existing
+  child-entry collection loop writes aggregate booleans while it already has
+  per-entry `hasExact*Surface` facts. The existing prefix-match loop performs
+  one extra source comparison against the child-entry scope before deciding
+  whether to reopen broad mixin namespace search.
+- Review-flagged allocations: no new runtime arrays, nodes, wrapper `Rules`, or
+  side maps. The tests add spy arrays only. Production reuses the existing
+  `prefixMatches` array and child-entry records.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production arrays were added. The
-  `RulesEntryLike` object literals are the existing child-entry records, now
-  assigned to locals so assignment target accumulators can write into them
-  directly before pushing.
+  inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no public Jess API was added. Internal child-entry
-  summary fields now carry assignment target facts, and the frame coverage bit
-  was widened from optional-only to uncovered assignment target surfaces.
+- Helper/API surface: no public Jess API was added. No helper was added; the
+  existing `prefixOwnsChildRules(...)` predicate was narrowed to the carried
+  child-entry prefix fact it already models.
 - Metadata mutations: none.
-- Allocation changes: no new runtime nodes or public materialization. The
-  cloned readonly map allocation and temporary assignment summary object are
-  gone; readonly assignment semantics still ride a sparse per-name overlay Set.
-  Static `BindingCell` creation moved to `varsByName` `BindingEntry`
-  construction, so assignment targets no longer create parallel cells for known
-  static declarations. Late static registration now reuses that same entry for
-  an already-built `ScopeFrame` bucket instead of creating a second cell.
-  Assignment maps still allocate lazily when consulted, and
-  `buildScopeFrame(...)` no longer clones entry arrays. Ordinary reads still do
-  not consult assignment cells.
-- Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
-  child-surface property hits and reference-import selector-list/nested
-  property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices
-  prove carried child-entry reuse and same-parent later-child misses stay
-  green. Existing focused `mixin.test.ts` slices cover simple callable child
-  scan skips. Full `mixin.test.ts` remains outside the clean gate for this
-  branch; keep using focused slices until the known complex compound-selector
-  failures are separated.
+- Allocation changes: no new runtime nodes or public materialization. Initial
+  aggregate flag writes reuse booleans already computed for each child entry.
+  Prefix ownership checks use existing source identity comparisons.
+- Evidence: a focused red/green `mixin.test.ts` slice proves reference-import
+  compound prefix hits and misses avoid both root start-key
+  `findMixinsFast(...)` and generated nested array fallback. Adjacent callable
+  bucket slices for reference imports, static misses, terminal mixin-only,
+  fallback/retry frames, recursive namespaces, and stable namespace fixtures
+  stayed green. No performance measurement was run.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

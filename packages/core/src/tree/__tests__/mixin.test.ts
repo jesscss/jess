@@ -3148,6 +3148,109 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: reference-import compound prefix hit skips generated array fallback', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const importedLeaf = mixin({
+        name: any('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const referenceChild = rules([
+        ruleset({
+          selector: compound([el('#imported'), el('.branch')]),
+          rules: rules([importedLeaf])
+        })
+      ], { referenceMode: true });
+      const root = rules([referenceChild]);
+      const broadFastStarts: string[] = [];
+      let nestedArrayFallbacks = 0;
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && key === '#imported') {
+          broadFastStarts.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        expect(root.findMixin(['#imported', '.branch', '.leaf'], undefined, {
+          searchParents: false
+        })).toEqual([importedLeaf]);
+        expect(broadFastStarts).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ScopeFrame callable buckets: reference-import compound prefix miss skips generated array fallback', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const referenceChild = rules([
+        ruleset({
+          selector: compound([el('#imported'), el('.branch')]),
+          rules: rules([
+            mixin({
+              name: any('.other-leaf'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        })
+      ], { referenceMode: true });
+      const root = rules([referenceChild]);
+      const broadFastStarts: string[] = [];
+      let nestedArrayFallbacks = 0;
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && key === '#imported') {
+          broadFastStarts.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayFallbacks++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        referenceChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true,
+          hasExactRulesetSurface: true
+        });
+
+        expect(root.findMixin(['#imported', '.branch', '.missing-leaf'], undefined, {
+          searchParents: false
+        })).toBeUndefined();
+        expect(broadFastStarts).toEqual([]);
+        expect(nestedArrayFallbacks).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

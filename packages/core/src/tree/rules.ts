@@ -1603,6 +1603,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const hasExactMixinSurface = hasExactCallableSurface && rulesMayContainExactMixinSurface(child);
       const hasExactRulesetSurface = hasExactCallableSurface && rulesMayContainExactRulesetSurface(child);
+      if (hasExactCallableSurface) {
+        this.hasExactCallableChildSurface = true;
+        if (hasExactMixinSurface) {
+          this.hasExactMixinChildSurface = true;
+        }
+        if (hasExactRulesetSurface) {
+          this.hasExactRulesetChildSurface = true;
+        }
+      }
       (out ??= []).push({
         node: child,
         rulesVisibility: this.getDirectChildRulesVisibility(child),
@@ -2232,13 +2241,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     segment: string,
     prefixMatches: CallableRulesetPrefixMatch[]
   ): boolean {
+    const entrySource = sourceRulesOf(entryRules);
     for (let i = 0; i < prefixMatches.length; i++) {
       const { ruleset, consumed, scope: matchScope } = prefixMatches[i]!;
+      const matchSource = sourceRulesOf(matchScope);
+      if (
+        consumed.length > 0
+        && consumed[0] === segment
+        && (matchScope === entryRules || matchSource === entrySource)
+      ) {
+        return true;
+      }
       if (
         consumed.length === 1
         && consumed[0] === segment
-        && sourceRulesOf(ruleset.rules) === sourceRulesOf(entryRules)
-        && (matchScope === scope || sourceRulesOf(matchScope) === sourceRulesOf(scope))
+        && sourceRulesOf(ruleset.rules) === entrySource
+        && (matchScope === scope || matchSource === sourceRulesOf(scope))
       ) {
         return true;
       }
