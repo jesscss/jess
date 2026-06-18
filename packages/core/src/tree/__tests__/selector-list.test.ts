@@ -92,6 +92,29 @@ describe('Selector list', () => {
       })).toBe('.added');
     });
 
+    test('serializes selector-list source syntax through writeSyntax ownership', () => {
+      const originalWriteSyntax = SelectorList.prototype.writeSyntax;
+      let writeSyntaxCalls = 0;
+      SelectorList.prototype.writeSyntax = function countWriteSyntax(
+        this: SelectorList,
+        ...args: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        writeSyntaxCalls++;
+        return originalWriteSyntax.apply(this, args);
+      };
+      const node = sellist([
+        el('.foo'),
+        el('.bar')
+      ]);
+
+      try {
+        expect(node.toTrimmedString()).toBe('.foo,\n.bar');
+        expect(writeSyntaxCalls).toBe(1);
+      } finally {
+        SelectorList.prototype.writeSyntax = originalWriteSyntax;
+      }
+    });
+
     /** @todo - add test for non-equality */
     test('basic list equality', () => {
       /** a b, a c */

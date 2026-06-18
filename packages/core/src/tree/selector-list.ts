@@ -61,7 +61,7 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.selectors): this {
+  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.selectors): SelectorList {
     const ownedValue = new Array<Selector>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
@@ -72,7 +72,7 @@ export class SelectorList extends Selector<Selector[]> {
       ownedValue,
       this._options ? { ...this._options } : undefined,
       this.location
-    ).inherit(this) as this;
+    ).inherit(this);
   }
 
   private isSourceSelector(item: Selector, sourceValue: readonly Selector[]): boolean {
@@ -84,7 +84,7 @@ export class SelectorList extends Selector<Selector[]> {
     return false;
   }
 
-  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): SelectorList {
     return this.withSelectors(value, sourceValue);
   }
 
@@ -171,17 +171,6 @@ export class SelectorList extends Selector<Selector[]> {
     }
   }
 
-  private renderSelectorListSyntax(options?: PrintOptions): string {
-    if (this.selectors.length === 0) {
-      return '';
-    }
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const mark = w.mark();
-    this.writeSyntax(printOptions);
-    return w.getSince(mark);
-  }
-
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -204,7 +193,14 @@ export class SelectorList extends Selector<Selector[]> {
 
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderSelectorListSyntax(options);
+    if (this.selectors.length === 0) {
+      return '';
+    }
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
+    return w.getSince(mark);
   }
 
   override valueOf() {
