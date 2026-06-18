@@ -196,18 +196,21 @@ export class QueryCondition extends Sequence {
       return w.getSince(mark);
     }
 
+    let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
       const rendered = this.renderQueryConditionChild(value[i]!, options, context);
       if (isThenable(rendered)) {
         return (rendered as Promise<string | void>)
-          .then(() => this.renderQueryConditionRest(value, options, context, i + 1));
+          .then((text) => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
       }
+      out += rendered ?? '';
     }
 
-    return w.toString();
+    return out;
   }
 
   private renderQueryConditionChild(
@@ -285,17 +288,19 @@ export class QueryCondition extends Sequence {
     value: Node[],
     options: FinalPrintOptions,
     context: Context,
-    start: number
+    start: number,
+    out: string
   ): Promise<string> {
     const w = options.writer;
     const length = value.length;
     for (let i = start; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
-      await this.renderQueryConditionChild(value[i]!, options, context);
+      out += (await this.renderQueryConditionChild(value[i]!, options, context)) ?? '';
     }
-    return w.toString();
+    return out;
   }
 
   /** @internal */

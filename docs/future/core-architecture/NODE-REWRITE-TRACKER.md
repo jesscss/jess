@@ -216,8 +216,10 @@ when choosing among unfinished serialization rows. Hot unfinished rows include
   writer-mark fallback for instance-owned/custom render overrides until child
   render contracts are fully direct; custom `Paren` subclasses stay on the
   static fallback readback path. The dynamic render loop no longer allocates a
-  per-call child-render closure or nested async rest function, and the dead
-  post-static render branch check is gone.
+  per-call child-render closure or nested async rest function, the dead
+  post-static render branch check is gone, and covered dynamic query returns
+  now carry local text through the sync/async loop instead of returning the
+  whole current writer or shared-buffer contents via `toString()`.
 - [x] `Operation`: direct `writeSyntax(...)` operand/operator writer; source
   and render operands avoid public string transport.
 - [x] `Paren`: direct wrapper writer, child syntax transport, list path, and

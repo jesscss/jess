@@ -213,6 +213,20 @@ describe('QueryCondition', () => {
     expect(writer.marks).toBe(0);
   });
 
+  it('renders dynamic query conditions without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const queryNode = query([
+      op([num(1), '+', num(2)]),
+      any('and'),
+      any('(color)')
+    ]);
+
+    expect(queryNode.render(context, { writer })).toBe('3 and (color)');
+    expect(writer.toString()).toBe('prefix|3 and (color)');
+    expect(writer.marks).toBe(0);
+  });
+
   it('renders resolved query-condition values through render(context)', async () => {
     const root = rules([
       vardecl({
@@ -346,6 +360,25 @@ describe('QueryCondition', () => {
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
     expect(writer.toString()).toBe('print and (color)');
     expect(writer.marks).toBe(0);
+  });
+
+  it('renders async query conditions without returning prefixed writer contents', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const asyncItem = any('screen');
+    asyncItem.render = async () => 'print';
+    const queryNode = query([
+      asyncItem,
+      any('and'),
+      any('(color)')
+    ]);
+    queryNode.addFlag(F_MAY_ASYNC);
+    queryNode.removeFlag(F_STATIC);
+
+    await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
+    expect(writer.toString()).toBe('prefix|print and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves query-condition values without touching render state', async () => {

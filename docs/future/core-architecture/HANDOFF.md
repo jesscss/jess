@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `QueryCondition` dynamic render return-text carry.
+- Verdict: accepted as a localized render-return cut. Covered dynamic
+  `QueryCondition` renders now carry their local query text through the sync
+  loop and async rest path instead of returning the whole current writer or
+  shared-buffer contents via `toString()`, which fixes prefixed-writer return
+  contamination on the dynamic path while preserving direct child writing and
+  existing custom fallback behavior. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: sync/async dynamic query rendering still writes directly into
+  the active writer, but the returned string is now assembled from the local
+  child results instead of reading back the entire writer/buffer state after
+  the loop completes.
+- Helper/API surface: no new helper. This pass only threads the already-local
+  `out` string through the existing async rest method.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: adds one local string accumulator on the covered dynamic
+  path and deletes the dependency on whole-writer / whole-buffer readback for
+  dynamic return values.
+- Rejected/observed in this pass: instance-owned/custom dynamic children still
+  keep their existing `hasContentSince(...)` / `getSince(...)` fallback inside
+  `renderQueryConditionChild(...)`; this cut only removes the outer
+  `w.toString()` return dependency.
+- Evidence: focused `query-condition.test.ts` coverage now proves both sync and
+  async dynamic query renders return `3 and (color)` / `print and (color)`
+  even when the provided writer already contains `prefix|`, while the existing
+  zero-mark static-sibling proof and custom dynamic fallback tests remain
+  green. The built-in sync dynamic child path still keeps its localized child
+  readback where a child writes before returning; this pass only removes the
+  outer whole-writer return dependency. Full commit-boundary gates still need
+  to run after this handoff update.
 - Latest pass: `QueryCondition` dynamic probe mark demotion.
 - Verdict: accepted as a localized render-probe cut. Dynamic
   `QueryCondition` child probing now snapshots plain writer positions instead of
