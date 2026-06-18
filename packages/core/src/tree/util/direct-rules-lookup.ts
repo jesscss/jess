@@ -332,11 +332,27 @@ function getDeclarationParentSearchStep(
     if (cursor && ignoreParentScopeStart) {
       start = undefined;
     } else if (cursor && preserveLinearStart) {
-      start = containingNode?.index ?? start;
+      start = getContainingNodeStart(containingNode) ?? start;
     }
   } while (cursor && !isNode(cursor, N.Rules));
 
   return { rules: isNode(cursor, N.Rules) ? cursor : undefined, start };
+}
+
+function getContainingNodeStart(node: Node | undefined): number | undefined {
+  let cursor = node;
+  while (cursor) {
+    if (cursor.index !== undefined) {
+      return cursor.index;
+    }
+    const parent = cursor.parent;
+    if (isNode(parent, N.Rules)) {
+      const index = parent.rules.indexOf(cursor);
+      return index === -1 ? undefined : index;
+    }
+    cursor = parent;
+  }
+  return undefined;
 }
 
 function mergeMatch(
@@ -640,7 +656,7 @@ function findWithinScopeSurface(
       countDirectLookup?.('declaration.childEntryLocalSkip');
       continue;
     }
-    if (childStart !== undefined && !(entry.node.index !== undefined && entry.node.index < childStart)) {
+    if (childStart !== undefined && !((getContainingNodeStart(entry.node) ?? Infinity) < childStart)) {
       countDirectLookup?.('declaration.childEntryStartSkip');
       continue;
     }
@@ -651,8 +667,8 @@ function findWithinScopeSurface(
       key,
       strategy,
       options,
-      start,
-      childStart,
+      undefined,
+      undefined,
       local || Boolean(entry.node.options.local),
       state.readonly || Boolean(entry.readonly),
       firstVisitedRules,

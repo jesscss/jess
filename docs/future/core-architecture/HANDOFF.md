@@ -103,37 +103,37 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof pass for callable reference-import namespace
-  descendant hits plus declaration/import no-bridge misses.
-- Verdict: accepted as proof-only binding coverage. Callable namespace
-  reference-import modeled positives now have a focused spy test proving they
-  return the child-frame hit without nested `findMixin(...)` or broad
-  `findMixinsFast(...)` fallback. The real reference-import hit/miss fixture
-  now also proves rendered property misses with fallback avoid the public
-  declaration bridge. A broader declaration-value `rulesContext` runtime cut
-  was tested and rejected for this pass because rendered imported property hits
-  still fail with `'fromRefProp' is not defined`; that remains an unresolved
-  context/visibility semantics gap, not completed no-fallback proof. No speed
-  claim.
-- New traversal: no new production tree traversal. Added tests exercise
-  existing direct child-frame lookup, existing direct declaration occurrence
-  lookup, and existing bridge spies only. Review-flagged `broadFastHits` array
-  allocation is test-only spy state for proving no broad callable crawl.
+- Latest pass: binding declaration/import source-order proof for rendered
+  reference-import property hits.
+- Verdict: accepted as a declaration lookup correctness/no-bridge fix. The
+  previously failing rendered `fromRefProp` hit now resolves through direct
+  child-entry declaration lookup, and the fixture spies prove rendered
+  variable/property hits and misses avoid public `Rules.find(...)`. A broader
+  `reference.ts` runtime-target preference helper was tested and rejected
+  because the leaner direct lookup start fix passes without it. No speed claim.
+- New traversal: one private containing-node start walk was added in
+  `direct-rules-lookup.ts`. It only runs when preserving a linear source-order
+  start across parent/child lookup surfaces or checking child-entry start
+  order, and it replaces a false miss caused by wrapper nodes without `index`.
+  The child-entry recursion no longer reuses the later parent `start` after an
+  earlier child entry has already passed the parent-level gate, so it avoids
+  reopening fallback bridges for that case. Review-flagged test spy arrays are
+  proof scaffolding only.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no public API or helper was added.
+- Helper/API surface: added one private helper,
+  `getContainingNodeStart(...)`, and rejected and removed the broader
+  `reference.ts` target-preference helper surface before commit. No public API
+  was added.
 - Metadata mutations: none.
 - Allocation changes: no production allocation changes.
-- Evidence: focused callable bucket tests prove reference-import descendant
-  modeled hits and misses inside callable namespace bodies skip nested
-  `findMixin(...)` and broad `findMixinsFast(...)`. The real
-  `@import(reference)` hit/miss fixture proves direct imported property
-  occurrence hit/miss plus rendered variable hit/miss and rendered property
-  miss fallback avoid `Rules.find(...)`. Review-flagged `try/finally` is
-  test-only method-spy restoration around `Rules.findMixin(...)` /
-  `Rules.findMixinsFast(...)`. Full `mixin.test.ts` remains outside the clean
-  gate for this branch; keep using focused slices until the known complex
+- Evidence: the real `@import(reference)` hit/miss fixture proves direct
+  imported property occurrence hit/miss plus rendered variable/property
+  hit/miss references avoid `Rules.find(...)`. Focused reference tests prove
+  carried child-entry property lookup still works and same-parent later child
+  misses do not widen. Full `mixin.test.ts` remains outside the clean gate for
+  this branch; keep using focused slices until the known complex
   compound-selector failures are separated.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in

@@ -187,22 +187,23 @@ misses do not yet model nested/owned selector-body prefixes, and replacing
 breaks existing nested compound selector lookups. Do not retry either cut until
 selector-body prefix candidates are explicitly carried by callable frame facts.
 
-13. [ ] Finish explicit declaration visibility/import no-fallback proof.
+13. [x] Finish explicit declaration visibility/import no-fallback proof.
 Scope: `DeclarationLookupStrategy`, reference-import child entries, import
 visibility, and covered declaration/property hits and misses. Goal: ordinary
 declaration/property lookup does not widen to child scans or public bridge
 behavior when visibility facts are modeled. Acceptance: synthetic import
 covered-hit/miss tests plus at least one real reference-import declaration
 fixture with bridge spies. Current evidence: the real `@import(reference)`
-hit/miss fixture now includes an imported property declaration. Direct property
-occurrence lookup finds the imported property and misses a missing imported
-property through the direct helper, while the same fixture spies on
-`Rules.find(...)` and proves rendered variable hit/miss references plus a
-rendered property miss with fallback do not enter the public declaration
-bridge. A rendered property hit inside a later nested ruleset was tested and
-failed with `'fromRefProp' is not defined` even though direct occurrence lookup
-from the evaluated nested rules succeeds. Treat that as an unresolved
-rules-context/visibility semantics gap, not as covered no-fallback proof.
+hit/miss fixture now includes imported property hit and miss reads. Direct
+property occurrence lookup finds the imported property and misses a missing
+imported property through the direct helper, while the same fixture spies on
+`Rules.find(...)` and proves rendered variable hit/miss references plus
+rendered property hit/miss references stay off the public declaration bridge.
+The fix was source-order handling in direct child-entry lookup: when an earlier
+child surface has already passed the parent-level start gate, its internal
+lookup must not reuse the later parent `start`. Wrapper nodes without `index`
+now derive their containing rules index for the parent gate instead of falling
+back to a false miss.
 
 14. [x] Finish property merge-chain output-binding handle identity proof.
 Scope: merge normalization, source/output exclusions, same-parent source
@@ -535,6 +536,19 @@ No wrapper helper was added; retained local unsupported checks are cheaper than
 another hot-path function call. Focused callable/reference-import tests stayed
 green. Keep this open until the remaining unsupported checks are either proven
 minimal or assigned to a cheaper caller-specific path.
+
+36. [ ] Extend imported declaration source-order proof beyond the real
+reference fixture. Scope: selector-list reference imports, configured
+`with`/`set` child declaration surfaces, nested imported child rules, and
+same-parent later child misses. Goal: prove the direct child-entry start gate
+covers imported declaration/property hits without reopening public
+`Rules.find(...)` or widening same-parent source order. Acceptance: focused
+reference/import tests with `Rules.find(...)` spies for selector-list and
+configured import declaration hits/misses, plus the same-parent later-child
+miss guard staying green. Current evidence: the real reference-import fixture
+now covers rendered property hit/miss inside a later nested ruleset, and
+focused reference tests cover ordinary carried child-entry reuse and later
+child misses. Broader imported declaration surfaces are still unproven.
 
 ## Latest Binding Baseline
 

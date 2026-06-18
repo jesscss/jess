@@ -2550,6 +2550,7 @@ describe('Style import', () => {
               type: 'variable',
               fallbackValue
             }) }),
+            decl({ name: any('prop-hit'), value: ref('fromRefProp', { type: 'property' }) }),
             decl({ name: any('prop-miss'), value: ref('missingFromRefProp', {
               type: 'property',
               fallbackValue
@@ -2603,6 +2604,7 @@ describe('Style import', () => {
           .test {
             hit: 42;
             miss: fallback;
+            prop-hit: 24;
             prop-miss: fallback;
           }
         `);
