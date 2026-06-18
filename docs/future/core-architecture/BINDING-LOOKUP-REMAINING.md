@@ -1122,14 +1122,21 @@ still pass. The existing source-static handle matrix proves variable,
 property, function, and callable handles read before rebuilding `_lookupStrategy`;
 unstable reference facts still rebuild normally.
 
-70. [ ] Delete terminal namespace fallback proved redundant by the final
+70. [x] Delete terminal namespace fallback proved redundant by the final
 mixin-only matrix. Scope: `terminalMixinOnly`, parameterized mixin-ruleset
 calls, imported namespace containers, exact ruleset terminal rejection,
 callable/ruleset namespace unions, and guarded namespace positives. Goal:
 terminal mixin-only lookup should not reopen ruleset terminal fallback once
 namespace resolution has enough frame facts. Acceptance: parser/render fixtures
 plus focused synthetic fallback-frame/imported namespace tests stay green with
-broad `findMixinsFast(...)` and nested array fallback spies empty.
+broad `findMixinsFast(...)` and nested array fallback spies empty. Current
+evidence: `findMixin([...], { terminalMixinOnly: true })` now returns a
+definite miss immediately when `findRulesetNamespacePathFast(...)` proves the
+path has only an exact ruleset terminal. The exact terminal rejection test spies
+on root `findMixinsFast(...)` and array-path `findMixin(...)` calls, proving no
+broad start-key crawl and no generated nested array fallback after the definite
+terminal miss. The surrounding parameterized mixin-ruleset, imported terminal,
+callable/ruleset namespace union, and guarded namespace tests stay green.
 
 71. [ ] Eliminate remaining positive-path namespace remainder arrays. Scope:
 `collectKeyRemainder(...)`, `findMixinNamespacePathFast(...)`,

@@ -2905,7 +2905,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
         const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-        if (rulesetNamespaceFast !== undefined && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly !== true)) {
+        if (rulesetNamespaceFast !== undefined) {
           return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
         }
         let namespaceMixins: MixinEntry[] | undefined;

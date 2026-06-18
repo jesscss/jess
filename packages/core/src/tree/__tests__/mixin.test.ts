@@ -5129,17 +5129,43 @@ describe('Mixin', () => {
     });
 
     it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.button')]),
           rules: rules([decl({ name: 'color', value: any('ruleset') })])
         })
       ]);
+      const broadFastHits: string[] = [];
+      let arrayPathCalls = 0;
 
-      expect(root.findMixin(['#theme', '.dark', '.button'], undefined)).toHaveLength(1);
-      expect(root.findMixin(['#theme', '.dark', '.button'], undefined, {
-        terminalMixinOnly: true
-      })).toBeUndefined();
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && (key === '#theme' || key === '.dark' || key === '.button')) {
+          broadFastHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === root && Array.isArray(args[0])) {
+          arrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.button'], undefined)).toHaveLength(1);
+        arrayPathCalls = 0;
+        expect(root.findMixin(['#theme', '.dark', '.button'], undefined, {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(broadFastHits).toEqual([]);
+        expect(arrayPathCalls).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
     });
 
     it('mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets', () => {

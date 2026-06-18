@@ -103,40 +103,35 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass for cached source-static handle
-  reads before initial target live-slot probing.
-- Verdict: accepted as simple-read object/probe reduction. Cached source-static
-  handles now get one early read opportunity before
-  `resolveInitialReferenceTarget(...)`, so ordinary cached static reads can
-  skip the runtime live-slot target probe and full handle-shape preparation.
-  The cached variable handle test now proves zero `currentBindingsByName.get`
-  reads on reuse, while parent/child current-binding invalidation still works.
-  No speed claim.
-- New traversal: none. The new helper performs direct guard checks against an
-  already-written handle and static key shape; it does not walk parents,
-  children, or declarations.
+- Latest pass: binding implementation pass deleting the terminal namespace
+  fallback after a definite ruleset-only terminal miss.
+- Verdict: accepted as direct fallback removal. Array-path mixin lookup now
+  trusts `findRulesetNamespacePathFast(...)` when it returns a definite empty
+  result under `terminalMixinOnly`, instead of reopening callable namespace
+  lookup and generated array fallback. No speed claim.
+- New traversal: none. The pass deletes a fallthrough branch; it does not add
+  parent walks, child walks, declaration scans, map/filter/sort, generators, or
+  side-map lookups.
 - Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects. One small return object is created
-  only when the cached source-static handle hits, replacing the later
-  handle-shape object and runtime live-slot map probe on that path. Tests reuse
-  the existing current-binding read counter and make its assertion stricter.
+  `Rules`, side maps, or result objects. The accepted path avoids later fallback
+  lookup preparation after the existing namespace fast path already proved the
+  terminal ruleset-only miss. The review-flagged `try` and `broadFastHits`
+  array are focused test scaffolding used to restore spied methods and assert
+  that the broad crawl stayed unused; they do not enter production lookup.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: one private `tryReadInitialSourceStaticRulesLookupHandle`
-  helper and one private static-key helper were added inside `reference.ts`.
-  They are not public API; they keep the early-read guard local and avoid
-  threading partial handle-read state through `evaluateReferenceNode(...)`.
+- Helper/API surface: no helper or API surface added.
 - Metadata mutations: none.
-- Allocation changes: no new production allocation. Existing fallback-frame
-  records, prefix match arrays, and direct result arrays are reused. No public
-  materialization changed.
-- Evidence: focused `reference.test.ts` current-cell/source-static handle slice
-  passed. It covers zero current-binding map reads on cached variable handle
-  reuse, stale live-value avoidance, parent-frame replacement invalidation,
-  child-frame binding invalidation, source-static reads before `_lookupStrategy`
-  rebuild for variable/property/function/callable handles, and rebuilds for
-  unstable reference facts.
+- Allocation changes: no new production allocation. The change removes a branch
+  that could continue into broader callable lookup after a definite
+  terminal-only miss.
+- Evidence: focused `mixin.test.ts` terminal namespace slice passed. The exact
+  ruleset-terminal rejection test now spies on root `findMixinsFast(...)` and
+  array-path `findMixin(...)`, proving zero broad start-key crawl and no nested
+  array fallback after the definite terminal miss. The surrounding
+  parameterized mixin-ruleset, imported terminal, callable/ruleset namespace
+  union, and guarded namespace tests also passed.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification
