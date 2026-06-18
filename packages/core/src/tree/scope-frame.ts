@@ -140,6 +140,13 @@ export interface ScopeFrame {
   assignmentBindingsByName?: Map<string, BindingCell>;
 
   /**
+   * True when an optional child/import variable assignment surface exists but
+   * is not modeled in assignmentBindingsByName. This keeps `setDefined` from
+   * treating optional-only targets as covered misses.
+   */
+  hasOptionalAssignmentTargetSurface: boolean;
+
+  /**
    * Bumped when a current binding pointer changes. In-place cell value writes
    * keep cached handles valid because reference reads still dereference the
    * live cell.
@@ -318,6 +325,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName,
     currentBindingsByName,
+    hasOptionalAssignmentTargetSurface: false,
     currentBindingsVersion: 0,
     hasLiveBindings,
     declarationBucketsByName,
@@ -478,6 +486,14 @@ export function lookupScopeFrameVariable(
             frame: f
           };
         }
+      }
+
+      if (
+        start === undefined
+        && options?.includeAssignmentTargets === true
+        && f.hasOptionalAssignmentTargetSurface
+      ) {
+        return { kind: 'uncovered' };
       }
 
       if (options?.includeDeclarations !== false && !f.declarationsCovered) {

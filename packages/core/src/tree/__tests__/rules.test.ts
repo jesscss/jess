@@ -1871,6 +1871,119 @@ describe('Rules', () => {
         expect(importedDecl.valueNode.toString()).toBe('three');
       });
 
+      it('leaves optional-only imported setDefined assignment targets uncovered for direct fallback', () => {
+        const optionalDecl = vardecl({ name: 'one', value: any('one') });
+        const optional = rules([optionalDecl], {
+          rulesVisibility: { VarDeclaration: 'optional' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          optional,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(lookupScopeFrameVariable(parentFrame, 'one', { includeAssignmentTargets: true }).kind).toBe('uncovered');
+
+        child.registerNode(assignment, undefined, context);
+
+        expect(optionalDecl.valueNode.toString()).toBe('three');
+      });
+
+      it('keeps public imported setDefined assignment targets modeled when optional targets also exist', () => {
+        const optionalDecl = vardecl({ name: 'one', value: any('one') });
+        const optional = rules([optionalDecl], {
+          rulesVisibility: { VarDeclaration: 'optional' }
+        });
+        const publicDecl = vardecl({ name: 'one', value: any('two') });
+        const publicRules = rules([publicDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          optional,
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.value;
+        const originalOptionalValue = optional.value;
+        const originalPublicValue = publicRules.value;
+        const originalChildValue = child.value;
+
+        Object.defineProperties(node, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl parent Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(optional, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl optional Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl public Rules.value');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          value: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl child Rules.value');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(optional, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalOptionalValue
+          });
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(publicDecl.valueNode.toString()).toBe('three');
+        expect(optionalDecl.valueNode.toString()).toBe('one');
+      });
+
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
           { name: any('color'), value: any('blue') },

@@ -70,6 +70,7 @@ import {
   blocksAmbientMixinOutputLookup,
   canEnterMixinOutputForLookup,
   canEnterRulesEntryForLookup,
+  isOptionalRulesEntry,
   isPublicRulesEntry,
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
@@ -996,14 +997,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
     const childBindings = this.collectPublicChildVariableAssignmentBindings(false);
-    if (!childBindings?.size) {
-      return;
-    }
-    for (const [name, cell] of childBindings) {
-      if (!frame.currentBindingsByName.has(name)) {
-        (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
+    if (childBindings?.size) {
+      for (const [name, cell] of childBindings) {
+        if (!frame.currentBindingsByName.has(name)) {
+          (frame.assignmentBindingsByName ??= new Map()).set(name, cell);
+        }
       }
     }
+    frame.hasOptionalAssignmentTargetSurface = this.hasOptionalChildVariableAssignmentSurface();
   }
 
   private collectPublicVariableAssignmentBindings(inheritedReadonly: boolean): Map<string, BindingCell> | undefined {
@@ -1078,6 +1079,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     return out;
+  }
+
+  private hasOptionalChildVariableAssignmentSurface(): boolean {
+    const childEntries = this.collectDirectDeclarationChildEntries();
+    if (!childEntries?.length) {
+      return false;
+    }
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (
+        entry.hasVarDeclarationSurface === false
+        && entry.hasReferenceImportSurface !== true
+      ) {
+        continue;
+      }
+      if (!canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })) {
+        continue;
+      }
+      if (isOptionalRulesEntry(entry, 'VarDeclaration')) {
+        return true;
+      }
+      if (entry.node.hasOptionalChildVariableAssignmentSurface()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private hasReferenceImportLookupSurface(): boolean {

@@ -701,7 +701,7 @@ rules tests are active and green, while the later writable child countercase
 still proves readonly is not preserved past a newer writable public variable
 surface.
 
-45. [ ] Split optional child variable assignment targets from public imported
+45. [x] Split optional child variable assignment targets from public imported
 assignment targets. Scope: optional `VarDeclaration` child visibility,
 `ScopeFrame.assignmentBindingsByName`, direct lookup optional match
 precedence, and `setDefined` fallback. Goal: carry optional assignment facts
@@ -710,7 +710,15 @@ ordinary reads or making public imports wait for optional scans. Acceptance:
 focused public-vs-optional child tests prove public wins stay modeled,
 optional-only positives either model or explicitly remain uncovered, and
 mixed optional/public source-order cases match direct lookup behavior without
-recursive fallback on covered public hits.
+recursive fallback on covered public hits. Current evidence:
+`ScopeFrame.hasOptionalAssignmentTargetSurface` now records optional child
+variable assignment surfaces separately from modeled public assignment cells.
+`lookupScopeFrameVariable(...includeAssignmentTargets)` returns `uncovered`
+for optional-only assignment targets, so `setDefined` keeps the old direct
+fallback for optional semantics instead of throwing a covered miss. Focused
+`rules.test.ts` proofs cover optional-only fallback updating the optional
+declaration, and mixed optional/public children updating the modeled public
+cell without crawling any parent/optional/public/child `Rules.value` surface.
 
 46. [ ] Replace assignment-target frame prep recursion with carried child
 surface summaries where registration already knows the facts. Scope:
@@ -722,6 +730,17 @@ assignment cells exist. Acceptance: no behavior change in readonly/import
 tests, aggressive review accounts for the removed prep recursion, and focused
 counter tests prove dynamic/uncovered children still route to fallback instead
 of becoming false covered misses.
+
+47. [ ] Collapse optional assignment-target uncertainty into carried child
+surface summaries after item 46. Scope:
+`ScopeFrame.hasOptionalAssignmentTargetSurface`, optional child/import
+`VarDeclaration` visibility, late child registration, and direct lookup
+optional precedence. Goal: make optional assignment coverage a carried entry
+fact rather than another frame-prep recursive rediscovery step, while still
+leaving optional-only targets uncovered until/if a modeled optional assignment
+cell exists. Acceptance: item 45 focused tests stay green, aggressive review
+shows the optional recursive scan is removed, and mixed optional/public cases
+still avoid direct fallback when a public modeled target exists.
 
 ## Latest Binding Baseline
 

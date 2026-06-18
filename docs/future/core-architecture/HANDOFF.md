@@ -103,25 +103,23 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding implementation pass closing modeled imported
-  `setDefined` assignment targets and deleting the variable fallback for those
-  covered import facts.
-- Verdict: accepted as an assignment-specific frame-state step.
-  `ScopeFrame.assignmentBindingsByName` carries public child/import variable
-  cells for `setDefined` only; ordinary `lookupScopeFrameVariable(...)` reads
-  still ignore imported assignment cells unless the caller opts in with
-  `includeAssignmentTargets`. `Rules.registerNode(...)` now handles modeled
-  live/current, same-scope, parent-frame, writable import, readonly import,
-  and covered-miss static variable assignments before the old occurrence
-  fallback. Property `setDefined` and dynamic/uncovered variable assignments
-  remain deliberately on the old fallback. No speed claim.
-- New traversal: this pass adds frame-prep recursion over public child
-  variable surfaces in `collectPublicChildVariableAssignmentBindings(...)`.
-  That traversal is accepted only because it moves repeated assignment-time
-  child lookup into one frame-prep fact and unblocks deletion of the variable
-  occurrence fallback for modeled imports. It is recorded as follow-up item 46:
-  replace the prep recursion with carried child surface summaries from
-  registration once the needed facts are already known.
+- Latest pass: binding implementation pass splitting optional child variable
+  assignment targets from modeled public/imported `setDefined` targets.
+- Verdict: accepted as an explicit coverage boundary.
+  `ScopeFrame.hasOptionalAssignmentTargetSurface` marks optional child variable
+  assignment surfaces as uncovered for `includeAssignmentTargets` lookup, so
+  optional-only `setDefined` writes keep the old direct fallback instead of
+  becoming false covered misses. Public assignment cells still win over
+  optional surfaces and stay on the modeled no-crawl path. Property
+  `setDefined` and dynamic/uncovered variable assignments remain deliberately
+  on the old fallback. No speed claim.
+- New traversal: this pass adds an optional-surface frame-prep recursion in
+  `hasOptionalChildVariableAssignmentSurface(...)`, in addition to the existing
+  public assignment-target recursion from the prior pass. It is accepted only
+  as a correctness boundary that prevents optional-only targets from being
+  misclassified as covered misses. Follow-up items 46 and 47 require carrying
+  both public and optional assignment facts on child entries so these prep
+  recursions are removed.
 - Review-flagged allocations: production now lazily allocates
   `assignmentBindingsByName` only for `ScopeFrame`s that have modeled public
   child/import variable assignment facts, and creates assignment-only
@@ -137,12 +135,14 @@ with `--no-verify` after the explicit gates pass.
 - Render path: no render/stringification path changed.
 - Helper/API surface: `ScopeFrame` gained assignment-target frame state and
   `lookupScopeFrameVariable(...)` gained the internal `includeAssignmentTargets`
-  option used by `setDefined`; no public Jess API was added.
+  option used by `setDefined`; this pass adds the internal optional-target
+  coverage bit. No public Jess API was added.
 - Metadata mutations: none.
 - Allocation changes: one lazy frame-owned Map plus assignment `BindingCell`
   entries only when public child/import variable assignment facts are modeled.
-  Follow-up item 46 exists specifically to remove the recursive rediscovery
-  and keep this from becoming a broader child-surface cache.
+  The optional coverage bit adds no per-name storage. Follow-up items 46 and
+  47 exist specifically to remove recursive rediscovery and keep this from
+  becoming a broader child-surface cache.
 - Evidence: focused `import-style.test.ts` slices prove configured `with`/`set`
   child-surface property hits and reference-import selector-list/nested
   property hits stay off `Rules.find(...)`; focused `reference.test.ts` slices
