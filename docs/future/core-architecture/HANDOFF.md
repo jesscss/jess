@@ -103,37 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: declaration-constraint handle snapshot slimming and proof.
-- Verdict: accepted as a binding handle-shape cut. The private
-  `excludedDeclarationCount` field is removed from
-  `ReferenceRulesLookupDeclarationConstraints`, `RulesLookupHandleShape`, and
-  declaration/property/variable handle read/write paths. Handle freshness now
-  keeps the declaration-assignment key plus the first two excluded declaration
-  identities after the existing handleability gate proves longer exclusion
-  lists stay cold. No speed claim.
-- New traversal: no new production traversal. Declaration filtering still uses
-  the existing semantic `excludedDeclarations.includes(...)`; this pass removes
-  one scalar handle comparison from cached handle reads.
+- Latest pass: generic rules lookup handle shape split.
+- Verdict: accepted as a binding handle-shape cut. `RulesLookupHandleShape`
+  now carries only common start/local/parent/terminal facts. Declaration
+  constraints are computed into a separate
+  `ReferenceRulesLookupDeclarationConstraints` object and passed only to
+  declaration-capable handle read/write paths. No speed claim.
+- New traversal: no new production traversal. The pass moves existing
+  declaration-constraint pointer/key comparisons out of the generic shape; it
+  does not add a new tree walk, parent walk, child scan, map/filter/sort, or
+  side-map lookup. The only review-flagged loop is the verifier's static token
+  scan that rejects declaration-constraint fields returning to
+  `RulesLookupHandleShape`.
 - New node/materialization: no runtime nodes, wrappers, copied rules, inherited
-  metadata, or production materialized arrays were added. The new focused test
-  constructs a small semantic exclusion array to mutate first/second slots and
-  prove the removed count field is unnecessary.
+  metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no helper or public method added. Existing focused test
-  names were clarified from old normalized/excluded-node wording to declaration
-  assignment/exclusion wording.
+- Helper/API surface: the old private
+  `getRulesLookupHandleDeclarationConstraintShape(...)` helper was replaced
+  with `getRulesLookupHandleDeclarationConstraints(...)` so the name no longer
+  implies declaration fields belong to the generic shape. No public method was
+  added. `verify:binding-lookup-hot-paths` now guards that declaration
+  constraint fields do not return to `RulesLookupHandleShape`.
 - Metadata mutations: none.
-- Allocation changes: removes one numeric field from declaration/property/
-  variable rules lookup handles and from temporary handle shape objects.
-  Test-only arrays exercise mutation edges; no new runtime allocation replaces
-  the deleted field.
-- Evidence: focused reference tests prove declaration assignment constraints,
-  source/output declaration exclusions, zero/one/two-slot exclusion mutation
-  without count state, `bindOutput` invalidation, wider exclusion lists staying
-  cold, function/callable handles ignoring declaration-only constraints, and
-  the real Less merge-chain fixture avoiding public property/declaration lookup
-  bridges. Focused declaration merge/assignment tests and
-  `verify:binding-lookup-hot-paths` passed.
+- Allocation changes: removes three optional declaration-constraint fields
+  from every generic handle shape object. Declaration-capable paths still use
+  one small constraints object that already reflects semantic handle freshness;
+  function/callable paths no longer carry those fields through the common
+  shape.
+- Evidence: focused reference handle tests prove source-static handle reuse,
+  declaration assignment constraints, declaration exclusions, two-slot
+  exclusion mutation, `bindOutput` invalidation, function handles ignoring
+  declaration-only options, callable handles ignoring declaration-only options,
+  and mixin-ruleset handles skipping public/broad lookup after cache write.
+  `verify:binding-lookup-hot-paths` and `@jesscss/core` build passed. Changed
+  baseline was retried; it still surfaces non-lookup render/serialization
+  family failures and then stalls, so it remains open in
+  `BINDING-LOOKUP-REMAINING.md` rather than counted as a pass.
 - Merge-carried binding review: latest `origin/dev` also carries
   declaration-constraint option cleanup and merge-chain output-binding proof
   in `packages/core/src/tree/reference.ts` and related lookup helpers. It is

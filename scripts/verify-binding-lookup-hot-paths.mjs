@@ -146,6 +146,10 @@ for (const token of [
 }
 
 const referenceSource = readFileSync(resolve(root, 'packages/core/src/tree/reference.ts'), 'utf8');
+if (referenceSource.includes('getRulesLookupHandleDeclarationConstraintShape')) {
+  console.error('declaration constraints should not be modeled as generic RulesLookupHandleShape fields');
+  failed = true;
+}
 const referenceOptionsMatch = referenceSource.match(/export type ReferenceOptions = \{[\s\S]*?\n\};/);
 if (!referenceOptionsMatch) {
   console.error('could not find exported ReferenceOptions block');
@@ -160,6 +164,24 @@ if (!referenceOptionsMatch) {
   for (const token of ['excludedNodes', 'requiredNormalizedFromAssign']) {
     if (referenceOptionsMatch[0].includes(token)) {
       console.error(`exported ReferenceOptions still exposes old declaration-constraint option ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const rulesLookupHandleShapeMatch = referenceSource.match(/type RulesLookupHandleShape = \{[\s\S]*?\n\};/);
+if (!rulesLookupHandleShapeMatch) {
+  console.error('could not find private RulesLookupHandleShape block');
+  failed = true;
+} else {
+  for (const token of [
+    'requiredDeclarationAssignmentsKey',
+    'excludedDeclaration0',
+    'excludedDeclaration1',
+    'excludedDeclarationCount'
+  ]) {
+    if (rulesLookupHandleShapeMatch[0].includes(token)) {
+      console.error(`RulesLookupHandleShape still carries declaration constraint field ${token}`);
       failed = true;
     }
   }

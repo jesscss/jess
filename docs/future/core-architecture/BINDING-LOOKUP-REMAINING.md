@@ -127,14 +127,14 @@ ruleset header streaming blocker is repaired. Scope: changed Less/Jess
 fixtures, ruleset render interaction with lookup work, and branch-local
 failures. Goal: use baseline evidence as a gate again. Acceptance:
 `pnpm run verify:baseline -- --changed` either passes or has a lookup-owned
-failure recorded with a fix. Current evidence: the changed baseline was run
-after the setDefined/direct-declaration cache pass. It built `@jesscss/core`
-and then entered the full core test suite, surfaced broader render/string
-transport failures (`node-render-buffer.test.ts`, `call.test.ts`, `any.test.ts`,
-`cloning.test.ts` in the visible output), and then stopped producing output
-while Vitest workers remained active. It was interrupted rather than left
-running. No failure in the visible output pointed at the binding lookup files
-touched in this pass; keep this item open until the baseline can finish or the
+failure recorded with a fix. Current evidence: the changed baseline was rerun
+after the generic handle-shape split. It built `@jesscss/core`, entered the
+broad core suite, surfaced the same non-lookup render/serialization-family
+failures visible in `node-render-buffer.test.ts`, `at-rule.test.ts`, and
+`cloning.test.ts`, then stopped producing output while the PTY still reported
+a live session. It was interrupted after the child PID was gone rather than
+counted as a pass. No visible failure pointed at `reference.ts` handle-shape
+behavior; keep this item open until the baseline can finish cleanly or the
 non-lookup failures are separated upstream.
 
 10. [ ] Refresh lookup profile and one-iteration hotpath smoke after the next
@@ -237,7 +237,7 @@ focused reference labels now use declaration assignment/exclusion wording, and
 grep shows the old reference-option names only in verifier forbidden-token
 lists or tracker/handoff notes describing deleted API.
 
-18. [ ] Collapse declaration-handle constraint shape branching where possible.
+18. [x] Collapse declaration-handle constraint shape branching where possible.
 Scope: `lookupTypeUsesDeclarationConstraints(...)`,
 `getRulesLookupHandleDeclarationConstraintShape(...)`,
 `prepareRulesLookupShape(...)`, source-static early handle reads, and variable
@@ -245,7 +245,14 @@ handles that can carry declaration occurrences. Goal: keep declaration
 constraint checks assigned to the declaration/property/variable paths that need
 them without making function/callable paths carry generic shape branches.
 Acceptance: focused variable/property/declaration/function/callable handle
-tests plus no regression in `verify:binding-lookup-hot-paths`.
+tests plus no regression in `verify:binding-lookup-hot-paths`. Current
+evidence: the old declaration-constraint shape helper is gone,
+`prepareRulesLookupShape(...)` now stores only start/local/parent/terminal facts
+in `RulesLookupHandleShape`, and declaration constraints are computed into a
+separate `ReferenceRulesLookupDeclarationConstraints` object only for
+declaration-capable handle paths. Focused variable/property/declaration/
+function/callable handle tests, `verify:binding-lookup-hot-paths`, and
+`@jesscss/core` build passed.
 
 19. [x] Add explicit proof for handleable two-exclusion mutation edges. Scope:
 mutable `excludedDeclarations` arrays with zero, one, and two declaration
@@ -258,14 +265,42 @@ zero, first, and second excluded declaration slots and proves each stale handle
 is rejected while `excludedDeclarationCount` remains absent; the existing wider
 declaration-exclusion test keeps lists longer than two cold.
 
-20. [ ] Split declaration-constraint handle shape from generic
+20. [x] Split declaration-constraint handle shape from generic
 `RulesLookupHandleShape`. Scope: shape construction, `prepareRulesLookupShape`,
 `readRulesLookupHandle`, source-static handle reads, and handle write helpers.
 Goal: keep generic lookup shape to start/local/terminal facts, and pass
 declaration constraints only on declaration-capable handle paths without adding
 function/callable branches. Acceptance: focused handle tests plus
 `verify:binding-lookup-hot-paths`; aggressive review must show fewer generic
-shape fields or fewer declaration-constraint branches.
+shape fields or fewer declaration-constraint branches. Current evidence:
+`RulesLookupHandleShape` no longer has `requiredDeclarationAssignmentsKey`,
+`excludedDeclaration0`, or `excludedDeclaration1`; handle read/write receives
+the declaration-constraint object separately, and function/callable handle
+tests still prove ignored declaration options do not get stored or invalidate
+their handles. The verifier now fails if declaration constraints move back
+into the generic shape.
+
+21. [ ] Split source-static handle readers by lookup family instead of
+branching through `lookupTypeUsesDeclarationConstraints(...)`. Scope:
+`tryReadSourceStaticRulesLookupHandle(...)`, source-static variable/property/
+declaration/function/callable reads, and `_lookupStrategy` rebuild avoidance.
+Goal: assign the reader/checker for declaration-capable references up front so
+function/callable source-static reads do not evaluate declaration-constraint
+eligibility or helper branches. Acceptance: focused source-static handle tests
+for variable/property/declaration/function/callable reads plus verifier guard
+against declaration-constraint checks in the function/callable source-static
+reader path.
+
+22. [ ] Move handle eligibility onto lookup strategies instead of the generic
+`isRulesLookupHandleEligible(...)` branch ladder. Scope:
+`ReferenceLookupStrategy`, per-family handle key eligibility, declaration
+constraint handleability, callable array-path eligibility, and read/write
+assignment. Goal: choose the family-specific handle policy once with the
+lookup strategy, preserving the Chevrotain-style assigned-function direction
+and shrinking generic string/type branching on every reference eval.
+Acceptance: focused reference strategy/cache tests, handle cold-path tests for
+searchScope/leaky/semantic filters, function/callable ignored-constraint
+tests, and `verify:binding-lookup-hot-paths`.
 
 ## Latest Binding Baseline
 
