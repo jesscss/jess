@@ -103,20 +103,20 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: binding proof pass for fallback-frame imported namespace
-  ambiguity.
-- Verdict: accepted as registryless callable lookup proof. The focused test
-  now covers a fallback frame whose reference-import child exposes the same
-  namespace segment as both a mixin namespace and a ruleset namespace. Plain
-  lookup preserves the callable/ruleset terminal union, while
-  `terminalMixinOnly` filters the imported ruleset terminal and returns only
-  the mixin terminal. Root/fallback broad `findMixinsFast('#imported')` and
-  generated nested array fallback spies stay empty. No speed claim.
-- New traversal: none in production for this pass. The proof exercises the
-  fallback-frame loops already added in the previous pass.
+- Latest pass: binding docs/evidence closeout for namespace fallback
+  duplication and callable namespace counters.
+- Verdict: accepted as a no-code binding pass. The namespace-offset helper
+  collapse was rejected because the three branch ladders have different
+  control-flow contracts and a shared utility would add callback/result-object
+  tax around hot lookup calls. The callable namespace profile was refreshed
+  through the Less facade and old `Rules.find`/registry/search-child counters
+  remain empty. Direct compiler smoke/profile paths for the repo-local stress
+  fixture are blocked by `args.set is not a function`, so no wall-clock smoke
+  value or speed claim is recorded. The binding queue was reseeded back to 15
+  sizable unchecked tasks.
+- New traversal: none in production for this pass. No source code changed.
 - Review-flagged allocations: no new production arrays, nodes, wrapper
-  `Rules`, side maps, or result objects. Tests add spy arrays and synthetic
-  fixture nodes only.
+  `Rules`, side maps, or result objects.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
   inherited metadata, frozen state, or production materialization were added.
 - Render path: no render/stringification path changed.
@@ -127,13 +127,16 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: no new production allocation. Existing fallback-frame
   records, prefix match arrays, and direct result arrays are reused. No public
   materialization changed.
-- Evidence: focused `mixin.test.ts` slices prove fallback-frame imported
-  namespace ambiguity preserves the no-arg union, filters ruleset terminals
-  under `terminalMixinOnly`, and avoids root/fallback
-  `findMixinsFast('#imported')` plus generated nested array fallback. Existing
-  fallback imported mixin namespace, fallback imported ruleset namespace,
-  imported terminal mixin-only, imported exact terminal ruleset, and ruleset
-  namespace union slices stayed green. No performance measurement was run.
+- Evidence: code audit across `findMixinNamespacePathFast(...)`,
+  `findRulesetNamespacePathFast(...)`, and
+  `findCallableDescendantsWithinMixinNamespaces(...)` rejected helper
+  extraction as extra hot-path machinery. `node scripts/profile-less-benchmark.mjs
+  --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reported
+  empty old `Rules.find`, registry, and `_searchRulesChildren` counters with
+  direct declaration counters still at the current baseline. The
+  `--compat=false` profile and bounded `measure:less:hotpath` smoke both fail
+  before render with `args.set is not a function`; this is recorded as a
+  smoke/protocol blocker rather than a speed result.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

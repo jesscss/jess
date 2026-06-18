@@ -1007,7 +1007,7 @@ imported terminal ruleset path returns `undefined` under `terminalMixinOnly`.
 Both spy on broad root `findMixinsFast(...)`, and existing parameterized
 mixin-ruleset call tests stayed green.
 
-63. [ ] Collapse duplicated namespace-offset fallback checks if the remaining
+63. [x] Collapse duplicated namespace-offset fallback checks if the remaining
 fallback-frame proof matches the current-frame proof. Scope:
 `findMixinNamespacePathFast(...)`, `findRulesetNamespacePathFast(...)`,
 `findCallableDescendantsWithinMixinNamespaces(...)`, and local
@@ -1015,7 +1015,18 @@ fallback-frame proof matches the current-frame proof. Scope:
 only if it reduces hot-path code without adding a helper-call/object tax.
 Acceptance: either a small direct local reshaping with focused namespace tests
 green, or a documented rejection that the duplication is cheaper than another
-hot helper layer.
+hot helper layer. Current evidence: rejected as a hot helper cut. The three
+branches are only superficially similar: `findMixinNamespacePathFast(...)`
+needs segment-entry collection plus owned/unowned recursive result merging;
+`findRulesetNamespacePathFast(...)` first arbitrates mixin namespace ambiguity
+against ruleset prefix matches and may intentionally return `undefined` to
+yield to the mixin namespace lane; `findCallableDescendantsWithinMixinNamespaces(...)`
+only probes the first descendant segment to avoid nested array fallback and
+must leave fallback-frame descendants open. Collapsing these would add
+callbacks or a result object around `lookupScopeFrameCallable(...)` and
+`findMixinsFastForUncoveredCallable(...)` without deleting production
+traversal. Keep the direct branches until the frame facts carry a truly common
+namespace-hit/miss state.
 
 64. [x] Prove or design fallback-frame ruleset namespace offsets. Scope:
 `findRulesetNamespacePathFast(...)`, fallback frames, reference-import child
@@ -1049,13 +1060,65 @@ terminal and returns the mixin terminal. Root/fallback broad
 `findMixinsFast('#imported')` and generated nested array fallback spies stay
 empty.
 
-66. [ ] Refresh callable namespace lookup counters after reference-import
+66. [x] Refresh callable namespace lookup counters after reference-import
 fallback bridge cuts. Scope: `scope-lookup-stress.less`, callable namespace
 counter hooks, reference-import namespace fixtures, and one-iteration hotpath
 smoke. Goal: record whether the new carried fallback/prefix paths reduced
 direct-crawl bridge counters without making a wall-clock claim. Acceptance:
 counter snapshot in `Latest Binding Baseline` or `PERFORMANCE-HANDOFF.md`
 labels timings as smoke-only and identifies the next highest lookup bridge.
+Current evidence: `node scripts/profile-less-benchmark.mjs
+--fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reports
+empty old `Rules.find`, registry, and `_searchRulesChildren` counters. Direct
+declaration counters match the current improved baseline. Direct compiler
+smoke/profile paths for this local fixture are currently blocked by
+`args.set is not a function` before render (`--compat=false` profile and
+`measure:less:hotpath -- --iterations 1 --warmup 0 --fixture ...`), so no
+wall-clock smoke value is recorded.
+
+67. [ ] Prove explicit declaration visibility/import coverage without widening
+ordinary child scans. Scope: `findWithinScopeSurface(...)`,
+`directDeclarationChildEntries`, reference-import declaration surfaces,
+rendered reference imports, and visibility modes. Goal: covered import/reference
+declaration hits and misses stay on carried frame/child-entry facts instead of
+rediscovering child visibility through fallback scans. Acceptance: focused
+variable/property/declaration tests with child-entry scan counters or spies,
+plus at least one real reference-import declaration fixture.
+
+68. [ ] Finish property merge-chain no-public-bridge proof. Scope:
+property/declaration occurrence helpers, merge assignment exclusions,
+`requiredDeclarationAssignments`, same-parent source ordering slots, and
+source-static handles. Goal: stable property/declaration merge-chain reads and
+writes do not enter deleted public `Rules.find*` wrapper shapes or broad
+fallback materialization. Acceptance: focused property merge-chain fixtures
+prove read/write handle identity and `verify:binding-lookup-hot-paths` keeps
+wrapper-returning lookup APIs out of production runtime code.
+
+69. [ ] Audit simple current-cell read object materialization. Scope:
+`BindingCell.lookupIdentity`, `ScopeFrame.currentBindingsVersion`, variable
+handle freshness, ancestor current-binding handles, rest/@arguments slots, and
+reference handle snapshots. Goal: simple variable/property/declaration reads
+reuse live cells without allocating cold handle/read argument objects on the
+hot path. Acceptance: focused reference tests plus a direct lookup profile or
+counter note showing any remaining object-heavy read surface.
+
+70. [ ] Delete terminal namespace fallback proved redundant by the final
+mixin-only matrix. Scope: `terminalMixinOnly`, parameterized mixin-ruleset
+calls, imported namespace containers, exact ruleset terminal rejection,
+callable/ruleset namespace unions, and guarded namespace positives. Goal:
+terminal mixin-only lookup should not reopen ruleset terminal fallback once
+namespace resolution has enough frame facts. Acceptance: parser/render fixtures
+plus focused synthetic fallback-frame/imported namespace tests stay green with
+broad `findMixinsFast(...)` and nested array fallback spies empty.
+
+71. [ ] Eliminate remaining positive-path namespace remainder arrays. Scope:
+`collectKeyRemainder(...)`, `findMixinNamespacePathFast(...)`,
+`findRulesetNamespacePathFast(...)`, `findCompoundPrefixCallableRulesetPathFast(...)`,
+guarded/imported namespaces, and cold unsupported fallbacks. Goal: positive
+nested namespace hits use offsets end-to-end; remainder arrays are reserved for
+unsupported/cold fallback only. Acceptance: focused namespace tests spy on
+nested array fallback and prove stable guarded/imported positives stay zero
+array-materialization.
 
 ## Latest Binding Baseline
 
@@ -1068,6 +1131,19 @@ labels timings as smoke-only and identifies the next highest lookup bridge.
   `declaration.childEntriesFamilySkip: 5400`,
   `declaration.childEntryFamilySkip: 1575`, and `declaration.framePrep: 1`.
   This is counter evidence only, not a wall-clock speed claim.
+- 2026-06-17 callable namespace counter refresh:
+  `node scripts/profile-less-benchmark.mjs --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less`
+  reported empty `rulesFindByType`, `registryFindByType`, and
+  `searchChildrenByType` counters. Direct counters were
+  `declaration.cacheMiss: 7560`, `declaration.scope.v: 7560`,
+  `declaration.childEntriesFamilySkip: 5400`, `declaration.localMatch: 2385`,
+  `declaration.childEntriesScanned: 1575`,
+  `declaration.childEntryFamilySkip: 1575`,
+  `declaration.childEntryEntered: 1575`,
+  `declaration.scopeBindingHit: 1575`, and `declaration.framePrep: 1`.
+  The elapsed `428.97ms` is one instrumented profiler run and is not a speed
+  claim. Direct compiler smoke/profile paths for this repo-local fixture are
+  blocked by `args.set is not a function` before render.
 - Function handles are per-key; callable handles use
   `Rules.callableLookupVersion`; variable/property/declaration handles use
   per-key declaration versions.
