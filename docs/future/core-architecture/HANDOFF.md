@@ -103,6 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` shared flat-buffer direct streaming.
+- Verdict: accepted as a localized render transport cut. Shared flat-buffer call
+  render no longer writes one whole rendered string back into `buffer.parts`
+  after the fact when the active writer already targets that buffer; covered
+  plain and finalized call output now streams directly as name/paren/arg pieces
+  through the shared writer. No speed claim.
+- New traversal: none. This pass reuses the existing arg loop and dynamic
+  branch structure; it adds no new tree walk, callback scan, or array
+  materialization.
+- New node/materialization: one `OutputWriter` allocation remains only when a
+  shared buffer render has no existing writer already targeting the buffer.
+  That is a render-only writer boundary, not a node/materialization copy.
+- Render path: shared flat-buffer render now uses the active writer directly on
+  the covered plain and finalized string-return call paths, so there is no
+  trailing whole-string `writeRenderTextResult(...)` bounce back into the same
+  buffer.
+- Helper/API surface: one node-local
+  `callRenderSharesWriter(...)` helper was added inside `call.ts` to keep the
+  shared-buffer branch local and avoid duplicating the same render-buffer shape
+  checks across plain and dynamic call paths.
+- Metadata mutations: none.
+- Routine error control: none added. Existing dynamic fallback and calc-frame
+  cleanup branches stay in place.
+- Allocation changes: deletes whole-string writeback into shared flat buffers
+  for covered call render paths; dynamic finalized exact-scalar names now also
+  keep the direct text carry instead of forcing a whole-call readback to return
+  the rendered string.
+- Rejected/observed in this pass: non-shared buffer output still uses
+  `writeRenderTextResult(...)` by contract, and broader callable/non-string
+  dynamic output work remains queued in `Call`.
+- Evidence: focused `call.test.ts` shared-buffer subset covering plain CSS call
+  shared flat-buffer streaming and dynamic finalized shared flat-buffer
+  streaming passed; the prior focused render subsets for scalar/no-trivia arg
+  carry, async scalar arg/content no-readback, direct CSS-call render, flat
+  buffer output, evaluated/escaped arg syntax, dynamic arg streaming, async arg
+  buffer/render paths, calc-frame rejection cleanup, and escaped rendered args
+  also passed; targeted ESLint, `git diff --check`,
+  `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` remain the commit-boundary gates.
 - Latest pass: `Call` exact scalar render-text carry.
 - Verdict: accepted as a localized render transport cut. Covered plain and
   finalized CSS-call render paths now keep exact no-trivia scalar args/content

@@ -4,7 +4,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
@@ -124,6 +124,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
     default:
       return undefined;
   }
+}
+
+function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
+  return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
 }
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
@@ -767,14 +771,23 @@ export class Call extends Node<CallValue, CallOptions> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
     const mark = w.mark();
-    const textState: CallRenderTextState = { text: typeof name === 'string' ? name : undefined };
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : name instanceof Node
+          ? getKnownRenderedCallText(name)
+          : undefined
+    };
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
-      textState.text = undefined;
-      name.writeSyntax(printOptions);
+      if (textState.text !== undefined) {
+        w.add(textState.text, name);
+      } else {
+        name.writeSyntax(printOptions);
+      }
     } else {
       textState.text = undefined;
       w.add(stringifyValueOf(name), state.source);
@@ -880,6 +893,7 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
+    const sharesWriter = callRenderSharesWriter(bufferOrOptions);
     if (typeof this.name !== 'string') {
       const state = this.createEvalState();
       const { name } = state;
@@ -934,7 +948,7 @@ export class Call extends Node<CallValue, CallOptions> {
             });
             if (typeof output === 'string') {
               return isRenderBuffer(bufferOrOptions)
-                ? writeRenderTextResult(bufferOrOptions, output)
+                ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
                 : output;
             }
             return this.renderOutput(context, output, bufferOrOptions, options);
@@ -1023,7 +1037,7 @@ export class Call extends Node<CallValue, CallOptions> {
           });
           if (typeof output === 'string') {
             return isRenderBuffer(bufferOrOptions)
-              ? writeRenderTextResult(bufferOrOptions, output)
+              ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
               : output;
           }
           return this.renderOutput(context, output, bufferOrOptions, options);
@@ -1037,7 +1051,7 @@ export class Call extends Node<CallValue, CallOptions> {
         ) {
           const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
           return isRenderBuffer(bufferOrOptions)
-            ? writeRenderTextResult(bufferOrOptions, fallbackText)
+            ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
             : fallbackText;
         }
       }
@@ -1049,14 +1063,14 @@ export class Call extends Node<CallValue, CallOptions> {
     const fallbackText = await this.renderOptionalFallbackCallSyntax(context, prepared);
     if (fallbackText) {
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, fallbackText)
+        ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
         : fallbackText;
     }
     const fallback = await this.evalOptionalFallbackOutput(context, prepared);
     if (fallback) {
       if (typeof fallback === 'string') {
         return isRenderBuffer(bufferOrOptions)
-          ? writeRenderTextResult(bufferOrOptions, fallback)
+          ? sharesWriter ? fallback : writeRenderTextResult(bufferOrOptions, fallback)
           : fallback;
       }
       return this.renderOutput(context, fallback, bufferOrOptions, options);
@@ -1131,24 +1145,30 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
+      const sharesWriter = callRenderSharesWriter(bufferOrOptions);
+      const prepared = sharesWriter
+        ? prepareRenderPrintState(context, {
+            ...options,
+            writer: bufferOrOptions.kind === 'flat' && context.printState.writer?.writesTo(bufferOrOptions.parts)
+              ? context.printState.writer
+              : new OutputWriter(false, bufferOrOptions.kind === 'flat' ? bufferOrOptions.parts : undefined)
+          })
+        : prepareBufferPrintState(context, options);
       if (this.evaluated) {
-        const prepared = prepareBufferPrintState(context, options);
-        return writeRenderTextResult(
-          bufferOrOptions,
-          this.renderPlainFunctionCall(this, context, prepared)
-        );
+        const rendered = this.renderPlainFunctionCall(this, context, prepared);
+        return sharesWriter
+          ? rendered
+          : writeRenderTextResult(bufferOrOptions, rendered);
       }
       if (typeof this.name !== 'string') {
-        const prepared = prepareBufferPrintState(context, options);
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareBufferPrintState(context, options);
-      return writeRenderTextResult(
-        bufferOrOptions,
-        this.renderPlainFunctionCall(this, context, prepared)
-      );
+      const rendered = this.renderPlainFunctionCall(this, context, prepared);
+      return sharesWriter
+        ? rendered
+        : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (this.evaluated) {

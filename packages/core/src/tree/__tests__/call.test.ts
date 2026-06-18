@@ -357,6 +357,35 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
+    const root = rules([
+      vardecl({
+        name: any('fnName'),
+        value: any('rgb')
+      })
+    ]);
+    const evald = await root.eval(context);
+    expect(evald).toBeInstanceOf(Rules);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: ref({ key: 'fnName' }, { type: 'variable' }),
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('writes call render output into buffers without mutating a provided writer', async () => {
     const buffer = createRenderBuffer('flat');
     const writer = new CountingWriter();
