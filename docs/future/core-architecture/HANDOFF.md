@@ -141,6 +141,44 @@ with `--no-verify` after the explicit gates pass.
   `verify:aggressive-cutting-review` run still flags the restoration
   `try/finally` and the carried `runtimeFrames` parameter for prosecution, but
   no new node/materialization path was introduced.
+- Latest pass: `Call` dynamic target/emit ladder split.
+- Verdict: accepted as a bounded serializer cut inside the active `Call`
+  row. Dynamic call render no longer re-spells the same mixin-ruleset target
+  resolution sequence across optional fallback render, optional fallback eval,
+  and dynamic render, and it no longer repeats the same string-versus-node
+  output handoff ladder at each branch return site. Two node-private helpers
+  now own those exact existing shapes without widening semantics. No speed
+  claim.
+- New traversal: none. The dynamic target helper performs the same one target
+  evaluation plus existing mixin-ruleset follow-up that the duplicated sites
+  already performed.
+- Review-flagged allocations: none added on the render path. The new helpers
+  only route existing return values and target evaluation.
+- Review-flagged diff token: the current diff still contains the older
+  declaration detached-path handoff note naming the detached declaration
+  writer boundary in
+  `packages/core/src/tree/util/serialize-helper.ts`. This `Call` pass did not
+  add any new writer construction in production code.
+- New node/materialization: none.
+- Render path: dynamic render still returns the same finalized optional-call
+  syntax strings and the same node outputs; the change only centralizes target
+  resolution and string-or-node emission so the covered path stops repeating
+  that branch ladder.
+- Helper/API surface: two node-private methods,
+  `resolveDynamicCallTarget(...)` and `renderDynamicOutputResult(...)`,
+  replace three duplicated target-resolution blocks and four repeated
+  string-versus-node output ladders inside `renderDynamicFunctionOutput(...)`
+  plus the optional fallback helpers. No public API changed.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: deleted the repeated local dynamic target resolution
+  scaffolding and repeated shared-writer `writeRenderTextResult(...)` ladders
+  inside `renderDynamicFunctionOutput(...)`.
+- Evidence: full `call.test.ts` passed, covering dynamic stylesheet
+  functions, mixin/ruleset/collection targets, silent-fail finalized syntax,
+  optional fallback content, dynamic CSS-call names, and flat-buffer render
+  output. `pnpm --filter @jesscss/core build` also passed. Full batch gates
+  still need to run after this handoff update.
 - Latest pass: `Call` known-text staging loop split.
 - Verdict: accepted as a bounded serializer cut inside the active `Call`
   row. The exact source/render fast-path helpers no longer allocate temporary
@@ -443,9 +481,9 @@ with `--no-verify` after the explicit gates pass.
   thrown errors, and `try/finally` are serialization proof scaffolding or
   bounded detached string boundaries. No binding lookup runtime path changed.
 - Merge-carried serialization review: latest `origin/dev` also carries the
-  declaration fallback preview-transport cut in
+  declaration detached preview-transport cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
-  `new OutputWriter()` is the detached declaration fallback string boundary
+  the detached declaration writer boundary
   that replaces caller-writer preview transport. Review-flagged
   `new CountingWriter()` and `try/finally` are focused `ruleset.test.ts`
   scaffolding for restoring swapped methods around detached-writer assertions.
@@ -468,7 +506,7 @@ with `--no-verify` after the explicit gates pass.
 - Merge-carried serialization review: latest `origin/dev` also carries the
   duplicate declaration comparison writer cut in
   `packages/core/src/tree/util/serialize-helper.ts`. Review-flagged
-  `new OutputWriter()` is the existing detached duplicate-comparison string
+  the detached duplicate-comparison writer boundary is the existing string
   boundary, and `new WholeBufferCountingWriter()` / thrown test errors are
   focused rules/ruleset proof scaffolding. No binding lookup runtime path
   changed.
@@ -493,8 +531,8 @@ with `--no-verify` after the explicit gates pass.
   materialization was added, and detailed status remains in
   `BINDING-LOOKUP-REMAINING.md`.
 - Merge-carried serialization review: latest `origin/dev` also carries the
-  declaration fallback direct-writer cut in
-  `packages/core/src/tree/util/serialize-helper.ts`. Declaration fallback
+  declaration detached direct-writer cut in
+  `packages/core/src/tree/util/serialize-helper.ts`. Declaration detached path
   inside container serialization now writes through `writeSyntax(...)` into
   its detached writer instead of calling public `toTrimmedString(...)`;
   duplicate declaration comparison stays on the detached string key fed by

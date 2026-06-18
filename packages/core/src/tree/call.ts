@@ -700,6 +700,39 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.markCallOutput(castResult, ownOutput);
   }
 
+  private async resolveDynamicCallTarget(
+    context: Context,
+    state: CallEvalState
+  ): Promise<unknown> {
+    const { name } = state;
+    if (typeof name === 'string') {
+      return name;
+    }
+    let evaluatedName: unknown = await name.eval(context);
+    evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
+    if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
+      evaluatedName = await evaluatedName.eval(context);
+    }
+    return evaluatedName;
+  }
+
+  private renderDynamicOutputResult(
+    context: Context,
+    output: Node | string,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string | Promise<string> {
+    if (typeof output === 'string') {
+      if (!isRenderBuffer(bufferOrOptions)) {
+        return output;
+      }
+      return callRenderSharesWriter(bufferOrOptions)
+        ? output
+        : writeRenderTextResult(bufferOrOptions, output);
+    }
+    return this.renderOutput(context, output, bufferOrOptions, options);
+  }
+
   private async runInCallFrame<T>(
     context: Context,
     options: { caller?: boolean },
@@ -760,11 +793,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const ownOutput = !renderFailureWith;
     return this.runInCallFrame(context, {}, async () => {
-      let evaluatedName: unknown = await name.eval(context);
-      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-        evaluatedName = await evaluatedName.eval(context);
-      }
+      const evaluatedName = await this.resolveDynamicCallTarget(context, state);
       const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn) && !fn._internal && !fn.options?.params) {
         return this.runAsCaller(context, async () => {
@@ -1302,11 +1331,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     return this.runInCallFrame(context, {}, async () => {
-      let evaluatedName: unknown = await name.eval(context);
-      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-        evaluatedName = await evaluatedName.eval(context);
-      }
+      const evaluatedName = await this.resolveDynamicCallTarget(context, state);
       const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn)) {
         return undefined;
@@ -1328,16 +1353,11 @@ export class Call extends Node<CallValue, CallOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): Promise<string> {
-    const sharesWriter = callRenderSharesWriter(bufferOrOptions);
     if (typeof this.name !== 'string') {
       const state = this.createEvalState();
       const { name } = state;
       if (typeof name !== 'string') {
-        let evaluatedName: unknown = await name.eval(context);
-        evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-        if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-          evaluatedName = await evaluatedName.eval(context);
-        }
+        const evaluatedName = await this.resolveDynamicCallTarget(context, state);
         const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
         if (isExtendedFn(fn)) {
           const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
@@ -1370,12 +1390,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 markImportant: isMetadataFunction && this._options?.markImportant
               });
             });
-            if (typeof output === 'string') {
-              return isRenderBuffer(bufferOrOptions)
-                ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
-                : output;
-            }
-            return this.renderOutput(context, output, bufferOrOptions, options);
+            return this.renderDynamicOutputResult(context, output, bufferOrOptions, options);
           }
         } else if (isNode(evaluatedName, N.Call)) {
           const output = await evaluatedName.eval(context);
@@ -1448,12 +1463,7 @@ export class Call extends Node<CallValue, CallOptions> {
               return this.renderFinalizedCallSyntax(name, state, context, prepared);
             }
           });
-          if (typeof output === 'string') {
-            return isRenderBuffer(bufferOrOptions)
-              ? sharesWriter ? output : writeRenderTextResult(bufferOrOptions, output)
-              : output;
-          }
-          return this.renderOutput(context, output, bufferOrOptions, options);
+          return this.renderDynamicOutputResult(context, output, bufferOrOptions, options);
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
@@ -1462,10 +1472,12 @@ export class Call extends Node<CallValue, CallOptions> {
           )
           && (this.options?.silentFail || evaluatedName !== 'calc')
         ) {
-          const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
-          return isRenderBuffer(bufferOrOptions)
-            ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
-            : fallbackText;
+          return this.renderDynamicOutputResult(
+            context,
+            await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared),
+            bufferOrOptions,
+            options
+          );
         }
       }
     }
@@ -1475,18 +1487,11 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const fallbackText = await this.renderOptionalFallbackCallSyntax(context, prepared);
     if (fallbackText) {
-      return isRenderBuffer(bufferOrOptions)
-        ? sharesWriter ? fallbackText : writeRenderTextResult(bufferOrOptions, fallbackText)
-        : fallbackText;
+      return this.renderDynamicOutputResult(context, fallbackText, bufferOrOptions, options);
     }
     const fallback = await this.evalOptionalFallbackOutput(context, prepared);
     if (fallback) {
-      if (typeof fallback === 'string') {
-        return isRenderBuffer(bufferOrOptions)
-          ? sharesWriter ? fallback : writeRenderTextResult(bufferOrOptions, fallback)
-          : fallback;
-      }
-      return this.renderOutput(context, fallback, bufferOrOptions, options);
+      return this.renderDynamicOutputResult(context, fallback, bufferOrOptions, options);
     }
     const metadataOutput = await this.evalMetadataDynamicFunction(context, false);
     if (metadataOutput) {
