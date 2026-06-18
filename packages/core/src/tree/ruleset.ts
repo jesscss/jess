@@ -57,6 +57,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 function copySelectorForRulesetMetadata(selector: Selector): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
   if (isRulesetSelectorMetadata(copied)) {
@@ -573,9 +585,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     const opts = getPrintOptions(options);
     const w = opts.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(opts);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

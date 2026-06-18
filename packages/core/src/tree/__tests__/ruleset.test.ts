@@ -238,6 +238,23 @@ describe('Rule', () => {
     }
   });
 
+  it('captures ruleset source syntax without the outer ruleset readback', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(writer.reads).toBe(1);
+  });
+
   it('writes finalized ruleset output into segmented buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = ruleset({

@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Ruleset` outer source-capture readback split.
+- Verdict: accepted as a bounded `Ruleset` serializer cut. Public ruleset
+  source capture no longer wraps `writeSyntax(...)` in an outer
+  `mark()/getSince()` readback window just to return the emitted ruleset text;
+  it now recovers the local ruleset text from the active writer tail while
+  preserving the still-live inner header/body serializer capture points. No
+  speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/ruleset.ts`. This replaces
+  the outer ruleset capture window; it does not add a new scan over unrelated
+  selector/body state.
+- Review-flagged allocations: no production node allocations.
+- New node/materialization: none.
+- Render path: ruleset render behavior is unchanged. The pass changes only
+  public source capture and does not materialize selectors, rules, or wrapper
+  rulesets to recover text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/ruleset.ts`. It replaces the outer
+  `Ruleset.toTrimmedString(...)` readback wrapper; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added.
+- Allocation changes: deletes the outer `mark()/getSince()` capture from
+  `Ruleset.toTrimmedString(...)`. The remaining single readback on the covered
+  simple path belongs to the still-live inner ruleset serializer boundaries.
+- Evidence: focused `ruleset.test.ts` cases for source syntax through
+  `writeSyntax(...)` ownership and source capture without the outer ruleset
+  readback both passed.
+
 - Latest pass: `Declaration` outer source-capture readback split.
 - Verdict: accepted as a bounded `Declaration` serializer cut. Public
   declaration source capture no longer wraps `writeDeclarationValueSyntax(...)`
