@@ -510,6 +510,75 @@ real benchmark speed win. Next timed targets should come from the remaining V8
 clusters, especially `processExtends(...)`, `applyExtendsToSelector(...)`,
 copy/constructor work, and GC pressure.
 
+### 2026-06-18 Ruleset Comparable Header Copy Cut
+
+Focus: CPU-profile-selected render-header copy/constructor stack under
+`getComparableHeaderString(...)`.
+
+Kept implementation: `Ruleset.writeHeaderSelector(..., withoutComments=true)`
+no longer clones the selector up front. It now writes the source selector
+directly unless later reference filtering or visibility isolation needs a
+placement-local copy. Source trivia comments are still suppressed by the
+existing empty trivia map; selector visibility mutation remains isolated by the
+existing `needsVisibleSelectorClone(...)` branch.
+
+Rejected implementation during this pass: `classifyInstructionMatch(...)`
+fallback was briefly changed from `applyExtendsToSelector(selector,
+[instruction])` to `tryExtendSelector(...)`. Focused tests passed, but the
+external CPU-profiled `benchmark.less` run regressed to median `1092.28ms`
+with `23.93%` variance and `processExtends(...)` self-time rose to `181.03ms`,
+so the code change was reverted. It did reduce classification
+`applyExtendsToSelector(...)` samples, but the full benchmark shape rejected
+the trade.
+
+Focused behavior proof for the kept ruleset cut:
+
+```sh
+pnpm --filter @jesscss/core test -- --run src/tree/__tests__/ruleset.test.ts -t "getComparableHeaderString|writeHeader|HeaderString|visibility forcing|reference|render|comment-free"
+pnpm --filter @jesscss/core test -- --run src/tree/__tests__/selector.test.ts -t "comment trivia|selector"
+pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/extend-unit.test.ts src/tree/util/__tests__/extend-utils.test.ts src/tree/__tests__/mixin.test.ts -t "namespace fast path|mixin-ruleset calls with args|extendSelector|applyExtendsToSelector|ruleset namespace path|mixin namespace path"
+```
+
+All passed. Ordered benchmark-path rebuild passed before the CPU-profiled
+measurement; after temporary A/B reverts only `@jesscss/core` and `jess` were
+rebuilt because the touched code was core-only.
+
+External CPU-profiled benchmark for the kept cut:
+
+```sh
+node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-144019-ruleset-header-copy-slim-post-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division
+```
+
+Profile artifact:
+`profiling/core-architecture/20260618-144019-ruleset-header-copy-slim-post-cpu/CPU.20260618.144019.63405.0.001.cpuprofile`.
+
+The intended header-copy stack moved: the previous post-extend profile had
+`copyOwnedWithReusableLeaves(...)` / `constructCopy(...)` under
+`ownSelector(...) -> writeHeaderSelector(...) -> getComparableHeaderString(...)`
+with BasicSelector/CompoundSelector constructor samples. The kept profile no
+longer shows the comparable-header path cloning through `ownSelector(...)`;
+remaining `copyOwnedWithReusableLeaves(...)` samples are registration
+preparation and reference filtering paths. The run itself was noisy and worse
+by median (`738.26ms`, `37.76%` variance), so this is not a wall-clock speed
+claim.
+
+Non-profiled same-harness A/B sanity after rebuilding:
+
+- kept patch: median `564.98ms`, average `649.14ms`, variance `26.95%`;
+- temporary reverted baseline: median `579.52ms`, average `666.33ms`,
+  variance `29.89%`.
+
+This A/B is noisy but does not reject the patch. Stable repo hotpath sanity
+remained non-decision-quality: `functions.less`, `import-reference.less`, and
+`extend-chaining.less` were `unstable`; `mixins-guards.less` and `media.less`
+were `noisy`.
+
+Verdict: keep as a CPU-profile-supported copy/materialization cut with weak
+noisy wall-clock support, not as a real speed win. Next timed targets are still
+the larger remaining clusters: declaration registration `copyValueForDerived`,
+binding-value clone paths, `processExtends(...)` / `applyExtendsToSelector(...)`,
+and header writer trim/source-map work.
+
 ### 2026-06-18 Performance Evidence Focus Refresh
 
 Context: fresh isolated worktree

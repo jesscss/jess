@@ -1168,7 +1168,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return false;
     }
 
-    let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
+    let renderSelector: Selector | Nil = selector;
     const referenceFilteredLocal = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true

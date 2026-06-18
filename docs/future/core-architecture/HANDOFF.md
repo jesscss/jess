@@ -112,29 +112,29 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: extend-root descendant memoization plus counter policy cleanup.
-- Verdict: accepted as a CPU-profile-backed reduction of a named hot extend
-  stack, not as a wall-clock speed claim. `ExtendRootRegistry` now caches
-  `isSameOrDescendantRoot(rulesetRoot, extendRoot)` results per registry and
-  clears that cache when roots are registered. This preserves the existing
-  parent-root walk semantics while avoiding repeated recursive recomputation for
-  the same root pair during extend processing.
-- New traversal: none. The cache replaces repeated calls into the existing
-  parent walk; the only added hot-path work is two WeakMap probes for a pair
-  that would otherwise recurse through `parentRoot`.
+- Latest pass: ruleset comparable-header selector copy cut.
+- Verdict: accepted as a CPU-profile-supported copy/materialization reduction,
+  not as a wall-clock speed claim. `Ruleset.writeHeaderSelector(...)` no longer
+  clones the selector solely because the caller requested `withoutComments`;
+  source trivia is still suppressed by the existing empty trivia map, and
+  placement-local copies still happen for reference filtering or visibility
+  isolation.
+- Rejected during pass: replacing the extend classification fallback's
+  single-instruction `applyExtendsToSelector(...)` dry run with
+  `tryExtendSelector(...)`. Focused tests passed, but external
+  `benchmark.less` CPU/wall-clock shape regressed, so it was reverted.
+- New traversal: none.
 - New node/materialization: none.
 - Render path: no render/stringification path changed.
-- Helper/API surface: one private `computeSameOrDescendantRoot(...)` helper
-  split from the existing method so cached and uncached paths are explicit. No
-  public API added.
-- Metadata mutations: none. Cache invalidation happens at
-  `registerRoot(...)`, the same registry mutation boundary that changes the
-  root graph.
-- Evidence: focused extend utility, namespace/mixin-ruleset, and ruleset
-  registration slices passed after rebuilding `@jesscss/core`. Ordered
-  benchmark-path package rebuild passed. External Less alpha `benchmark.less`
-  CPU profile from this worktree moved `isSameOrDescendantRoot(...)` self-time
-  from the prior broad profile's ~140-145ms cluster to 8.76ms. External
-  wall-clock and `pnpm run measure:less:hotpath -- --stable` were noisy or
-  unstable, so this is not a speed claim. See `PERFORMANCE-HANDOFF.md` for
-  artifacts and exact timings.
+- Helper/API surface: none added.
+- Metadata mutations: none added. Existing visibility-isolation copies remain
+  the guard against mutating source selector flags while writing comparable
+  headers.
+- Evidence: focused ruleset header/reference/render tests, selector trivia
+  tests, and extend/mixin namespace slices passed. Ordered benchmark-path
+  rebuild passed. External CPU profile no longer shows comparable-header
+  cloning through `ownSelector(...)`; remaining selector copies are registration
+  and reference-filter paths. Non-profiled same-harness A/B was noisy but did
+  not reject the patch (`564.98ms` kept median vs `579.52ms` temporary
+  reverted median). Stable repo hotpath stayed unstable/noisy. No speed claim.
+  See `PERFORMANCE-HANDOFF.md`.
