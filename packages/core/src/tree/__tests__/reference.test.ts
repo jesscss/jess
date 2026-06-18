@@ -2482,6 +2482,54 @@ describe('reference', () => {
       `);
     });
 
+    it('normalizes exact Any declaration keys without calling key valueOf()', async () => {
+      const keyNode = any('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Any.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'declaration' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: blue;
+        bar: blue;
+      `);
+    });
+
+    it('normalizes exact quoted index keys without calling key valueOf()', async () => {
+      const keyNode = quoted('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Quoted.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'index' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: red;
+        bar: red;
+      `);
+    });
+
     it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
       const node = rules([
         decl({

@@ -2199,6 +2199,31 @@ function getReferenceNotFoundError(type: LookupType, keyDisplay: string): Refere
   return new ReferenceError(`'${keyDisplay}' is not defined`);
 }
 
+function normalizeReferenceKeyValue(value: unknown): NormalizedLookupKey {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  if (isNode(value, N.Any | N.Keyword)) {
+    return value.value;
+  }
+  if (isNode(value, N.Quoted) && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (isNode(value, N.Num | N.Dimension)) {
+    return value.unit ? `${value.number}${value.unit}` : value.number;
+  }
+  if (isNode(value, N.Color) && typeof value.node === 'string') {
+    return value.node;
+  }
+  if (isNode(value)) {
+    const normalizedKey = value.valueOf();
+    return typeof normalizedKey === 'string' || typeof normalizedKey === 'number'
+      ? normalizedKey
+      : String(normalizedKey);
+  }
+  return String(value);
+}
+
 function evaluateReferenceKey(
   key: ReferenceValue['key'],
   resolvedTarget: unknown,
@@ -2216,15 +2241,14 @@ function evaluateReferenceKey(
       }
       const normalized = new Array<string>(resolvedKey.length);
       for (let i = 0; i < resolvedKey.length; i++) {
-        normalized[i] = String(resolvedKey[i]);
+        const normalizedPart = normalizeReferenceKeyValue(resolvedKey[i]);
+        normalized[i] = typeof normalizedPart === 'number'
+          ? `${normalizedPart}`
+          : normalizedPart;
       }
       return [resolvedTarget, normalized];
     }
-    const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
-    if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
-      return [resolvedTarget, normalizedKey];
-    }
-    return [resolvedTarget, String(normalizedKey)];
+    return [resolvedTarget, normalizeReferenceKeyValue(resolvedKey)];
   };
 
   if (isThenable(out)) {

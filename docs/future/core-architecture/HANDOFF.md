@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Reference` exact key normalization ownership.
+- Verdict: accepted as a localized lookup-key conversion cut. Exact
+  `Any`/`Quoted`/numeric/color key nodes no longer route through generic
+  public `valueOf()` / `String(...)` transport just to choose the lookup key;
+  `Reference` now reads owned scalar fields first and only falls back to
+  generic node stringification when the key shape is genuinely dynamic. No
+  speed claim.
+- New traversal: none. No new tree walk, parent walk, callback scan, side-map
+  lookup, or array materialization was added. The existing array-key
+  normalization loop remains, but it now normalizes each segment through one
+  shared scalar helper instead of unconditional generic string coercion.
+- New node/materialization: none. No runtime node copies, wrappers, inherited
+  metadata, frozen state, or new hot-path arrays were added.
+- Render path: no render path changed. This pass only deletes generic key
+  string transport on exact scalar key nodes before lookup dispatch.
+- Helper/API surface: one node-local `normalizeReferenceKeyValue(...)` helper
+  was added inside `reference.ts`; it replaces repeated ad hoc key coercion in
+  the existing lookup path and did not add public API surface.
+- Metadata mutations: none.
+- Routine error control: the review-flagged thrown test errors are focused
+  `reference.test.ts` proof scaffolding that patches `valueOf()` on exact key
+  nodes to prove lookup no longer depends on that public transport; no
+  production error/control flow changed.
+- Allocation changes: no new runtime objects were added beyond the preexisting
+  normalized string-array allocation for non-string key arrays. Exact scalar
+  key nodes now reuse their owned fields instead of allocating through generic
+  coercion paths.
+- Rejected/observed in this pass: rules-like surfaces, broader public value
+  materialization, and merged-assign normalization stay queued in `Reference`.
+- Evidence: focused `reference.test.ts` exact Any/quoted key normalization
+  proof plus quoted-index and merged-property regression checks, targeted
+  ESLint, `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: preserved `Operation` explicit-writer render ownership.
 - Verdict: accepted as a localized render transport fix. Preserved operations
   with an explicit writer no longer let child renders write directly while the
