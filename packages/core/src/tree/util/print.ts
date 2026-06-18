@@ -666,7 +666,23 @@ export class OutputWriter implements OutputWriter {
     if (mark < 0 || mark > this.chunks.length) {
       return;
     }
+    if (mark === this.chunks.length) {
+      return;
+    }
     let last = this.chunks.length - 1;
+    const tail = this.chunks[last]!;
+    if (tail) {
+      const tailCode = tail.charCodeAt(tail.length - 1);
+      if (
+        tailCode !== 32
+        && tailCode !== 9
+        && tailCode !== 13
+        && tailCode !== 10
+        && tailCode !== 12
+      ) {
+        return;
+      }
+    }
     while (last >= mark) {
       const chunk = this.chunks[last]!;
       const trimmed = chunk.replace(/[ \t\r\n\f]+$/u, '');

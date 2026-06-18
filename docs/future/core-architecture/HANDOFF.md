@@ -112,29 +112,28 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: ruleset comparable-header selector copy cut.
-- Verdict: accepted as a CPU-profile-supported copy/materialization reduction,
-  not as a wall-clock speed claim. `Ruleset.writeHeaderSelector(...)` no longer
-  clones the selector solely because the caller requested `withoutComments`;
-  source trivia is still suppressed by the existing empty trivia map, and
-  placement-local copies still happen for reference filtering or visibility
-  isolation.
-- Rejected during pass: replacing the extend classification fallback's
-  single-instruction `applyExtendsToSelector(...)` dry run with
-  `tryExtendSelector(...)`. Focused tests passed, but external
-  `benchmark.less` CPU/wall-clock shape regressed, so it was reverted.
+- Latest pass: header writer trim/trivia fast path.
+- Verdict: accepted as a CPU-profile-supported header-writer reduction with
+  supporting same-harness wall-clock evidence, not as completion of the Less
+  4.x speed goal. `OutputWriter.trimEndSince(...)` now returns before
+  refreshing position arrays when the marked range cannot trim anything, and
+  `Ruleset.writeHeaderSelector(..., withoutComments=true)` reuses an immutable
+  empty trivia map instead of allocating one per comment-free header render.
+- Rejected during pass: no current-pass implementation was rejected. A broader
+  declaration/query-condition grep still hits the existing property-merge
+  duplicate failure (`src: one, two, one, three;`), so that grep is residual
+  correctness debt rather than proof for this patch.
 - New traversal: none.
 - New node/materialization: none.
-- Render path: no render/stringification path changed.
+- Render path: no render path now creates nodes or arrays to stringify. The
+  changed writer path skips no-op work before string output.
 - Helper/API surface: none added.
-- Metadata mutations: none added. Existing visibility-isolation copies remain
-  the guard against mutating source selector flags while writing comparable
-  headers.
-- Evidence: focused ruleset header/reference/render tests, selector trivia
-  tests, and extend/mixin namespace slices passed. Ordered benchmark-path
-  rebuild passed. External CPU profile no longer shows comparable-header
-  cloning through `ownSelector(...)`; remaining selector copies are registration
-  and reference-filter paths. Non-profiled same-harness A/B was noisy but did
-  not reject the patch (`564.98ms` kept median vs `579.52ms` temporary
-  reverted median). Stable repo hotpath stayed unstable/noisy. No speed claim.
-  See `PERFORMANCE-HANDOFF.md`.
+- Metadata mutations: none added. Position metadata is refreshed only when
+  chunks actually change.
+- Evidence: focused output-writer/ruleset header tests and selector trivia
+  tests passed. Ordered benchmark-path rebuild passed. External CPU profile
+  removed the `refreshPositions <- trimEndSince <- writeHeaderSelector` stack
+  and removed `createTriviaMap <- writeHeaderSelector`; non-profiled external
+  `benchmark.less` reported median `306.11ms` with `4.94%` variance. Stable
+  repo hotpath stayed unstable/noisy, so that command is sanity only. See
+  `PERFORMANCE-HANDOFF.md`.

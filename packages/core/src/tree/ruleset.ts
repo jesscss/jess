@@ -82,6 +82,8 @@ type RulesetOptions = NodeOptions & {
   hasDefault?: boolean;
 };
 
+const EMPTY_HEADER_TRIVIA = createTriviaMap();
+
 /**
  * A qualified rule. This is historically called a "Ruleset"
  * by older CSS documentation and by Less.
@@ -1213,7 +1215,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const savedTrivia = options.trivia;
     const position = options.writer.position();
     if (withoutComments) {
-      options.trivia = createTriviaMap();
+      options.trivia = EMPTY_HEADER_TRIVIA;
     }
     try {
       renderSelector.writeSyntax(options);

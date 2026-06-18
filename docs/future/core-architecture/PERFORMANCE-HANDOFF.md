@@ -579,6 +579,95 @@ the larger remaining clusters: declaration registration `copyValueForDerived`,
 binding-value clone paths, `processExtends(...)` / `applyExtendsToSelector(...)`,
 and header writer trim/source-map work.
 
+### 2026-06-18 Header Writer Trim/Trivia Fast Path
+
+Focus: CPU-profile-selected header writer stack under
+`getComparableHeaderString(...)`, specifically
+`refreshPositions(...) <- trimEndSince(...) <- writeHeaderSelector(...)` and
+per-call empty `createTriviaMap(...)` work for comment-free selector headers.
+
+Kept implementation:
+
+- `OutputWriter.trimEndSince(mark)` now returns immediately when the marked
+  range is empty or when the last emitted chunk after the mark does not end in
+  CSS whitespace. That avoids the previous unconditional position-array refresh
+  for a no-op trim.
+- `Ruleset.writeHeaderSelector(..., withoutComments=true)` now reuses a
+  module-level empty trivia map instead of allocating a new empty map for each
+  comment-free header render. The map is used only as immutable lookup input;
+  emitted-trivia state remains on the writer/options path.
+
+Focused behavior proof:
+
+```sh
+pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/outputwriter.test.ts src/tree/__tests__/ruleset.test.ts -t "trimEndSince|getComparableHeaderString|writeHeader|HeaderString|visibility forcing|reference|render|comment-free"
+pnpm --filter @jesscss/core test -- --run src/tree/__tests__/selector.test.ts -t "comment trivia|selector"
+```
+
+Both passed. A broader declaration/query-condition grep also hit the existing
+property-merge duplicate failure
+`src: one, two, one, three;` versus `src: one, two, three;`; that is not
+introduced by this header-writer patch and remains residual correctness debt.
+
+Ordered benchmark-path rebuild passed:
+
+```sh
+pnpm --filter styles-config build &&
+pnpm --filter @jesscss/awaitable-pipe build &&
+pnpm --filter @jesscss/core build &&
+pnpm --filter @jesscss/css-parser build &&
+pnpm --filter @jesscss/less-parser build &&
+pnpm --filter @jesscss/plugin-less build &&
+pnpm --filter @jesscss/plugin-less-compat build &&
+pnpm --filter @jesscss/plugin-js build &&
+pnpm --filter jess build
+```
+
+External CPU-profiled benchmark:
+
+```sh
+node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-145644-header-trim-trivia-final-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division
+```
+
+Profile artifact:
+`profiling/core-architecture/20260618-145644-header-trim-trivia-final-cpu/CPU.20260618.145644.94314.0.001.cpuprofile`.
+
+Result: median `316.07ms`, average `370.46ms`, variance `31.12%`.
+
+Relevant V8 sampled self-time comparison against the previous
+`20260618-144019-ruleset-header-copy-slim-post-cpu` profile:
+
+- `refreshPositions(...)`: `142.57ms` -> `0.00ms`;
+- `trimEndSince(...)`: `21.46ms` -> `0.00ms`;
+- `createTriviaMap(...)`: `29.14ms` -> `8.63ms`, with no material remaining
+  `createTriviaMap <- writeHeaderSelector` stack;
+- `writeHeaderSelector(...)`: `61.63ms` -> `20.82ms`;
+- `getComparableHeaderString(...)`: `3.15ms` -> `1.46ms`.
+
+Non-profiled same-harness wall-clock:
+
+```sh
+node benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=16 --warmup=6 --math=parens-division
+```
+
+Result: median `306.11ms`, average `311.08ms`, variance `4.94%`.
+
+Stable repo hotpath sanity:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result: all fixtures remained `unstable` or `noisy`, so this is sanity only
+and not decision-quality speed evidence.
+
+Verdict: keep as a CPU-profile-supported header-writer hot-path cut with
+supporting same-harness wall-clock evidence. This is progress toward the
+canonical benchmark target, not completion of the Less 4.x speed goal. Next
+timed targets should come from the remaining largest V8 clusters:
+declaration-registration copies, binding-value clone copies, and
+`processExtends(...)` / `applyExtendsToSelector(...)`.
+
 ### 2026-06-18 Performance Evidence Focus Refresh
 
 Context: fresh isolated worktree
@@ -787,9 +876,10 @@ Wall-clock status:
 - patched stable run 2: only `mixins-guards.less` was usable
   (`trimmedMedian` `23.44ms`); other fixtures were unstable/noisy.
 
-Interpretation: keep as a semantic lookup-family narrowing and counter cut,
-not as a speed claim. The reliable counter movement is useful, but the
-wall-clock runs are too noisy to claim faster. The next declaration-lookup
+Interpretation: keep as a semantic lookup-family narrowing with supporting
+counter diagnostics, not as a speed claim. The reliable counter movement is
+useful, but the wall-clock runs are too noisy to claim faster. The next
+declaration-lookup
 target is no longer "why are property merges using any-declaration lookup";
 it is reducing the still-hot property child-entry traversal:
 `declaration.scope.p` about `50318`, `childEntryEntered` about `51551`, and
@@ -964,8 +1054,8 @@ Behavior proof:
   (`39` passed, `156` skipped);
 - full Less parser `mixins.test.ts` passed (`22` passed).
 
-Verdict: keep as a counter-proven traversal cut and parser classification
-cleanup, not as a wall-clock speed claim. The next target should continue this
+Verdict: keep as a traversal cut and parser classification cleanup supported
+by diagnostics, not as a wall-clock speed claim. The next target should continue this
 shape: carry cheap family facts at registration/parse time and use them to
 avoid recursive lookup work, while avoiding broad filtered result caches that
 can freeze live values or add option-shape overhead.
@@ -3055,11 +3145,11 @@ Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
    already receives callable coverage facts. The current `Rules` bit proved the
-   counter cut; the next version should let exact simple-name lookup answer
-   three questions from the frame without touching child arrays: this frame has
-   exact callable buckets; this frame has no child callable surfaces for simple
-   exact names; this frame has child surfaces that might contain simple
-   callables. A miss can stop only in the first two cases.
+   diagnostic count moved; the next version should let exact simple-name lookup
+   answer three questions from the frame without touching child arrays: this
+   frame has exact callable buckets; this frame has no child callable surfaces
+   for simple exact names; this frame has child surfaces that might contain
+   simple callables. A miss can stop only in the first two cases.
 2. Split child-surface facts by lookup shape. A nested `Ruleset`/`AtRule` may
    matter for exact simple names, namespace paths, declarations, or output
    leakage differently. One broad `hasDirectChildRuleSurface` forces too many
