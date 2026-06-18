@@ -115,16 +115,22 @@ with `--no-verify` after the explicit gates pass.
   audit leaves callable direct-crawl bridges as the main remaining binding
   target. No speed claim.
 - New traversal: none.
-- New node/materialization: none.
+- New node/materialization: none in production. The new merge-chain proof uses
+  a test-only `declarationBridgeHits` array to spy on public declaration bridge
+  calls.
 - Render path: no render path changed.
 - Helper/API surface: one private strategy constant,
   `VARIABLE_OCCURRENCE_LOOKUP`, replaces a per-call options object for the
   setDefined occurrence fallback. It does not add public API.
 - Metadata mutations: none added.
-- Routine error control: none added.
+- Routine error control: none in production. The merge-chain bridge-spy test
+  uses `try/finally` only to restore `Rules.prototype.find` after the spy.
 - Allocation changes: deleted the setDefined variable fallback options-spread
   allocation and delayed declaration constraint snapshot allocation until
   source-static declaration-family handle reads have a plausible common handle.
+  The one new production object is the module-level
+  `VARIABLE_OCCURRENCE_LOOKUP` strategy constant, created once so the hot
+  fallback call does not allocate a patched options object.
 - Evidence: focused setDefined tests, merge-chain/property handle tests,
   style-import/dynamic promotion tests, source-static handle tests,
   terminal namespace/remainder tests, and `verify:binding-lookup-hot-paths`

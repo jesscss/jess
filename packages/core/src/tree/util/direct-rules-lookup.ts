@@ -64,6 +64,21 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   skipVarsAfterBindingHit: true
 };
 
+const VARIABLE_OCCURRENCE_LOOKUP: DeclarationLookupStrategy = {
+  cacheTag: 'v',
+  lookupVisibility: 'VarDeclaration',
+  visibilityKey: 'VarDeclaration',
+  includeLiveBindings: false,
+  includeFallbackFrames: true,
+  prepareScopeFrame: false,
+  acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
+  scopeMayContainFamily: scope => scope.hasVarDeclarationChildSurface || scope.hasReferenceImportChildSurface,
+  childEntryMayContainFamily: entry => (
+    entry.hasVarDeclarationSurface !== false || entry.hasReferenceImportSurface === true
+  ),
+  skipVarsAfterBindingHit: false
+};
+
 const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   cacheTag: 'p',
   lookupVisibility: 'Declaration',
@@ -813,11 +828,8 @@ export function findWritableSetDefinedDeclarationOccurrence(
   isVariable: boolean,
   options?: DirectDeclarationFindOptions
 ): DirectDeclarationOccurrence | undefined {
-  const strategy = isVariable ? VARIABLE_LOOKUP : PROPERTY_LOOKUP;
-  const lookupOptions = isVariable && options?.includeLiveBindings !== false
-    ? { ...options, includeLiveBindings: false }
-    : options;
-  return findDeclarationLookupWithStrategy(startRules, key, strategy, lookupOptions, true);
+  const strategy = isVariable ? VARIABLE_OCCURRENCE_LOOKUP : PROPERTY_LOOKUP;
+  return findDeclarationLookupWithStrategy(startRules, key, strategy, options, true);
 }
 
 export function findAnyDeclarationOccurrence(

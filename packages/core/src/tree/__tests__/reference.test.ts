@@ -5916,6 +5916,57 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
     });
 
+    it('static merge-chain property handles preserve unrelated writes and reject same-key writes', async () => {
+      const source = decl({ name: 'color', value: any('red') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const output = decl({ name: 'color', value: any('blue') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const node = rules([source, output]);
+      const originalFind = RulesClass.prototype.find;
+      const declarationBridgeHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration') {
+          declarationBridgeHits.push(String(key));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'color' }, {
+          type: 'property',
+          excludedDeclarations: [source],
+          requiredDeclarationAssignments: [AssignmentType.MergeList]
+        });
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.returnVal).toMatchObject({
+          kind: 'direct-declaration-occurrence'
+        });
+        const firstVersion = firstHandle?.targetLookupVersion;
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(firstVersion);
+
+        node.push(decl({ name: 'color', value: any('green') }, {
+          normalizedFromAssign: AssignmentType.MergeList
+        }));
+
+        expect(lookupRef.eval(context).valueOf()).toBe('green');
+        expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+        expect(declarationBridgeHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('real Less merge-chain property refs avoid public lookup bridges', async () => {
       const { Parser } = await import('../../../../less-parser/src/index.ts');
       const parser = new Parser();

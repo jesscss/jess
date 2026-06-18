@@ -1578,11 +1578,11 @@ function tryReadSourceStaticDeclarationRulesLookupHandle(
   lookupType: 'declaration' | 'property' | 'variable'
 ): RulesLookupHandleReadResult {
   const handleValueKey = getStringRulesLookupHandleValueKey(valueKey);
-  if (!hasHandleableDeclarationConstraints(referenceNode)) {
+  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, lookupType, handleValueKey);
+  if (!handle || !hasHandleableDeclarationConstraints(referenceNode)) {
     return undefined;
   }
   const declarationConstraints = getRulesLookupHandleDeclarationConstraints(referenceNode);
-  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, lookupType, handleValueKey);
   const declarationHandle = handle
     ? readDeclarationRulesLookupHandleConstraints(handle, declarationConstraints)
     : undefined;

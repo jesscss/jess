@@ -137,7 +137,8 @@ for (const token of [
   'findVariableDeclarationReadonlyOccurrence',
   'findPropertyDeclarationReadonlyOccurrence',
   'findSetDefinedDeclarationReadonlyOccurrence',
-  'DirectDeclarationLookupResult'
+  'DirectDeclarationLookupResult',
+  '{ ...options, includeLiveBindings: false }'
 ]) {
   if (directLookup.includes(token)) {
     console.error(`direct lookup should expose one setDefined readonly helper, found stale ${token}`);
