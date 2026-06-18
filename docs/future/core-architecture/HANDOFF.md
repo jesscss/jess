@@ -148,6 +148,13 @@ with `--no-verify` after the explicit gates pass.
   stale object-call shapes, deleted handle arg type names, and duplicated
   callable/function reader lookup-type checks.
 - Merge-carried serialization review: latest `origin/dev` also carries
+  `Reference.toTrimmedString(...)` direct writer ownership in
+  `packages/core/src/tree/reference.ts`. Public reference source
+  stringification now delegates to `writeSyntax(...)` instead of a duplicated
+  private `renderReferenceSyntax(...)` helper. Review-flagged thrown errors
+  are focused serialization test scaffolding. No binding lookup runtime path
+  changed.
+- Merge-carried serialization review: latest `origin/dev` also carries
   `Call.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/call.ts`. Public call source stringification now
   delegates to `writeSyntax(...)` instead of duplicating source assembly.
