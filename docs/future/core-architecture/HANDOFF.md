@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Reference` dynamic merged declaration direct-reuse cutoff.
+- Verdict: accepted as a localized public materialization cut. Already-final
+  dynamic merged declaration values no longer pay a final
+  normalize-plus-inherit public wrapper after eval when the merged output is
+  already in final list shape; only nested-list or empty-placeholder cleanup
+  stays on the existing normalization path. No speed claim.
+- New traversal: none beyond the preexisting direct item loop inside
+  `canReturnMergedAssignReferenceValue(...)`. This pass reuses the existing
+  merged-shape predicate and adds no new tree walk, parent walk, callback
+  scan, side-map lookup, or array materialization.
+- New node/materialization: none. This pass deletes one cold public
+  normalize-plus-inherit path for already-final evaluated merged values. The
+  existing normalization path still owns real merged cleanup when nested lists
+  or placeholders remain.
+- Render path: no render path changed. This pass only short-circuits public
+  resolve/eval materialization for merged declaration references whose
+  evaluated output is already final.
+- Helper/API surface: none newly added. The pass reuses the existing
+  `canReturnMergedAssignReferenceValue(...)` helper instead of adding another
+  merged-output finalizer branch.
+- Metadata mutations: fewer, because already-final evaluated merged outputs now
+  skip the extra `inherit(referenceNode)` wrapper that the old public
+  normalization path applied.
+- Routine error control: the focused async merged-finalization throw proof in
+  `reference.test.ts` stays test-only scaffolding; this pass added no
+  production error/control flow.
+- Allocation changes: deletes one cold public merged-reference normalization
+  and inherited wrapper for the already-final dynamic path; the remaining
+  nested-list / placeholder normalization branch is unchanged.
+- Rejected/observed in this pass: broader public value materialization and
+  deeper merged-assign normalization still stay queued in `Reference`.
+- Evidence: focused `reference.test.ts` merged declaration direct-reuse,
+  dynamic merged declaration direct-reuse, async merged finalization throw,
+  quoted-index merged-property regression checks, targeted ESLint,
+  `git diff --check`, `pnpm run verify:aggressive-cutting-review`, and
+  `pnpm --filter @jesscss/core build` passed.
 - Latest pass: `Reference` preserved rules-like shell ownership.
 - Verdict: accepted as a localized public ownership cut. Preserved
   `Rules`/`Collection`/`Mixin`/`Ruleset` reference surfaces no longer rerun

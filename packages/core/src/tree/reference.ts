@@ -2762,6 +2762,10 @@ function finalizeDeclarationReferenceResult(
         popReference();
         return evaluatedNode;
       }
+      if (canReturnMergedAssignReferenceValue(evaluatedNode)) {
+        popReference();
+        return evaluatedNode;
+      }
       const normalized = normalizeMergedAssignReferenceResult(evaluatedNode);
       const finalized = normalized.inherit(referenceNode);
       popReference();

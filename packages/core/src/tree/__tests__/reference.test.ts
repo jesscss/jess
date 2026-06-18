@@ -1299,7 +1299,7 @@ describe('reference', () => {
     it('restores declaration reference frames when async merged finalization throws', async () => {
       const declaration = decl({
         name: any('src'),
-        value: list([new AsyncNativeRenderAny('red'), any('blue')]),
+        value: list([list([new AsyncNativeRenderAny('red')]), any('blue')]),
         important: any('!important', { role: 'flag' })
       }, { normalizedFromAssign: '+:' });
       const node = rules([declaration]);
@@ -2724,6 +2724,40 @@ describe('reference', () => {
         expect(listInherits).toBe(0);
       } finally {
         List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('reuses already-normalized dynamic merged declaration values during public resolve', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' }), any('foo')]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
+      ]);
+
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        setRulesContext(await node.eval(context));
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBeInstanceOf(List);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(inheritedFromReference).toBe(0);
+      } finally {
         List.prototype.inherit = originalInherit;
       }
     });
