@@ -1372,7 +1372,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (results) {
           (frameResults ??= []).push(...results);
         }
-      } else if (frameHit.kind === 'uncovered' && frameHit.reason !== 'reference-import') {
+      } else if (
+        frameHit.kind === 'uncovered'
+        && (
+          frameHit.reason !== 'reference-import'
+          || (includeRulesets ? entry.hasExactCallableSurface : entry.hasExactMixinSurface)
+        )
+      ) {
         if (firstUncoveredChild === undefined) {
           firstUncoveredChild = entry.node;
         } else {
@@ -2076,9 +2082,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           includeRulesets,
           searchParents
         });
+        let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
           matches = collectCallableBucketResults(frameHit.bucket, includeRulesets);
         } else if (frameHit.kind === 'miss') {
+          frameMissCovered = true;
+        } else if (
+          frameHit.kind === 'uncovered'
+          && (frameHit.reason === 'child-surface' || frameHit.reason === 'reference-import')
+        ) {
+          const direct = scope.findMixinsFastForUncoveredCallable(
+            segment,
+            frameHit.reason,
+            includeRulesets,
+            options
+          );
+          if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            frameMissCovered = true;
+            if (direct.length > 0) {
+              matches = direct;
+            }
+          }
+        }
+        if (matches === undefined && frameMissCovered) {
           let fallbackFrame = scope._scopeFrame.fallbackFrame;
           while (fallbackFrame && matches === undefined) {
             if (isNode(fallbackFrame.rulesNode, N.Rules)) {
@@ -2114,19 +2140,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           if (matches === undefined) {
             return DEFINITE_MIXIN_NAMESPACE_MISS;
-          }
-        } else if (
-          frameHit.kind === 'uncovered'
-          && (frameHit.reason === 'child-surface' || frameHit.reason === 'reference-import')
-        ) {
-          const direct = scope.findMixinsFastForUncoveredCallable(
-            segment,
-            frameHit.reason,
-            includeRulesets,
-            options
-          );
-          if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-            matches = direct;
           }
         }
       }

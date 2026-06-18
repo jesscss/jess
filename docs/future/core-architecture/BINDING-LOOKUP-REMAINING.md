@@ -122,8 +122,10 @@ for selector-list ruleset prefixes. `findMixinNamespacePathFast(...)` now
 routes uncovered child/reference states through the narrow child-entry helper
 before broad `findMixinsFast(...)`; a callable namespace reference-import
 offset-path test proves `#parent-namespace -> #imported -> .leaf` avoids both
-broad start crawl and generated array fallback. Keep this open for terminal
-mixin-only imported namespace cases, fallback-frame uncovered offsets, and any
+broad start crawl and generated array fallback. Fallback-frame imported mixin
+namespace hit/miss tests now prove the same narrow child-entry route for
+callable-only namespace offsets. Keep this open for terminal mixin-only
+imported namespace cases, fallback-frame ruleset namespace offsets, and any
 imported namespace positive/miss shape not covered by the current
 reference-import fixtures.
 
@@ -969,14 +971,20 @@ allocation for children with neither exact callable nor reference-import
 surface, matching initial collection and avoiding a useless prepared child
 entry.
 
-61. [ ] Prove fallback-frame uncovered namespace offsets use the narrow
+61. [x] Prove fallback-frame uncovered namespace offsets use the narrow
 child-entry path. Scope: `findMixinNamespacePathFast(...)` fallback frame loop,
 fallback frames with reference-import child surfaces, child-surface misses,
 and `searchParents` behavior. Goal: fallback-frame uncovered child/reference
 states should use `findMixinsFastForUncoveredCallable(...)` only for the
 specific fallback frame, without reopening parent/root broad start-key crawl.
 Acceptance: focused fallback-frame namespace hit/miss spies prove zero broad
-`findMixinsFast(...)` outside the modeled fallback child entries.
+`findMixinsFast(...)` outside the modeled fallback child entries. Current
+evidence: imported fallback-frame mixin namespace hit/miss tests use
+`filterType: 'Mixin'` and prove `#parent-with-fallback-import -> #imported`
+resolves/misses through modeled fallback child entries with zero root/fallback
+broad `findMixinsFast('#imported')` and zero generated array fallback. A
+diagnostic attempt showed ruleset namespace fallback is a separate
+`findRulesetNamespacePathFast(...)` lane, now tracked below.
 
 62. [ ] Split terminal mixin-only imported namespace proof from generic
 reference-import namespace coverage. Scope: parameterized mixin-ruleset calls,
@@ -998,6 +1006,16 @@ only if it reduces hot-path code without adding a helper-call/object tax.
 Acceptance: either a small direct local reshaping with focused namespace tests
 green, or a documented rejection that the duplication is cheaper than another
 hot helper layer.
+
+64. [ ] Prove or design fallback-frame ruleset namespace offsets. Scope:
+`findRulesetNamespacePathFast(...)`, fallback frames, reference-import child
+rulesets, selector-list/compound prefixes, and exact ruleset path misses.
+Goal: imported ruleset namespace fallback should either use carried fallback
+prefix facts without broad crawl or be explicitly recorded as unsupported
+semantics. Acceptance: focused fallback-frame ruleset namespace hit/miss tests
+with broad `findMixinsFast(...)` and generated array-fallback spies, or a
+documented rejection explaining why ruleset namespace fallback cannot share
+the callable mixin namespace path.
 
 ## Latest Binding Baseline
 
