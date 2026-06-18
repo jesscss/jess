@@ -78,9 +78,11 @@ In benchmark-leashed cutting mode:
 - keep the aggressive-cutting posture: delete machinery and semantic reasons
   for work rather than polishing helpers;
 - run focused tests and full gates before claiming behavior progress;
-- run stable hot-path benchmarks before and after non-trivial hot-path edits;
-- use profiler/counter/CPU-profile evidence to choose targets, not to claim
-  "Jess got faster";
+- run stable wall-clock hot-path benchmarks before and after every
+  performance-targeting hot-path edit, and record the benchmark `signal=` value
+  with the interpretation;
+- use profiler/counter/CPU-profile evidence on every measured performance round
+  to choose and explain targets, not to claim "Jess got faster";
 - do not claim speed wins without real benchmark evidence;
 - reject or reshape changes that reduce local object counts but slow or fail
   to improve the real benchmark, unless the change fixes correctness and the
@@ -198,8 +200,9 @@ is true:
    local cleanup.
 
 Once reactivated, do not do unmeasured performance work. Every performance
-round needs a before snapshot, one hypothesis, one patch, focused tests, the
-same after snapshot, and a keep/revert decision.
+round needs a before wall-clock benchmark snapshot, CPU/profile or counter
+evidence for target selection, one hypothesis, one patch, focused tests, the
+same after wall-clock benchmark snapshot, and a keep/revert decision.
 
 ## Required Real Benchmark Inputs
 
@@ -238,12 +241,23 @@ node scripts/profile-less-benchmark.mjs --file=benchmark.less
 Build the relevant packages before profiling:
 
 ```sh
+pnpm --filter styles-config build
+pnpm --filter @jesscss/awaitable-pipe build
 pnpm --filter @jesscss/core build
 pnpm --filter @jesscss/less-parser build
 pnpm --filter @jesscss/plugin-less build
 pnpm --filter @jesscss/plugin-less-compat build
+pnpm --filter @jesscss/plugin-js build
 pnpm --filter jess build
 ```
+
+In a fresh worktree, do not rely on the narrower historical build set alone:
+`jess` imports `styles-config` and `@jesscss/core` imports
+`@jesscss/awaitable-pipe`, so both must have `lib/` output before
+`measure:less:hotpath` or `profile-less-benchmark.mjs` can run. A full
+`pnpm -r --if-present build` may still fail in packages unrelated to this
+benchmark path, such as `@jesscss/language-service`; treat that as a setup
+signal, then run the focused benchmark-path build set above.
 
 Use profiler/counter runs for diagnosis, not user-facing speed claims:
 
@@ -280,6 +294,162 @@ If a patch reduces local object counts but slows real benchmarks, reject or
 reshape it.
 
 ## Current Evidence Log
+
+### 2026-06-18 Performance Evidence Focus Refresh
+
+Context: fresh isolated worktree
+`/Users/matthew/git/worktrees/jess/performance-evidence` on
+`feature/jess-performance-evidence` at
+`c083d90ec537967773c1528a9e82020d45c78785`.
+
+Focus: Performance Evidence selected from `FOCII.md`. This is a current
+measurement/status pass, not a before/after implementation experiment and not
+a speed claim.
+
+Policy/doc update:
+
+- benchmark-leashed mode now explicitly requires stable wall-clock hot-path
+  benchmark evidence before and after every performance-targeting hot-path
+  edit, and CPU/profile/counter evidence for target selection on every
+  measured performance round;
+- the benchmark-path build list now includes `styles-config`,
+  `@jesscss/awaitable-pipe`, and `@jesscss/plugin-js`, because fresh worktrees
+  otherwise fail at missing workspace `lib/` outputs before measurement.
+
+Build/setup evidence:
+
+- `pnpm install` was required in the fresh worktree before package builds;
+- the documented focused build set plus `styles-config`,
+  `@jesscss/awaitable-pipe`, and `@jesscss/plugin-js` passed;
+- broad `pnpm -r --if-present build` was attempted only to materialize missing
+  workspace outputs and failed later in `@jesscss/language-service` with
+  existing TypeScript API errors (`getValues` export, `Call.get`, and
+  `TreeContext` value usage). Those errors are outside the benchmark path.
+
+Stable hot-path wall-clock status:
+
+```sh
+pnpm run measure:less:hotpath -- --stable
+```
+
+Result summary:
+
+- `functions.less`: `signal=unstable`, median `13.76ms`, trimmed RSD `11.2%`;
+- `import-reference.less`: `signal=usable`, median `18.76ms`, trimmed RSD
+  `8.6%`;
+- `mixins-guards.less`: `signal=usable`, median `19.51ms`, trimmed RSD `6.6%`;
+- `extend-chaining.less`: `signal=usable`, median `5.12ms`, trimmed RSD
+  `7.7%`;
+- `media.less`: `signal=unstable`, median `5.07ms`, trimmed RSD `11.3%`.
+
+Interpretation: the usable fixtures can leash future before/after decisions;
+`functions` and `media` need rerun or CPU/allocation corroboration before they
+can justify a keep/revert decision. No current speed claim.
+
+Lookup-heavy profile status:
+
+```sh
+node scripts/profile-less-benchmark.mjs --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less --compat=false
+```
+
+Key results:
+
+- old lookup counters stayed empty: `rulesFindByType`,
+  `registryFindByType`, and `searchChildrenByType` were `{}`;
+- `Reference.evalNode`: `6528` calls / `65.39ms`;
+- direct lookup counters: `declaration.cacheMiss` `7560`,
+  `declaration.scope.v` `7560`, `declaration.childEntriesFamilySkip` `5400`,
+  `declaration.childEntryFamilySkip` `4815`, `declaration.localMatch` `2385`,
+  `declaration.childEntriesScanned` `1575`,
+  `declaration.childEntryEntered` `1575`,
+  `declaration.scopeBindingHit` `1575`, `declaration.framePrep` `1`;
+- writer counters remained substantial but secondary on this fixture:
+  `OutputWriter.getSince` `18425`, `mark` `18515`, `restore` `810`;
+- serialize counters: `duplicateDeclarationPrerenderedDeclarations` `360`,
+  `emissionRenderNodeTextPreviewCalls` `450`,
+  `emissionRenderNodeTextDeclarationFallbackCalls` `450`.
+
+Broad fixture counter status:
+
+```sh
+node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
+node scripts/profile-less-benchmark.mjs --file=benchmark-v39.less
+node scripts/profile-less-benchmark.mjs --file=benchmark-color-stress.less
+node scripts/profile-less-benchmark.mjs --file=benchmark.less
+```
+
+Key results:
+
+- `benchmark-v37.less`: old lookup counters empty; direct declaration counters
+  small (`declaration.cacheMiss` `20`); serialize preview/fallback calls `154`;
+- `benchmark-v39.less`: old lookup counters empty; direct declaration counters
+  tiny (`declaration.cacheMiss` `8`); serialize preview/fallback calls `231`;
+- `benchmark-color-stress.less`: old lookup counters empty; direct declaration
+  counters moderate (`declaration.cacheMiss` `300`); serialize
+  preview/fallback calls `120`;
+- broad `benchmark.less`: old lookup counters empty, but direct declaration
+  work is large: `declaration.cacheMiss` `56446`,
+  `declaration.childEntryEntered` `53217`, `declaration.scope.d` `51984`,
+  `declaration.childEntriesScanned` `18731`,
+  `declaration.childEntryFamilySkip` `18180`, `declaration.scope.v` `4462`,
+  `declaration.childEntriesFamilySkip` `4455`,
+  `declaration.childEntryStartSkip` `1420`, `declaration.localMatch` `913`,
+  `declaration.scopeBindingHit` `893`, `declaration.framePrep` `34`;
+- broad `benchmark.less` serialize counters are also large:
+  `duplicateDeclarationComparisonContainers` `1644`,
+  `duplicateDeclarationPrerenderedDeclarations` `860`,
+  `emissionRenderNodeTextPreviewCalls` `4063`,
+  `emissionRenderNodeTextDeclarationFallbackCalls` `4053`.
+
+CPU/profile corroboration:
+
+```sh
+node --cpu-prof --cpu-prof-dir=profiling/core-architecture scripts/profile-less-benchmark.mjs --file=benchmark.less
+```
+
+Profile file:
+`profiling/core-architecture/CPU.20260618.121531.89001.0.001.cpuprofile`.
+The sampled profile is startup/parse/render mixed because
+`profile-less-benchmark.mjs` performs a single render and has no repeat or
+render-only mode. Treat it as noisy target-selection evidence only. Real Jess
+samples that stood out included `processExtends` `10`,
+`applyExtendsToSelector` `5`, `createRulesLikeReferenceSurface` `3`,
+`extendSelector` `3`, and `isSameOrDescendantRoot` `3`; startup, file reads,
+Chevrotain lexer/parser frames, and garbage collection also appeared.
+
+External Less v5 alpha harness status:
+
+```sh
+node benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=30 --warmup=5 --math=parens-division
+```
+
+Run from `/Users/matthew/git/oss/less.js/packages/less` against the current
+dirty alpha checkout. It completed all 30 runs: median `382.74ms`, average
+`420.42ms`, stddev `121.78ms`, variance `28.97%`, throughput `248KB/s`.
+Interpretation: useful proof that the external harness completes, but too
+noisy to use as a Jess speed comparison by itself.
+
+Concrete next implementation target:
+
+1. First target broad `benchmark.less` direct declaration scan/cache shape,
+   especially `findWithinScopeSurface(...)` and child declaration entry
+   traversal for declaration/property reads. The strongest current counters are
+   `declaration.cacheMiss` `56446`, `childEntryEntered` `53217`,
+   `scope.d` `51984`, and `childEntriesScanned` `18731`, while old registry
+   counters are empty.
+2. Keep serialization fallback counters as the next competing target:
+   broad `benchmark.less` still reports `emissionRenderNodeTextPreviewCalls`
+   `4063` and declaration fallback calls `4053`.
+3. Extend processing is a CPU-profile corroboration target, but the current
+   profile is startup/parse/render mixed. Before editing extend code, add or
+   use a repeated render-only CPU/profile harness so `processExtends` and
+   selector-extension samples are cleanly separated from startup and parser
+   samples.
+
+Stop-rule result: Performance Evidence focus produced a current
+profile/benchmark interpretation and concrete next implementation target. The
+next focus should be an implementation focus chosen from this evidence, most
+likely direct declaration lookup scanning or serialization fallback readback.
 
 ### 2026-06-06 ScopeFrame Callable Hit/Miss Prototype
 

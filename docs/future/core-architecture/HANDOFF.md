@@ -103,6 +103,23 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Performance Evidence focus refresh.
+- Verdict: accepted as a documentation/evidence pass. No runtime code changed;
+  the pass refreshed wall-clock benchmark, profiler/counter, CPU-profile, and
+  external Less harness evidence in `PERFORMANCE-HANDOFF.md` and made the
+  performance-round measurement rule explicit.
+- New traversal: none in production code.
+- New node/materialization: none.
+- Render path: no render/eval/output path changed.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Evidence: benchmark-path package builds passed after fresh-worktree setup;
+  `pnpm run measure:less:hotpath -- --stable`, lookup stress
+  `profile-less-benchmark.mjs`, broad Less benchmark profiles, one noisy
+  `node --cpu-prof` broad profile, and the external Less v5 alpha
+  `benchmark.less` harness completed. The evidence is status/target selection
+  only and makes no Jess speed claim.
+
 - Latest pass: Less ruleset-mixin merge reference correctness.
 - Verdict: accepted as a correctness fix for existing merge/reference paths.
   Prepared registration replacements now propagate child flags to their owning
