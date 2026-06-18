@@ -386,6 +386,11 @@ Current hard leftovers after the broad hook sweep:
   base `Node.eval` contract is intact, keeps custom sync eval overrides on
   their existing public-override path, and only switches to an async rest
   continuation after the first thenable appears.
+  Repeated callable output value selection now runs through one node-local
+  finalization path that owns node-result eval, optional `markImportant`
+  application, single-rule `Rules` collapse, and `markCallOutput(...)`
+  handoff instead of duplicating that ladder across dynamic JS/callable
+  branches.
   Remaining work is split callable output value selection,
   `evalArgNodes(...)` copy pressure for calc/finalized CSS fallback paths,
   non-scalar/custom/trivia arg trim marks, async/helper ladders, and repeated

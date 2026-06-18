@@ -344,6 +344,32 @@ export class Call extends Node<CallValue, CallOptions> {
     return node;
   }
 
+  private async finalizeCallResult(
+    context: Context,
+    result: unknown,
+    options?: {
+      ownOutput?: boolean;
+      markImportant?: boolean;
+    }
+  ): Promise<Node> {
+    const ownOutput = options?.ownOutput ?? true;
+    if (isNode(result)) {
+      let evald = result.eval(context);
+      if (isThenable(evald)) {
+        evald = await evald;
+      }
+      if (options?.markImportant && isNode(evald, N.Rules)) {
+        this.makeImportant(evald);
+      }
+      return this.markCallOutput(evald, ownOutput);
+    }
+    const castResult = cast(result);
+    if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+      return this.markCallOutput(castResult.rules[0]!, ownOutput);
+    }
+    return this.markCallOutput(castResult, ownOutput);
+  }
+
   private async runInCallFrame<T>(
     context: Context,
     options: { caller?: boolean },
@@ -416,14 +442,7 @@ export class Call extends Node<CallValue, CallOptions> {
             const result = state.args
               ? await callWithContext(context, fn, ...state.args.items)
               : await callWithContext(context, fn);
-            if (isNode(result)) {
-              return this.markCallOutput(await result.eval(context), ownOutput);
-            }
-            const castResult = cast(result);
-            if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-              return this.markCallOutput(castResult.rules[0]!, ownOutput);
-            }
-            return this.markCallOutput(castResult, ownOutput);
+            return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
             const unitMode = context?.opts?.unitMode ?? 'loose';
             if (unitMode === 'strict') {
@@ -492,14 +511,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, ...state.args.items)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        return this.markCallOutput(await result.eval(context), ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, { ownOutput });
     });
   }
 
@@ -531,21 +543,10 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        let evald = result.eval(context);
-        if (isThenable(evald)) {
-          evald = await evald;
-        }
-        if (this._options?.markImportant && isNode(evald, N.Rules)) {
-          this.makeImportant(evald);
-        }
-        return this.markCallOutput(evald, ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, {
+        ownOutput,
+        markImportant: this._options?.markImportant
+      });
     });
   }
 
@@ -983,21 +984,10 @@ export class Call extends Node<CallValue, CallOptions> {
                   : stringifyValueOf(fn);
                 return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
               }
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (isMetadataFunction && this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              const castResult = cast(result);
-              if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-                return this.markCallOutput(castResult.rules[0]!, false);
-              }
-              return this.markCallOutput(castResult, false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: isMetadataFunction && this._options?.markImportant
+              });
             });
             if (typeof output === 'string') {
               return isRenderBuffer(bufferOrOptions)
@@ -1040,17 +1030,10 @@ export class Call extends Node<CallValue, CallOptions> {
               ],
               args: state.args?.value ?? []
             });
-            if (isNode(result)) {
-              let evald = result.eval(context);
-              if (isThenable(evald)) {
-                evald = await evald;
-              }
-              if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald, false);
-            }
-            return this.markCallOutput(cast(result), false);
+            return this.finalizeCallResult(context, result, {
+              ownOutput: false,
+              markImportant: this._options?.markImportant
+            });
           });
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
@@ -1064,17 +1047,10 @@ export class Call extends Node<CallValue, CallOptions> {
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
             try {
               const result = await collection.evalCall(context, state.args);
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              return this.markCallOutput(cast(result), false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: this._options?.markImportant
+              });
             } catch (error) {
               if (error instanceof ReferenceError && error.message.includes('No matching mixins')) {
                 if (this.parent?.type === 'SelectorCapture') {
@@ -1362,14 +1338,9 @@ export class Call extends Node<CallValue, CallOptions> {
           ],
           args: args?.value ?? []
         });
-        let evald = result.eval(context);
-        if (isThenable(evald)) {
-          evald = await evald;
-        }
-        if (markImportant && isNode(evald, N.Rules)) {
-          this.makeImportant(evald);
-        }
-        return this.markCallOutput(evald);
+        return this.finalizeCallResult(context, result, {
+          markImportant
+        });
       });
     }
 
@@ -1377,17 +1348,9 @@ export class Call extends Node<CallValue, CallOptions> {
       return this.runAsCaller(context, async () => {
         try {
           const result = await n.evalCall(context, args);
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          return this.markCallOutput(cast(result));
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
@@ -1428,25 +1391,9 @@ export class Call extends Node<CallValue, CallOptions> {
                 )
               : callWithContext(context, callable)
           );
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-              if (markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald);
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          let castResult = cast(result);
-          if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-            return this.markCallOutput(castResult.rules[0]!);
-          }
-          return this.markCallOutput(castResult);
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           const unitMode = context?.opts?.unitMode ?? 'loose';
           const shouldRethrowForMode = unitMode === 'strict';

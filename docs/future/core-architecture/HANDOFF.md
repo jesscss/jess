@@ -103,6 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` callable output finalization collapse.
+- Verdict: accepted as a localized helper-ladder cut. Repeated `Call`
+  branches that previously reimplemented “eval node result, optionally mark
+  important, collapse single-rule `Rules`, then `markCallOutput(...)`” now
+  share one node-local `finalizeCallResult(...)` path. No speed claim.
+- New traversal: none.
+- New node/materialization: none. This pass reuses the existing node-result
+  eval, single-rule `Rules` collapse, and `markCallOutput(...)` ownership path;
+  it adds no wrapper node, replacement array, or detached writer boundary.
+- Render path: render still writes through the same existing node/string
+  branches; this pass only removes repeated callable-output selection ladders
+  before those render paths are reached.
+- Helper/API surface: one node-local `finalizeCallResult(...)` helper inside
+  `call.ts`. It deletes the repeated result-finalization ladder across
+  optional-fallback JS functions, plain dynamic JS functions, metadata JS
+  functions, direct `Rules`/`Collection` callable render, mixin-collection
+  render, detached callable eval, and direct JS callable eval. No public/API
+  surface changed.
+- Metadata mutations: none added. The helper only centralizes the pre-existing
+  `markCallOutput(...)` ownership behavior and optional `makeImportant(...)`
+  application.
+- Routine error control: none added. Existing optional-fallback, selector
+  capture, strict-unit-mode, and mixin-miss branches stay in place.
+- Allocation changes: none directly; this pass deletes repeated local
+  ladders/branches rather than changing ownership shape.
+- Rejected/observed in this pass: this does not yet change the remaining
+  `evalArgNodes(...)` copy-pressure work or non-scalar/custom/trivia arg
+  transport work, and it does not change the existing `MixinCollection`
+  branch shape beyond result finalization. Remaining `Call` work is still
+  `evalArgNodes(...)` copy ownership in calc/finalized CSS fallback paths,
+  non-scalar/custom/trivia arg trim marks, async/helper ladders, and repeated
+  eval outside the covered output-finalization surface.
+- Evidence: focused `call.test.ts` subset covering resolved non-string render
+  output, declaration-only JS call output, dynamic stylesheet function names,
+  stylesheet function arg binding, dynamic ruleset calls, and detached
+  collection calls passed; a second focused subset covering dynamic mixin,
+  mixin-collection, callable-array, call-alias, silent-fail dynamic callable
+  render, and optional non-string fallback render/resolve also passed. Full
+  commit-boundary gates still need to run after this handoff update.
 - Latest pass: `Call` sync arg eval boundary`.
 - Verdict: accepted as a localized eval transport cut. `evalArgNodes(...)` now
   takes a direct sync `evalNode(...)` path for non-async args when the base
