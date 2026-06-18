@@ -1083,10 +1083,21 @@ export abstract class Node<
     return evaluated;
   }
 
-  private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
+  private static _evalStaticSync(node: Node, context: Context, needsReeval = false): MaybePromise<Node> {
     let evald: Node;
     if (!node.evaluated || needsReeval) {
-      evald = mustBeNode(node.evalNode(context));
+      const evaluated = node.evalNode(context);
+      if (isThenable(evaluated)) {
+        return (evaluated as Promise<Node>).then((resolved) => {
+          const evald = mustBeNode(resolved);
+          evald.evaluated = true;
+          if (node !== evald) {
+            evald.inherit(node);
+          }
+          return evald;
+        });
+      }
+      evald = mustBeNode(evaluated);
     } else {
       evald = node;
     }

@@ -3000,6 +3000,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
   if (!mergedItems) {
     return node;
   }
+  mergedItems = collapseRepeatedMergedPrefix(mergedItems);
   if (mergedItems.length === 0) {
     return new Nil();
   }
@@ -3007,6 +3008,30 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     return mergedItems[0]!;
   }
   return new List(mergedItems);
+}
+
+function sameMergedReferenceItem(left: Node, right: Node): boolean {
+  return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
+}
+
+function collapseRepeatedMergedPrefix(items: Node[]): Node[] {
+  for (let start = items.length - 1; start > 0; start--) {
+    if (!sameMergedReferenceItem(items[0]!, items[start]!)) {
+      continue;
+    }
+    let matches = true;
+    const comparable = Math.min(start, items.length - start);
+    for (let i = 1; i < comparable; i++) {
+      if (!sameMergedReferenceItem(items[i]!, items[start + i]!)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return items.slice(start);
+    }
+  }
+  return items;
 }
 
 function finalizeReferenceLookupResult(

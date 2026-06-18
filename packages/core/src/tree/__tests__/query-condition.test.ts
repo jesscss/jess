@@ -650,7 +650,26 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(1);
+    expect(writer.reads).toBe(0);
+    expect(writer.hasContentReads).toBe(0);
+    expect(writer.captures).toBe(0);
+  });
+
+  it('keeps custom dynamic child recovery local when the writer already has content', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const node = query([
+      any('screen'),
+      any('and'),
+      new WritingNode('written')
+    ]);
+
+    const rendered = node.render(context, { writer });
+
+    expect(rendered).toBe('screen and written');
+    expect(writer.toString()).toBe('prefix|screen and written');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });

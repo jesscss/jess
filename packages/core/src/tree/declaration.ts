@@ -119,6 +119,18 @@ type DeclarationRenderState = {
   nil: boolean;
 };
 
+function sameConcreteLocation(left: readonly unknown[], right: readonly unknown[] | undefined): boolean {
+  if (!right || left.length === 0 || left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function finalizeContextualImportantState(
   context: Context,
   important: Any<'flag'> | undefined
@@ -1255,6 +1267,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             type,
             fallbackValue: new Nil(),
             excludedDeclarations,
+            filter: n => {
+              const source = n.sourceNode ?? n;
+              return n !== outputNode
+                && n !== this
+                && source !== (outputNode?.sourceNode ?? outputNode)
+                && source !== (this.sourceNode ?? this)
+                && !sameConcreteLocation(n.location, outputNode?.location)
+                && !sameConcreteLocation(n.location, this.location);
+            },
             requiredDeclarationAssignments: [
               AssignmentType.MergeList,
               AssignmentType.MergeSequence,
@@ -1291,12 +1312,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // Less property `+:` appends comma-separated items.
             // Use list composition (not generic `Operation +`) so scalar previous values
             // remain distinct list members rather than string-concatenating.
+            const excludedDeclarations: Declaration[] = [this];
             const ref = new Reference({ key: referenceKey }, {
               type,
               fallbackValue: new Nil(),
-              // Prevent self-referential reads while normalizing this node.
-              filter: n => n !== outputNode && n !== this
+              excludedDeclarations,
+              // Prevent self-referential reads while normalizing copied/prepared nodes.
+              filter: n => {
+                const source = n.sourceNode ?? n;
+                return n !== outputNode
+                  && n !== this
+                  && source !== (outputNode?.sourceNode ?? outputNode)
+                  && source !== (this.sourceNode ?? this)
+                  && !sameConcreteLocation(n.location, outputNode?.location)
+                  && !sameConcreteLocation(n.location, this.location);
+              }
             }, undefined, this.sourceRoot?._treeContext);
+            state.bindOutput = (node: Declaration) => {
+              outputNode = node;
+              excludedDeclarations[1] = node;
+            };
             if (state.renderOnly) {
               state.renderAssignment = {
                 items: [ref, inputValue],

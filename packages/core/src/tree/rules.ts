@@ -4562,6 +4562,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): void {
     rules.rules[index] = node;
     node.index = nodeIndex;
+    rules.adopt(node);
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       const registrationContext = rules._scopeFrame?.hasLiveBindings

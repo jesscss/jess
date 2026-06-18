@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Less ruleset-mixin merge reference correctness.
+- Verdict: accepted as a correctness fix for existing merge/reference paths.
+  Prepared registration replacements now propagate child flags to their owning
+  `Rules`, late async eval results are followed instead of throwing, and
+  synthetic merge references exclude copied same-location declaration surfaces.
+  No speed claim.
+- New traversal: `sameConcreteLocation(...)` compares short source-location
+  tuples only while deciding whether a synthetic merge reference is reading its
+  own copied/prepared declaration; `collapseRepeatedMergedPrefix(...)` scans an
+  already-materialized merged-reference item list to collapse repeated prefixes
+  produced by chained ruleset-mixin merge output.
+- New node/materialization: no new production node kinds. Existing synthetic
+  merge references now carry explicit exclusion arrays for copied outputs;
+  `items.slice(start)` returns the surviving merged-reference suffix after the
+  duplicate-prefix scan has proven the earlier prefix is repeated.
+- Render path: no render-to-node conversion added.
+- Helper/API surface: two private helpers only, both scoped to existing
+  declaration/reference merge normalization.
+- Metadata mutations: one existing `Rules.adopt(...)` call is now applied to
+  prepared registration replacements so parent flags match the stored child.
+  The `evald.inherit(node)` path remains the existing eval replacement
+  ownership path, now reached when an allegedly sync node returns a late
+  promise. `sourceNode` reads are only identity guards for copied declaration
+  surfaces; they do not mutate metadata.
+- Evidence: `functions.test.ts -t "Less property merges"`,
+  `ruleset-merge-regression.test.ts`, `test:less:custom`, and the real Less
+  alpha `benchmark.less` harness all completed.
+
 - Latest pass: `QueryCondition` whole-query static fallback recovery split.
 - Verdict: accepted as a bounded `QueryCondition` serializer cut. Static
   fallback queries with custom/subclass source children no longer open a

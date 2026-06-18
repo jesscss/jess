@@ -300,7 +300,7 @@ export class QueryCondition extends Sequence {
             if (w.position() === before) {
               w.add(rendered);
             } else if (!canTrustText) {
-              return w.getSince(before);
+              return getWriterTextSincePosition(w, before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -315,7 +315,7 @@ export class QueryCondition extends Sequence {
         if (w.position() === before) {
           w.add(out);
         } else if (!canTrustText) {
-          return w.getSince(before);
+          return getWriterTextSincePosition(w, before);
         }
       }
       options.suppressBoundaryTrivia = saved;
