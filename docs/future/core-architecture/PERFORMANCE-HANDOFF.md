@@ -87,21 +87,38 @@ In benchmark-leashed cutting mode:
 - run stable wall-clock hot-path benchmarks before and after every
   performance-targeting hot-path edit, and record the benchmark `signal=` value
   with the interpretation;
-- use profiler/counter/CPU-profile evidence on every measured performance round
-  to choose and explain targets, not to claim "Jess got faster";
+- choose measured performance targets from actual time attribution first:
+  V8/CPU profile samples, benchmark phase timing, or scoped elapsed-time
+  instrumentation for named functions/tasks;
+- use counters only as supporting diagnostics after a timed hot surface is
+  identified. Counters can explain why V8 shows a function is hot, prove a
+  specific branch/traversal was removed, or guard a rejected experiment; they
+  must not be the sole reason to pick a performance target;
 - do not claim speed wins without real benchmark evidence;
 - reject or reshape changes that reduce local object counts but slow or fail
   to improve the real benchmark, unless the change fixes correctness and the
   regression is explicitly accepted as debt.
 
-## Active Lookup Leash
+## Active Hotspot Leash
 
-Current binding/lookup target: `findWithinScopeSurface(...)` and the callers
-that still make declaration lookup branch through strategy objects, child
-visibility gates, and assignment occurrence fallback.
+Current timed target selection must start from the latest CPU/V8 or scoped
+timing evidence. The broad `benchmark.less` lookup counters remain useful
+supporting context, but they do not make merge-reference reads or child-entry
+scans the active target by themselves.
 
-Use profiler/counter proof before reshaping this path. The next measured pass
-should answer which of these is hottest in real lookup work:
+Current broad `benchmark.less` CPU profile points first at source-surface/copy
+and extend work: `Node` construction, `copyChild`,
+`createRulesLikeReferenceSurface(...)`, `constructCopy`, garbage collection,
+`processExtends(...)`, `isSameOrDescendantRoot(...)`, and
+`applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
+profile also shows lookup/reference frames as the real hot task.
+
+The previous binding/lookup target was `findWithinScopeSurface(...)` and the
+callers that still make declaration lookup branch through strategy objects,
+child visibility gates, and assignment occurrence fallback.
+
+Use timed proof before reshaping this path. A lookup-targeted measured pass
+must answer which of these is hottest in real lookup work:
 
 - strategy fields in `direct-rules-lookup.ts`;
 - child declaration-surface traversal through `directDeclarationChildEntries`;
@@ -206,9 +223,10 @@ is true:
    local cleanup.
 
 Once reactivated, do not do unmeasured performance work. Every performance
-round needs a before wall-clock benchmark snapshot, CPU/profile or counter
-evidence for target selection, one hypothesis, one patch, focused tests, the
-same after wall-clock benchmark snapshot, and a keep/revert decision.
+round needs a before wall-clock benchmark snapshot, actual time attribution for
+target selection, one hypothesis, one patch, focused tests, the same after
+wall-clock benchmark snapshot, and a keep/revert decision. Counter-only target
+selection is not acceptable.
 
 ## Required Real Benchmark Inputs
 
@@ -274,11 +292,17 @@ node scripts/profile-less-benchmark.mjs --file=benchmark-color-stress.less
 node scripts/profile-less-benchmark.mjs --file=benchmark.less
 ```
 
-Use CPU profiles when call stacks are unclear:
+Use CPU/V8 profiles or scoped timing before choosing a performance target. Do
+not run these commands in parallel with wall-clock benchmarks or other
+CPU-heavy work; noisy profiles and outlier-heavy benchmark runs are evidence to
+rerun, not evidence to keep a patch.
+
+CPU profile options:
 
 ```sh
 ./scripts/profile-test.sh core "<test-file-or-filter>"
 ./scripts/profile-test.sh jess "<test-file-or-filter>"
+node --cpu-prof --cpu-prof-dir=profiling/core-architecture scripts/profile-less-benchmark.mjs --file=benchmark.less
 ```
 
 Use phase timing only as diagnostic support:
@@ -291,15 +315,56 @@ JESS_PROFILE=1 node scripts/profile-less-benchmark.mjs --file=benchmark-v37.less
 
 - **Real benchmark** numbers are the only numbers that count as "Jess got
   faster/slower".
-- **Instrumented profiler** numbers are diagnostic counters/timings only.
-- **CPU profile** sample counts identify hot stacks; they are not benchmark
-  timings.
+- **CPU profile** sample counts and scoped elapsed-time instrumentation identify
+  hot stacks/tasks for target selection; they are not benchmark timings.
+- **Instrumented counters** are diagnostic volume/context only. They are useful
+  after a timed hotspot is known, but they do not supersede V8/CPU or scoped
+  timing evidence.
 - Static node/object audits are supporting evidence only.
 
 If a patch reduces local object counts but slows real benchmarks, reject or
 reshape it.
 
 ## Current Evidence Log
+
+### 2026-06-18 CPU Attribution Policy Correction
+
+Prompt: counters had been over-weighted as target-selection evidence. Policy is
+now tightened: CPU/V8 profile samples, benchmark phase timing, or scoped
+elapsed-time instrumentation must identify the hot function/task before a
+performance edit. Counters are diagnostic support only.
+
+Sequential external Less alpha CPU-profiled run from
+`/Users/matthew/git/worktrees/jess/less.js/packages/less` with the harness links
+verified to resolve `@jesscss/core` and `jess` to this worktree:
+
+```sh
+node --cpu-prof --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-140642-external-benchmark-less-cpu benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12 --warmup=4 --math=parens-division
+```
+
+Benchmark output was noisy but completed: median `619.88ms`, average
+`626.95ms`, stddev `109.15ms`, variance `17.41%`, samples `8`. This is target
+selection evidence, not a speed claim.
+
+Profile artifact:
+`profiling/core-architecture/20260618-140642-external-benchmark-less-cpu/CPU.20260618.140643.38374.0.001.cpuprofile`.
+Top relevant self-time samples included `Node` constructor `906.71ms`,
+garbage collector `484.26ms`, `copyChild` `469.48ms`,
+`isNode` `356.92ms`, `_processNodes` `214.19ms`,
+`createRulesLikeReferenceSurface(...)` `188.37ms`, `constructCopy` `186.09ms`,
+`isSameOrDescendantRoot(...)` `140.03ms`, `processExtends(...)` `122.24ms`,
+`applyExtendsToSelector(...)` `109.37ms`, `inherit` `97.85ms`,
+`copyWithReusableLeaves(...)` `75.93ms`, and `visit` `72.23ms`.
+
+Interpretation: the next performance target should not be chosen from
+merge-reference counters alone. The strongest timed clusters are source-surface
+preservation/copy construction and extend processing. A quick prototype that
+memoized `ExtendRootRegistry.isSameOrDescendantRoot(...)` was rejected before
+keep/revert measurement because `process-extends.test.ts` failures were
+observed; removing the prototype and rebuilding still left the same focused
+test failing, so that test file is not currently a clean regression gate for
+this pass. Use broader Less behavior gates and/or repair that test before
+relying on it for extend work.
 
 ### 2026-06-18 Performance Evidence Focus Refresh
 

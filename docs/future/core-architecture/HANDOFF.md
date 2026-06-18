@@ -99,11 +99,13 @@ git diff --check
 pnpm run verify:aggressive-cutting-review
 ```
 
-Then run the chosen focus gates from its tracker. Use
-`PERFORMANCE-HANDOFF.md` before making any speed claim. Use
-`pnpm run verify:baseline -- --changed` when the touched area needs a broader
-fixture gate. The current hook path has previously looped, so commit and push
-with `--no-verify` after the explicit gates pass.
+Then run the chosen focus gates from its tracker. For performance work, use
+`PERFORMANCE-HANDOFF.md` before choosing the target and before making any speed
+claim: target selection must come from V8/CPU profile samples, benchmark phase
+timing, or scoped elapsed-time instrumentation, with counters treated only as
+supporting diagnostics. Use `pnpm run verify:baseline -- --changed` when the
+touched area needs a broader fixture gate. The current hook path has previously
+looped, so commit and push with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
