@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` detached render arg fallback transport.
+- Verdict: accepted as a localized render transport cut. The remaining custom
+  arg fallback path in `Call.writeRenderedArgs(...)` now trims detached child
+  syntax locally instead of marking the caller writer, trimming in place, and
+  reading the slice back. Escaped custom fallback args now use the same
+  detached transport, so covered custom args/names/content no longer pay
+  caller-writer readback. No speed claim.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: covered custom arg fallback emission now serializes once into a
+  detached writer, trims horizontal boundary whitespace on the returned text,
+  writes the trimmed text onto the active render writer, and appends that same
+  text to the local return state. Escaped fallback args still write their outer
+  delimiters on the active writer; only the inner child text is detached.
+- Helper/API surface: one node-local helper,
+  `trimHorizontalCallText(...)`, paired with the detached render text helper so
+  arg fallback trimming stays local instead of reopening caller-writer trim
+  state. It deletes more mark/readback surface than it adds.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: one detached fallback writer/string plus a trimmed slice
+  on the remaining custom arg path replaces per-arg/inner-paren caller-writer
+  mark/getSince transport; no new node copies or wrapper materialization.
+- Rejected/observed in this pass: this does not widen exact-text coverage or
+  change the still-separate calc behavior seam.
+- Evidence: focused `call.test.ts` coverage now proves custom fallback args
+  render as `fn(custom-arg, 30)`, escaped custom fallback args render as
+  `fn((custom-body), 30)`, and the adjacent custom name/content fallback paths
+  all complete with zero caller-writer marks/readbacks. Full commit-boundary
+  gates still need to run after this handoff update.
 - Latest pass: `Call` detached render fallback text transport.
 - Verdict: accepted as a localized render transport cut. Plain and finalized
   call render paths now recover unknown name/content syntax through a detached

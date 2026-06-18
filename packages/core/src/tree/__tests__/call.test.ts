@@ -1623,8 +1623,8 @@ describe('Call', () => {
 
     expect(rule.render(context, { writer })).toBe('fn(custom-arg, 30)');
     expect(writer.toString()).toBe('prefix|fn(custom-arg, 30)');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders async custom fallback CSS call content without returning prefixed writer contents', async () => {
@@ -1651,6 +1651,21 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
     expect(writer.toString()).toBe('prefix|custom-name(30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders escaped custom fallback CSS call arguments without inner trim readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const arg = new AsyncCustomSyntaxAny('body');
+    const rule = call({
+      name: 'fn',
+      args: list([paren(arg, { escaped: true }), num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn((custom-body), 30)');
+    expect(writer.toString()).toBe('prefix|fn((custom-body), 30)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
   });

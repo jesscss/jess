@@ -165,6 +165,22 @@ function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions)
   return writer.toString();
 }
 
+function isHorizontalWhitespace(code: number): boolean {
+  return code === 9 || code === 12 || code === 13 || code === 32;
+}
+
+function trimHorizontalCallText(text: string): string {
+  let start = 0;
+  while (start < text.length && isHorizontalWhitespace(text.charCodeAt(start))) {
+    start++;
+  }
+  let end = text.length;
+  while (end > start && isHorizontalWhitespace(text.charCodeAt(end - 1))) {
+    end--;
+  }
+  return start === 0 && end === text.length ? text : text.slice(start, end);
+}
+
 function getKnownRenderedCallText(node: Node): string | undefined {
   switch (node.type) {
     case 'Any':
@@ -869,20 +885,20 @@ export class Call extends Node<CallValue, CallOptions> {
         textState.text += ', ';
       }
     };
-    const finishArg = (arg: Node, argMark: number, next: number): void => {
-      w.trimHorizontalStartSince(argMark);
-      w.trimHorizontalEndSince(argMark);
+    const finishArg = (arg: Node, argText: string, next: number): void => {
+      const trimmed = trimHorizontalCallText(argText);
+      w.add(trimmed, arg);
       if (textState?.text !== undefined) {
-        textState.text += w.getSince(argMark);
+        textState.text += trimmed;
       }
       writeArgSeparator(arg, next);
     };
-    const finishEscapedParenArg = (arg: Paren, innerMark: number, next: number): void => {
-      w.trimHorizontalStartSince(innerMark);
-      w.trimHorizontalEndSince(innerMark);
+    const finishEscapedParenArg = (arg: Paren, innerText: string, next: number): void => {
+      const trimmed = trimHorizontalCallText(innerText);
+      w.add(trimmed, arg);
       w.add(')', arg);
       if (textState?.text !== undefined) {
-        textState.text += w.getSince(innerMark);
+        textState.text += `${trimmed})`;
       }
       writeArgSeparator(arg, next);
     };
@@ -927,18 +943,14 @@ export class Call extends Node<CallValue, CallOptions> {
               finishDirectEscapedParenArg(arg, next);
               return;
             }
-            const innerMark = w.mark();
-            value.writeSyntax(printOptions);
-            finishEscapedParenArg(arg, innerMark, next);
+            finishEscapedParenArg(arg, renderDetachedCallNodeText(value, printOptions), next);
           });
         }
         if (appendKnownRenderedText(rendered as Node)) {
           finishDirectEscapedParenArg(arg, next);
           return;
         }
-        const innerMark = w.mark();
-        (rendered as Node).writeSyntax(printOptions);
-        finishEscapedParenArg(arg, innerMark, next);
+        finishEscapedParenArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
         return;
       }
       if (
@@ -952,18 +964,14 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isThenable(rendered)) {
         return rendered.then((value) => {
           if (!appendKnownRenderedText(value)) {
-            const argMark = w.mark();
-            value.writeSyntax(printOptions);
-            finishArg(arg, argMark, next);
+            finishArg(arg, renderDetachedCallNodeText(value, printOptions), next);
             return;
           }
           writeArgSeparator(arg, next);
         });
       }
       if (!appendKnownRenderedText(rendered as Node)) {
-        const argMark = w.mark();
-        (rendered as Node).writeSyntax(printOptions);
-        finishArg(arg, argMark, next);
+        finishArg(arg, renderDetachedCallNodeText(rendered as Node, printOptions), next);
         return;
       }
       writeArgSeparator(arg, next);
