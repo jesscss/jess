@@ -20,7 +20,7 @@ import {
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
-import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaBetweenNodes, emitTriviaTokens } from './util/trivia.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
@@ -39,6 +39,48 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
 
 function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
+}
+
+function emitCallArgSyntax(
+  arg: Node,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    arg.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
+function emitCallArgSeparator(
+  prev: Node,
+  arg: Node,
+  options: FinalPrintOptions,
+  sep: List<Node>['options']['sep']
+): void {
+  emitCommentTriviaBetweenNodes(prev, arg, options);
+  const leadingTrivia = options.trivia
+    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    : undefined;
+  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+    ? leadingTrivia[0].image
+    : '';
+  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  if (sep === '/') {
+    options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
+  } else {
+    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+  }
+  if (leadingTrivia) {
+    emitTriviaTokens(
+      leadingTrivia,
+      options,
+      { skipLeadingWhitespace: !preserveLeadingWhitespace }
+    );
+  }
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
@@ -1472,10 +1514,14 @@ export class Call extends Node<CallValue, CallOptions> {
           arg.writeSyntax(options);
         }
       } else {
-        const argsMark = w.mark();
-        args.writeSyntax(options);
-        w.trimHorizontalStartSince(argsMark);
-        w.trimHorizontalEndSince(argsMark);
+        let arg = args.items[0]!;
+        emitCallArgSyntax(arg, options);
+        for (let i = 1; i < args.items.length; i++) {
+          const prev = arg;
+          arg = args.items[i]!;
+          emitCallArgSeparator(prev, arg, options, args.options?.sep ?? ',');
+          emitCallArgSyntax(arg, options, true);
+        }
       }
     }
     w.add(')');

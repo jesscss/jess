@@ -401,6 +401,27 @@ describe('Call', () => {
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
   });
 
+  it('writes trivia-bearing call args without arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+
+    rule.writeSyntax(getPrintOptions({ writer, trivia }));
+
+    expect(writer.toString()).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
   it('should serialize an optional function lookup', () => {
     let rule = call({
       name: ref('rgb', { fallbackValue: true }),

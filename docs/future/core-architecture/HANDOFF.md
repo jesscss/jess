@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Call` trivia-bearing source arg direct-write path.
+- Verdict: accepted as a localized source-writer cut. `Call.writeSyntax(...)`
+  now writes trivia-bearing source args item-by-item with explicit separator
+  trivia emission instead of routing the whole arg list through
+  `args.writeSyntax(...)` plus an outer trim window. The no-trivia source path
+  stays on the previously widened direct arg loop. No speed claim.
+- New traversal: one existing indexed source arg loop now also owns the
+  trivia-bearing path; no new broad traversal beyond explicit per-item arg
+  emission.
+- New node/materialization: none.
+- Render path: none changed; this pass is source serialization only.
+- Helper/API surface: two node-local helpers,
+  `emitCallArgSyntax(...)` and `emitCallArgSeparator(...)`, to keep the call
+  source writer responsible for argument-boundary emission instead of routing
+  through `List.writeSyntax(...)`.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Allocation changes: none new; this pass deletes the trivia-bearing arg-list
+  mark/trim boundary from `Call.writeSyntax(...)` and replaces it with direct
+  child writes plus explicit trivia consumption on the active writer.
+- Rejected/observed in this pass: render-side custom/name/content fallback
+  readbacks remain; this cut only changes source serialization.
+- Evidence: focused `call.test.ts` coverage now proves explicit-empty source
+  args, exact scalar/list source args, custom no-trivia source args, separator
+  comment trivia, and trivia-bearing source args all write with zero marks and
+  zero readbacks on the source path. Full commit-boundary gates still need to
+  run after this handoff update.
 - Latest pass: `AtRule` no-trivia leaf direct-write widening.
 - Verdict: accepted as a bounded leaf-header transport cut. No-trivia leaf
   at-rules now keep both scalar and non-scalar comment-free headers off
