@@ -2549,6 +2549,10 @@ describe('Style import', () => {
             decl({ name: any('miss'), value: ref('missingFromRef', {
               type: 'variable',
               fallbackValue
+            }) }),
+            decl({ name: any('prop-miss'), value: ref('missingFromRefProp', {
+              type: 'property',
+              fallbackValue
             }) })
           ])
         })
@@ -2599,6 +2603,7 @@ describe('Style import', () => {
           .test {
             hit: 42;
             miss: fallback;
+            prop-miss: fallback;
           }
         `);
         expect(scalarCopies).toBe(0);

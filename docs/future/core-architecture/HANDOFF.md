@@ -103,45 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable retry-frame no-parent cut plus uncovered-callable
-  modeled-miss sentinel collapse.
-- Verdict: accepted as a binding fallback-bridge cut. `Rules.findMixin(string)`
-  now exits before parent/fallback retry when the caller requested
-  `searchParents: false` and the current frame produced a miss or uncovered
-  result after the current-frame narrow attempt. Modeled uncovered-callable
-  misses now reuse one module-level empty hit-array sentinel; unsupported
-  uncertainty remains the only non-array state. Prefix-heavy ruleset namespace
-  paths still keep their legacy fallback because the current full-suite
-  baseline already has complex compound-selector failures there. No speed
+- Latest pass: binding proof pass for callable reference-import namespace
+  descendant hits plus declaration/import no-bridge misses.
+- Verdict: accepted as proof-only binding coverage. Callable namespace
+  reference-import modeled positives now have a focused spy test proving they
+  return the child-frame hit without nested `findMixin(...)` or broad
+  `findMixinsFast(...)` fallback. The real reference-import hit/miss fixture
+  now also proves rendered property misses with fallback avoid the public
+  declaration bridge. A broader declaration-value `rulesContext` runtime cut
+  was tested and rejected for this pass because rendered imported property hits
+  still fail with `'fromRefProp' is not defined`; that remains an unresolved
+  context/visibility semantics gap, not completed no-fallback proof. No speed
   claim.
-- New traversal: no new production tree traversal. The pass deletes one
-  parent/fallback retry route when parent search is explicitly disabled and
-  records retry/fallback modeled misses so they do not fall through to the
-  broad direct bridge. Review-flagged loops are existing verifier/test loops
-  and existing direct-crawl code paths that this pass narrows.
+- New traversal: no new production tree traversal. Added tests exercise
+  existing direct child-frame lookup, existing direct declaration occurrence
+  lookup, and existing bridge spies only. Review-flagged `broadFastHits` array
+  allocation is test-only spy state for proving no broad callable crawl.
 - New node/materialization: no runtime nodes, wrapper Rules, copied rules,
-  inherited metadata, frozen state, or production arrays were added. The
-  modeled-miss state is one module-level empty array, not a per-lookup
-  materialization.
+  inherited metadata, frozen state, or production arrays were added.
 - Render path: no render/stringification path changed.
-- Helper/API surface: no public API was added. No new helper ladder was added
-  for uncovered-callable result consumption; callers keep local unsupported
-  checks because that is cheaper than another hot-path wrapper call.
+- Helper/API surface: no public API or helper was added.
 - Metadata mutations: none.
-- Allocation changes: no new per-lookup allocation. The previous modeled-miss
-  symbol is replaced by one shared empty hit-array sentinel, which lets callers
-  use array length for hit-vs-miss without carrying a second sentinel branch.
-- Evidence: focused callable bucket tests prove fallback-frame hits/misses
-  still work, `searchParents: false` stops retry frames after current
-  candidate uncertainty, reference-import namespace-start misses still skip
-  broad array fallback, covered sibling child surfaces stay closed, terminal
-  mixin-only behavior still skips ruleset-only surfaces, and parent lookup
-  still works where intended. Real import fixtures prove reference-imported
-  mixin/ruleset/selector-list positives still resolve and namespaced
-  array-path misses stay off direct crawl. Full `mixin.test.ts` is still not a
-  clean gate at current `HEAD`: a detached baseline reproduced existing
-  missing `isNode` import and complex compound-selector failures before this
-  pass.
+- Allocation changes: no production allocation changes.
+- Evidence: focused callable bucket tests prove reference-import descendant
+  modeled hits and misses inside callable namespace bodies skip nested
+  `findMixin(...)` and broad `findMixinsFast(...)`. The real
+  `@import(reference)` hit/miss fixture proves direct imported property
+  occurrence hit/miss plus rendered variable hit/miss and rendered property
+  miss fallback avoid `Rules.find(...)`. Review-flagged `try/finally` is
+  test-only method-spy restoration around `Rules.findMixin(...)` /
+  `Rules.findMixinsFast(...)`. Full `mixin.test.ts` remains outside the clean
+  gate for this branch; keep using focused slices until the known complex
+  compound-selector failures are separated.
 - Merge-carried serialization review: latest `origin/dev` also carries
   `Rules.toTrimmedString(...)` direct writer ownership in
   `packages/core/src/tree/rules.ts`. Public rules-body source stringification

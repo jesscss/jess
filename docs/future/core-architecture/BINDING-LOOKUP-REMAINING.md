@@ -169,8 +169,10 @@ child-frame hits and stop on child-surface covered misses before nested
 `findMixin(...)`. Reference-import descendant modeled misses now return a
 definitive empty descendant result and skip both nested `findMixin(...)` and
 the older namespace `findMixinsFast(...)` fallback. Reference-import descendant
-positives inside namespace mixin bodies are still open and must not be claimed
-covered.
+modeled positives inside namespace mixin bodies now return the direct
+child-frame hit and skip both nested `findMixin(...)` and namespace/root
+`findMixinsFast(...)` broad crawl. Real import-in-uncalled-mixin namespace
+positives are still open and must not be claimed covered.
 
 12. [ ] Revisit `findVisibleCallableRulesetPrefixMatches(...)` recursive child
 walk after selector-list coverage. Scope: direct child-entry flags,
@@ -195,10 +197,12 @@ fixture with bridge spies. Current evidence: the real `@import(reference)`
 hit/miss fixture now includes an imported property declaration. Direct property
 occurrence lookup finds the imported property and misses a missing imported
 property through the direct helper, while the same fixture spies on
-`Rules.find(...)` and proves rendered variable hit/miss references do not enter
-the public declaration bridge. Property references inside later nested rulesets
-do not share the same visibility semantics as direct imported property
-occurrence lookup, so broader rendered property-reference proof remains open.
+`Rules.find(...)` and proves rendered variable hit/miss references plus a
+rendered property miss with fallback do not enter the public declaration
+bridge. A rendered property hit inside a later nested ruleset was tested and
+failed with `'fromRefProp' is not defined` even though direct occurrence lookup
+from the evaluated nested rules succeeds. Treat that as an unresolved
+rules-context/visibility semantics gap, not as covered no-fallback proof.
 
 14. [x] Finish property merge-chain output-binding handle identity proof.
 Scope: merge normalization, source/output exclusions, same-parent source
