@@ -103,6 +103,40 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Block` child public-string transport split.
+- Verdict: accepted as a bounded `Block` serializer cut. Block source/render
+  syntax no longer routes child output through public `toString(...)` before
+  capturing the surrounding delimiters; it now writes child syntax directly,
+  emits boundary trivia explicitly, and recovers the local block text from the
+  active writer tail. No speed claim.
+- New traversal: one straight chunk join over the active writer tail in a new
+  node-local helper inside `packages/core/src/tree/block.ts`. This replaces
+  whole-block mark/readback plus child public string transport; it does not add
+  a new scan over unrelated block state.
+- Review-flagged allocations: no production node allocations. Focused test
+  proof adds one `WriteOnlyNode`, one `CountingWriter`, and a thrown assertion
+  only inside `block.test.ts` to prove child public string transport stays
+  dead.
+- New node/materialization: none.
+- Render path: block render still stringifies block syntax directly around the
+  source/evaluated child node. The pass does not materialize replacement nodes
+  or arrays just to capture block text.
+- Helper/API surface: one node-local helper,
+  `getWriterTextSincePosition(...)`, was added in
+  `packages/core/src/tree/block.ts`. It replaces block-local mark/readback and
+  child public string transport; no public API changed.
+- Metadata mutations: one localized generic read,
+  `Reflect.get(writer, 'chunks')`, is boxed inside the node-local helper
+  because `OutputWriter` still exposes `position()` but not a cold/internal
+  tail-text reader.
+- Routine error control: none added on the production path. The only new
+  thrown error is the focused test assertion in `block.test.ts`.
+- Allocation changes: deletes the child `toString(...)` transport and outer
+  `mark()/getSince()` capture from `renderBlockSyntax(...)`.
+- Evidence: focused `block.test.ts` cases for source block syntax through
+  `toTrimmedString()`, child syntax without child public string transport, and
+  source trivia before the closing delimiter all passed.
+
 - Latest pass: `Condition` child public-string transport split.
 - Verdict: accepted as a bounded `Condition` serializer cut. Public
   `Condition.toTrimmedString(...)` no longer rebuilds syntax through child

@@ -18,6 +18,18 @@ export interface Block extends Node<Node, BlockOptions> {
   eval(context: Context): Block;
 }
 
+function getWriterTextSincePosition(writer: { position(): number }, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 /**
  * A block like `{ ... }` or `[ ... ]`. This is used
  * for things like custom properties and unknown at-rules.
@@ -53,18 +65,21 @@ export class Block extends Node<Node, BlockOptions> {
   private renderBlockSyntax(value = this.node, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     const type = this._options?.type;
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    value.toString(options);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    if (trivia) {
+      w.add(consumeTriviaText(trivia, value.location[0], 'before', options));
+    }
+    value.writeSyntax(options);
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }
     w.add(end);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   override toTrimmedString(options?: PrintOptions) {
