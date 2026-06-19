@@ -148,36 +148,40 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept two small measured cuts and rejected three low-confidence
-  experiments. `isNode(value, mask)` now uses direct bit comparison after the
-  object/null guard. Rules-container serialization now skips duplicate
-  declaration comparison staging unless a property name repeats in that body.
+- Latest pass: kept the selector-key traversal dispatch cut in
+  `getOrderedSelectorKeys(...)`. Fresh CPU evidence after the prior render gate
+  showed `isNode(...)` still first by repo self-time, with the hottest caller
+  family inside `getOrderedSelectorKeys(...)` and its local selector walker
+  named `visit(...)`. This is not the external visitor framework.
 - Verdict: measured keep, but not goal completion. The stored Less 4.5 target
-  remains median `42.16ms`; current combined quick comparator evidence is still
-  roughly `155ms` median under high system load. The accepted cuts are bounded
-  wins, not the end of the performance campaign.
-- New traversal: duplicate declaration handling now does one cheap forward
-  name scan and only runs the reverse pre-render comparison pass when a
-  duplicate property family exists. No recursive walk was added.
-- New node/materialization: none. The duplicate-comparison detached
-  `OutputWriter` is now skipped for unique declaration bodies.
-- Render path: unique declaration bodies render directly without
-  duplicate-cache pre-render setup; repeated properties still use the existing
-  Less duplicate-declaration comparison semantics.
+  remains median `42.16ms`; the best kept selector-key `40`/`12` comparator
+  measured `137.83ms` median / `140.98ms` trimmed average. Jess is still about
+  `3.27x` slower than the target by median.
+- New traversal: none. The existing selector-key recursive walker now reads
+  `nodeType` once per selector node instead of calling `isNode(...)` for nil,
+  ampersand, combinator, and basic-selector checks.
+- New node/materialization: none.
+- Render path: unchanged; this pass only removes hot type-helper call volume
+  while collecting callable selector keys.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Rejected: a constructor `_processNodes(...)` fast path had useful shape
-  counters and a tiny noisy A/B signal but not enough decision-quality
-  wall-clock evidence, so it was not kept. Callable direct-type rewrites in the
-  lookup collector passed focused tests but worsened median. Removing one
-  CSS-call argument container copy passed focused/full call tests but worsened
-  the real benchmark.
-- Evidence: focused tests passed for touched areas
-  (`is-node`, `node-flags`, `rules`, `ruleset`, `outputwriter`: `254` passed,
-  `5` skipped). Ordered `@jesscss/awaitable-pipe`, `@jesscss/core`, and `jess`
-  builds passed. `isNode` worker evidence: reversed `40`/`12` comparator
-  `151.73ms` median patched vs `160.84ms` baseline. Render worker evidence:
-  isolated Less mirror `40`/`12` comparator `144.54ms` median patched vs
-  `148.10ms` baseline. Final combined `40`/`12` run after removing the
-  rejected constructor probe measured `153.67ms` median / `160.14ms` trimmed
-  average under high background CPU variance.
+- Copy/materialization danger tokens in the diff are documentation-only next
+  target references. No `copyChild`, `constructCopy`, `.copy(...)`,
+  `.clone(...)`, `.inherit(...)`, adoption, or frozen/source metadata path was
+  added or changed by this pass.
+- Rejected: the adjacent `Ruleset.ensureSelectorVisible(...)` /
+  `needsVisibleSelectorClone(...)` direct-dispatch experiment passed focused
+  selector/render tests but had weaker/noisy `40`/`12` benchmark evidence after
+  the clean selector-key run, so it was reverted.
+- Evidence: focused lookup/callable tests passed (`213` passed, `283` skipped,
+  `7` open Vitest markers). Focused selector/render tests for the rejected
+  adjacent experiment also passed (`114` passed, `1` skipped), but benchmark
+  evidence did not justify keeping it. Ordered `@jesscss/core` and `jess`
+  builds passed.
+  Selector-key `24`/`8` measured `150.33ms` median / `152.90ms` trimmed
+  average; selector-key `40`/`12` measured `137.83ms` median / `140.98ms`
+  trimmed average. A post-patch CPU-profile comparator run measured
+  `144.58ms` median / `147.86ms` trimmed average with `8.74%` variance and
+  showed remaining top self-time in `isNode`, the selector-key local
+  `visit(...)` walker, `_processNodes`, callable collection/search, and
+  render-body paths.

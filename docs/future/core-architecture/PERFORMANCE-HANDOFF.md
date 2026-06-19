@@ -150,6 +150,28 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 selector-key dispatch pass: fresh CPU evidence after the
+render-staging gate showed `isNode(...)` still first by repo self-time, and a
+temporary caller diagnostic put the hottest caller family in
+`getOrderedSelectorKeys(...)` / its local selector walker named `visit(...)`.
+This is not the external visitor framework. The kept cut changes that existing
+selector-key walker to read `nodeType` once per selector node and branch
+directly for Nil, Ampersand, Combinator, and BasicSelector instead of calling
+`isNode(...)` repeatedly. It adds no traversal, nodes, helpers, or side state.
+Focused lookup/callable tests passed (`213` passed, `283` skipped, `7` open
+Vitest markers), ordered `@jesscss/core` and `jess` builds passed, and benchmark
+evidence improved from the previous kept batch's `153.67ms` median /
+`160.14ms` trimmed average to `137.83ms` median / `140.98ms` trimmed average on
+the best `40`/`12` run. A lower-variance post-patch CPU-profile run measured
+`144.58ms` median / `147.86ms` trimmed average with `8.74%` variance. Rejected
+adjacent visible-selector direct dispatch in `Ruleset.ensureSelectorVisible`
+and `needsVisibleSelectorClone`: focused selector/render tests passed, but the
+longer comparator weakened after the clean selector-key-only run, so the
+visible-selector helper change was reverted. Remaining profile targets after
+this pass: `isNode`, the selector-key local `visit(...)` walker,
+`_processNodes`, callable collection/search, `renderRulesBody`, `copyChild`,
+`inherit`, and `constructCopy`.
+
 2026-06-19 subagent experiment pass: four parallel isolated experiments were
 run while the main worktree stayed on `feature/jess-performance-evidence`.
 Keep the small `isNode(value, mask)` direct bit comparison cut: focused

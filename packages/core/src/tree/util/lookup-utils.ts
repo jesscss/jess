@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
-import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
@@ -36,22 +35,26 @@ export function getRulesEntryTraversalState(
 }
 
 export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): string[] {
-  if (!selector || isNode(selector, N.Nil)) {
+  if (!selector || ((selector.nodeType ?? 0) & N.Nil) !== 0) {
     return [];
   }
   const keys: string[] = [];
   let foundBasic = false;
   const visit = (node: Selector | Nil | undefined) => {
-    if (!node || isNode(node, N.Nil)) {
+    if (!node) {
       return;
     }
-    if (!foundBasic && isNode(node, N.Ampersand)) {
+    const nodeType = node.nodeType ?? 0;
+    if ((nodeType & N.Nil) !== 0) {
       return;
     }
-    if (isNode(node, N.Combinator)) {
+    if (!foundBasic && (nodeType & N.Ampersand) !== 0) {
       return;
     }
-    if (isNode(node, N.BasicSelector)) {
+    if ((nodeType & N.Combinator) !== 0) {
+      return;
+    }
+    if ((nodeType & N.BasicSelector) !== 0) {
       const value = String(node.valueOf?.() ?? node.value ?? '');
       if (!value || value.startsWith('*') || value.startsWith(':')) {
         return;
