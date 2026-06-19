@@ -136,6 +136,24 @@ stayed essentially flat (`64.45ms` to `64.07ms`). Focused extend tests passed
 except `extend-rules.test.ts` deep `.l -> ... -> .t` chaining, which was
 confirmed failing on branch baseline before this patch.
 
+2026-06-18 extend root target-aggregate pass: the root-bit guard now builds a
+single aggregate of visible extend target bits during the existing visibility
+scan and skips the whole ruleset loop when that aggregate is disjoint from the
+root's original selector bits. It still adds visible `extendWith` bits after
+that first existence proof so chained extends can become visible only after a
+real root target can start the chain. Focused extend tests passed (`78` passed,
+`1` skipped). External canonical Less `benchmark.less`
+(`--runs=24 --warmup=8 --math=parens-division`) measured `avg 211.69ms` /
+`median 200.74ms` with high variance, then `avg 206.95ms` /
+`median 201.76ms`; after removing the extra `visibleExtends` pass and
+rebuilding the exact source shape, the final run was `avg 202.89ms` /
+`median 200.16ms`, versus the refreshed clean branch `avg 210.71ms` /
+`median 210.70ms`. Profiled run for the previous equivalent aggregate shape
+was `avg 213.75ms` / `median 208.33ms`; CPU attribution showed
+`processExtends(...)` self around `29.39ms`, similar to the refresh, and no
+sampled standalone cost for the aggregate merge. Keep as a small
+wall-clock/median win unless a later broader run contradicts it.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

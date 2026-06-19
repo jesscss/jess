@@ -112,28 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept a direct empty-bitset check for extend target pruning.
-  `rootMayContainExtendTarget(...)` and `selectorMayContainExtendTarget(...)`
-  no longer allocate/clone an empty library bitset via
-  `targetKeys.equals(library.getBitset())`.
-- Verdict: keep as a small measured wall-clock win. The plain
-  `targetKeys.isEmpty()` variant only moved cost into the bitset package method;
-  the kept helper uses the same direct word-scan shape as the existing bitset
-  helpers.
-- New traversal: one tiny word scan in `isEmptyBitSet(...)`, replacing an
-  allocation-heavy clone-and-compare check in the same hot predicate.
+- Latest pass: kept an extend root target-aggregate guard. During the existing
+  per-root visibility scan, `processExtends(...)` now accumulates one bitset of
+  visible extend targets and skips the root's ruleset loop when that bitset is
+  disjoint from the root's original selector bits.
+- Verdict: keep as a small measured wall-clock/median win. This is the cheap
+  "can this root contain any target at all?" guard; the rejected activation
+  closure remains rejected because its extra arrays/loops did not beat the
+  benchmark.
+- New traversal: no new tree traversal. The pass adds one bitset merge/check
+  while already scanning visible extend instructions for a root.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: added `isEmptyBitSet(...)` next to `isDisjoint(...)` and
-  `isSubsetOf(...)`; it deletes the hotter `library.getBitset()` allocation
-  path from extend pruning.
+- Helper/API surface: none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps, arrays, or copies.
-- Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division` improved from the current refresh `200.93ms` average
-  to `196.69ms` and `198.48ms`. Focused bitset/fast-reject/process-extends/
-  extend-root/extend-integration tests passed (`95` passed, `1` skipped), and
-  the ordered benchmark-path rebuild passed. CPU profile attribution is still
-  modest: the old clone path is gone, but `isEmptyBitSet(...)` itself remains
-  sampled. Details are in `PERFORMANCE-HANDOFF.md`.
+- Side maps/arrays/copies: no new side maps, arrays, or node copies. The
+  existing `visibleExtends` array remains. Two bitset clones seed the target
+  and `extendWith` aggregates, replacing broader per-ruleset classification
+  work and preserving the root's original selector-bit proof before chained
+  `extendWith` bits broaden the root keyset.
+- Evidence: focused fast-reject/process-extends/extend-root/extend-integration
+  tests passed (`78` passed, `1` skipped), the ordered benchmark-path rebuild
+  passed, and external canonical Less `benchmark.less --runs=24 --warmup=8
+  --math=parens-division` measured `211.69ms` average / `200.74ms` median, then
+  `206.95ms` average / `201.76ms` median; after removing the extra
+  `visibleExtends` pass and rebuilding the exact source shape, the final run
+  measured `202.89ms` average / `200.16ms` median, versus the clean refresh
+  `210.71ms` average / `210.70ms` median. CPU profile kept
+  `processExtends(...)` in the same self-time band (`29.39ms`).
