@@ -112,38 +112,30 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept extend instruction keyset carry. The CPU-backed target was
-  `processExtends(...)`, with `selectorMayContainExtendTarget(...)`,
-  `isEmptyBitSet(...)`, and `isDisjoint(...)` under it.
-- Verdict: keep the carried target/extendWith bitsets and precomputed target
-  opacity/library facts on each root extend instruction. It removes repeated
-  target keyset rediscovery inside root and selector guards without adding a
-  candidate index.
-- New traversal: none. The existing instruction/root/ruleset loops are
-  unchanged.
+- Latest pass: rejected extend loop allocation cleanup. The CPU-backed target
+  was remaining `processExtends(...)` self-time after the instruction keyset
+  carry.
+- Verdict: revert the prototype. Removing the per-ruleset
+  `excludedFromLocal` `Set` and lazily allocating `crossingInstructions`
+  passed behavior tests but worsened benchmark medians and CPU samples.
+- New traversal: none kept.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: no new helper or public API.
 - Metadata mutations: none.
-- Side maps/arrays/copies: no new side maps. Each instruction now carries the
-  already-needed target bitset, target library/opacity facts, and extendWith
-  bitset so later guards do not re-read/re-scan them. The two `.clone()` calls
-  in the diff are the pre-existing aggregate initialization copies for visible
-  target and extendWith bitsets; this pass changes their input from freshly
-  read selector keysets to carried instruction keysets.
-- Evidence: current-source refresh measured `186.04ms` average /
-  `185.21ms` median and `183.65ms` average / `177.61ms` median on external
+- Side maps/arrays/copies: none kept. The rejected prototype deleted one `Set`
+  allocation and made one array lazy, but the measured result moved work the
+  wrong way.
+- Evidence: current-source refresh measured `183.95ms` average /
+  `178.21ms` median and `181.07ms` average / `177.13ms` median on external
   canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
   CPU profile
-  `profiling/core-architecture/20260618-205309-current-refresh-cpu/CPU.20260618.205309.10336.0.001.cpuprofile`
-  showed `processExtends(...)` at `22` self / `109` total samples,
-  `selectorMayContainExtendTarget(...)` at `6` self / `30` total, and
-  `isEmptyBitSet(...)` at `14` self. Focused extend/bitset tests passed
-  (`105` passed, `1` skipped), the ordered benchmark package chain rebuilt,
-  and the kept patch benchmarked `183.44ms` / `181.00ms`,
-  `184.82ms` / `181.26ms`, then `168.98ms` / `166.68ms`. CPU profile
-  `profiling/core-architecture/20260618-205514-extend-instruction-keysets-cpu/CPU.20260618.205514.40928.0.001.cpuprofile`
-  moved `processExtends(...)` to `15` self / `98` total,
-  `selectorMayContainExtendTarget(...)` to `4` self / `16` total, and removed
-  `isEmptyBitSet(...)` from named totals.
+  `profiling/core-architecture/20260618-205806-current-refresh-cpu/CPU.20260618.205806.59918.0.001.cpuprofile`
+  showed `processExtends(...)` at `22` self / `103` total samples. The
+  allocation prototype passed focused extend/bitset tests (`105` passed,
+  `1` skipped) and rebuilt the benchmark package chain, but benchmarked
+  `181.76ms` / `181.93ms` and `184.56ms` / `182.10ms`; CPU profile
+  `profiling/core-architecture/20260618-205930-extend-loop-allocation-cpu/CPU.20260618.205930.73216.0.001.cpuprofile`
+  worsened `processExtends(...)` to `24` self / `111` total and raised GC
+  samples from `145` to `150`. Reverted.

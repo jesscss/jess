@@ -609,6 +609,24 @@ moved `processExtends(...)` to `15` self / `98` total,
 `isEmptyBitSet(...)` from named totals. Keep as a small measured wall-clock and
 CPU-profile win.
 
+2026-06-18 rejected extend loop allocation cut: current profile after the
+instruction keyset carry still showed `processExtends(...)` as the top named
+self-time (`22` self / `103` total samples). A prototype removed the
+per-ruleset `excludedFromLocal` `Set` and lazily allocated
+`crossingInstructions`, because the match-type checks already exclude
+within-ampersand/crossing entries from local application. Focused extend/bitset
+tests passed (`105` passed, `1` skipped), and the ordered benchmark-path
+rebuild passed. External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` rejected it: current-source refresh was average
+`183.95ms` / median `178.21ms`, then average `181.07ms` / median `177.13ms`;
+the prototype measured average `181.76ms` / median `181.93ms`, then average
+`184.56ms` / median `182.10ms`. CPU profile
+`profiling/core-architecture/20260618-205930-extend-loop-allocation-cpu/CPU.20260618.205930.73216.0.001.cpuprofile`
+also worsened the target (`processExtends(...)` `24` self / `111` total) and
+GC rose (`145` to `150` samples). Reverted. Do not retry this local Set/array
+allocation cleanup unless a future profile proves the classification flow has
+changed enough to make those allocations dominant.
+
 2026-06-18 rejected extend helper micro-cut: replacing two
 `targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
 passed focused extend tests and the full Jess package rebuild, but wall-clock
