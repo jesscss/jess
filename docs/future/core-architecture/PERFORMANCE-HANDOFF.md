@@ -3655,6 +3655,43 @@ Verdict: keep as a small measured wall-clock win. The safe rule is still
 "aggregate inside `processExtends`, not at registration," unless a future
 version proves no-extend inputs pay no keyset tax.
 
+Follow-up empty selector-bit check kept:
+
+- kept cut: `rootMayContainExtendTarget(...)` and
+  `selectorMayContainExtendTarget(...)` now use `isEmptyBitSet(...)` instead
+  of `targetKeys.equals(library.getBitset())`. This avoids allocating/cloning
+  the empty library bitset on every extend target check;
+- rejected variant: replacing the comparison with the bitset package's
+  `targetKeys.isEmpty()` passed focused tests, but CPU samples merely moved
+  the cost into `isEmpty(...)` and `processExtends(...)` rose in the profiled
+  run. That variant was superseded by the direct non-inverted word scan in
+  `isEmptyBitSet(...)`;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/bitset.test.ts
+  src/tree/util/__tests__/fast-reject.test.ts
+  src/tree/util/__tests__/process-extends.test.ts
+  src/tree/__tests__/extend-roots.test.ts
+  src/tree/__tests__/extend-eval-integration.test.ts` (`95` passed, `1`
+  skipped);
+- ordered benchmark-path rebuild passed before external timing;
+- wall-clock evidence on external canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division`: current refresh before this
+  patch was average `200.93ms` / median `197.97ms`; the plain `isEmpty()`
+  variant was neutral (`201.23ms` / `197.63ms`, then `200.04ms` /
+  `195.86ms`); the kept direct helper reported average `196.69ms` / median
+  `194.20ms`, then average `198.48ms` / median `196.26ms`;
+- CPU profile caveat: the kept helper profile at
+  `profiling/core-architecture/20260619-extend-empty-bitset-direct-cpu/CPU.20260618.190417.5544.0.001.cpuprofile`
+  reported profiler-overhead average `206.90ms` / median `204.10ms`, with
+  `processExtends(...)` `25.65ms`, `selectorMayContainExtendTarget(...)`
+  `6.03ms`, and `isEmptyBitSet(...)` `6.34ms`. Treat the wall-clock pair as
+  the keep signal; the profile confirms the old `equals(getBitset())` clone
+  path is gone, not that empty-bit testing disappeared.
+
+Verdict: keep as a small measured wall-clock win. Do not widen this into a
+generic bitset-helper rewrite without a fresh CPU-selected target.
+
 Next architecture theories to test:
 
 1. Continue selector-bit/root-surface pruning only after modeling composed

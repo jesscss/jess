@@ -15,7 +15,7 @@ import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
-import { isDisjoint, type BitSet } from './bitset.js';
+import { isDisjoint, isEmptyBitSet, type BitSet } from './bitset.js';
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -570,7 +570,7 @@ function rootMayContainExtendTarget(instruction: RootExtendInstruction, rootKeyS
   }
   const targetKeys = instruction.target.keySet;
   const library = targetKeys._library;
-  if (!library || targetKeys.equals(library.getBitset())) {
+  if (!library || isEmptyBitSet(targetKeys)) {
     return true;
   }
   return !isDisjoint(targetKeys, rootKeySet);
@@ -583,7 +583,7 @@ function selectorMayContainExtendTarget(
 ): boolean {
   const targetKeys = instruction.target.keySet;
   const library = targetKeys._library;
-  if (!library || targetKeys.equals(library.getBitset())) {
+  if (!library || isEmptyBitSet(targetKeys)) {
     return true;
   }
   if (selector.keySetLibrary !== library) {

@@ -161,6 +161,23 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
   return true;
 }
 
+/** True when a has no set bits. Avoids allocating an empty library bitset for comparison. */
+export function isEmptyBitSet(a: BitSet): boolean {
+  if (isInverted(a)) {
+    return a.isEmpty();
+  }
+  const data = dataOf(a);
+  if (!data) {
+    return true;
+  }
+  for (let i = 0; i < data.length; i++) {
+    if (data[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** True when a and b share no set bits */
 export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {

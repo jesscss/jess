@@ -112,26 +112,28 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept a root aggregate snapshot fold in `processExtends(...)`.
-  The pre-extend selector snapshot pass now also fills each root selector-bit
-  bucket, deleting the later duplicate walk over `rulesetsByRoot`.
-- Verdict: keep as a measured wall-clock win. This keeps aggregation inside
-  `processExtends(...)`, not registration, so no-extend inputs still avoid the
-  previously rejected registration-time keyset tax.
-- New traversal: none added. One full root/ruleset scan was removed from the
-  extend path when extends exist.
+- Latest pass: kept a direct empty-bitset check for extend target pruning.
+  `rootMayContainExtendTarget(...)` and `selectorMayContainExtendTarget(...)`
+  no longer allocate/clone an empty library bitset via
+  `targetKeys.equals(library.getBitset())`.
+- Verdict: keep as a small measured wall-clock win. The plain
+  `targetKeys.isEmpty()` variant only moved cost into the bitset package method;
+  the kept helper uses the same direct word-scan shape as the existing bitset
+  helpers.
+- New traversal: one tiny word scan in `isEmptyBitSet(...)`, replacing an
+  allocation-heavy clone-and-compare check in the same hot predicate.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none kept.
+- Helper/API surface: added `isEmptyBitSet(...)` next to `isDisjoint(...)` and
+  `isSubsetOf(...)`; it deletes the hotter `library.getBitset()` allocation
+  path from extend pruning.
 - Metadata mutations: none added this pass.
 - Side maps/arrays/copies: no new side maps, arrays, or copies.
 - Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division` improved from refreshed branch baseline averages
-  `210.15ms` and `211.61ms` to `201.50ms`, `201.70ms`, and `199.22ms`.
-  Focused `process-extends`, `extend-roots`, and `extend-eval-integration`
-  tests passed (`50` passed, `1` skipped). The known branch-baseline deep
-  chaining failure in `extend-rules.test.ts` remains, and the broad Less
-  fixture command was stopped after hanging, so do not count that fixture file
-  as verified for this pass. CPU profile attribution was mixed; details are in
-  `PERFORMANCE-HANDOFF.md`.
+  --math=parens-division` improved from the current refresh `200.93ms` average
+  to `196.69ms` and `198.48ms`. Focused bitset/fast-reject/process-extends/
+  extend-root/extend-integration tests passed (`95` passed, `1` skipped), and
+  the ordered benchmark-path rebuild passed. CPU profile attribution is still
+  modest: the old clone path is gone, but `isEmptyBitSet(...)` itself remains
+  sampled. Details are in `PERFORMANCE-HANDOFF.md`.
