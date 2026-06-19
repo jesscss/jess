@@ -153,6 +153,25 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 explicit scalar-leaf constructor pass: kept the third
+`_processNodes` constructor reduction. A one-off constructor counter around
+`Node.prototype._processNodes(...)` showed the hottest remaining calls during
+one `benchmark.less` render were scalar leaves (`Any` `6129`,
+`BasicSelector` `5906`, `Dimension` `3232`, `Num` `3143`), plus other
+leaf-like containers such as `Nil`, `Combinator`, `Bool`, `JsFunction`, and
+`MixinCollection`. The kept patch makes true leaf constructors pass
+`processChildren=false` directly instead of entering `_processNodes(...)` just
+to rediscover `childKeys = null`; it adds no scans, child adoption,
+side maps, nodes, caches, or materialization. Focused
+any/dimension/color/comment/selector/reference/rules/node-flags/visitor tests
+passed after rebuilding (`425` passed, `10` skipped, `5` deferred markers).
+Live `benchmark.less` comparator evidence over `100` runs after `25` warmups
+with `--less4=measure` measured patched Jess at `131.88ms` median /
+`136.07ms` trimmed average, then `131.49ms` / `133.38ms`; the immediate
+same-load reverted control measured `133.47ms` / `135.96ms`. Keep as a modest
+runtime win and continue using constructor counters/CPU samples before cutting
+more `_processNodes(...)` paths.
+
 2026-06-19 explicit object/tuple constructor adoption pass: kept the second
 `_processNodes` constructor reduction. A fresh CPU profile after the first
 container pass still showed `_processNodes(...)` self samples and nearby
@@ -187,7 +206,25 @@ measured patched Jess at `133.50ms` median / `137.34ms` trimmed average, then
 `135.08ms` / `137.97ms`. Keep as a small but repeatable runtime win and a
 structural step toward eliminating constructor `_processNodes(...)`.
 
-Same-pass rejected lessons: a lazy `rulesParent` getter cache passed focused
+Same-pass rejected lessons: a follow-up explicit-adoption pass over small
+wrapper constructors (`Negative`, `Rest`, `Url`, `Expression`, `Block`,
+`Paren`, `Condition`, `Extend`, `ExtendList`, `SelectorCapture`, and
+`InterpolatedSelector`) was reverted. It passed focused wrapper/extend/selector
+and reference tests after adding runtime node guards for Chevrotain grammar
+recording placeholders (`430` passed, `10` skipped, `5` deferred markers), but
+live `benchmark.less` evidence regressed to `133.87ms` / `136.68ms`, then
+`135.79ms` / `139.60ms`, versus the kept object/tuple constructor result
+around `126.12ms` / `127.46ms`. Do not repeat broad wrapper constructor
+adoption by shape alone; choose the next `_processNodes(...)` cut from CPU
+samples, object-valued constructor heat, or a design that removes the need for
+source-parent mutation rather than adding per-wrapper `instanceof` branches.
+A base-constructor leaf shortcut that skipped `_processNodes(...)` when
+`childKeys === null` also passed focused tests (`425` passed, `10` skipped,
+`5` deferred markers), but same-load A/B did not beat control: patched measured
+`132.23ms` / `133.93ms`, while the immediately reverted control measured
+`132.23ms` / `133.45ms`. Keep it reverted; moving the `childKeys` check from
+`_processNodes(...)` into the base constructor is not a useful cut by itself.
+A lazy `rulesParent` getter cache passed focused
 tests but measured flat/slower than control (`136.04ms` / `137.61ms` patched
 vs `134.57ms` / `137.36ms` reverted control), so it was reverted. A plain
 `rulesParent` field plus exported `getRulesParent(...)` resolver also passed

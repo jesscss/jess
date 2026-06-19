@@ -21,7 +21,7 @@ export class BasicSelector extends SimpleSelector<string> {
     location?: ConstructorParameters<typeof SimpleSelector<string>>[2],
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }

@@ -38,7 +38,7 @@ export class Nil extends Node<''> {
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super('', options, location);
+    super('', options, location, false);
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);

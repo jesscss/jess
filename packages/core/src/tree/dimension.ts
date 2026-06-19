@@ -117,7 +117,7 @@ export class Dimension extends Node<DimensionValue> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.number = value.number;
     this.unit = value.unit;

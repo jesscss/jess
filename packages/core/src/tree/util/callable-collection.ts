@@ -50,7 +50,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
   readonly entries: MixinEntry[];
 
   constructor(value: MixinEntry[]) {
-    super(value);
+    super(value, undefined, undefined, false);
     this.entries = value;
   }
 

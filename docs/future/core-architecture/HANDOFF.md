@@ -166,30 +166,31 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: explicit adoption for hot object/tuple constructor families.
-- Verdict: accepted as a measured performance cut, not goal completion.
-  `Operation`, `Declaration`, `Ruleset`, and `Mixin` now opt out of base
-  constructor `_processNodes(...)` and adopt their known child slots in the
-  concrete constructor.
-- New traversal: direct child-slot adoption in four constructors. It replaces
-  the previous generic base object/tuple `_processNodes(...)` scan for the same
-  constructor values; it does not recurse into arbitrary object values or
-  discover new child surfaces.
+- Latest pass: explicit no-child construction for hot scalar leaves.
+- Verdict: accepted as a measured small performance cut, not goal completion.
+  `Any`, `BasicSelector`, `Dimension`/`Num`, `Bool`, `Comment`,
+  `Combinator`, `Nil`, `Ampersand`, `JsFunction`, and `MixinCollection` now
+  pass `processChildren=false` to the base constructor because their canonical
+  constructor values contain no source-tree children to adopt.
+- New traversal: none. This deletes `_processNodes(...)` calls for true leaf
+  constructors instead of replacing them with another scan.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: one internal constructor flag only.
-- Metadata mutations: direct `adopt(...)` calls for known node slots. They
-  preserve the previous source-parent/static/async flag adoption semantics, but
-  run in concrete constructors instead of the generic base scanner.
+- Helper/API surface: none added; the existing internal constructor flag is
+  used by more leaf constructors.
+- Metadata mutations: none added. These constructors previously had no
+  children to adopt; the pass avoids even entering source-parent mutation code.
 - Copy/materialization: none.
 - Materialized array/object note: no new arrays or objects are created by this
   pass.
 - Danger-token note: none added. No clone/copy/materialization path was added.
-- Evidence: ordered affected-package rebuild passed; focused
-  `@jesscss/core` visitor/operation/declaration/ruleset/mixin/reference/rules
-  suite passed (`629` passed, `14` skipped, `9` deferred markers); live comparator on
-  `benchmark.less` used `--runs=100 --warmup=25 --less4=measure` and measured
-  patched Jess at `130.16ms` median / `131.48ms` trimmed average, then
-  `123.94ms` / `126.13ms`; after restoring explicit non-node guards, the final
-  checked shape measured `126.12ms` / `127.46ms`, improving on the prior kept
-  constructor batch.
+- Evidence: constructor instrumentation found the hottest remaining
+  `_processNodes(...)` calls were scalar leaves (`Any` 6129,
+  `BasicSelector` 5906, `Dimension` 3232, `Num` 3143 on one
+  `benchmark.less` render). Focused `@jesscss/core`
+  any/dimension/color/comment/selector/reference/rules/node-flags/visitor
+  suite passed (`425` passed, `10` skipped, `5` deferred markers). Live
+  comparator on `benchmark.less` used `--runs=100 --warmup=25 --less4=measure`;
+  patched runs measured `131.88ms` / `136.07ms`, then `131.49ms` / `133.38ms`,
+  while the immediate reverted same-load control measured `133.47ms` /
+  `135.96ms`.

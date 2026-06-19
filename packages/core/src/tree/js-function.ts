@@ -19,7 +19,7 @@ export class JsFunction extends Node<Fn> {
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 
-    super(fn, options, location);
+    super(fn, options, location, false);
     this._treeContext = treeContext;
     this.fn = fn;
     this.name = typeof value === 'function' ? undefined : value.name;

@@ -55,7 +55,7 @@ export class Any<
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);

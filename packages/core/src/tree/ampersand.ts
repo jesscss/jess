@@ -455,10 +455,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
       finalValue.appendValue = value;
-      super(finalValue, options, location);
+      super(finalValue, options, location, false);
     } else {
       finalValue = value ? { appendValue: value.appendValue } : {};
-      super(finalValue, options, location);
+      super(finalValue, options, location, false);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;

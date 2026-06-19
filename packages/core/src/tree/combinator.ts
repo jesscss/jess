@@ -20,7 +20,7 @@ export class Combinator extends Selector<Combinators> {
     location?: ConstructorParameters<typeof Selector<Combinators>>[2],
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }

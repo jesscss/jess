@@ -22,7 +22,7 @@ export class Comment extends Node<string, CommentOptions> {
   readonly lineComment: boolean;
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.lineComment = options?.lineComment === true || value.startsWith('//');
     this.addFlag(F_STATIC);
