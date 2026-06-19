@@ -137,7 +137,7 @@ export function emitCommentTriviaBetweenNodes(
   prev: Node,
   next: Node,
   options: TriviaEmitOptions & Pick<PrintOptions, 'trivia'>
-): void {
+): boolean {
   const trivia = (
     options.trivia
     ?? treeTrivia(prev)
@@ -145,13 +145,18 @@ export function emitCommentTriviaBetweenNodes(
   );
   const prevEnd = prev.location[3];
   if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
-    return;
+    return false;
   }
   const tokens = trivia.lookup(prevEnd, 'after');
   if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
-    return;
+    return false;
   }
-  emitTriviaTokens(consumeTrivia(trivia, prevEnd, 'after', options), options);
+  const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
+  if (!consumed) {
+    return false;
+  }
+  emitTriviaTokens(consumed, options);
+  return true;
 }
 
 export function emitCommentTriviaBeforeDelimiter(

@@ -352,7 +352,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     printOptions: ReturnType<typeof getPrintOptions>
   ): void {
     const w = printOptions.writer;
-    emitCommentTriviaBetweenNodes(prev, node, printOptions);
+    const emittedCommentTrivia = emitCommentTriviaBetweenNodes(prev, node, printOptions);
     const sourceTrivia = (
       printOptions.trivia
       && sequenceNodeTrivia(prev) === printOptions.trivia
@@ -365,6 +365,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       : undefined;
     if (leadingTrivia) {
       emitTriviaTokens(leadingTrivia, printOptions);
+      return;
+    }
+    if (emittedCommentTrivia) {
       return;
     }
     const prevLastChar = w.lastChar();

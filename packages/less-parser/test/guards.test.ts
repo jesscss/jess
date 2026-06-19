@@ -70,16 +70,10 @@ describe('guardDefault', () => {
     expect(errors.length).toBe(0);
     expect(tree.options?.hasDefault).toBe(true);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      guard: 
+      guard:
         (Paren
-          (Call
-              silentFail: true
-            name: 
-              (Reference
-                  type: 'function'
-                  fallbackValue: true
-                key: 'default'
-              )
+          node:
+            (DefaultGuard 'default()')
         )
       `);
   });
@@ -89,19 +83,13 @@ describe('guardDefault', () => {
     expect(errors.length).toBe(0);
     expect(tree.options?.hasDefault).toBe(true);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      guard: 
+      guard:
         (Condition
             negate: true
-          [
+          left:
             (Paren
-              (Call
-                  silentFail: true
-                name: 
-                  (Reference
-                      type: 'function'
-                      fallbackValue: true
-                    key: 'default'
-                  )
+              node:
+                (DefaultGuard 'default()')
             )
         )
       `);

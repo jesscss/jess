@@ -1618,10 +1618,10 @@ its claims.
 - [x] Verification: focused Less e2e tests pass.
 - [x] Verification: explicit finite CSS parser unit subset passes and remaining
   CSS parser gates are documented separately from scanner-first work.
-- [x] Verification: focused Less parser serializer drift is classified
-  separately from scanner-first behavior.
-- [ ] Verification: existing Less parser / Less fixture gates pass or remaining
-  pre-existing failures are documented separately from scanner-first work.
+- [x] Verification: explicit finite Less parser unit subset passes and remaining
+  Less fixture gates are documented separately from scanner-first work.
+- [ ] Verification: full Less fixture gates pass once external fixture
+  dependencies are available in the package test context.
 
 Current broad-parser gate snapshot, 2026-06-19:
 
@@ -1641,24 +1641,21 @@ Current broad-parser gate snapshot, 2026-06-19:
 - Focused Less parser classification removed stale serializer expectations for
   `Declaration.valueNode`, list `items`, `CompoundSelector.components`,
   `Sequence.items`, `Condition.left/right`, and mixin-call `Reference` names.
-  The repaired assertions passed with:
+  A bounded behavior fix restored parsed `default()` guard `hasDefault`
+  detection by walking canonical node children instead of legacy `data`
+  shapes, and sequence trivia now preserves comment-only adjacency without
+  adding synthetic whitespace. The explicit finite Less parser unit subset
+  passed with:
   `pnpm --filter @jesscss/less-parser test -- --run
+  test/island-providers.test.ts test/declaration.test.ts
   test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
-  test/guards.test.ts -t
-  "keeps keyword slash values|host pseudo arguments|unknown pseudo arguments
-  from generic sequence|serializes comma-root|serializes
-  semicolon-root|lookup with brackets|namespaced variable lookup|call with
-  parentheses|nested comparison shape"`.
-- The same focused four-file Less parser run without a name filter still does
-  not pass: `pnpm --filter @jesscss/less-parser test -- --run
-  test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
-  test/guards.test.ts` reported 84 passed and 6 failed tests. The remaining
-  failures are not being treated as scanner-first behavior yet: parsed
-  `default()` guards do not set/evaluate the expected default-guard state,
-  ambiguous `default()` guard pairs render instead of rejecting, complex mixin
-  reference paths no longer preserve the expected `rawKey` selector shape, and
-  unknown pseudo selector arguments inject a space after a same-line block
-  comment when serialized.
+  test/guards.test.ts test/functions.test.ts test/math-value.test.ts
+  test/values.test.ts test/variables.test.ts test/stylesheet.test.ts`,
+  reporting 162 passed tests across 11 files.
+- The remaining Less parser fixture gate is external-dependency setup:
+  `pnpm --filter @jesscss/less-parser test -- --run test/at-rules.test.ts`
+  fails before collecting tests because `@less/test-data` is not resolvable
+  from `packages/less-parser/test/at-rules.test.ts`.
 - Focused scanner-first gates remain green: `@jesscss/parser` tests,
   CSS/Less island-provider tests, `@jesscss/plugin-less` structural activation
   test, `jess` scanner-first e2e tests, package builds, and package export

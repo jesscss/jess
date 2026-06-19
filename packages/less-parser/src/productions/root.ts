@@ -108,19 +108,11 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
   if (!node) {
     return false;
   }
-  const isNodeLike = (value: unknown): value is Node => {
-    return Boolean(
-      value
-      && typeof value === 'object'
-      && 'type' in value && typeof value.type === 'string'
-      && 'valueOf' in value && typeof value.valueOf === 'function'
-    );
-  };
   const queue: unknown[] = [node];
   const seen = new Set<unknown>();
   while (queue.length > 0) {
     const current = queue.shift();
-    if (!current || seen.has(current) || !isNodeLike(current)) {
+    if (!current || seen.has(current) || !(current instanceof Node)) {
       continue;
     }
     seen.add(current);
@@ -149,14 +141,7 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
         }
       }
     }
-    if ('data' in current) {
-      const value = current.data;
-      if (Array.isArray(value)) {
-        queue.push(...value);
-      } else if (value && typeof value === 'object') {
-        queue.push(...Object.values(value));
-      }
-    }
+    queue.push(...current.children());
   }
   return false;
 }
