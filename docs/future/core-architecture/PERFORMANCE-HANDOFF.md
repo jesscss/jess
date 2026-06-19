@@ -627,6 +627,30 @@ GC rose (`145` to `150` samples). Reverted. Do not retry this local Set/array
 allocation cleanup unless a future profile proves the classification flow has
 changed enough to make those allocations dominant.
 
+2026-06-18 kept direct `Rules` callable copy: after the rejected extend loop
+allocation cleanup, the current profile still showed broad callable copy cost:
+`copyCallableRulesValue(...)` at `23` self / `520` total samples,
+`copyCallableRulesNode(...)` at `2` self / `444` total, and
+`constructCallableRulesNode(...)` at `21` self / `78` total. The kept cut adds
+a direct `Rules` branch to `copyCallableDirectFieldNode(...)`, matching the
+existing concrete branches for `Mixin`, `Ruleset`, and `AtRule`. `Rules`
+callable surfaces now use `copyCallableRulesChildren(...)` and `new Rules(...)`
+directly instead of falling through to generic value recursion plus
+`Reflect.construct(...)`.
+
+Focused callable behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-special-case.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/callable-candidate-state.test.ts src/tree/util/__tests__/callable-candidate-execution.test.ts src/tree/__tests__/call.test.ts -t "handles ruleset candidates through ruleset-placement output|handles ordinary callable entries through candidate setup and execution|handles anonymous detached callable-rules through unlocked eval output|uses call-site rules for parentless anonymous callable-rules output|leaves ordinary mixin candidates on the main eval path|derives preserve-rules-like variable call names without cloning the source reference|keeps rules-like variable call names canonical across render and resolve|does not let detached ruleset calls read caller scope in non-leaky mode|lets detached ruleset calls read caller scope in leaky mode"`
+(`9` passed, skipped unmatched cases). Ordered benchmark-path rebuild passed
+before timing. External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` measured current-source refresh at average `183.95ms`
+/ median `178.21ms`, then average `181.07ms` / median `177.13ms`. The kept
+prototype measured average `180.20ms` / median `175.73ms`, average `180.83ms`
+/ median `175.72ms`, then average `171.59ms` / median `169.72ms`. CPU profile
+`profiling/core-architecture/20260618-210313-callable-rules-direct-copy-cpu/CPU.20260618.210313.6061.0.001.cpuprofile`
+moved `copyCallableRulesValue(...)` to `18` self / `395` total and
+`constructCallableRulesNode(...)` to `14` self / `73` total. Keep as a measured
+wall-clock and CPU-profile win.
+
 2026-06-18 rejected extend helper micro-cut: replacing two
 `targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
 passed focused extend tests and the full Jess package rebuild, but wall-clock

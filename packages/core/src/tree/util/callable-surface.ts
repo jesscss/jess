@@ -93,6 +93,14 @@ function callableLocation(node: Node): LocationInfo | undefined {
 }
 
 function copyCallableDirectFieldNode(node: Node): Node | undefined {
+  if (isNode(node, N.Rules)) {
+    return new Rules(
+      copyCallableRulesChildren(node),
+      node.options ? { ...node.options } : undefined,
+      callableLocation(node),
+      node.sourceRoot?._treeContext
+    ).inherit(node);
+  }
   if (isNode(node, N.Mixin)) {
     return new Mixin(
       {

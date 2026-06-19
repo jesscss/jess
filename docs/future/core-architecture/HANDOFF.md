@@ -112,30 +112,41 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected extend loop allocation cleanup. The CPU-backed target
-  was remaining `processExtends(...)` self-time after the instruction keyset
-  carry.
-- Verdict: revert the prototype. Removing the per-ruleset
-  `excludedFromLocal` `Set` and lazily allocating `crossingInstructions`
-  passed behavior tests but worsened benchmark medians and CPU samples.
-- New traversal: none kept.
-- New node/materialization: none added.
+- Latest pass: kept direct `Rules` callable copy. The CPU-backed target was the
+  callable copy stack (`copyCallableRulesValue(...)`,
+  `copyCallableRulesNode(...)`, and `constructCallableRulesNode(...)`) after
+  extend allocation cleanup was rejected.
+- Verdict: keep the direct `Rules` branch in `copyCallableDirectFieldNode(...)`.
+  It gives `Rules` callable surfaces the same concrete constructor lane already
+  used for `Mixin`, `Ruleset`, and `AtRule`, avoiding generic value recursion
+  and `Reflect.construct(...)` for that node family.
+- New traversal: no net-new traversal. Child copying still uses the existing
+  `copyCallableRulesChildren(...)` loop; the kept change routes `Rules`
+  through that loop directly instead of rediscovering child values through
+  generic `copyCallableRulesValue(...)`.
+- New node/materialization: no new materialization category. Callable owned
+  `Rules` surfaces were already copied; this changes the constructor path from
+  generic `Reflect.construct(...)` to explicit `new Rules(...)`.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: no new helper or public API.
-- Metadata mutations: none.
-- Side maps/arrays/copies: none kept. The rejected prototype deleted one `Set`
-  allocation and made one array lazy, but the measured result moved work the
-  wrong way.
+- Helper/API surface: no new helper or public API; one existing helper gained a
+  `Rules` branch.
+- Metadata mutations: unchanged. The direct branch still uses `.inherit(node)`
+  and `node.sourceRoot?._treeContext` like the previous generic constructor
+  path; it makes those requirements concrete instead of hiding them behind
+  `Reflect.construct(...)`.
+- Side maps/arrays/copies: no new side maps. Existing callable child copying
+  remains; generic object/value recursion is skipped for `Rules`.
 - Evidence: current-source refresh measured `183.95ms` average /
   `178.21ms` median and `181.07ms` average / `177.13ms` median on external
   canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
   CPU profile
   `profiling/core-architecture/20260618-205806-current-refresh-cpu/CPU.20260618.205806.59918.0.001.cpuprofile`
-  showed `processExtends(...)` at `22` self / `103` total samples. The
-  allocation prototype passed focused extend/bitset tests (`105` passed,
-  `1` skipped) and rebuilt the benchmark package chain, but benchmarked
-  `181.76ms` / `181.93ms` and `184.56ms` / `182.10ms`; CPU profile
-  `profiling/core-architecture/20260618-205930-extend-loop-allocation-cpu/CPU.20260618.205930.73216.0.001.cpuprofile`
-  worsened `processExtends(...)` to `24` self / `111` total and raised GC
-  samples from `145` to `150`. Reverted.
+  showed `copyCallableRulesValue(...)` at `23` self / `520` total and
+  `constructCallableRulesNode(...)` at `21` self / `78` total. The kept patch
+  passed focused callable tests, rebuilt the benchmark package chain, and
+  benchmarked `180.20ms` / `175.73ms`, `180.83ms` / `175.72ms`, then
+  `171.59ms` / `169.72ms`. CPU profile
+  `profiling/core-architecture/20260618-210313-callable-rules-direct-copy-cpu/CPU.20260618.210313.6061.0.001.cpuprofile`
+  moved `copyCallableRulesValue(...)` to `18` self / `395` total and
+  `constructCallableRulesNode(...)` to `14` self / `73` total.
