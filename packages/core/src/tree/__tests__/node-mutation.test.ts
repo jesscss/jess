@@ -3,7 +3,7 @@ import { Any, Rules, any } from '../index.js';
 import { TreeContext } from '../../context.js';
 
 describe('Node mutation', () => {
-  it('keeps tree context on Rules while children point at the source root', () => {
+  it('keeps tree context on Rules while children resolve the source root lazily', () => {
     const node = any('10px');
     expect(node._treeContext).toBeUndefined();
     expect(node._sourceRoot).toBeUndefined();
@@ -17,7 +17,7 @@ describe('Node mutation', () => {
     expect(root._treeContext).toBe(treeContext);
     expect(root._sourceRoot).toBe(root);
     expect(sourced._treeContext).toBe(treeContext);
-    expect(sourced._sourceRoot).toBe(root);
+    expect(sourced._sourceRoot).toBeUndefined();
     expect(sourced.sourceRoot?._treeContext).toBe(treeContext);
   });
 });

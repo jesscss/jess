@@ -470,10 +470,6 @@ export abstract class Node<
       setSourceParent(node, this);
     }
     this.addFlag(F_HAS_NODE_CHILD);
-    const sourceRoot = sourceRootOf(this);
-    if (sourceRoot && !node._sourceRoot) {
-      node._sourceRoot = sourceRoot;
-    }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
@@ -493,6 +489,7 @@ export abstract class Node<
    * @note - This will not process the children nodes of children nodes.
    */
   private _processNodes<T>(value: T): T {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node instances are constructed by Node subclasses; this is a type-only static metadata read.
     if ((this.constructor as typeof Node).childKeys === null) {
       return value;
     }

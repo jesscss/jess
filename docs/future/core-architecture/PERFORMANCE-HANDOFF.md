@@ -5090,3 +5090,69 @@ can trade off against larger instances or worse inline-cache stability.
   copy or move ownership behind a cold materialization boundary.
 - `profile-less-benchmark.mjs` elapsed time is profiler overhead. Do not report
   it as a user-facing speed result unless debugging the profiler itself.
+- Tests that assert private ownership/cache slots are not automatically product
+  semantics. When simplifying `sourceParent`, `_sourceRoot`, clone ownership,
+  or result metadata, classify the failing assertion by use case first:
+  lookup ancestry, mutation ownership, render/trivia/error context, extend
+  matching, or public materialization. Preserve the behavior the use case needs;
+  do not preserve a private cache slot solely because a test observed it.
+- `F_HAS_NODE_CHILD` is an invented adoption bit, but deleting it must not add
+  recursive child rediscovery. A scan-based replacement passed focused
+  copy/binding/mixin tests but regressed `benchmark.less`: patched Jess median
+  `148.59ms` / trimmed `150.30ms` versus same-worktree reverted median
+  `137.55ms` / trimmed `140.29ms`. A class-shape version using
+  `childKeys === null` also passed focused tests but still measured slower
+  (`141.19ms` median / `142.66ms` trimmed). Underlying need is a cheap scalar
+  reuse discriminator; revisit only by making class shape authoritative, not by
+  moving constructor work into copy-edge scans.
+- Direct local `nodeType` rewrites in extend walking and selector visibility
+  have not paid off. Rejected evidence includes `Ruleset` selector visibility
+  masks (`144.82ms` then `135.92ms` medians, reverted) and extend-walk local
+  masks (subagent result: `147.74ms` median, worse than current handoff
+  baseline, reverted). Use a fresh CPU profile before trying another broad
+  `isNode(...)` rewrite.
+- Extend-root candidate key filtering is not enough by itself. A subagent
+  prototype reduced only a handful of writer marks/readbacks, was flat in
+  profile elapsed time, and carried nested-exact matching risk. Do not add
+  selector-key filtering machinery unless it removes a larger walk/classify
+  phase with focused extend matrix proof.
+- `_processNodes(...)` childKeys-routing is behavior-safe but not a measured
+  win in helper form. Ported prototype passed focused node flag/mutation,
+  render, reference, mixin, and ruleset tests (`508` passed, `9` skipped,
+  `9` deferred-case markers) plus full `pnpm build`, but benchmark was neutral:
+  patched Jess median `143.33ms` / trimmed `147.06ms`, same-worktree reverted
+  median `143.63ms` / trimmed `146.93ms`. If revisited, avoid adding per-node
+  helper-call ladders; try class-assigned adoption functions or
+  constructor-local ownership only where it removes the base constructor walk.
+- `sourceParent` / `_sourceRoot` / frames should be evaluated by usage family,
+  not by universal equivalence. Current `context.frames`/node `frames` mostly
+  cover collapse/render placement; they are not a drop-in ancestry service, but
+  lookup-only or render-only source ancestry may still be replaceable with
+  frame/context facts. Use focused experiments around one usage family at a
+  time.
+
+2026-06-19 lazy child `_sourceRoot` adoption write: kept a narrow source-root
+cut in `packages/core/src/tree/node-base.ts`. `Node.adopt(...)` still installs
+canonical `sourceParent` and bubbles state, but no longer writes `_sourceRoot`
+onto every adopted child. Children resolve root/tree context lazily via the
+existing `sourceParent` chain when `sourceRoot` is actually read. The focused
+test now asserts behavior (`sourceRoot?._treeContext`) instead of requiring the
+private child `_sourceRoot` cache to be eagerly populated.
+
+Correctness/setup evidence:
+
+- Focused source-root/render/lookup batch passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/node-mutation.test.ts src/tree/util/__tests__/operation-result.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/ruleset.test.ts src/tree/__tests__/at-rule.test.ts`
+  (`603` passed, `9` skipped, `9` deferred-case markers).
+- `pnpm build` passed after applying the patch.
+
+Wall-clock evidence:
+
+- Patched 50-run: Jess median `144.36ms` / trimmed `147.75ms`; Less 4.6.3
+  median `37.06ms` / trimmed `37.45ms`.
+- Reverted same-worktree 50-run: Jess median `145.70ms` / trimmed `148.75ms`;
+  Less 4.6.3 median `35.64ms` / trimmed `36.34ms`.
+- Patched 100-run: Jess median `139.39ms` / trimmed `142.79ms`; Less 4.6.3
+  median `35.83ms` / trimmed `37.12ms`.
+- Reverted same-worktree 100-run: Jess median `142.41ms` / trimmed `146.51ms`;
+  Less 4.6.3 median `36.67ms` / trimmed `38.06ms`.
