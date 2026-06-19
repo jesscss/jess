@@ -56,12 +56,9 @@ The token layer is also partly DRY already:
 - Lexer construction is shared through `createLexerDefinition` in
   `packages/css-parser/src/util/index.ts`.
 
-There is also a newer `@jesscss/parser` package. It is a hand-written
-recursive-descent runtime with Chevrotain-compatible helper methods, skipped
-token filtering, content-assist hooks, and a `SPEC_FAIL` sentinel for cheap
-speculative backtracking. See `packages/parser/src/parser.ts` and
-`packages/parser/src/types.ts`. That package already points toward reducing
-generator overhead without requiring a fully raw scanner-first design.
+There is also a newer `@jesscss/parser` package, but its current implementation
+is throwaway. The useful thing to keep is the package name and its role as the
+future shared parser foundation, not the existing recursive-descent runtime.
 
 Current source-location support is also not the same thing as robust source
 span fidelity. The parser has `LocationInfo` slots for start and end offsets,
@@ -122,22 +119,13 @@ DRY should happen at a lower level than one mega-parser:
 That matches the current inheritance model better than four independent parser
 rewrites.
 
-### 4. Hand-written parser runtime migration
+### 4. Reclaim `@jesscss/parser`, do not migrate its runtime
 
-The existing `@jesscss/parser` runtime may be the more direct first experiment
-than a brand-new scanner. It already preserves token-stream compatibility while
-removing Chevrotain self-analysis/GAST overhead. A sensible benchmark path is:
-
-```text
-current Chevrotain-backed parser
-vs
-same tokenization + @jesscss/parser runtime
-vs
-structural scanner-first document parser
-```
-
-That separates "parser generator overhead" from "full AST construction cost"
-and from "token object/scanner allocation cost".
+The package name should become the shared home for source text, scanner,
+structure, profiles, materialization, and indexing. The current package
+contents should not be treated as a production runtime candidate or a benchmark
+path. The comparison that matters is current compiler parser behavior versus
+the new scanner-first structural and materialization paths.
 
 ## What Must Change From The Draft
 
@@ -250,14 +238,39 @@ parsers remain language-specific. `@jesscss/parser` owns shared parser
 infrastructure, source structure, incremental IDE shape, and the policy for
 when raw ranges become canonical `@jesscss/core` nodes.
 
+## Implementation Language
+
+Implement this in TypeScript, compiled to the same JavaScript module targets as
+the rest of the Jess workspace.
+
+Reasons:
+
+- Jess parser, plugin, language-service, and runtime packages already expose
+  TypeScript/JavaScript APIs; keeping scanner-first work in-process avoids FFI,
+  WASM, worker protocol, and packaging boundaries before the architecture is
+  proven.
+- Plugins can share `LanguageProfile`, island provider, and materialization
+  types directly instead of translating through a second runtime model.
+- Existing fixtures, parser tests, `serializeTypes(...)`, package builds, and
+  benchmark harnesses can exercise the new path without a parallel toolchain.
+- The performance question is mostly architecture and allocation shape:
+  offset-first spans, lazy line/column mapping, raw islands, materialization
+  boundaries, cache keys, and visitor traversal. Those should be proven in the
+  runtime Jess actually ships before considering another implementation
+  language.
+
+Do not introduce Rust, C++, or WASM for the first scanner-first pass. A native
+or WASM scanner can be reconsidered only after the TypeScript design has clear
+hot-path measurements showing that language/runtime overhead, not parser shape,
+is the bottleneck.
+
 ## Package Specifications
 
 ### `@jesscss/parser`
 
-Existing package, repurposed as the shared parser foundation. It already
-contains the hand-written recursive-descent parser runtime. Expand it rather
-than creating `@jesscss/source`, `@jesscss/structure-parser`, or
-`@jesscss/parse-services` as public packages.
+Existing package name, repurposed as the shared parser foundation. Replace the
+current throwaway implementation rather than creating `@jesscss/source`,
+`@jesscss/structure-parser`, or `@jesscss/parse-services` as public packages.
 
 Internal module layout:
 
@@ -276,9 +289,6 @@ packages/parser/src/profiles/
 
 packages/parser/src/services/
   IslandParserRegistry, MaterializationSession, SemanticIndexBuilder
-
-packages/parser/src/runtime/
-  current RecursiveDescentParser runtime, SPEC_FAIL, parse errors
 ```
 
 Public exports should be grouped but still come from `@jesscss/parser`:
@@ -357,9 +367,57 @@ Purpose:
 - preserve newline ownership explicitly;
 - provide a structural document parser for language-service work;
 - provide shared materialization/index services for parser packages and plugins;
-- continue hosting the hand-written recursive-descent runtime.
+- provide one public package home for shared parser infrastructure.
 
-First implementation for source/scanner:
+Implementation sketch for source/scanner:
+
+```ts
+function scanStructure(source: SourceText, profile: LanguageProfile) {
+  const cursor = new ScannerCursor(source.text);
+  const events: StructuralEvent[] = [];
+  const trivia: TriviaRun[] = [];
+  const stack: BlockFrame[] = [];
+
+  while (!cursor.eof()) {
+    const triviaStart = cursor.offset;
+    scanTriviaInto(cursor, trivia);
+
+    const start = cursor.offset;
+    const token = scanStructuralToken(cursor, profile);
+
+    switch (token.kind) {
+      case 'block-open':
+        stack.push({ kind: token.blockKind, start, header: token.header });
+        break;
+      case 'block-close':
+        events.push(closeFrame(stack, start, cursor.offset));
+        break;
+      case 'statement':
+        events.push(classifyStatement(source, token.range, profile, stack));
+        break;
+      case 'error':
+        events.push(errorNode(start, cursor.offset));
+        recoverToNextBoundary(cursor);
+        break;
+    }
+
+    attachTrivia(events, triviaStart, cursor.offset);
+  }
+
+  return buildStructuralDocument(source, events, trivia, stack);
+}
+```
+
+Performance constraints for this layer:
+
+- store offsets, not eager line/column objects;
+- scan with cursor offsets and char codes in hot loops;
+- build small structural records, not compiler AST nodes;
+- avoid allocating token objects for trivia that can be stored as ranges;
+- recover by scanning to known boundaries instead of throwing for normal
+  malformed input.
+
+First source/scanner coverage:
 
 - line-map conversion for LF, CRLF, CR, and form-feed;
 - string/comment scanning with escapes and EOF;
@@ -409,6 +467,41 @@ Cache key must include:
   `wrapOuterExpressions`;
 - target shape: Jess core node vs Less adapter.
 
+Implementation sketch:
+
+```ts
+function materializeIsland(island: RawIslandNode, target: TargetShape) {
+  const provider = registry.get(island.language, island.kind, target);
+  const key = makeCacheKey(source.version, island, target, provider.config);
+  const cached = materialized.get(key);
+
+  if (cached) {
+    return cached.node;
+  }
+
+  const text = source.slice(island.contentSpan);
+  const node = provider.parse(text, {
+    baseOffset: island.contentSpan.start,
+    context: island.context,
+    diagnostics,
+  });
+
+  materialized.set(key, { node, diagnosticsVersion: diagnostics.version });
+  return node;
+}
+```
+
+Performance constraints for materialization:
+
+- materialize each stable source/range/config/target at most once per session;
+- parse only the island text and pass a base offset for source spans;
+- do not copy source strings except where the existing parser entrypoint
+  requires a substring;
+- keep failed materialization diagnostics cached separately from thrown
+  exceptional errors;
+- record counters for island parse count, cache hits, promoted byte ranges, and
+  fallback full-tree materializations.
+
 `SemanticIndexBuilder` consumes structural nodes first and materializes only
 when an index needs deeper syntax:
 
@@ -418,6 +511,36 @@ when an index needs deeper syntax:
 - extends: selector island materialization for targets and extenders;
 - references: value/prelude materialization when the structural scan detects
   variable, property, interpolation, or call syntax.
+
+Implementation sketch:
+
+```ts
+function buildIndexes(document: StructuralDocument, session: MaterializationSession) {
+  for (const node of document.root.children) {
+    switch (node.kind) {
+      case 'Import':
+        imports.add(importFromShell(node));
+        break;
+      case 'VariableDeclaration':
+        variables.add(variableFromShell(node));
+        if (needsValueDetail(node.valueIsland)) {
+          references.addFrom(session.materializeIsland(node.valueIsland, 'jess-core'));
+        }
+        break;
+      case 'Rule':
+        symbols.add(ruleSymbolFromHeader(node));
+        if (node.hasExtendCandidate) {
+          extends.addFrom(session.materializeIsland(node.selectorIsland, 'jess-core'));
+        }
+        break;
+    }
+  }
+}
+```
+
+The important property is selective promotion: indexes should prove which
+questions they can answer from structure alone and which questions require
+canonical node materialization.
 
 Dependency rule:
 
@@ -444,10 +567,8 @@ work adds narrow entrypoints, not a replacement parser:
 - `@jesscss/jess-parser`
   - expose Jess expression/control/mixin/module at-rule island providers.
 - `@jesscss/parser`
-  - owns shared source/scanner/structure/services/runtime code;
-  - remains the candidate runtime for replacing Chevrotain mechanics inside
-    the compiler parsers; that runtime migration is benchmarked separately
-    from structural parsing.
+  - owns shared source/scanner/structure/services code;
+  - does not preserve the current throwaway runtime as a migration path.
 
 This avoids a false choice between "scanner-first" and "compiler AST parser."
 The structural parser can ship for IDE/indexing first, while compiler parsers
@@ -459,7 +580,12 @@ Current plugin parsing is centered on `PluginInterface.safeParse(filePath,
 source)` and `Context.findParserPlugin(...)`. That should remain the public
 compiler entrypoint.
 
-Add optional plugin hooks:
+The following hooks are a migration sketch, not a frozen Jess plugin API. Less
+compatibility needs an adapter around today's visitor shape, but Jess-native
+plugin and visitor shapes can still change while SCSS parsing is finalized and
+released as alpha.
+
+Candidate optional plugin hooks:
 
 ```ts
 interface PluginInterface {
@@ -508,6 +634,11 @@ Package-specific plugin behavior:
 
 Visitors must not receive raw placeholders unless they explicitly opt into the
 structural API.
+
+This section describes a compatibility strategy, not a permanent Jess visitor
+contract. Less-compatible visitors need conservative behavior because their
+method names and adapter expectations already exist. Jess-native visitors can
+be redesigned around the eventual parser/runtime model.
 
 Do not add a second "visitor interest" declaration layer. The materialization
 policy should derive from the visitor that is actually registered for the
@@ -586,6 +717,45 @@ The structural parser should not copy the current `LocationInfo` behavior where
 rule start/end is inferred only from first/last consumed tokens. It should own
 range construction directly while scanning.
 
+## Performance Acceptance Strategy
+
+Performance is a primary concern, but it should be tested as a set of concrete
+runtime properties instead of a single "is it faster?" claim.
+
+Correctness and compatibility gates still come first:
+
+- structural parser diagnostics and spans are correct;
+- compile mode preserves existing parser/eval/render behavior;
+- materialized islands preserve the relevant historical AST contracts;
+- plugins and visitors do not observe raw placeholders unless they use the
+  structural API.
+
+Performance gates should be added as soon as each layer exists:
+
+- structural parse time on the existing CSS/Less/SCSS corpus;
+- peak and retained allocation for structural parse;
+- number of structural records per input byte;
+- number and total byte size of promoted islands;
+- materialization cache hit/miss counts;
+- number of fallback full-tree materializations;
+- end-to-end compile/eval/render time once compiler opt-in exists.
+
+The first performance target is not "beat the current compiler parser on every
+file." The first target is to prove that structural consumers can answer IDE
+and indexing questions without building full compiler ASTs, and that compiler
+mode does not regress when the new services are present but inactive.
+
+Benchmark comparisons should keep these paths separate:
+
+- current compiler parser;
+- scanner-first structural parse only;
+- scanner-first structural parse plus selected island materialization;
+- scanner-first full compile materialization.
+
+Do not claim a speed win without before/after measurements. Also do not accept
+a local object-count win if it adds more expensive side maps, recursive walks,
+or fallback full-tree materializations in the real path.
+
 ## Less 4.x Reference Work
 
 Less 4.x is both a behavior oracle and an architecture reference. It should be
@@ -619,19 +789,28 @@ The result should feed `LanguageProfile` classification and
 Deliverables:
 
 - This strategy doc replaces the assessment as the active plan.
-- Fixture set for structural spans:
+- Inventory the existing checked-in CSS, Less, and SCSS fixture corpus and tag
+  cases that should become scanner-first structural span coverage.
+- Reuse existing corpus files wherever possible. Add new examples only for
+  scanner-specific gaps that the current corpus does not cover.
+- Initial structural span coverage should include existing examples for:
   - multi-line selectors;
   - multi-line declaration values;
   - custom properties;
   - comments before/inside/after rules;
   - incomplete declarations and EOF blocks;
   - Less variables, mixin definitions/calls, and `:extend`;
-  - SCSS `$var`, `#{}`, `@use`, `@forward`, `@include`;
-  - Jess `$if`, `$for`, `$()`, `$!`, module at-rules.
+  - SCSS `$var`, `#{}`, `@use`, `@forward`, `@include`.
+- Do not create a broad `.jess` language corpus in this phase. Existing `.jess`
+  runtime/plugin fixtures can smoke-test integration, but final Jess syntax
+  coverage should wait until the SCSS parser shape is finalized and shipped as
+  alpha.
 
 Verification:
 
 - fixture snapshots define spans and diagnostics only;
+- fixture inventory identifies corpus coverage and gaps before new examples
+  are added;
 - no compiler parser behavior changes.
 
 ### Phase 2: `@jesscss/parser` source/scanner modules
@@ -648,6 +827,7 @@ Verification:
 
 - `pnpm --filter @jesscss/parser test`
 - `pnpm --filter @jesscss/parser build`
+- micro-benchmark reports line-map, scanner, and trivia allocation baselines.
 
 ### Phase 3: `@jesscss/parser` structural parser modules
 
@@ -664,7 +844,9 @@ Verification:
 
 - span fixture tests;
 - malformed-input tests;
-- benchmark on CSS/Less test fixtures for structural parse only.
+- benchmark on CSS/Less/SCSS corpus files for structural parse only;
+- structural parse reports record count, diagnostic count, and allocated bytes
+  per input byte where the harness can measure it.
 
 ### Phase 4: `@jesscss/parser` parse services modules
 
@@ -680,7 +862,9 @@ Verification:
 
 - mocked island parser tests prove cache keys include source version, range,
   language, island kind, and parser config;
-- semantic index tests prove structural-only indexes avoid materialization.
+- semantic index tests prove structural-only indexes avoid materialization;
+- materialization tests assert island parse count, cache hits, and fallback
+  full-tree materialization count.
 
 ### Phase 5: parser package island providers
 
@@ -697,13 +881,15 @@ Verification:
 - structural snapshots for first-pass raw islands;
 - `serializeTypes(...)` or focused node assertions at materialization
   boundaries for Less references, guards, mixin boundaries, selector/extend
-  placement, and Less media query forms.
+  placement, and Less media query forms;
+- provider benchmarks report selected-island materialization separately from
+  full compile parsing.
 
 ### Phase 6: plugin integration
 
 Deliverables:
 
-- optional `PluginInterface` extensions in `@jesscss/core`;
+- prototype candidate plugin hooks or adapter shims in `@jesscss/core`;
 - `@jesscss/plugin-less` exposes `lessProfile` and parse services;
 - `@jesscss/plugin-scss` exposes `scssProfile` where useful;
 - `@jesscss/plugin-less-compat` maps Less visitor methods to materialization
@@ -712,9 +898,12 @@ Deliverables:
 
 Verification:
 
-- existing plugin tests continue to pass without plugins implementing new hooks;
+- existing plugin tests continue to pass without plugins implementing new
+  candidate hooks;
 - Less-compat visitors force materialization before traversal;
-- language service can produce symbols/folding/node-at-offset without full AST.
+- language service can produce symbols/folding/node-at-offset without full AST;
+- visitor tests report whether traversal required selected islands or fallback
+  full-tree materialization.
 
 ### Phase 7: compiler opt-in experiment
 
@@ -724,13 +913,15 @@ Deliverables:
   selected Less/Jess files;
 - phase timings for structural parse, island materialization, AST construction,
   visitors, eval, render;
-- comparison against current parser, `@jesscss/parser` runtime migration, and
-  Less 4.x reference behavior.
+- comparison against current compiler parser behavior and Less 4.x reference
+  behavior where relevant.
 
 Verification:
 
 - no default behavior change;
-- full Less/Jess fixture gates pass before considering promotion.
+- full Less/Jess fixture gates pass before considering promotion;
+- end-to-end timings compare current compiler parser, structural-only parse,
+  selected materialization, and full materialization paths.
 
 ## Non-Goals
 
