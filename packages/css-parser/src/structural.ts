@@ -31,8 +31,8 @@ export function parseCssStructure(
 export function cssIslandParsePlan(
   filePath: string,
   source: string,
-  registry = new IslandParserRegistry(),
-  parser = new CssParser()
+  registry: IslandParserRegistry = new IslandParserRegistry(),
+  parser: CssParser = new CssParser()
 ): IslandParsePlan {
   const document = parseCssStructure(filePath, source);
   registerCssIslandProviders(registry, parser);

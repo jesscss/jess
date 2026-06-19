@@ -7,6 +7,12 @@ import {
 } from '@jesscss/parser';
 import { CssParser, type CssRules } from './cssParser.js';
 
+/**
+ * Compiler-visible result shapes that CSS providers can materialize.
+ *
+ * The shared parser treats target shapes as opaque cache-key strings; this
+ * union documents the shapes owned by `@jesscss/css-parser`.
+ */
 export type CssIslandTargetShape =
   | 'css-selector'
   | 'css-value'

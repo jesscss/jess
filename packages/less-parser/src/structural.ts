@@ -25,8 +25,8 @@ export function lessIslandParsePlan(
   filePath: string,
   source: string,
   config: LessParserConfig = {},
-  registry = new IslandParserRegistry(),
-  parser = new LessParser(config)
+  registry: IslandParserRegistry = new IslandParserRegistry(),
+  parser: LessParser = new LessParser(config)
 ): IslandParsePlan {
   const document = parseLessStructure(filePath, source);
   registerLessIslandProviders(registry, config, parser);

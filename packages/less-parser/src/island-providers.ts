@@ -9,6 +9,12 @@ import {
 import { LessParser, type LessRules } from './lessParser.js';
 import type { LessParserConfig } from './lessRecursiveParser.js';
 
+/**
+ * Compiler-visible result shapes that Less providers can materialize.
+ *
+ * These names participate in island cache keys. Keep them tied to grammar
+ * entrypoints and parser options that change the promoted AST shape.
+ */
 export type LessIslandTargetShape =
   | 'less-guard'
   | 'less-media-prelude'

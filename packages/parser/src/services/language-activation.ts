@@ -22,6 +22,12 @@ export class LanguageActivationRegistry {
   #byName = new Map<string, LanguageActivation>();
   #byExtension = new Map<string, LanguageActivation>();
 
+  /**
+   * Registers a plugin- or parser-package-owned language activation.
+   *
+   * The registry only records the binding; it does not instantiate parsers or
+   * eagerly configure providers until a consumer asks for a parse plan.
+   */
   register(activation: LanguageActivation): void {
     this.#byName.set(activation.name, activation);
     for (const extension of activation.supportedExtensions) {
@@ -29,14 +35,22 @@ export class LanguageActivationRegistry {
     }
   }
 
+  /** Looks up an activation by profile/plugin name without considering files. */
   getByName(name: string): LanguageActivation | undefined {
     return this.#byName.get(name);
   }
 
+  /** Looks up the activation bound to a file extension such as `.less`. */
   getByExtension(extension: string): LanguageActivation | undefined {
     return this.#byExtension.get(normalizeExtension(extension));
   }
 
+  /**
+   * Runs only the structural stage for a file extension.
+   *
+   * This is useful for editor/index consumers that need spans and raw islands
+   * without paying to configure or execute island providers.
+   */
   parseStructureForExtension(
     extension: string,
     input: ParseStructureInput,
@@ -46,6 +60,12 @@ export class LanguageActivationRegistry {
     return activation ? parseStructure(input, activation.profile, options) : undefined;
   }
 
+  /**
+   * Creates an island parse plan for an already-built structural document.
+   *
+   * Provider registration happens here so callers that stop at structure do not
+   * allocate parser instances or provider maps.
+   */
   createIslandParsePlanForExtension(
     extension: string,
     document: StructuralDocument,

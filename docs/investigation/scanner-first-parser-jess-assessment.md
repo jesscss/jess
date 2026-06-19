@@ -1515,7 +1515,7 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 - [x] Add Less value/expression island provider in `@jesscss/less-parser`.
 - [x] Add Less mixin/media-prelude island providers where covered by
   existing tests.
-- [ ] Add JSDoc for CSS/Less provider registration and wrapper/materialization
+- [x] Add JSDoc for CSS/Less provider registration and wrapper/materialization
   rules.
 - [x] Preserve existing parser package public contracts.
 - [x] Add materialization-boundary tests for promoted island shapes.
@@ -1598,6 +1598,22 @@ its claims.
   are documented separately from scanner-first work.
 - [ ] Verification: existing Less parser / Less fixture gates pass or any
   pre-existing failures are documented separately from scanner-first work.
+
+Current broad-parser gate snapshot, 2026-06-19:
+
+- `pnpm --filter @jesscss/css-parser test` did not pass. The run reported
+  three `test/container.test.ts` failures around `not` query/container parsing
+  before the process stayed active long enough that the agent stopped it. This
+  is not classified as scanner-first-caused or pre-existing yet.
+- `pnpm --filter @jesscss/less-parser test` did not pass. The run reported
+  71 failed and 239 passed tests across selector, mixin, guard,
+  `serializeTypes(...)`, and expression expectations. Many failures look like
+  existing AST serializer or parser-shape drift, but this has not been proven
+  against `main`.
+- Focused scanner-first gates remain green: `@jesscss/parser` tests,
+  CSS/Less island-provider tests, `@jesscss/plugin-less` structural activation
+  test, `jess` scanner-first e2e tests, package builds, and package export
+  verification.
 
 ### Slice 9b: SCSS And Jess Island Provider Entrypoints
 
