@@ -1,12 +1,8 @@
 import { default as OriginalBitSet } from 'bitset';
 
-function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'number');
-}
-
 function dataOf(bitset: OriginalBitSet & { data?: unknown }): number[] | undefined {
   const data: unknown = bitset.data;
-  return isNumberArray(data) ? data : undefined;
+  return Array.isArray(data) ? data as number[] : undefined;
 }
 
 function isInverted(bitset: OriginalBitSet & { _?: unknown }): boolean {

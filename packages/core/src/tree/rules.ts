@@ -34,7 +34,7 @@ import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
-import { AssignmentType, type Declaration } from './declaration.js';
+import type { Declaration } from './declaration.js';
 import { List } from './list.js';
 import {
   indent,
@@ -4551,7 +4551,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const canReuseCanonicalDeclaration = (
       isNode(node, N.Declaration | N.VarDeclaration)
-      && (!node.options?.assign || node.options.assign === AssignmentType.Default)
+      && (!node.options?.assign || node.options.assign === ':')
       && !node.options?.normalizedFromAssign
     );
     const prepared = canReuseCanonicalDeclaration

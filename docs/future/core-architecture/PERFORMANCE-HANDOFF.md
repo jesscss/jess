@@ -190,6 +190,49 @@ intended: `copyChild(...)` self `352.00ms -> 17.23ms`,
 `createRegistrationState(...)` stack `347.39ms -> 1.69ms`. Keep as a measured
 wall-clock and CPU-profile win.
 
+2026-06-18 bitset data guard pass: the current profile after default
+declaration registration still showed `isNumberArray(...)` under
+`dataOf(...)` / `isDisjoint(...)` in selector-bit extend checks. The kept cut
+trusts the bitset package's own `data` array shape after `Array.isArray(...)`
+instead of validating every word with `.every(...)` on each hot-path check.
+This does not change the public bitset contract; it removes repeated defensive
+validation from internal bitset reads that already come from `BitSet`.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/bitset.test.ts src/tree/util/__tests__/fast-reject.test.ts src/tree/util/__tests__/process-extends.test.ts src/tree/__tests__/extend-roots.test.ts src/tree/__tests__/extend-eval-integration.test.ts`
+(`95` passed, `1` skipped), and the assignment/registration smoke passed
+(`7` passed, `363` skipped). Ordered benchmark-path rebuild passed before
+timing. External canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` measured `avg 177.37ms` /
+`median 173.85ms`, then `avg 182.55ms` / `median 179.24ms`, versus the
+default-assignment kept pair of `178.73ms` / `176.21ms` and `184.53ms` /
+`179.40ms`. Profile
+`profiling/core-architecture/20260618-194009-bitset-data-guard-cpu/CPU.20260618.194009.78647.0.001.cpuprofile`
+reported `avg 188.29ms` / `median 185.89ms`; CPU attribution moved
+`isNumberArray(...)` from `9.73ms` self / `12.43ms` total to zero, and
+`dataOf(...)` total from `12.43ms` to `1.52ms`. After reverting the rejected
+root aggregate subset-update prototype and rebuilding the accepted source
+shape, the same harness reported `avg 176.81ms` / `median 173.09ms`. Keep as
+a small CPU-profile cleanup and neutral-to-small wall-clock win.
+
+Companion correctness repair: the previous default-assignment pass briefly
+introduced a runtime import of `AssignmentType` into `rules.ts`, which created
+an import cycle exposed by extend tests as `Class extends value undefined is
+not a constructor or null` at `declaration-custom.ts`. The fix compares the
+normalized parser default literal `':'` in the hot path and keeps the
+`Declaration` import type-only.
+
+Rejected follow-up: sparse root aggregate update. A prototype made
+`addRootSelectorKeys(...)` skip empty keysets and avoid `or(...)` when the new
+selector bits were already a subset of the root aggregate. Focused extend
+coverage passed (`110` passed, `1` skipped), but canonical `benchmark.less`
+rejected the bookkeeping: `avg 189.38ms` / `median 185.05ms`, and the profiled
+run had a large outlier (`avg 230.26ms`, `median 194.37ms`,
+`variance 41.16%`). Reverted. Keep the existing rule: one aggregate selector
+bitset per extend root is useful, and selector mutations must update it, but
+do not add per-update subset checks unless a profile shows duplicate root
+ORs are hotter than the subset bookkeeping.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

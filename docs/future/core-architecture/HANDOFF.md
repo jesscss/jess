@@ -112,34 +112,40 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept default-assignment canonical declaration registration.
-  Parser-default `AssignmentType.Default` (`:`) no longer makes ordinary Less
-  declarations take assignment-normalization materialization, and
-  `Rules._prepareRegisterableNode(...)` may use the existing `reuseCanonical`
-  lane when default `:` is the only assignment marker.
-- Verdict: keep as a measured wall-clock and CPU-profile win. This is not a
-  general assignment reuse rule; merge/add/conditional assignments still own
-  their prepared registration surfaces.
+- Latest pass: kept bitset data guard cleanup plus the default-assignment
+  import-cycle repair; rejected sparse extend-root aggregate updates.
+  `dataOf(...)` now trusts the bitset package's internal numeric `data` array
+  after `Array.isArray(...)` instead of running `.every(...)` on every hot-path
+  bitset read. `Rules._prepareRegisterableNode(...)` now compares the default
+  assignment literal `':'` directly so `rules.ts` does not value-import
+  `AssignmentType` and reopen the declaration import cycle.
+- Verdict: keep the bitset cleanup as a small CPU-profile cleanup and
+  neutral-to-small wall-clock win; keep the literal comparison as a correctness
+  repair for the previous pass. Reject the root aggregate subset-update check:
+  the existing one-bitset-per-root model is useful and selector mutations must
+  update it, but extra per-update subset bookkeeping regressed/noised the real
+  benchmark.
 - New traversal: none.
-- New node/materialization: none added. The change deletes routine copied
-  declaration registration surfaces for unchanged default-colon declarations.
+- New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none added. One existing enum import was widened from
-  type-only to value import in `rules.ts`.
+- Helper/API surface: none added. One defensive helper was deleted from the
+  internal bitset path.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps or arrays. The kept change removes
-  the hot declaration `copyValueForDerived(...)` / `copyChild(...)` path for
-  unchanged default-colon declarations.
-- Evidence: focused registration/assignment/merge-chain tests passed (`7`
-  passed, `363` skipped), with the broader merge coalescing failure confirmed
-  branch-baseline red after temporarily backing out this patch.
-  `verify:baseline -- --changed` remains branch-baseline red; sampled
-  import/mixin/nesting failures reproduced with the patch backed out. The
-  ordered benchmark-path rebuild passed. External canonical Less `benchmark.less
-  --runs=24 --warmup=8 --math=parens-division` measured `178.73ms` average /
-  `176.21ms` median, then `184.53ms` average / `179.40ms` median, versus the
-  current refresh `213.86ms` average / `199.20ms` median with high variance.
-  CPU attribution moved as intended: `copyChild(...)` self `352.00ms ->
-  17.23ms`, `copyValueForDerived(...)` stack `325.11ms -> 3.18ms`, and
-  `createRegistrationState(...)` stack `347.39ms -> 1.69ms`.
+- Side maps/arrays/copies: no new side maps or arrays. The kept bitset path
+  deletes repeated per-word validation. The rejected root aggregate variant
+  added subset checks around the existing aggregate map update and was reverted.
+- Evidence: focused extend/bitset tests passed (`95` passed, `1` skipped);
+  broader focused extend coverage for the rejected root aggregate variant also
+  passed (`110` passed, `1` skipped), so rejection is performance-based, not
+  behavior-based. The assignment/registration smoke passed (`7` passed,
+  `363` skipped). Ordered benchmark-path rebuild passed. External canonical
+  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division` measured
+  `177.37ms` average / `173.85ms` median, then `182.55ms` average /
+  `179.24ms` median for the kept bitset guard; after reverting the rejected
+  root aggregate subset-update prototype and rebuilding the accepted source
+  shape, the same harness reported `176.81ms` average / `173.09ms` median.
+  CPU attribution moved `isNumberArray(...)` from `9.73ms` self / `12.43ms`
+  total to zero and `dataOf(...)` total from `12.43ms` to `1.52ms`. The
+  rejected root aggregate subset-update variant measured `189.38ms` average /
+  `185.05ms` median and was reverted.
