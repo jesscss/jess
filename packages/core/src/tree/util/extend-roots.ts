@@ -520,7 +520,17 @@ function addRootSelectorKeys(root: Rules, selector: Selector | undefined): void 
   selectorKeySetByRoot.set(root, existing ? existing.or(keySet) : keySet.clone());
 }
 
-export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
+function registerRootRulesetSelector(root: Rules, ruleset: Ruleset, selectorBits?: Selector['keySetLibrary']): void {
+  const sel = selectorOrUndefined(ruleset.selector);
+  if (!sel) {
+    return;
+  }
+  sel.keySetLibrary ??= selectorBits;
+  preExtendSelectors.set(ruleset, sel);
+  addRootSelectorKeys(root, sel);
+}
+
+export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset, selectorBits?: Selector['keySetLibrary']): void {
   if (!root || !ruleset) {
     return;
   }
@@ -530,6 +540,7 @@ export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
     rulesetsByRoot.set(root, set);
   }
   set.add(ruleset);
+  registerRootRulesetSelector(root, ruleset, selectorBits);
 }
 
 function isInstructionVisibleForRoot(
@@ -607,21 +618,6 @@ export function processExtends(context: Context): void {
   try {
     if (context.extends.length === 0) {
       return;
-    }
-
-    // Snapshot eval'd selectors before any extend modifications.
-    // This ensures getEffectiveSelector composes with original selectors,
-    // not ones already modified by earlier extends in this pass.
-    preExtendSelectors = new WeakMap<Ruleset, Selector>();
-    for (const [rootRules, rulesetSet] of rulesetsByRoot) {
-      for (const rs of rulesetSet) {
-        const sel = selectorOrUndefined(rs.selector);
-        if (sel) {
-          sel.keySetLibrary ??= context.selectorBits;
-          preExtendSelectors.set(rs, sel);
-          addRootSelectorKeys(rootRules, sel);
-        }
-      }
     }
 
     // Find the nearest Ruleset ancestor of an extend node.
@@ -1139,5 +1135,6 @@ export function processExtends(context: Context): void {
   } finally {
     rulesetsByRoot.clear();
     selectorKeySetByRoot.clear();
+    preExtendSelectors = new WeakMap<Ruleset, Selector>();
   }
 }

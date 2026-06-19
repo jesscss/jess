@@ -5672,7 +5672,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // Extends run once the true outermost root has finished evaluating.
     const isOutermost = rules === context.root;
-    if (isOutermost && context.extends.length > 0) {
+    if (isOutermost) {
       processExtends(context);
     }
 

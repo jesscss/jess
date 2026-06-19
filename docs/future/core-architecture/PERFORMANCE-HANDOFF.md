@@ -348,12 +348,63 @@ External canonical Less `benchmark.less --runs=24 --warmup=8
 (`variance 4.75%`), `avg 176.33ms` / `median 172.86ms` (`variance 5.34%`),
 and `avg 175.15ms` / `median 171.24ms` (`variance 6.30%`). CPU profile
 `profiling/core-architecture/20260618-200507-extend-instruction-value-cache-cpu/CPU.20260618.200507.29106.0.001.cpuprofile`
-reported profiler-overhead `avg 182.09ms` / `median 179.73ms`; parsed samples
+ reported profiler-overhead `avg 182.09ms` / `median 179.73ms`; parsed samples
 kept total `processExtends(...)` flat (`143` total) but showed
 `selectorMayContainExtendTarget(...)` lower in that run (`30 -> 19` total
 samples). Keep as a small measured median cleanup only; the next real
 performance step still needs to remove whole extend/render/callable work, not
 just cache scalar facts.
+
+2026-06-18 registration-carried extend bucket pass: refreshed current-source
+evidence before this pass was external canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` at `avg 177.56ms` /
+`median 175.02ms` (`variance 5.22%`) and `avg 178.61ms` /
+`median 175.71ms` (`variance 5.80%`). CPU profile
+`profiling/core-architecture/20260618-200751-current-refresh-cpu/CPU.20260618.200751.44054.0.001.cpuprofile`
+reported profiler-overhead `avg 182.96ms` / `median 181.71ms`; parsed
+sample totals showed `processExtends(...)` at `30` self / `142` total,
+`selectorMayContainExtendTarget(...)` at `5` self / `25` total,
+`isDisjoint(...)` at `16` total, and the largest remaining concrete stacks in
+callable output copying and render.
+
+The kept cut moves the root selector bit bucket and pre-extend selector
+snapshot to `registerRulesetWithRoot(...)`, where the evaluated selector is
+already known, and deletes the separate `processExtends(...)` pre-pass over
+every registered ruleset. Selector mutations during extend application still
+call `addRootSelectorKeys(...)`, so the root bucket is widened when an extend
+actually creates new selector keys. This is intentionally narrower than the
+earlier rejected bucket-relocation experiment: it does not add the broad
+global `extendWith` potential-union gate, and it does not add another
+per-root activation closure. It simply carries facts from registration instead
+of rediscovering them before matching.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/process-extends.test.ts src/tree/__tests__/extend-roots.test.ts src/tree/__tests__/extend-eval-integration.test.ts src/tree/__tests__/extend.test.ts src/tree/util/__tests__/fast-reject.test.ts src/tree/util/__tests__/bitset.test.ts`
+(`105` passed, `1` skipped). `src/tree/__tests__/import-style.test.ts`
+remains branch-baseline red with the same eight binding/visibility failures
+after temporarily reverse-applying this patch; do not attribute those failures
+to this extend pass. Ordered benchmark-path rebuild passed before timing.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` reported `avg 172.58ms` / `median 170.42ms`
+(`variance 4.34%`), `avg 173.70ms` / `median 171.07ms`
+(`variance 5.00%`), and `avg 172.91ms` / `median 170.03ms`
+(`variance 4.66%`). CPU profile
+`profiling/core-architecture/20260618-201331-registration-carried-extend-buckets/CPU.20260618.201331.88082.0.001.cpuprofile`
+reported profiler-overhead `avg 182.29ms` / `median 180.68ms`. Parsed
+sample totals moved `processExtends(...)` from `30` self / `142` total to
+`25` self / `116` total, while registration-time bucket work appeared as
+`registerRulesetWithRoot(...)` `37` total and
+`registerRootRulesetSelector(...)` `34` total. `isDisjoint(...)` moved from
+`16` total to `12`; `selectorMayContainExtendTarget(...)` stayed essentially
+flat (`25 -> 26` total). Keep as a measured wall-clock and CPU-profile win.
+
+Follow-up caution: the kept shape now pays selector keyset bucket work during
+ruleset registration, even for files that might never register extend effects.
+Do not add a broad defensive layer around this. If a no-extend benchmark shows
+tax, the next cut should carry a cheap parser/registration fact that the tree
+contains extend effects and use it to avoid root-bucket population entirely on
+no-extend roots.
 
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible

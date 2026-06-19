@@ -1363,7 +1363,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     // Register the concrete Ruleset with the current extend root.
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (extendRoot) {
-      registerRulesetWithRoot(extendRoot, rulesetNode);
+      registerRulesetWithRoot(extendRoot, rulesetNode, context.selectorBits);
     }
     return this._prepareChildRulesRegistration(node, context, extendRoot);
   }

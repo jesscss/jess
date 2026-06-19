@@ -1294,7 +1294,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
           // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
-            visitDescendantRulesets(finalRules.rules, ruleset => registerRulesetWithRoot(finalRules, ruleset));
+            visitDescendantRulesets(finalRules.rules, ruleset => registerRulesetWithRoot(finalRules, ruleset, context.selectorBits));
           }
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules

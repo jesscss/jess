@@ -112,32 +112,37 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept extend instruction value caching. The CPU-backed target
-  was `processExtends(...)`, with self-time around self-extend and reference
-  visibility checks plus repeated selector `valueOf()` calls inside the
-  per-ruleset loop.
-- Verdict: keep as a small measured median cleanup, not as completion of the
-  extend hotspot. Each `RootExtendInstruction` now carries `targetValue` and
-  `extendWithValue` strings computed once during instruction construction, and
-  `processExtends(...)` reuses those values for self-extend,
-  reference-visibility, and unmatched-warning checks.
+- Latest pass: kept registration-carried extend root bit buckets. The
+  CPU-backed target was `processExtends(...)`, especially the pre-matching
+  pass that walked every registered ruleset just to snapshot selectors and
+  build root selector key buckets.
+- Verdict: keep as a measured wall-clock and CPU-profile win. Ruleset
+  registration now records the pre-extend selector snapshot and root selector
+  key bucket while the evaluated selector is already in hand, and
+  `processExtends(...)` no longer performs a separate snapshot/keyset walk.
+  Extend application still updates the same root bucket when selectors mutate.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none added.
+- Helper/API surface: one private helper,
+  `registerRootRulesetSelector(...)`, isolates the registration-time bucket
+  update and replaces the removed `processExtends(...)` pre-pass.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no side maps or arrays added. The pass adds two
-  cached selector strings per extend instruction and removes repeated hot-loop
-  `valueOf()` calls.
-- Evidence: focused extend orchestration tests passed (`49` passed, `1`
-  skipped), and focused extend utility tests passed (`161` passed). Ordered
-  benchmark-path rebuild passed. Current-source refresh measured `174.75ms`
-  average / `172.53ms` median and `177.14ms` average / `175.35ms` median on
-  external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division`. The kept source measured `173.18ms` average /
-  `170.75ms` median, `176.33ms` average / `172.86ms` median, and `175.15ms`
-  average / `171.24ms` median. CPU profile
-  `profiling/core-architecture/20260618-200507-extend-instruction-value-cache-cpu/CPU.20260618.200507.29106.0.001.cpuprofile`
-  kept `processExtends(...)` total flat but reduced
-  `selectorMayContainExtendTarget(...)` total samples in that run.
+- Side maps/arrays/copies: no new side maps or arrays. Existing
+  `selectorKeySetByRoot` population moved from the extend pre-pass to
+  registration. The existing `preExtendSelectors` WeakMap is now filled during
+  registration and reset after processing.
+- Evidence: focused extend/bitset tests passed (`105` passed, `1` skipped).
+  Ordered benchmark-path rebuild passed. Current-source refresh measured
+  `177.56ms` average / `175.02ms` median and `178.61ms` average /
+  `175.71ms` median on external canonical Less `benchmark.less --runs=24
+  --warmup=8 --math=parens-division`. The kept source measured `172.58ms`
+  average / `170.42ms` median, `173.70ms` average / `171.07ms` median, and
+  `172.91ms` average / `170.03ms` median. CPU profile
+  `profiling/core-architecture/20260618-201331-registration-carried-extend-buckets/CPU.20260618.201331.88082.0.001.cpuprofile`
+  moved `processExtends(...)` from `30` self / `142` total samples to `25`
+  self / `116` total, with new registration bucket work at
+  `registerRulesetWithRoot(...)` `37` total samples. `import-style.test.ts`
+  remains branch-baseline red with the same eight failures after temporarily
+  reverse-applying this patch.
