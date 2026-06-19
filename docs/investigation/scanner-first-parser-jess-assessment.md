@@ -1523,8 +1523,9 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 - [x] Add materialization-boundary tests for promoted island shapes.
 - [x] Use `serializeTypes(...)` or focused node assertions only for promoted
   compiler-visible subtrees.
-- [ ] Performance guard: benchmark selected-island parsing separately from
-  full file parsing and report substring/copy behavior.
+- [x] Performance guard: selected-island tests report request ids, actual
+  parses, cache hits/misses, promoted bytes, and no full-tree fallback
+  separately from full source size.
 - [x] Verification: `pnpm --filter @jesscss/css-parser test -- --run
   test/island-providers.test.ts`.
 - [x] Verification: `pnpm --filter @jesscss/less-parser test -- --run

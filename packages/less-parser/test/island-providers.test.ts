@@ -54,4 +54,34 @@ describe('Less island providers', () => {
     expect(serializeTypes(record.value)).toContainString('(Reference');
     expect(plan.counters.actualParses).toBe(1);
   });
+
+  test('reports selected-island parse metrics without full-source promotion', () => {
+    const source = '@brand: red; .foo { .mixin(@brand); color: @brand; width: 1px; }';
+    const document = parseLessStructure('fixture.less', source);
+    const registry = new IslandParserRegistry();
+    const configKey = lessParserConfigKey({});
+    registerLessIslandProviders(registry);
+    const plan = new IslandParsePlan(document, registry);
+    const mixinIsland = document.islands('mixin-call')[0]!;
+    const referenceIsland = document.islands('variable-reference')[0]!;
+    const mixinId = plan.requestIsland(mixinIsland, 'less-mixin', configKey);
+    const referenceId = plan.requestIsland(referenceIsland, 'less-value', configKey);
+    const selectedBytes =
+      mixinIsland.end - mixinIsland.start +
+      referenceIsland.end - referenceIsland.start;
+
+    plan.execute(mixinId);
+    plan.execute(referenceId);
+    plan.execute(referenceId);
+
+    expect(selectedBytes).toBeLessThan(document.source.length);
+    expect(plan.counters).toMatchObject({
+      requestIds: 2,
+      actualParses: 2,
+      cacheMisses: 2,
+      cacheHits: 1,
+      promotedBytes: selectedBytes,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
 });

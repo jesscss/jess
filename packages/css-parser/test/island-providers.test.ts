@@ -35,4 +35,33 @@ describe('CSS island providers', () => {
     expect(serializeTypes(record.value)).toContainString('(Color');
     expect(plan.counters.actualParses).toBe(1);
   });
+
+  test('reports selected-island parse metrics without full-source promotion', () => {
+    const source = '.foo { color: red; width: 1px; }\n.bar { margin: 0; padding: 2px; }';
+    const document = parseCssStructure('fixture.css', source);
+    const registry = new IslandParserRegistry();
+    registerCssIslandProviders(registry);
+    const plan = new IslandParsePlan(document, registry);
+    const selectorIsland = document.islands('selector')[0]!;
+    const valueIsland = document.islands('declaration-value')[1]!;
+    const selectorId = plan.requestIsland(selectorIsland, 'css-selector');
+    const valueId = plan.requestIsland(valueIsland, 'css-value');
+    const selectedBytes =
+      selectorIsland.end - selectorIsland.start +
+      valueIsland.end - valueIsland.start;
+
+    plan.execute(selectorId);
+    plan.execute(valueId);
+    plan.execute(selectorId);
+
+    expect(selectedBytes).toBeLessThan(document.source.length);
+    expect(plan.counters).toMatchObject({
+      requestIds: 2,
+      actualParses: 2,
+      cacheMisses: 2,
+      cacheHits: 1,
+      promotedBytes: selectedBytes,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
 });
