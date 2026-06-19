@@ -137,6 +137,32 @@ timing evidence. The broad `benchmark.less` lookup counters remain useful
 supporting context, but they do not make merge-reference reads or child-entry
 scans the active target by themselves.
 
+## Active Target Queue
+
+Refresh this queue at the end of every performance/cutting pass. The chat goal
+must point here instead of naming a fixed tactic. If new CPU/wall-clock evidence
+contradicts the queue, update this section first, then work from the updated
+queue.
+
+Current target swath:
+
+1. Finish the current constructor-processing investigation only while
+   `_processNodes(...)` remains a measured/counted hot constructor surface.
+   For each remaining node family, decide from field use cases whether eager
+   source-child adoption/flag bubbling is needed, can be direct and local, can
+   be lazy, or can be deleted.
+2. Refresh CPU/profile timing after constructor-processing stops being a top
+   surface or after one more coherent pass, whichever comes first.
+3. Select the next target from refreshed timed evidence. Likely candidates from
+   current history are copy/materialization (`copyChild`, `constructCopy`,
+   rules-like/reference surfaces), extend processing, `isNode`/selector-key
+   traversal, render body/header work, or lookup/reference frames, but do not
+   promote any candidate without current measurement.
+4. Keep running disjoint sub-agent experiments in separate worktrees for the
+   active queue: implementation slices, field/use-case audits, and
+   measurement/profiling validation. Main integration owns docs, gates, commit,
+   push, and reseeding.
+
 Current benchmark gate: the Less test-data gate is green and canonical
 `benchmark.less` timing is unblocked, but the campaign is not complete.
 Do not use a `.cjs` runner physically located inside the Less v5 package as a

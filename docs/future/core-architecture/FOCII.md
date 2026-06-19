@@ -114,15 +114,19 @@ binding/lookup work.
 
 ## Focus: Performance Evidence
 
-**Goal prompt:** Drive the Jess core architecture performance campaign until
-Jess exceeds Less 4.x speed on the canonical Less benchmark set with stable
-wall-clock evidence. Use `PERFORMANCE-HANDOFF.md` to run repeated
-benchmark-leashed implementation rounds: measure current speed, choose one
-evidence-backed hot target, make one focused implementation change, rerun the
-same wall-clock benchmarks and CPU/profile/counter checks, keep or revert from
-the evidence, update the tracker, commit, push, and continue. A measurement
-refresh may complete one pass, but the performance goal itself is not complete
-until the Less 4.x comparison target is beaten.
+**Goal prompt:** Drive the Jess core architecture performance/cutting campaign
+from the refreshed active target queue in `PERFORMANCE-HANDOFF.md` until Jess
+exceeds Less 4.x speed on the canonical Less benchmark set with stable
+wall-clock evidence. Do not hard-code the work to one tactic in the chat goal:
+`PERFORMANCE-HANDOFF.md` owns what to do next, why that target is active, how
+to measure it, and when to reseed. Run repeated benchmark-leashed
+implementation rounds: refresh or read current evidence, choose the next target
+from the active queue, make a coherent implementation cut, rerun the named
+wall-clock benchmarks and CPU/profile/counter checks, keep correctness-passing
+machinery reductions unless they materially regress, update the tracker,
+commit, push, and continue. A measurement refresh may complete one pass, but
+the performance goal itself is not complete until the Less 4.x comparison
+target is beaten.
 
 **Required docs:**
 
@@ -132,10 +136,10 @@ until the Less 4.x comparison target is beaten.
 - `AGGRESSIVE-CUTTING-REVIEW.md` if code changes are made
 
 **Active queue:** `PERFORMANCE-HANDOFF.md` owns the performance campaign state,
-current evidence, rejected experiments, and next measured target. Each
-implementation round may temporarily select another focus tracker for the
-touched code path, but it returns here for before/after evidence and the
-keep/revert decision.
+current evidence, rejected experiments, active target queue, and next measured
+target. Each implementation round may temporarily select another focus tracker
+for the touched code path, but it returns here for before/after evidence,
+keep/revert decision, and queue reseeding.
 
 **Boundaries:**
 

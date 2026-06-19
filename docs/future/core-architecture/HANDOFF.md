@@ -125,12 +125,18 @@ Reseeding the next queue is closeout work, not a queue item. Completed history
 belongs in git, focused tracker rows, or `PERFORMANCE-HANDOFF.md`, not in this
 router.
 
-Use sub-agents when available for disjoint evidence or implementation slices.
-Good assignments include one node-family row, one lookup family, focused test
-surface discovery, profile/call-stack audits, or review against the aggressive
-cutting rules. Workers must not make overlapping edits, revert unrelated work,
-commit independently, or change the selected focus. The main agent owns
-integration, verification, docs, commit, push, and continuation.
+For performance/cutting work, sub-agents are the default operating model, not a
+nice-to-have. Keep multiple isolated agents running on disjoint experiments
+whenever enough independent surfaces exist: remaining constructor ownership,
+field/use-case audits for source ancestry and flags, lazy ownership prototypes,
+copy/materialization deletion, lookup/render hot-path cuts, and benchmark/
+profile validation. The main agent should integrate and verify coherent results
+instead of doing every experiment serially in the primary worktree. Good
+assignments include one node-family row, one lookup family, focused test surface
+discovery, profile/call-stack audits, or review against the aggressive cutting
+rules. Workers must not make overlapping edits, revert unrelated work, commit
+independently, or change the selected focus. The main agent owns integration,
+verification, docs, commit, push, and continuation.
 
 Every sub-agent prompt must include minimum setup steps before it edits or
 measures:
