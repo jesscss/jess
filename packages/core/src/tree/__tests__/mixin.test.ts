@@ -1,5 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { N } from '../node-type.js';
+import { isNode } from '../util/is-node.js';
 import { OutputWriter } from '../util/print.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
@@ -360,11 +362,10 @@ describe('Mixin', () => {
       expect(secondDecl?.parent).toBe(mixinBody);
       expect(sourceDecl.parent).toBe(mixinBody);
       expect(sourceValue.parent).toBe(sourceDecl);
-      if (!isNode(firstDecl, N.VarDeclaration) || !isNode(secondDecl, N.VarDeclaration)) {
-        throw new Error('Expected VarDeclaration output children');
-      }
-      expect(firstDecl.valueNode).toBe(sourceValue);
-      expect(secondDecl.valueNode).toBe(sourceValue);
+      expect(isNode(firstDecl, N.Declaration)).toBe(true);
+      expect(isNode(secondDecl, N.Declaration)).toBe(true);
+      expect((firstDecl as typeof sourceDecl).valueNode).toBe(sourceValue);
+      expect((secondDecl as typeof sourceDecl).valueNode).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {

@@ -112,32 +112,41 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: exact callable surface summary cache.
-- Verdict: accepted as a CPU-profile-supported recursive lookup-surface
-  reduction with supporting same-harness wall-clock evidence, not as completion
-  of the Less 4.x speed goal. `Rules` now caches
-  `mayContainExactMixinSurface` / `mayContainExactRulesetSurface` answers and
-  invalidates those summaries when callable registration changes.
-- Rejected during pass: no current-pass implementation was rejected. A broader
-  declaration/query-condition grep still hits the existing property-merge
-  duplicate failure (`src: one, two, one, three;`), so that grep is residual
-  correctness debt rather than proof for this patch.
-- New traversal: `invalidateExactCallableSurfaceSummaries()` walks parent nodes
-  only when callable registration mutates. This replaces repeated recursive
-  lookup/render-time child-surface rediscovery; V8 sampled
-  `rulesMayContainExactMixinSurface(...)` fell from `90.70ms` to `1.27ms`.
-- New node/materialization: none.
-- Render path: no render path now creates nodes or arrays to stringify. The
-  changed path moves descendant-surface summary work from repeated lookup-time
-  recursion to sparse mutation-time invalidation.
-- Helper/API surface: none added. `copyChild(...)` mentions in
-  `PERFORMANCE-HANDOFF.md` are profiler frame names only, not new helpers or
-  API surface.
-- Metadata mutations: none added.
-- Evidence: focused callable/mixin lookup tests passed. Ordered benchmark-path
-  rebuild passed. External CPU profile dropped
-  `rulesMayContainExactMixinSurface(...)` from `90.70ms` to `1.27ms`;
-  non-profiled external `benchmark.less` reported median `279.78ms` with
-  `11.18%` variance. Stable repo hotpath had usable signals for
-  `import-reference`, `mixins-guards`, and `extend-chaining`, with `functions`
-  and `media` still unstable. See `PERFORMANCE-HANDOFF.md`.
+- Latest pass: source-backed callable surface prep skip.
+- Verdict: accepted as a correctness fix and local prep/adoption reduction, not
+  as a proven broad benchmark speed win. Static source-backed callable surfaces
+  reuse canonical source children; ordinary registration prep re-adopted those
+  children into the output wrapper and broke source-backed placement ownership.
+- Rejected during pass: a raw `_location` shortcut in `cloning.ts` was
+  reverted after the ruleset-as-mixin ownership proof failed. The same proof
+  still failed after reverting, which exposed the source-backed callable prep
+  bug fixed here.
+- New traversal: none.
+- New node/materialization: no nodes, wrappers, copies, arrays, or render-time
+  materialization were added. The patch prevents registration prep from
+  materializing/adopting source-backed callable wrapper children that are
+  intentionally canonical-source children.
+- Render path: unchanged. Rendering does not create nodes or arrays to
+  stringify through this patch.
+- Helper/API surface: added `Rules.markSourceBackedCallableSurfacePrepared()`.
+  It is intentionally narrow and internal to callable-surface construction; it
+  exists so the source-backed wrapper can mark the same prepared flags the
+  normal prep path owns without running that prep and moving source children.
+  Delete or inline it if another caller appears or if callable surface creation
+  moves this state into construction.
+- Metadata mutations: the source-backed wrapper sets `_registrationPrepared`
+  and `registrationPrepared` at construction. This is semantic placement state:
+  the wrapper is already registration-prepared because it has no owned children
+  to register, only canonical source children referenced through placement
+  slots.
+- Evidence: focused callable/mixin ownership and namespace tests passed.
+  Ordered benchmark-path rebuild passed. External CPU-profiled
+  `benchmark.less` reported median `314.79ms` with `22.66%` variance and is
+  attribution-only; profile comparison showed `_storePreparedRegistrationNode`
+  and `adopt` self-time down, while broader `Node`/`isNode`/extend frames
+  remained noisy. Non-profiled `benchmark.less` reruns were noisy/mixed
+  (`264.95ms` median with `64.30%` variance; then `346.02ms` median with
+  `45.63%` variance). Stable hotpath remained noisy/unstable. The
+  `_location` and `copyChild(...)` mentions in this pass are a reverted
+  experiment note and profiler frame names only; they are not new source
+  mutation or copy helpers. See `PERFORMANCE-HANDOFF.md`.

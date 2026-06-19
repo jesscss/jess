@@ -182,6 +182,7 @@ function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
   for (let i = 0; i < source.length; i++) {
     output.value.push(source[i]!);
   }
+  output.markSourceBackedCallableSurfacePrepared();
   return output;
 }
 

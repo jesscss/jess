@@ -4335,6 +4335,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._prepareRegistrationOnce(context);
   }
 
+  markSourceBackedCallableSurfacePrepared(): void {
+    this._registrationPrepared = true;
+    this.registrationPrepared = true;
+  }
+
   private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
     if (!this._registrationPrepared) {
       context.depth++;

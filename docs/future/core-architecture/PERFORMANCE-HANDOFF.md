@@ -3225,6 +3225,63 @@ Follow-up generic mixin find wrapper deletion:
   `--warmup 10 --pairs 100` reported baseline median `61.53ms`, candidate
   median `60.12ms`, mean ratio `-3.23%`, wins `78/100`, `t=-6.09`.
 
+Follow-up source-backed callable surface prep skip:
+
+- static source-backed callable surfaces now mark registration prep complete
+  when they are created. They reuse canonical source children and must not run
+  ordinary registration prep, because ordinary prep adopts/stores child nodes as
+  owned output children and violates the source-backed placement contract;
+- this pass was kept as correctness and local prep-machinery reduction, not as
+  a proven broad benchmark speed win. The focused ruleset-as-mixin ownership
+  test failed before the patch because source-backed output children were
+  reparented to the output wrapper; it passes after the patch. A nearby test had
+  stale `isNode`/`N` imports and a `VarDeclaration` assertion for an ordinary
+  declaration fixture; that test proof surface was corrected;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
+  -t "keeps ruleset-as-mixin placement children owned while reusing reusable
+  leaves"`,
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/callable-candidate-state.test.ts
+  src/tree/util/__tests__/callable-candidate-loop.test.ts
+  src/tree/util/__tests__/callable-special-case.test.ts
+  src/tree/__tests__/mixin.test.ts -t
+  "createOwnedCallableRulesSurface|ruleset-as-mixin|source-backed|static direct
+  mixin output|placement|reusing reusable leaves|unlock|callable outer|mixin
+  output"`, and
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
+  -t "namespace fast path|mixin-ruleset calls with args|ruleset namespace
+  path|mixin namespace path|callable"`;
+- ordered benchmark-path rebuild passed:
+  `pnpm --filter styles-config build && pnpm --filter @jesscss/awaitable-pipe
+  build && pnpm --filter @jesscss/core build && pnpm --filter
+  @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build &&
+  pnpm --filter @jesscss/plugin-less build && pnpm --filter
+  @jesscss/plugin-less-compat build && pnpm --filter @jesscss/plugin-js build
+  && pnpm --filter jess build`;
+- external CPU-profiled benchmark:
+  `node --cpu-prof
+  --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-170329-source-backed-callable-prep-post-cpu
+  benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12
+  --warmup=4 --math=parens-division` reported median `314.79ms`, variance
+  `22.66%`, so use it for attribution only. Profile artifact:
+  `profiling/core-architecture/20260618-170329-source-backed-callable-prep-post-cpu/CPU.20260618.170329.43359.0.001.cpuprofile`;
+- same-profile comparison against
+  `20260618-150130-exact-surface-cache-post-cpu` showed local intended
+  movement: `_storePreparedRegistrationNode(...)` `5.65ms -> 1.28ms`,
+  `adopt(...)` `21.75ms -> 15.44ms`, `_prepareRegistrationOnce(...)`
+  `3.02ms -> 1.72ms`, and `copyChild(...)` `366.20ms -> 323.31ms`. It also
+  showed broader noisy movement against the change: `Node` `334.05ms ->
+  422.76ms`, `isNode(...)` `180.47ms -> 242.72ms`, and `processExtends(...)`
+  `42.25ms -> 88.37ms`. Do not claim a benchmark win from this profile;
+- non-profiled external `benchmark.less` runs did not give decision-quality win
+  evidence: `--runs=16 --warmup=6` reported median `264.95ms` but variance
+  `64.30%` with a `1080.56ms` outlier; `--runs=24 --warmup=8` reported median
+  `346.02ms` and variance `45.63%`. Stable hotpath also stayed noisy or
+  unstable across all listed fixtures. The change remains because it fixes the
+  source-backed callable ownership contract and removes local prep work, not
+  because broad wall-clock speed is proven.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
