@@ -300,6 +300,26 @@ showed `isNode(...)` reduced to scattered tiny samples and `processExtends(...)`
 as the clearest next core self-time frame (`28` self samples / `151` total in
 that run). Keep as a small measured wall-clock and CPU-profile cleanup.
 
+2026-06-18 rejected extend root-bucket relocation/potential-union gate: the
+prototype moved root selector bit-bucket population into
+`registerRulesetWithRoot(...)`, removed duplicate bucket construction from the
+pre-extend snapshot walk, then tried a root bucket plus global `extendWith`
+potential union before per-root visibility checks. Focused extend utility,
+root, process, and integration suites passed; the branch-baseline deep
+`.l -> ... -> .t` chaining test still fails without the patch. Ordered
+benchmark-path rebuild passed. External canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` was neutral: relocation-only runs
+reported `avg 173.04ms` / `median 171.15ms`, `avg 176.46ms` /
+`median 173.87ms`, and `avg 174.53ms` / `median 170.75ms`; the profiled run
+reported `avg 181.52ms` / `median 179.55ms` with
+`processExtends(...)` total samples lower (`151 -> 120`) but shifted samples
+into registration/bitset work. The tightened potential-union gate still stayed
+neutral (`avg 174.45ms` / `median 171.51ms`, then `avg 173.70ms` /
+`median 170.24ms`). Reverted. The lesson: one root selector bit bucket is
+useful, but moving bucket construction earlier or adding a broad potential
+union does not remove enough total work on `benchmark.less`; retry only with a
+shape that avoids both global pre-snapshot work and extra per-root bitset ORs.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated
