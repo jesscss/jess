@@ -112,21 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected the rules-like reference `Object.assign(...)` surface
-  prototype and kept no code. The CPU-backed target was
+- Latest pass: kept the rules-like known-field surface fast path after
+  rejecting a bulk-copy version. The CPU-backed target was
   `createRulesLikeReferenceSurface(...)` after the current refresh showed it at
   `20` self samples.
-- Verdict: revert the prototype. It cut
-  `createRulesLikeReferenceSurface(...)` samples to `2`, but wall-clock
-  regressed/noised and garbage collection rose sharply, so the local CPU win
-  was not a real benchmark win.
-- New traversal: none.
+- Verdict: keep the `Mixin`/`Ruleset` known-field fast path, leave `Rules` and
+  `Collection` on the generic fallback, and do not use `Object.assign(...)` for
+  this surface. The kept shape moved the target frame to `2` self samples and
+  measured a small wall-clock win.
+- New traversal: no new runtime traversal in the kept hot path. The
+  `Object.getOwnPropertyNames(...)` loop remains only as the existing fallback
+  for `Rules`/`Collection` and other rules-like shapes not covered by the
+  `Mixin`/`Ruleset` fast path.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
-  stringify through this pass; the render fast path was reverted.
-- Helper/API surface: none added or kept.
-- Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps, arrays, or copies in kept code.
+  stringify through this pass.
+- Helper/API surface: three private helper functions added in
+  `reference.ts`; they delete the hot generic property-name scan for `Mixin`
+  and `Ruleset` surfaces without changing public API.
+- Metadata mutations: the fast path copies the same shallow surface metadata
+  the old generic loop copied (`_location`, `_sourceRoot`, `_treeContext`,
+  `_options`, flags/state, `frozen`, and `value`) before the existing
+  source/parent/index finalization. This is not extra placement state; it is
+  the direct version of the previous generic surface copy.
+- Side maps/arrays/copies: no new side maps. The kept path deletes the
+  per-surface own-property array for `Mixin`/`Ruleset`; `_options` cloning
+  remains the same semantic copy as before.
 - Evidence: current-source refresh measured `181.99ms` average /
   `180.22ms` median and `182.99ms` average / `179.89ms` median on external
   canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
@@ -136,4 +147,9 @@ Keep this section to the current pass only. Move historical evidence to
   `Object.assign(...)` prototype passed focused rules-like reference/callable
   tests but benchmarked `189.75ms` / `188.01ms`, then `187.73ms` /
   `181.22ms`; profile samples moved the target to `2` self while garbage
-  collection rose from `119` to `166` samples. Reverted.
+  collection rose from `119` to `166` samples. Reverted. The known-field
+  prototype passed the same focused tests, rebuilt the benchmark package chain,
+  benchmarked `177.27ms` / `177.03ms`, `181.56ms` / `179.58ms`, then
+  `171.53ms` / `168.67ms`, and profile
+  `profiling/core-architecture/20260618-205030-rules-like-known-fields-cpu/CPU.20260618.205030.92674.0.001.cpuprofile`
+  moved the target to `2` self samples without the bulk-copy GC spike.

@@ -2516,6 +2516,52 @@ function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
 
+function copyCommonRulesLikeSurface(target: PreservedRulesLikeValue, source: Node): void {
+  const targetRecord = target as unknown as Record<string, unknown>;
+  const sourceRecord = source as unknown as Record<string, unknown>;
+  targetRecord._location = sourceRecord._location;
+  targetRecord._sourceRoot = sourceRecord._sourceRoot;
+  targetRecord._treeContext = sourceRecord._treeContext;
+  const sourceOptions = sourceRecord._options;
+  targetRecord._options = sourceOptions && typeof sourceOptions === 'object'
+    ? { ...sourceOptions }
+    : sourceOptions;
+  target.state = source.state;
+  target.registrationPrepared = source.registrationPrepared;
+  target.evaluated = source.evaluated;
+  target.allowRoot = source.allowRoot;
+  target.allowRuleRoot = source.allowRuleRoot;
+  target.hoistToRoot = source.hoistToRoot;
+  target.generated = source.generated;
+  target.frozen = source.frozen;
+  targetRecord.value = sourceRecord.value;
+}
+
+function copyMixinReferenceSurface(target: PreservedRulesLikeValue, source: Node): void {
+  copyCommonRulesLikeSurface(target, source);
+  const targetRecord = target as unknown as Record<string, unknown>;
+  const sourceRecord = source as unknown as Record<string, unknown>;
+  targetRecord.name = sourceRecord.name;
+  targetRecord.rules = sourceRecord.rules;
+  targetRecord.params = sourceRecord.params;
+  targetRecord.guard = sourceRecord.guard;
+  targetRecord._keySet = sourceRecord._keySet;
+}
+
+function copyRulesetReferenceSurface(target: PreservedRulesLikeValue, source: Node): void {
+  copyCommonRulesLikeSurface(target, source);
+  const targetRecord = target as unknown as Record<string, unknown>;
+  const sourceRecord = source as unknown as Record<string, unknown>;
+  targetRecord.frames = sourceRecord.frames;
+  targetRecord.selector = sourceRecord.selector;
+  targetRecord.rules = sourceRecord.rules;
+  targetRecord.guard = sourceRecord.guard;
+  targetRecord.selectorBeforeExtend = sourceRecord.selectorBeforeExtend;
+  targetRecord._valueOf = sourceRecord._valueOf;
+  targetRecord._composedSelector = sourceRecord._composedSelector;
+  targetRecord._selectorCacheOwner = sourceRecord._selectorCacheOwner;
+}
+
 /**
  * Rules-like references are public/callable surfaces, not text-only render
  * containers. Keep the source children canonical, but return a shallow owned
@@ -2531,18 +2577,24 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  const ownKeys = Object.getOwnPropertyNames(directValue);
-  for (let i = 0; i < ownKeys.length; i++) {
-    const key = ownKeys[i]!;
-    if (key === 'sourceNode' || key === 'parent' || key === 'index') {
-      continue;
+  if (isNode(directValue, N.Mixin)) {
+    copyMixinReferenceSurface(preservedValue, directValue);
+  } else if (isNode(directValue, N.Ruleset)) {
+    copyRulesetReferenceSurface(preservedValue, directValue);
+  } else {
+    const ownKeys = Object.getOwnPropertyNames(directValue);
+    for (let i = 0; i < ownKeys.length; i++) {
+      const key = ownKeys[i]!;
+      if (key === 'sourceNode' || key === 'parent' || key === 'index') {
+        continue;
+      }
+      const value = (directValue as unknown as Record<string, unknown>)[key];
+      (preservedValue as unknown as Record<string, unknown>)[key] = (
+        key === '_options' && value && typeof value === 'object'
+      )
+        ? { ...value }
+        : value;
     }
-    const value = (directValue as unknown as Record<string, unknown>)[key];
-    (preservedValue as unknown as Record<string, unknown>)[key] = (
-      key === '_options' && value && typeof value === 'object'
-    )
-      ? { ...value }
-      : value;
   }
   const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
   Object.defineProperty(preservedValue, 'sourceNode', {

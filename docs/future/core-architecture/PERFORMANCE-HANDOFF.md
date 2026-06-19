@@ -558,9 +558,28 @@ reported average `189.75ms` / median `188.01ms`, then average `187.73ms` /
 median `181.22ms` with higher variance. CPU samples did move
 `createRulesLikeReferenceSurface(...)` from `20` self to `2` self, but garbage
 collection rose sharply (`119` to `166` samples) and the profiled run was too
-noisy (`avg 246.94ms` / `median 229.92ms`). Reverted. The next rules-like
-surface cut should delete the need for the shallow surface or specialize
-known fields without a generic bulk copy, and it must prove GC does not rise.
+noisy (`avg 246.94ms` / `median 229.92ms`). Reverted. This was superseded by
+the known-field rules-like surface fast path below.
+
+2026-06-18 kept rules-like known-field surface fast path: after the rejected
+`Object.assign(...)` prototype, the next cut specialized only `Mixin` and
+`Ruleset` shallow rules-like reference surfaces. These two node classes copy
+known common Node fields plus their direct callable/ruleset fields; `Rules` and
+`Collection` continue to use the generic `Object.getOwnPropertyNames(...)`
+fallback because they carry broader dynamic lookup state. Focused rules-like
+reference and callable placement coverage passed. Ordered benchmark-path
+rebuild passed before timing. External canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` measured current-source refresh
+at average `181.99ms` / median `180.22ms`, then average `182.99ms` / median
+`179.89ms`. The kept prototype measured average `177.27ms` / median
+`177.03ms`, average `181.56ms` / median `179.58ms`, then average `171.53ms` /
+median `168.67ms`. CPU profile
+`profiling/core-architecture/20260618-205030-rules-like-known-fields-cpu/CPU.20260618.205030.92674.0.001.cpuprofile`
+moved `createRulesLikeReferenceSurface(...)` from `20` self samples to `2`,
+with the new known-field helpers totaling only `2` self samples and no
+`Object.assign(...)`-style GC spike. Keep as a small measured wall-clock and
+CPU-profile win. Future rules-like work should still try to delete the need for
+the shallow surface entirely, not keep adding copy helpers.
 
 2026-06-18 rejected extend helper micro-cut: replacing two
 `targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
