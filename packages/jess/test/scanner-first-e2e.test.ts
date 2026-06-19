@@ -146,4 +146,95 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(entryProbe?.structuralNodesByKind.import).toBe(1);
     expect(entryProbe?.requestsByOwnerKind.import ?? 0).toBe(0);
   });
+
+  it('feeds a bounded plain rule through structural parse and materialized islands', async () => {
+    const source = '.a {\n  color: blue;\n  width: 1px;\n}\n.b { margin: 0; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      structuralDiagnostics: 0,
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 5,
+      requestedIslands: 5,
+      executedIslands: 5
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({
+      selector: 2,
+      'declaration-value': 3
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({
+      rule: 2,
+      declaration: 3
+    });
+    expect(probePlugin.lastScannerFirstProbe?.requestedIslands).toBe(0);
+  });
+
+  it('falls back canonically for Less features outside the first structural-fed subset', async () => {
+    const source = '@brand: blue;\n.a { color: @brand; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'unsupported root node variable-declaration',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      promotedBytes: 0
+    });
+  });
+
+  it('falls back canonically for declaration syntax the structural-fed subset cannot preserve', async () => {
+    const cases = [
+      {
+        source: '.a { width+: 1px; }\n',
+        reason: 'declaration name is outside the first structural-fed subset'
+      },
+      {
+        source: '.a { color: blue ! important; }\n',
+        reason: 'important declarations are not in the first structural-fed subset'
+      },
+      {
+        source: '@prop: color;\n.a { @{prop}: blue; }\n',
+        reason: 'unsupported root node variable-declaration'
+      }
+    ];
+
+    for (const { source, reason } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        fallbackFullTreeMaterializations: 1
+      });
+    }
+  });
 });

@@ -1540,11 +1540,18 @@ the real compiler/eval/render API, then graduate to a structural-fed
 compile/eval path before widening to SCSS/Jess parser packages.
 
 Do this before adding SCSS/Jess structural profiles or provider entrypoints.
-The current milestone does not replace the default parser path: it runs
-structural scan and selected island materialization before canonical parse,
-then the existing parser still builds the runtime AST used by eval/render. This
-sidecar proof is useful, but it is not yet proof that materialized islands feed
-evaluation or rendering.
+The first milestone did not replace the default parser path: it ran structural
+scan and selected island materialization before canonical parse, then the
+existing parser still built the runtime AST used by eval/render. That sidecar
+proof is useful, but it was not proof that materialized islands feed evaluation
+or rendering.
+
+The current prototype adds a hidden structural-fed path for a bounded subset:
+top-level ordinary rules with ordinary declarations. It uses structural rule
+and declaration shells, materializes only selector and declaration-value
+islands through the Less providers, constructs canonical `@jesscss/core`
+`Rules`/`Ruleset`/`Declaration` nodes, and records `canonical-fallback` for
+unsupported Less features instead of silently widening its claims.
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default
@@ -1569,18 +1576,21 @@ evaluation or rendering.
   path.
 - [ ] Ensure failures report source offsets and human diagnostics through the
   same diagnostic path expected by compiler users.
-- [ ] Keep default `safeParse` behavior unchanged until the prototype evidence
+- [x] Keep default `safeParse` behavior unchanged until the prototype evidence
   says a broader migration is safe.
 - [x] Add JSDoc to any hidden/test-only e2e entrypoints explaining that they are
   prototype gates, not public API.
 - [x] Performance guard: report structural scan and selected materialization
   timings, promoted bytes, selected island count, fallback full-tree count,
   cache hits/misses, and output equality.
-- [ ] Structural-fed prototype: use structural results and materialized islands
+- [x] Structural-fed prototype: use structural results and materialized islands
   in a real compile/eval path for a bounded CSS/Less subset.
-- [ ] Performance guard: report full parse/eval/render phase timings, promoted
-  bytes, selected island count, fallback full-tree count, cache hits/misses,
-  and output equality.
+- [x] Prototype performance guard: report structural-fed runtime source,
+  promoted bytes, selected island count, fallback full-tree count,
+  cache hits/misses, and output equality for the bounded subset.
+- [ ] Broader performance guard: report full parse/eval/render phase timings
+  across enough CSS/Less fixtures to compare current parser, structural-only,
+  selected materialization, and structural-fed paths.
 - [x] Verification: focused CSS e2e tests pass.
 - [x] Verification: focused Less e2e tests pass.
 - [ ] Verification: existing CSS parser tests pass or any pre-existing failures

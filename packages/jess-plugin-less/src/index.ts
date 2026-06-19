@@ -7,9 +7,15 @@ import {
   logger,
   JsFunction,
   Rules,
+  Any,
+  Declaration,
+  Ruleset,
+  Selector,
+  Node,
   getErrorFromParser,
   toDiagnostic,
   extractRelevantLines,
+  type LocationInfo,
   type ISafeParseResult,
   type ErrorDiagnostic,
   type WarningDiagnostic
@@ -29,6 +35,7 @@ import {
   IslandParserRegistry,
   type LanguageActivation,
   type ParseStructureOptions,
+  type RawIslandNode,
   type StructuralDocument
 } from '@jesscss/parser';
 import path from 'node:path';
@@ -60,10 +67,16 @@ export type ScannerFirstProbeResult = {
 
 export type ScannerFirstProbeOptions = {
   materializeIslandKinds?: readonly string[] | 'all';
+  structuralFedPrototype?: boolean;
 };
 
 export type LessPluginOptions = LessOptions & {
   scannerFirstProbe?: boolean | ScannerFirstProbeOptions;
+};
+
+export type ScannerFirstPrototypeResult = ScannerFirstProbeResult & {
+  runtimeTreeSource: 'structural-fed' | 'canonical-fallback';
+  fallbackReason?: string;
 };
 
 export class LessPlugin extends AbstractPlugin {
@@ -78,6 +91,8 @@ export class LessPlugin extends AbstractPlugin {
   collapseNesting: boolean;
   scannerFirstProbes: ScannerFirstProbeResult[] = [];
   lastScannerFirstProbe?: ScannerFirstProbeResult;
+  scannerFirstPrototypeResults: ScannerFirstPrototypeResult[] = [];
+  lastScannerFirstPrototype?: ScannerFirstPrototypeResult;
 
   constructor(public opts: LessPluginOptions = {}) {
     super();
@@ -189,22 +204,13 @@ export class LessPlugin extends AbstractPlugin {
     const structuralStartedAt = nowMs();
     const plan = this.islandParsePlan(filePath, source);
     const structuralEndedAt = nowMs();
-    const availableByIslandKind: Record<string, number> = {};
-    const availableByOwnerKind: Record<string, number> = {};
-    const requestsByIslandKind: Record<string, number> = {};
-    const requestsByOwnerKind: Record<string, number> = {};
-    const structuralNodesByKind: Record<string, number> = {};
     let requestedIslands = 0;
     let executedIslands = 0;
     let islandDiagnostics = 0;
     let materializationMs = 0;
-
-    collectStructuralNodeKinds(plan.document.root, structuralNodesByKind);
+    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source, plan);
 
     for (const island of plan.document.islands()) {
-      incrementCounter(availableByIslandKind, island.islandKind);
-      incrementCounter(availableByOwnerKind, island.owner.kind);
-
       if (!shouldMaterializeIsland(island.islandKind, options)) {
         continue;
       }
@@ -215,8 +221,6 @@ export class LessPlugin extends AbstractPlugin {
       }
 
       requestedIslands++;
-      incrementCounter(requestsByIslandKind, island.islandKind);
-      incrementCounter(requestsByOwnerKind, island.owner.kind);
       const id = plan.requestIsland(island, targetShape, configKey);
       const materializationStartedAt = nowMs();
       const record = plan.execute(id);
@@ -227,13 +231,10 @@ export class LessPlugin extends AbstractPlugin {
 
     const endedAt = nowMs();
     const result: ScannerFirstProbeResult = {
-      filePath,
-      sourceBytes: source.length,
+      ...structuralSnapshot,
       structuralScanMs: structuralEndedAt - structuralStartedAt,
       materializationMs,
       totalProbeMs: endedAt - startedAt,
-      structuralDiagnostics: plan.document.diagnostics.length,
-      islands: plan.document.islands().length,
       requestedIslands,
       executedIslands,
       islandDiagnostics,
@@ -242,14 +243,182 @@ export class LessPlugin extends AbstractPlugin {
       cacheHits: plan.counters.cacheHits,
       cacheMisses: plan.counters.cacheMisses,
       fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
-      requestsByIslandKind,
-      requestsByOwnerKind,
-      availableByIslandKind,
-      availableByOwnerKind,
-      structuralNodesByKind
+      requestsByIslandKind: countRequestedIslandKinds(plan),
+      requestsByOwnerKind: countRequestedOwnerKinds(plan)
     };
+    return this.recordScannerFirstProbe(result);
+  }
+
+  /**
+   * Attempts the first structural-fed compiler tree for a tiny CSS/Less subset.
+   *
+   * This is intentionally hidden and conservative. It supports top-level
+   * ordinary rules with ordinary declarations, while still delegating selector
+   * and value materialization to the Less island providers. Anything outside
+   * that shape records a canonical fallback instead of pretending the
+   * structural path owns more Less semantics than it actually proves.
+   */
+  runScannerFirstPrototype(
+    filePath: string,
+    source: string,
+    context: TreeContext
+  ): { tree?: Rules; result: ScannerFirstPrototypeResult } {
+    const startedAt = nowMs();
+    const structuralStartedAt = nowMs();
+    const plan = this.islandParsePlan(filePath, source);
+    const structuralEndedAt = nowMs();
+    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source, plan);
+    const structuralProbe = this.recordScannerFirstProbe({
+      ...structuralSnapshot,
+      structuralScanMs: structuralEndedAt - structuralStartedAt,
+      materializationMs: 0,
+      totalProbeMs: structuralEndedAt - startedAt,
+      requestedIslands: 0,
+      executedIslands: 0,
+      islandDiagnostics: 0,
+      actualParses: 0,
+      promotedBytes: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      fallbackFullTreeMaterializations: 0,
+      requestsByIslandKind: {},
+      requestsByOwnerKind: {}
+    });
+    const configKey = lessParserConfigKey({
+      mathMode: this.mathMode,
+      leakyRules: this.leakyRules
+    });
+    const fallback = (reason: string): { result: ScannerFirstPrototypeResult } => {
+      plan.counters.fallbackFullTreeMaterializations++;
+      const result = this.recordScannerFirstPrototype({
+        ...structuralProbe,
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        requestedIslands: plan.counters.requestIds,
+        executedIslands: plan.counters.actualParses,
+        actualParses: plan.counters.actualParses,
+        promotedBytes: plan.counters.promotedBytes,
+        cacheHits: plan.counters.cacheHits,
+        cacheMisses: plan.counters.cacheMisses,
+        fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
+        materializationMs: nowMs() - startedAt,
+        totalProbeMs: nowMs() - startedAt,
+        requestsByIslandKind: countRequestedIslandKinds(plan),
+        requestsByOwnerKind: countRequestedOwnerKinds(plan)
+      });
+      return { result };
+    };
+
+    if (plan.document.diagnostics.length > 0) {
+      return fallback('structural diagnostics are present');
+    }
+    if (plan.document.trivia.some(trivia => trivia.kind === 'block-comment' || trivia.kind === 'line-comment')) {
+      return fallback('comments require canonical trivia preservation');
+    }
+
+    const ownerIslands = indexIslandsByOwner(plan.document.islands());
+    const rules: Node[] = [];
+
+    for (const child of plan.document.root.children) {
+      if (child.kind !== 'rule') {
+        return fallback(`unsupported root node ${child.kind}`);
+      }
+      const selectorIsland = singleIsland(ownerIslands, child, 'selector');
+      if (!selectorIsland) {
+        return fallback('rule selector island missing');
+      }
+      const selectorRecord = plan.execute<Selector>(
+        plan.requestIsland(selectorIsland, 'less-selector', configKey)
+      );
+      if (selectorRecord.fallbackFullTree || selectorRecord.diagnostics.length > 0) {
+        return fallback('selector island did not materialize cleanly');
+      }
+      if (!(selectorRecord.value instanceof Selector)) {
+        return fallback('selector island returned a non-selector value');
+      }
+
+      const declarations: Node[] = [];
+      for (const statement of child.children) {
+        if (statement.kind !== 'declaration') {
+          return fallback(`unsupported rule child ${statement.kind}`);
+        }
+        const name = plan.document.source.slice(statement.nameStart, statement.nameEnd);
+        const valueText = plan.document.source.slice(statement.valueStart, statement.valueEnd);
+        const assignmentText = plan.document.source.slice(statement.nameEnd, statement.valueStart);
+        if (!isPlainStructuralFedDeclarationName(name)) {
+          return fallback('declaration name is outside the first structural-fed subset');
+        }
+        if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
+          return fallback('declaration assignment is outside the first structural-fed subset');
+        }
+        if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+          return fallback('important declarations are not in the first structural-fed subset');
+        }
+        const valueIsland = singleIsland(ownerIslands, statement, 'declaration-value');
+        if (!valueIsland) {
+          return fallback('declaration value island missing');
+        }
+        const valueRecord = plan.execute<Node>(
+          plan.requestIsland(valueIsland, 'less-value', configKey)
+        );
+        if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
+          return fallback('declaration value island did not materialize cleanly');
+        }
+        if (!(valueRecord.value instanceof Node)) {
+          return fallback('declaration value island returned a non-node value');
+        }
+        declarations.push(new Declaration({
+          name: new Any(name, { role: 'property' }, locationFromRange(plan.document, statement.nameStart, statement.nameEnd), context),
+          value: valueRecord.value
+        }, { assign: ':' }, locationFromRange(plan.document, statement.start, statement.end), context));
+      }
+
+      const body = new Rules(
+        declarations,
+        undefined,
+        locationFromRange(plan.document, child.start, child.end),
+        context
+      );
+      rules.push(new Ruleset({
+        selector: selectorRecord.value,
+        rules: body
+      }, undefined, locationFromRange(plan.document, child.start, child.end), context));
+    }
+
+    const tree = new Rules(
+      rules,
+      undefined,
+      locationFromRange(plan.document, 0, plan.document.source.length),
+      context
+    );
+    const materializationMs = nowMs() - startedAt;
+    const result = this.recordScannerFirstPrototype({
+      ...structuralProbe,
+      runtimeTreeSource: 'structural-fed',
+      requestedIslands: plan.counters.requestIds,
+      executedIslands: plan.counters.actualParses,
+      actualParses: plan.counters.actualParses,
+      promotedBytes: plan.counters.promotedBytes,
+      cacheHits: plan.counters.cacheHits,
+      cacheMisses: plan.counters.cacheMisses,
+      fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
+      requestsByIslandKind: countRequestedIslandKinds(plan),
+      requestsByOwnerKind: countRequestedOwnerKinds(plan),
+      materializationMs,
+      totalProbeMs: nowMs() - startedAt
+    });
+    return { tree, result };
+  }
+
+  private recordScannerFirstProbe(result: ScannerFirstProbeResult): ScannerFirstProbeResult {
     this.lastScannerFirstProbe = result;
     this.scannerFirstProbes.push(result);
+    return result;
+  }
+
+  private recordScannerFirstPrototype(result: ScannerFirstPrototypeResult): ScannerFirstPrototypeResult {
+    this.lastScannerFirstPrototype = result;
+    this.scannerFirstPrototypeResults.push(result);
     return result;
   }
 
@@ -362,53 +531,43 @@ export class LessPlugin extends AbstractPlugin {
 
     try {
       if (scannerFirstProbe) {
-        this.runScannerFirstProbe(filePath, source, scannerFirstProbe);
-      }
-      const parseResult = this.parser.parse(source, 'stylesheet', { context });
-      tree = parseResult.tree;
-
-      // Convert parser deprecation warnings to diagnostics
-      if ('warnings' in parseResult && parseResult.warnings) {
-        for (const warning of parseResult.warnings) {
-          const line = warning.token?.startLine ?? 1;
-          const column = warning.token?.startColumn ?? 1;
-          warnings.push({
-            code: 'parse/deprecated',
-            phase: 'parse',
-            message: warning.message,
-            reason: warning.message,
-            fix: 'Update your code to use the recommended syntax.',
-            file: context.file,
-            filePath: filePath,
-            line,
-            column,
-            lines: extractRelevantLines(source, line)
-          });
+        if (scannerFirstProbe.structuralFedPrototype) {
+          const prototype = this.runScannerFirstPrototype(filePath, source, context);
+          tree = prototype.tree;
+        } else {
+          this.runScannerFirstProbe(filePath, source, scannerFirstProbe);
         }
       }
+      if (!tree) {
+        const parseResult = this.parser.parse(source, 'stylesheet', { context });
+        tree = parseResult.tree;
 
-      // Convert all parser/lexer errors to normalized diagnostics
-      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
-        // Convert each parser error to a diagnostic
-        for (const error of parseResult.errors) {
-          const line = error.token?.startLine ?? 1;
-          const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
-          const diagnostic = toDiagnostic(jessError);
-          // Ensure lines are extracted
-          if (!diagnostic.lines) {
-            diagnostic.lines = extractRelevantLines(source, line);
-          }
-          if ('errors' in diagnostic) {
-            errors.push(diagnostic);
-          } else {
-            warnings.push(diagnostic);
+        // Convert parser deprecation warnings to diagnostics
+        if ('warnings' in parseResult && parseResult.warnings) {
+          for (const warning of parseResult.warnings) {
+            const line = warning.token?.startLine ?? 1;
+            const column = warning.token?.startColumn ?? 1;
+            warnings.push({
+              code: 'parse/deprecated',
+              phase: 'parse',
+              message: warning.message,
+              reason: warning.message,
+              fix: 'Update your code to use the recommended syntax.',
+              file: context.file,
+              filePath: filePath,
+              line,
+              column,
+              lines: extractRelevantLines(source, line)
+            });
           }
         }
-        // Convert lexer errors
-        if (parseResult.lexerResult?.errors) {
-          for (const lexError of parseResult.lexerResult.errors) {
-            const line = typeof lexError.line === 'number' ? lexError.line : 1;
-            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
+
+        // Convert all parser/lexer errors to normalized diagnostics
+        if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
+          // Convert each parser error to a diagnostic
+          for (const error of parseResult.errors) {
+            const line = error.token?.startLine ?? 1;
+            const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
             const diagnostic = toDiagnostic(jessError);
             // Ensure lines are extracted
             if (!diagnostic.lines) {
@@ -418,6 +577,23 @@ export class LessPlugin extends AbstractPlugin {
               errors.push(diagnostic);
             } else {
               warnings.push(diagnostic);
+            }
+          }
+          // Convert lexer errors
+          if (parseResult.lexerResult?.errors) {
+            for (const lexError of parseResult.lexerResult.errors) {
+              const line = typeof lexError.line === 'number' ? lexError.line : 1;
+              const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
+              const diagnostic = toDiagnostic(jessError);
+              // Ensure lines are extracted
+              if (!diagnostic.lines) {
+                diagnostic.lines = extractRelevantLines(source, line);
+              }
+              if ('errors' in diagnostic) {
+                errors.push(diagnostic);
+              } else {
+                warnings.push(diagnostic);
+              }
             }
           }
         }
@@ -514,6 +690,41 @@ function collectStructuralNodeKinds(
   }
 }
 
+function createStructuralProbeSnapshot(
+  filePath: string,
+  source: string,
+  plan: IslandParsePlan
+): Pick<
+  ScannerFirstProbeResult,
+  | 'availableByIslandKind'
+  | 'availableByOwnerKind'
+  | 'filePath'
+  | 'islands'
+  | 'sourceBytes'
+  | 'structuralDiagnostics'
+  | 'structuralNodesByKind'
+> {
+  const availableByIslandKind: Record<string, number> = {};
+  const availableByOwnerKind: Record<string, number> = {};
+  const structuralNodesByKind: Record<string, number> = {};
+
+  collectStructuralNodeKinds(plan.document.root, structuralNodesByKind);
+  for (const island of plan.document.islands()) {
+    incrementCounter(availableByIslandKind, island.islandKind);
+    incrementCounter(availableByOwnerKind, island.owner.kind);
+  }
+
+  return {
+    filePath,
+    sourceBytes: source.length,
+    structuralDiagnostics: plan.document.diagnostics.length,
+    islands: plan.document.islands().length,
+    availableByIslandKind,
+    availableByOwnerKind,
+    structuralNodesByKind
+  };
+}
+
 function getScannerFirstProbeOptions(
   pluginOption: boolean | ScannerFirstProbeOptions | undefined,
   parseOption: unknown
@@ -537,3 +748,72 @@ function shouldMaterializeIsland(
   }
   return options.materializeIslandKinds?.includes(islandKind) ?? false;
 }
+
+function indexIslandsByOwner(islands: readonly RawIslandNode[]): Map<object, RawIslandNode[]> {
+  const byOwner = new Map<object, RawIslandNode[]>();
+  for (const island of islands) {
+    const list = byOwner.get(island.owner);
+    if (list) {
+      list.push(island);
+    } else {
+      byOwner.set(island.owner, [island]);
+    }
+  }
+  return byOwner;
+}
+
+function singleIsland(
+  byOwner: Map<object, RawIslandNode[]>,
+  owner: object,
+  islandKind: string
+): RawIslandNode | undefined {
+  const matches = (byOwner.get(owner) ?? []).filter(island => island.islandKind === islandKind);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function locationFromRange(
+  document: StructuralDocument,
+  start: number,
+  endExclusive: number
+): LocationInfo {
+  const end = Math.max(start, endExclusive - 1);
+  const startPos = document.source.offsetToLineColumn(start);
+  const endPos = document.source.offsetToLineColumn(end);
+  return [start, startPos.line, startPos.column, end, endPos.line, endPos.column];
+}
+
+function countRequestedIslandKinds(plan: IslandParsePlan): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (let id = 0; id < plan.counters.requestIds; id++) {
+    incrementCounter(counts, plan.requestView(id).islandKind);
+  }
+  return counts;
+}
+
+function countRequestedOwnerKinds(plan: IslandParsePlan): Record<string, number> {
+  const counts: Record<string, number> = {};
+  const requestOwners = new Map<string, string>();
+  for (const island of plan.document.islands()) {
+    requestOwners.set(islandKey(island.start, island.end, island.islandKind), island.owner.kind);
+  }
+  for (let id = 0; id < plan.counters.requestIds; id++) {
+    const request = plan.requestView(id);
+    const ownerKind = requestOwners.get(islandKey(request.start, request.end, request.islandKind));
+    if (ownerKind) {
+      incrementCounter(counts, ownerKind);
+    }
+  }
+  return counts;
+}
+
+function islandKey(start: number, end: number, islandKind: string): string {
+  return `${start}:${end}:${islandKind}`;
+}
+
+function isPlainStructuralFedDeclarationName(name: string): boolean {
+  return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
+}
+
+const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
+const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
+const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
