@@ -20,8 +20,8 @@ aggressive-cutting rules. The primary agent must own the final patch,
 verification, docs, commit, push, and continuation. Every sub-agent prompt must
 include the minimum worktree/status/tracker/build setup from `HANDOFF.md` before
 the worker edits or measures; this includes `pnpm build` from the assigned
-worktree so workspace libraries and declaration outputs exist before any
-package-specific test, profile, or declaration build.
+worktree so Jess runtime/library packages and declaration outputs exist before
+any package-specific test, profile, or declaration build.
 
 Do not mark a node complete because one helper changed. A node is complete when
 its public render/eval/resolve/value methods have been reviewed for:

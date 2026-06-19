@@ -223,10 +223,11 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
 
 function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
   const selector = ruleset.selector;
-  if (isNode(selector, N.Nil)) {
+  const selectorType = selector.nodeType ?? 0;
+  if ((selectorType & N.Nil) !== 0) {
     return [];
   }
-  if (isNode(selector, N.SelectorList)) {
+  if ((selectorType & N.SelectorList) !== 0) {
     const out: string[][] = [];
     for (let i = 0; i < selector.value.length; i++) {
       const keys = getOrderedSelectorKeys(selector.value[i]!);
@@ -241,7 +242,12 @@ function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
-  return isNode(node, N.Selector) || (isNode(node) && node.type === 'InterpolatedSelector');
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  const candidate = node as Node;
+  return ((candidate.nodeType ?? 0) & N.Selector) !== 0
+    || candidate.type === 'InterpolatedSelector';
 }
 
 function renderRulesToString(
@@ -419,34 +425,36 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if (node.type === 'Rules') {
+  const nodeType = node.nodeType ?? 0;
+  if ((nodeType & N.Rules) !== 0) {
     return node;
   }
-  if (node.type === 'Ruleset' || node.type === 'AtRule' || node.type === 'Mixin') {
+  if ((nodeType & (N.Ruleset | N.AtRule | N.Mixin)) !== 0) {
     return (node as Ruleset | AtRule | Mixin).rules;
   }
   return undefined;
 }
 
 function childCallableRulesOf(node: Node): Rules | undefined {
-  if (node.type === 'Rules') {
+  const nodeType = node.nodeType ?? 0;
+  if ((nodeType & N.Rules) !== 0) {
     return node;
   }
-  if (node.type === 'Ruleset' || node.type === 'AtRule') {
+  if ((nodeType & (N.Ruleset | N.AtRule)) !== 0) {
     return (node as Ruleset | AtRule).rules;
   }
   return undefined;
 }
 
 function hidesAmbientMixinSurface(node: Node): boolean {
-  return isNode(node, N.Ruleset) && Ruleset.isBareAmpersandSelector(node.selector);
+  return ((node.nodeType ?? 0) & N.Ruleset) !== 0 && Ruleset.isBareAmpersandSelector(node.selector);
 }
 
 function rulesMayContainExactCallableSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Mixin | N.Ruleset | N.AtRule | N.Rules)) {
+    if (((node.nodeType ?? 0) & (N.Mixin | N.Ruleset | N.AtRule | N.Rules)) !== 0) {
       return true;
     }
   }
@@ -460,7 +468,7 @@ function rulesMayContainExactMixinSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Mixin)) {
+    if (((node.nodeType ?? 0) & N.Mixin) !== 0) {
       rules.mayContainExactMixinSurface = true;
       return true;
     }
@@ -481,7 +489,7 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Ruleset)) {
+    if (((node.nodeType ?? 0) & N.Ruleset) !== 0) {
       rules.mayContainExactRulesetSurface = true;
       return true;
     }
@@ -499,7 +507,8 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    const nodeType = node.nodeType ?? 0;
+    if ((nodeType & N.Declaration) !== 0 && (nodeType & N.VarDeclaration) === 0 && !node.options?.setDefined) {
       return true;
     }
     const child = childRulesOf(node);
@@ -511,7 +520,8 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
 }
 
 function isMergeDeclarationSurfaceNode(node: Node): boolean {
-  if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration) || node.options?.setDefined) {
+  const nodeType = node.nodeType ?? 0;
+  if ((nodeType & N.Declaration) === 0 || (nodeType & N.VarDeclaration) !== 0 || node.options?.setDefined) {
     return false;
   }
   const assign = node.options?.normalizedFromAssign;
@@ -537,7 +547,7 @@ function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    if (((node.nodeType ?? 0) & N.VarDeclaration) !== 0 && !node.options?.setDefined) {
       return true;
     }
     const child = childRulesOf(node);
@@ -1955,7 +1965,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const value = rules.rules;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
-      if (isNode(node, N.Mixin)) {
+      const nodeType = node.nodeType ?? 0;
+      if ((nodeType & N.Mixin) !== 0) {
         const name = node.name;
         if (name && name.type !== 'Interpolated') {
           const entry = node.sourceParent === rules
@@ -1970,7 +1981,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      if (isNode(node, N.Rules)) {
+      if ((nodeType & N.Rules) !== 0) {
         if (!canEnterRulesEntryForLookup({ node }, { type: 'Mixin' })) {
           continue;
         }
@@ -1980,18 +1991,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      if (!isNode(node, N.Ruleset)) {
+      if ((nodeType & N.Ruleset) === 0) {
         continue;
       }
       let selector = node.selector;
-      if (isNode(selector, N.Nil)) {
+      if (((selector.nodeType ?? 0) & N.Nil) !== 0) {
         continue;
       }
       const ownSelector = isSelectorLikeNode(node.options.ownSelector)
         ? node.options.ownSelector
         : undefined;
-      const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
-      if (isNode(callableSelector, N.Ampersand)) {
+      const callableSelector = ownSelector && ((ownSelector.nodeType ?? 0) & N.Nil) === 0 ? ownSelector : selector;
+      if (((callableSelector.nodeType ?? 0) & N.Ampersand) !== 0) {
         continue;
       }
       const sourceSelector = isSelectorLikeNode(selector.sourceNode)
@@ -2005,7 +2016,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           keys = sourceKeys;
         }
       }
-      if (isNode(selector, N.SelectorList)) {
+      if (((selector.nodeType ?? 0) & N.SelectorList) !== 0) {
         for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
           this.addDirectCallableSelectorEntries(
             lookupKey,
@@ -2016,11 +2027,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      if (keys.length > 0 && ownSelector && !isNode(ownSelector, N.Nil)) {
-        const parentSelector = isNode(node.sourceParent?.sourceParent, N.Ruleset)
+      if (keys.length > 0 && ownSelector && ((ownSelector.nodeType ?? 0) & N.Nil) === 0) {
+        const parentSource = node.sourceParent?.sourceParent;
+        const parentSelector = parentSource && ((parentSource.nodeType ?? 0) & N.Ruleset) !== 0
           ? (node.sourceParent.sourceParent as Ruleset).selector
           : undefined;
-        const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
+        const parentKeys = parentSelector && ((parentSelector.nodeType ?? 0) & N.Nil) === 0
           ? getOrderedSelectorKeys(parentSelector)
           : [];
         if (

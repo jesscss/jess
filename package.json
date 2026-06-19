@@ -44,6 +44,7 @@
     "vitest": "^4.1.2"
   },
   "scripts": {
+    "build": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build && pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && pnpm --filter @jesscss/fns build && pnpm --filter @jesscss/style-resolver build && pnpm --filter styles-config build && pnpm --filter @jesscss/plugin-node-modules build && pnpm --filter @jesscss/plugin-less build && pnpm --filter @jesscss/plugin-less-compat build && pnpm --filter @jesscss/plugin-js build && pnpm --filter @jesscss/patch-css build && pnpm --filter jess build",
     "ci": "pnpm run -r ci && pnpm run lint",
     "prepare": "husky install",
     "precommit:staged": "node scripts/precommit-changed-checks.mjs --mode=staged",

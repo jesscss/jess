@@ -134,12 +134,13 @@ measures:
    focus tracker.
 3. Materialize built workspace libraries before tests, profiling, declaration
    builds, or external Less harness runs. The minimum setup is `pnpm build`
-   from the assigned worktree before package-specific commands. Performance
-   agents should then use the ordered benchmark-path build list in
-   `PERFORMANCE-HANDOFF.md` after edits so affected packages are freshly built
-   in dependency order. If a workspace package cannot resolve another Jess
-   package, treat that as missing build output/setup, not as a reason to skip
-   verification.
+   from the assigned worktree before package-specific commands; this root
+   script builds the Jess runtime/library dependency chain, not docs or editor
+   packaging. Performance agents should then use the ordered benchmark-path
+   build list in `PERFORMANCE-HANDOFF.md` after edits so affected packages are
+   freshly built in dependency order. If a workspace package cannot resolve
+   another Jess package, treat that as missing build output/setup, not as a
+   reason to skip verification.
 4. Report exact tests, builds, benchmark commands, and any setup failures back
    to the main agent. Sub-agents do not commit or push.
 
@@ -165,29 +166,38 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: hardened sub-agent setup rules and rejected three measured
-  prototypes: `getOrderedSelectorKeys(...)` no-closure traversal,
-  `defineFunction(...)` normalized-signature precompute, and ruleset header
-  selector visibility clone deletion/temp-flag replacement. All source
-  prototypes were reverted because wall-clock evidence did not support keeping
-  them. `PERFORMANCE-HANDOFF.md` records the exact runs.
-- Verdict: docs/evidence batch with no speed claim, not goal completion. The
-  best current live same-load comparisons still put Jess around `137-146ms`
-  median on `benchmark.less`, far slower than Less 4.6.3 around `35-41ms` live
-  and the stored Less 4.5 target median `42.16ms`.
-- New traversal: none kept in source. The rejected ruleset temp-flag prototype
-  added recursive selector visibility traversal plus restore and was reverted.
+- Latest pass: direct `nodeType` masks in hot `Rules` callable/declaration
+  surface lookup plus an executable root runtime-library setup build.
+- Verdict: accepted as a measured performance cut, not goal completion. The
+  direct-mask patch removes repeated `isNode(...)` helper calls from hot
+  callable/declaration-surface loops in `packages/core/src/tree/rules.ts` and
+  improves same-load `benchmark.less` A/B from Jess median `121.25ms` /
+  trimmed `122.71ms` to `116.30ms` / `118.01ms` over `100` runs after `25`
+  warmups. Jess is still far slower than Less 4.x (`29-32ms` live here and
+  stored Less 4.5 median `42.16ms`).
+- New traversal: none. Existing loops in `getCallableRulesetKeyPaths(...)`,
+  `childRulesOf(...)`, `childCallableRulesOf(...)`,
+  `rulesMayContain*Surface(...)`, `collectCallableEntriesForKeyFrom(...)`, and
+  direct callable selector entry setup now use local `nodeType` masks instead
+  of calling `isNode(...)`.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: no source helper kept. The central router now requires
-  sub-agent prompts to include worktree/status/tracker/build setup; the
-  serialization tracker points back to that rule; the performance build list now
-  includes `@jesscss/fns`.
+- Helper/API surface: no hot helper added. Root `package.json` now exposes
+  `pnpm build` as the runtime-library dependency setup command required by
+  sub-agent/performance docs.
 - Metadata mutations: none.
 - Copy/materialization: none.
-- Danger-token note: `PERFORMANCE-HANDOFF.md` mentions `needsVisibleSelectorClone`,
-  `constructCopy`, and `copyChild` only as CPU-profile evidence for rejected
-  prototypes and next-target selection. No source copy/materialization change is
-  kept in this batch.
-- Evidence: focused tests and benchmarks for rejected prototypes are recorded
-  in `PERFORMANCE-HANDOFF.md`. Kept docs passed `git diff --check`.
+- Danger-token note: `PERFORMANCE-HANDOFF.md` continues to mention
+  `needsVisibleSelectorClone`, `constructCopy`, `copyChild`, and `inherit` only
+  as profile evidence and next-target families, not as newly accepted runtime
+  machinery.
+- Evidence: `pnpm build` passed; focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts`
+  passed (`483` passed, `14` skipped, `9` deferred-case markers);
+  `git diff --check` passed;
+  live comparator A/B on `benchmark.less` used `--runs=100 --warmup=25
+  --less4=measure`; CPU profile
+  `profiling/core-architecture/20260619-083627-rules-direct-node-type-cpu`
+  shows `isNode` down to `93` self samples with next targets in
+  `_processNodes`, selector traversal, callable search, selector visibility
+  clone, and copy/inherit families.

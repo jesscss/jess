@@ -1046,14 +1046,17 @@ node scripts/profile-less-benchmark.mjs --file=benchmark.less
 
 ## Required Profile Inputs
 
-Minimum setup for any main-agent or sub-agent performance work is a full
-workspace build before package-specific commands:
+Minimum setup for any main-agent or sub-agent performance work is the runtime
+library build before package-specific commands:
 
 ```sh
 pnpm build
 ```
 
-Then rebuild the benchmark-path packages after edits, in dependency order:
+The root `build` script intentionally builds the Jess runtime/library dependency
+chain needed by tests, declaration builds, and the Less benchmark harness; it
+does not build docs or editor packaging. After edits, rebuild the benchmark-path
+packages in dependency order:
 
 ```sh
 pnpm --filter styles-config build
@@ -1073,10 +1076,10 @@ In a fresh worktree, do not rely on the narrower historical build set alone:
 current `@jesscss/fns` output. These packages must have `lib/` output before
 `measure:less:hotpath`, `profile-less-benchmark.mjs`, or
 `compare-less-v4-v5-benchmark.mjs` can run. If `@jesscss/fns` declaration build
-cannot resolve `@jesscss/core`, treat it as missing workspace setup or stale
-build output: run `pnpm build`, then repeat the ordered benchmark-path build
-set above. Do not record package-resolution failures as benchmark evidence or
-as a reason to skip verification.
+cannot resolve `@jesscss/core`, treat it as missing runtime-library setup or
+stale build output: run `pnpm build`, then repeat the ordered benchmark-path
+build set above. Do not record package-resolution failures as benchmark
+evidence or as a reason to skip verification.
 
 Use profiler/counter runs for diagnosis, not user-facing speed claims:
 
@@ -5018,6 +5021,49 @@ Rejected prototypes:
   tests but measured Jess median `143.58ms`. Both were reverted. The clone path
   is still architecturally ugly, but replacing it with extra flag traversal/
   restore moved cost instead of improving the real benchmark.
+
+2026-06-19 direct `nodeType` rules-surface pass: kept a hot lookup cut in
+`packages/core/src/tree/rules.ts` and made the setup doctrine executable by
+adding a root `pnpm build` script for the Jess runtime/library dependency
+chain. The source change replaces repeated `isNode(...)` helper calls with
+local `nodeType` masks in existing callable/declaration-surface lookup loops:
+`getCallableRulesetKeyPaths(...)`, selector-like checks,
+`childRulesOf(...)`, `childCallableRulesOf(...)`,
+`rulesMayContain*Surface(...)`, `isMergeDeclarationSurfaceNode(...)`, and the
+direct callable selector-entry collector. This adds no traversal, no copied
+nodes, no materialization, and no new hot helper.
+
+Setup/correctness evidence:
+
+- `pnpm build` passed after adding the root runtime-library build script.
+- Focused core tests passed:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts`
+  (`483` passed, `14` skipped, `9` todo).
+- `git diff --check` passed before doc closeout.
+
+Wall-clock evidence:
+
+- Patched, `--runs=50 --warmup=15 --less4=measure`: Jess medians `116.53ms`
+  and `118.33ms`; Less 4.6.3 medians `32.25ms` and `31.28ms`.
+- Reverted same-worktree baseline after reversing only `rules.ts`, rebuilding,
+  and running `--runs=50 --warmup=15 --less4=measure`: Jess median `120.40ms`
+  / trimmed `121.55ms`; Less 4.6.3 median `31.33ms` / trimmed `31.41ms`.
+- Patched `--runs=100 --warmup=25 --less4=measure`: Jess median `116.30ms` /
+  trimmed `118.01ms`; Less 4.6.3 median `29.48ms` / trimmed `29.73ms`.
+- Reverted matching `--runs=100 --warmup=25 --less4=measure`: Jess median
+  `121.25ms` / trimmed `122.71ms`; Less 4.6.3 median `29.78ms` / trimmed
+  `30.32ms`.
+
+CPU profile after reapplying and rebuilding:
+`profiling/core-architecture/20260619-083627-rules-direct-node-type-cpu`.
+Profile elapsed time is profiler overhead, not the speed claim. Top self
+samples now include `isNode` `93`, `_processNodes` `82`, `visit` `50`,
+`collectCallableEntriesForKeyFrom` `42`, `searchSurface` `37`,
+`renderRulesBody` `29`, `needsVisibleSelectorClone` `23`, `copyChild` `20`,
+`getOrderedSelectorKeys` `19`, `inherit` `23`, and `constructCopy` `16`.
+`isNode` parents are no longer dominated by callable collection; remaining
+parents include selector visibility, `searchSurface`, render body, registration,
+extend matching, and declaration/reference paths.
 
 Next target direction: keep field shape monomorphic unless measurement says
 otherwise. Do not reintroduce per-node descriptors or non-enumerability for
