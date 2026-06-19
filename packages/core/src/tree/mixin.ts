@@ -93,12 +93,24 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.name = value.name;
     this.rules = value.rules;
     this.params = value.params;
     this.guard = value.guard;
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.rules instanceof Node) {
+      this.adopt(value.rules);
+    }
+    if (value.params instanceof Node) {
+      this.adopt(value.params);
+    }
+    if (value.guard instanceof Node) {
+      this.adopt(value.guard);
+    }
     this.removeFlag(F_VISIBLE);
   }
 

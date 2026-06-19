@@ -76,11 +76,13 @@ export class Operation extends Node<OperationValue> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
     this._treeContext = treeContext;
+    this.adopt(this.left);
+    this.adopt(this.right);
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

@@ -153,6 +153,25 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 explicit object/tuple constructor adoption pass: kept the second
+`_processNodes` constructor reduction. A fresh CPU profile after the first
+container pass still showed `_processNodes(...)` self samples and nearby
+constructor samples in `Declaration`, `Ruleset`, and `Operation`; the kept
+patch makes `Operation`, `Declaration`, `Ruleset`, and `Mixin` opt out of base
+constructor `_processNodes(...)` and adopt their known child slots directly.
+This removes object/tuple generic scans for these hot semantic nodes without
+adding nodes, clone paths, side maps, caches, or runtime materialization.
+Focused visitor/operation/declaration/ruleset/mixin/reference/rules tests
+passed (`629` passed, `14` skipped, `9` deferred markers). Live `benchmark.less`
+comparator evidence over `100` runs after `25` warmups with `--less4=measure`
+measured patched Jess at `130.16ms` median / `131.48ms` trimmed average, then
+`123.94ms` / `126.13ms`; after restoring explicit non-node guards required by
+visitor test construction, the final checked shape measured `126.12ms` /
+`127.46ms`. This improves on the prior kept constructor batch's `133.50ms` /
+`137.34ms` and `134.42ms` / `137.58ms` runs. Keep as a clear runtime win and
+continue eliminating constructor `_processNodes(...)` only via explicit
+value-shape ownership or by deleting the need for source-parent mutation.
+
 2026-06-19 explicit hot-container adoption pass: kept the first `_processNodes`
 constructor reduction. `List`, `Sequence`, `SelectorList`,
 `CompoundSelector`, `ComplexSelector`, and `Rules` now pass

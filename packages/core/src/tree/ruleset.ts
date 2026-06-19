@@ -114,12 +114,24 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
-    super(value, options, location);
+    super(value, options, location, false);
     this.selector = value.selector;
     this.rules = value.rules;
     this.guard = value.guard;
     this.selectorBeforeExtend = value.selectorBeforeExtend;
     this._treeContext = treeContext;
+    if (value.selector instanceof Node) {
+      this.adopt(value.selector);
+    }
+    if (value.rules instanceof Node) {
+      this.adopt(value.rules);
+    }
+    if (value.guard instanceof Node) {
+      this.adopt(value.guard);
+    }
+    if (value.selectorBeforeExtend instanceof Node) {
+      this.adopt(value.selectorBeforeExtend);
+    }
   }
 
   private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {

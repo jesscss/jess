@@ -491,10 +491,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location, treeContext);
+    super(value, options, location, false);
     this.name = value.name;
     this.valueNode = value.value;
     this.important = value.important;
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.value instanceof Node) {
+      this.adopt(value.value);
+    }
+    if (value.important instanceof Node) {
+      this.adopt(value.important);
+    }
   }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {

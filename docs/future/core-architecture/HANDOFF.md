@@ -166,29 +166,30 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: explicit adoption for hot constructor container families.
-- Verdict: accepted as a small measured performance cut, not goal completion.
-  `List`, `Sequence`, `SelectorList`, `CompoundSelector`, `ComplexSelector`,
-  and `Rules` now opt out of base constructor `_processNodes(...)` and adopt
-  their known direct child arrays in the concrete constructor.
-- New traversal: six direct constructor array scans. They replace the previous
-  generic base `_processNodes(...)` array scan for the same constructor values;
-  they do not recurse into object values or discover new child surfaces.
+- Latest pass: explicit adoption for hot object/tuple constructor families.
+- Verdict: accepted as a measured performance cut, not goal completion.
+  `Operation`, `Declaration`, `Ruleset`, and `Mixin` now opt out of base
+  constructor `_processNodes(...)` and adopt their known child slots in the
+  concrete constructor.
+- New traversal: direct child-slot adoption in four constructors. It replaces
+  the previous generic base object/tuple `_processNodes(...)` scan for the same
+  constructor values; it does not recurse into arbitrary object values or
+  discover new child surfaces.
 - New node/materialization: none.
 - Render path: unchanged.
 - Helper/API surface: one internal constructor flag only.
-- Metadata mutations: six `adopt(...)` loops. They preserve the previous
-  source-parent/static/async flag adoption semantics for already-known direct
-  child arrays, but run in concrete constructors instead of the generic base
-  scanner.
+- Metadata mutations: direct `adopt(...)` calls for known node slots. They
+  preserve the previous source-parent/static/async flag adoption semantics, but
+  run in concrete constructors instead of the generic base scanner.
 - Copy/materialization: none.
-- Materialized array/object note: `const rules = value ?? []` preserves the
-  existing default empty array value used by `Rules`; it is not a copy and does
-  not allocate for non-empty caller-provided rules arrays.
+- Materialized array/object note: no new arrays or objects are created by this
+  pass.
 - Danger-token note: none added. No clone/copy/materialization path was added.
 - Evidence: ordered affected-package rebuild passed; focused
-  `@jesscss/core` structural/lookup/reference/mixin suite passed (`649`
-  passed, `14` skipped, `9` deferred markers); live comparator on `benchmark.less` used
-  `--runs=100 --warmup=25 --less4=measure` and measured patched Jess at
-  `133.50ms` median / `137.34ms` trimmed average, then `134.42ms` /
-  `137.58ms`, versus the immediate earlier control at `135.08ms` / `137.97ms`.
+  `@jesscss/core` visitor/operation/declaration/ruleset/mixin/reference/rules
+  suite passed (`629` passed, `14` skipped, `9` deferred markers); live comparator on
+  `benchmark.less` used `--runs=100 --warmup=25 --less4=measure` and measured
+  patched Jess at `130.16ms` median / `131.48ms` trimmed average, then
+  `123.94ms` / `126.13ms`; after restoring explicit non-node guards, the final
+  checked shape measured `126.12ms` / `127.46ms`, improving on the prior kept
+  constructor batch.
