@@ -23,6 +23,19 @@ changed if the replacement is better and the migration is explicit. The plan
 should preserve user-visible semantics while allowing intentional shape
 upgrades.
 
+Field naming should be boring by default. When a node has one semantic payload,
+whether that payload is one child node, one token-like value, or one homogeneous
+list of children, the default shape should be `.value`. Alternate child names
+such as `left`/`right`, `name`/`value`, `selector`/`rules`, or
+`guard`/`body` are justified when the node has multiple distinct roles.
+Current names such as `List.items`, `Sequence.items`,
+`CompoundSelector.components`, and `Declaration.valueNode` should be treated as
+existing compatibility facts and migration candidates, not as names to preserve
+by default. Scanner-first work should not invent more arbitrary list-field
+names, and the implementation plan should include a deliberate audit of where
+existing single-payload node fields can collapse back to `.value` without
+breaking user-visible behavior.
+
 The best near-term shape is staged:
 
 ```text
@@ -246,6 +259,14 @@ the relevant compatibility baseline or explicitly document an intentional AST
 upgrade. The same source may therefore have two valid test surfaces:
 structural snapshots for the first pass, and `serializeTypes(...)` or focused
 node assertions for the materialized compiler subtree.
+
+Field-name compatibility should be audited separately from semantic
+compatibility. If a node has a single payload currently exposed as
+`items`, `components`, `valueNode`, or another arbitrary role name, the
+scanner-first replacement should evaluate whether that payload can become
+`.value` as part of an intentional AST cleanup. Serializer updates for today's
+field names are only a way to classify current behavior; they should not
+freeze those names into the next parser architecture.
 
 ### 4. Error tolerance must not mean silent semantic repair
 
@@ -1582,6 +1603,10 @@ its claims.
 - [x] Track materialization by island kind and by owning structural node kind so
   tests can assert both "this feature materialized" and "this feature did not
   materialize."
+- [ ] Audit single-payload AST fields reached by CSS/Less materialization
+  (`items`, `components`, `valueNode`, and similar names) and decide which can
+  collapse to `.value` before scanner-first shapes are treated as replacement
+  architecture.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   selected-island parsing, fallback full-tree parsing, or the existing parser
   path.
@@ -1618,10 +1643,10 @@ its claims.
 - [x] Verification: focused Less e2e tests pass.
 - [x] Verification: explicit finite CSS parser unit subset passes and remaining
   CSS parser gates are documented separately from scanner-first work.
-- [x] Verification: explicit finite Less parser unit subset passes and remaining
-  Less fixture gates are documented separately from scanner-first work.
-- [ ] Verification: full Less fixture gates pass once external fixture
-  dependencies are available in the package test context.
+- [x] Verification: expanded Less parser unit and fixture-backed subset passes,
+  including the Less at-rule fixture and Less parser corpus tests.
+- [ ] Verification: full Less parser package tests pass once
+  `test/ast-serialize.test.ts` serializer-baseline drift is classified.
 
 Current broad-parser gate snapshot, 2026-06-19:
 
@@ -1639,23 +1664,30 @@ Current broad-parser gate snapshot, 2026-06-19:
   30-second command window and was stopped for separate investigation, so the
   documented green CSS gate here is the explicit file list above.
 - Focused Less parser classification removed stale serializer expectations for
-  `Declaration.valueNode`, list `items`, `CompoundSelector.components`,
-  `Sequence.items`, `Condition.left/right`, and mixin-call `Reference` names.
+  current child-field output such as `Declaration.valueNode`, list `items`,
+  `CompoundSelector.components`, `Sequence.items`, `Condition.left/right`, and
+  mixin-call `Reference` names. This is compatibility classification only; it
+  is not an endorsement of arbitrary `.items`/`.components`/`.valueNode`
+  naming for nodes whose payload could simply be `.value`.
   A bounded behavior fix restored parsed `default()` guard `hasDefault`
   detection by walking canonical node children instead of legacy `data`
-  shapes, and sequence trivia now preserves comment-only adjacency without
-  adding synthetic whitespace. The explicit finite Less parser unit subset
-  passed with:
+  shapes, sequence trivia now preserves comment-only adjacency without adding
+  synthetic whitespace, and Less parser tests now resolve the shared
+  `@less/test-data` corpus from isolated worktrees. The expanded Less parser
+  subset passed with:
   `pnpm --filter @jesscss/less-parser test -- --run
-  test/island-providers.test.ts test/declaration.test.ts
+  test/island-providers.test.ts test/at-rules.test.ts test/declaration.test.ts
   test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
   test/guards.test.ts test/functions.test.ts test/math-value.test.ts
   test/values.test.ts test/variables.test.ts test/stylesheet.test.ts`,
-  reporting 162 passed tests across 11 files.
-- The remaining Less parser fixture gate is external-dependency setup:
-  `pnpm --filter @jesscss/less-parser test -- --run test/at-rules.test.ts`
-  fails before collecting tests because `@less/test-data` is not resolvable
-  from `packages/less-parser/test/at-rules.test.ts`.
+  reporting 182 passed tests across 12 files. The broader Less parser corpus
+  command `pnpm --filter @jesscss/less-parser test -- --run
+  test/error-parsing.test.ts test/less-unit-tests.test.ts` also passed,
+  reporting 92 passed tests.
+- `pnpm --filter @jesscss/less-parser test -- --run` now reports
+  368 passed and 55 failed tests across 27 files. The remaining failures are
+  all in `test/ast-serialize.test.ts`; no other Less parser test file failed
+  in that broad package run.
 - Focused scanner-first gates remain green: `@jesscss/parser` tests,
   CSS/Less island-provider tests, `@jesscss/plugin-less` structural activation
   test, `jess` scanner-first e2e tests, package builds, and package export

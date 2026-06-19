@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Parser } from '../src/index.js';
 import { invalidLess } from '@jesscss/shared';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const lessParser = new Parser();
 
 describe('Less full-suite (minus invalid files)', () => {

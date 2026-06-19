@@ -1,13 +1,12 @@
 import { Context, serializeTypes } from '@jesscss/core';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { createRequire } from 'node:module';
 import { Parser } from '../src/index.js';
+import { resolveLessTestDataRoot } from './test-data.js';
 
 const parser = new Parser();
 const parse = parser.parse;
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 describe('importAtRule', () => {
   it('should parse @import with url', () => {
@@ -76,53 +75,31 @@ describe('mediaInParens', () => {
   it('should parse variable media query at top level', () => {
     const { errors, tree } = parse('@media @breakpoint, print { }', 'stylesheet');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (AtRule
-          nestable: true
-        name: 
-          (Any [role=atkeyword]
-              role: 'atkeyword'
-            '@media'
-          )
-        prelude: 
-          (List
-            [
-              (Reference [role=ident]
-                  type: 'index'
-                  role: 'ident'
-                key: 'breakpoint'
-              )
-              (QueryCondition
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(AtRule\n          nestable: true');
+    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
+    expect(out).toContainString('(List\n            items:');
+    expect(out).toContainString('(Reference [role=ident]');
+    expect(out).toContainString('type: \'index\'');
+    expect(out).toContainString('role: \'ident\'');
+    expect(out).toContainString('key: \'breakpoint\'');
+    expect(out).toContainString('(QueryCondition');
   });
 
   it('should parse namespaced reference media query at top level', () => {
     const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (AtRule
-          nestable: true
-        name: 
-          (Any [role=atkeyword]
-              role: 'atkeyword'
-            '@media'
-          )
-        prelude: 
-          (Expression
-            node:
-              (Reference
-                type: 'variable'
-                target:
-                  (Call
-                    name:
-                      (Reference [role=name]
-                        type: 'mixin-ruleset'
-                        role: 'name'
-                      key:
-                        ['#ns', '.breakpoint']
-                      rawKey: '#ns > .breakpoint'
-                    )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(AtRule\n          nestable: true');
+    expect(out).toContainString('(Expression\n            node:');
+    expect(out).toContainString('(Reference\n                  type: \'variable\'');
+    expect(out).toContainString('(Call\n                    name:');
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('role: \'name\'');
+    expect(out).toContainString('key:\n                          [\'#ns\', \'.breakpoint\']');
+    expect(tree.value[0]?.prelude?.node?.target?.name?.rawKey).toBe('#ns > .breakpoint');
   });
 
   it('should parse simple bare variable media query at top level as indexed reference', () => {
