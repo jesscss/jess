@@ -112,24 +112,36 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected callable bitmask and binding-location shortcuts.
-- Verdict: no production code kept. The current CPU profile made
-  `collectCallableEntriesForKeyFrom(...)` and `cloneBoundValue(...)` tempting
-  targets, but focused tests showed both local shortcuts cut across semantics
-  that are still encoded in complex selector lookup and live binding writes.
-- Rejected during pass: a callable collector `nodeType` / local selector-key
-  prototype passed simple callable tests but failed complex selector and
-  ampersand descendant lookup behavior; a `cloneBoundValue(...)` `_location`
-  shortcut passed helper tests but failed the setDefined caller-binding case.
-  Both were fully reverted.
-- New traversal: none.
-- New node/materialization: none.
+- Latest pass: extend instruction-shape cut.
+- Verdict: kept. The CPU profile selected `processExtends(...)` /
+  `applyExtendsToSelector(...)`; `applyExtendsToSelector(...)` now avoids eager
+  selector-list expansion arrays on the common path, and chained extend
+  discovery returns existing `ExtendInstruction` objects instead of tuple
+  projections followed by value-based recovery.
+- New traversal: the `expandExactSelectorListTargets(...)` loop changed from
+  `for...of` to indexed iteration so it can copy the prefix only when the first
+  selector-list target is found; it replaces the old unconditional loop, not an
+  additional pass. The two `for (const chainedInstruction of chained)` loops
+  replace tuple destructuring loops and delete the nested
+  `expandedAllExtends.find(...)` scans. The `for (const instruction of
+  allExtends)` loop in `findChainedExtendsWithSkips(...)` replaces tuple
+  destructuring over the same array and returns the existing instruction.
+- New node/materialization: no node materialization. Array materialization is
+  narrowed: `instructions.slice(0, i)` occurs only when selector-list target
+  expansion is actually needed, and the mutable instruction queue uses one
+  shallow `.slice()` because the loop splices processed instructions. This
+  replaces the prior two unconditional expanded arrays plus tuple-projection
+  array.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: none added.
+- Helper/API surface: no helper added. `findChainedExtends(...)` now uses the
+  same `ExtendInstruction` model as production callers instead of a local tuple
+  shape.
 - Metadata mutations: none added.
-- Evidence: code edits were reverted to a clean worktree. The callable
-  collector prototype failed broader `mixin`/`reference` lookup tests around
-  complex selector callable paths. The binding-location prototype failed
-  `routes mixin setDefined writes through the resolved caller binding`. No
-  benchmark speed claim was made. See `PERFORMANCE-HANDOFF.md`.
+- Evidence: focused extend behavior passed (`34` tests). The eval-flow
+  `process-extends.test.ts` file still fails `7` cases against clean `HEAD`,
+  so it is recorded as baseline debt rather than a regression signal.
+  Benchmark-path rebuild passed. External `benchmark.less` wall-clock held at
+  about `227ms` median across `16/6` and `24/8` non-profiled runs, and CPU
+  profile comparison moved `processExtends(...)` from `88.37ms` to `63.29ms`.
+  See `PERFORMANCE-HANDOFF.md`.

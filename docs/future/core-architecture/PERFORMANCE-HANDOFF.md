@@ -3309,6 +3309,66 @@ Rejected follow-up audit from the same CPU profile:
   mixin-ruleset formatting/ampersand misses even with no diff. Use narrower
   focused tests for future edits until that baseline debt is addressed.
 
+Follow-up extend instruction-shape cut:
+
+- `applyExtendsToSelector(...)` no longer eagerly allocates expanded
+  instruction arrays when no exact selector-list target exists. It keeps the
+  mutable work queue separate with one shallow copy, but the read-only
+  all-extends list can stay as the original instruction array on the common
+  path;
+- chained extend discovery now returns the existing `ExtendInstruction`
+  objects instead of projecting every instruction into tuple arrays and then
+  searching `expandedAllExtends` again to recover the matching instruction.
+  This deletes allocation and an avoidable valueOf/find loop in the profiled
+  extend path;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/extend-unit.test.ts
+  src/tree/util/__tests__/extend-utils.test.ts
+  src/tree/__tests__/extend.test.ts` (`34` passed);
+- baseline caveat: adding
+  `src/tree/util/__tests__/process-extends.test.ts` to that focused command
+  fails `7` eval-flow tests against clean `HEAD` as well. Those failures leave
+  simple eval-flow extend assertions unchanged (`.foo` instead of
+  `.foo,.bar`, and related partial/chained cases). Treat that file as existing
+  branch debt, not as a regression signal for this pass;
+- ordered benchmark-path rebuild passed:
+  `pnpm --filter styles-config build && pnpm --filter @jesscss/awaitable-pipe
+  build && pnpm --filter @jesscss/core build && pnpm --filter
+  @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build &&
+  pnpm --filter @jesscss/plugin-less build && pnpm --filter
+  @jesscss/plugin-less-compat build && pnpm --filter @jesscss/plugin-js build
+  && pnpm --filter jess build`;
+- external CPU-profiled benchmark:
+  `node --cpu-prof
+  --cpu-prof-dir=/Users/matthew/git/worktrees/jess/performance-evidence/profiling/core-architecture/20260618-172309-extend-instruction-shape-post-cpu
+  benchmark/benchmark-runner.cjs benchmark/benchmark.less --runs=12
+  --warmup=4 --math=parens-division` reported average `253.11ms`, median
+  `254.41ms`, and variance `6.95%`. Profile artifact:
+  `profiling/core-architecture/20260618-172309-extend-instruction-shape-post-cpu/CPU.20260618.172309.89662.0.001.cpuprofile`;
+- same-profile comparison against
+  `20260618-170329-source-backed-callable-prep-post-cpu` showed useful
+  movement in the selected timed area: `processExtends(...)` `88.37ms ->
+  63.29ms`, `collectSelectorSubtreeValues(...)` `28.38ms -> 18.33ms`,
+  `findChainedExtends(...)` `2.58ms -> 1.27ms`, `wouldMatchNode(...)`
+  `37.39ms -> 31.20ms`, and `isNode(...)` `242.72ms -> 166.09ms`.
+  `applyExtendsToSelector(...)` itself stayed flat (`54.25ms -> 55.23ms`),
+  so the win is from less surrounding extend/process work rather than a
+  direct self-time drop in that function;
+- non-profiled same-harness wall-clock stabilized across two runs:
+  `--runs=16 --warmup=6` reported average `230.79ms`, median `227.13ms`,
+  variance `5.53%`; `--runs=24 --warmup=8` reported average `230.87ms`,
+  median `227.55ms`, variance `5.50%`;
+- `pnpm run measure:less:hotpath -- --stable` reported usable signals for all
+  listed fixtures, including `functions.less` trimmed median `11.61ms`,
+  `import-reference.less` `17.95ms`, `mixins-guards.less` `17.61ms`,
+  `extend-chaining.less` `4.77ms`, and `media.less` `5.07ms`.
+
+Verdict: keep as a measured benchmark and CPU-profile win on the current
+extend/process hot path. This is progress toward the canonical target, not
+completion: the historical Less 4.x comparison target remains about `47.4ms`
+average for `benchmark.less`, so Jess is still materially slower.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame

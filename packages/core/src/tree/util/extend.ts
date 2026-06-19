@@ -305,33 +305,28 @@ export function applyExtendsToSelector(
     return initialSelector;
   }
   const expandExactSelectorListTargets = (instructions: ExtendInstruction[]): ExtendInstruction[] => {
-    const expanded: ExtendInstruction[] = [];
-    for (const instruction of instructions) {
+    let expanded: ExtendInstruction[] | undefined;
+    for (let i = 0; i < instructions.length; i++) {
+      const instruction = instructions[i]!;
       if (!instruction.partial && isNode(instruction.target, N.SelectorList)) {
+        expanded ??= instructions.slice(0, i);
         for (const target of instruction.target.selectors) {
           expanded.push({
             ...instruction,
             target
           });
         }
-      } else {
+      } else if (expanded) {
         expanded.push(instruction);
       }
     }
-    return expanded;
+    return expanded ?? instructions;
   };
   let selector = initialSelector;
   const originalSelector = initialSelector;
   const originalSelectorValues = collectSelectorSubtreeValues(originalSelector);
   const expandedAllExtends = expandExactSelectorListTargets(allExtends);
-  const instructions = expandExactSelectorListTargets(extendsList);
-  const allExtendTuples = expandedAllExtends.map(inst => [
-    inst.target,
-    inst.extendWith,
-    inst.partial,
-    inst.extendRoot,
-    inst.extendNode
-  ] as [Selector, Selector, boolean, Rules | undefined, Node | undefined]);
+  const instructions = expandExactSelectorListTargets(extendsList).slice();
   const queuedKeys = new Set(
     instructions.map(inst => `${inst.partial ? 1 : 0}|${inst.target.valueOf()}|${inst.extendWith.valueOf()}`)
   );
@@ -372,25 +367,22 @@ export function applyExtendsToSelector(
             );
             const chained = findChainedExtendsWithSkips(
               selector,
-              allExtendTuples,
+              expandedAllExtends,
               skipKeys,
               originalSelector,
               originalSelectorValues
             );
-            for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
+            for (const chainedInstruction of chained) {
+              const {
+                target: chainedTarget,
+                extendWith: chainedExtendWith,
+                partial: chainedPartial
+              } = chainedInstruction;
               const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
               if (queuedKeys.has(chainedKey)) {
                 continue;
               }
-              const matchingInstruction = expandedAllExtends.find(inst =>
-                inst.partial === chainedPartial
-                && inst.target.valueOf() === chainedTarget.valueOf()
-                && inst.extendWith.valueOf() === chainedExtendWith.valueOf()
-              );
-              if (!matchingInstruction) {
-                continue;
-              }
-              instructions.push(matchingInstruction);
+              instructions.push(chainedInstruction);
               queuedKeys.add(chainedKey);
             }
             changed = true;
@@ -410,26 +402,23 @@ export function applyExtendsToSelector(
           instructions.splice(i, 1);
           const chained = findChainedExtends(
             selector,
-            allExtendTuples,
+            expandedAllExtends,
             target,
             extendWith,
             originalSelector,
             originalSelectorValues
           );
-          for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
+          for (const chainedInstruction of chained) {
+            const {
+              target: chainedTarget,
+              extendWith: chainedExtendWith,
+              partial: chainedPartial
+            } = chainedInstruction;
             const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
             if (queuedKeys.has(chainedKey)) {
               continue;
             }
-            const matchingInstruction = expandedAllExtends.find(inst =>
-              inst.partial === chainedPartial
-              && inst.target.valueOf() === chainedTarget.valueOf()
-              && inst.extendWith.valueOf() === chainedExtendWith.valueOf()
-            );
-            if (!matchingInstruction) {
-              continue;
-            }
-            instructions.push(matchingInstruction);
+            instructions.push(chainedInstruction);
             queuedKeys.add(chainedKey);
           }
           changed = true;
@@ -3710,20 +3699,19 @@ function validateCompoundSelector(components: any[]): {
  * .foo, .ext3 to get .foo, .ext3, .ext4. This continues until exhausted.
  *
  * @param extendedSelector - The selector after transformation (e.g., .foo, .ext3)
- * @param allExtends - Array of all extends: [target, selectorWithExtend, partial, extendRoot, extendNode]
+ * @param allExtends - Array of all extend instructions
  * @param currentTarget - The target of the extend that just completed
  * @param currentSelectorWithExtend - The selector that just extended
- * @returns Array of extends to process next: [target, selectorWithExtend, partial, extendRoot, extendNode]
- *         where target is the extendedSelector (the newly transformed selector to continue extending)
+ * @returns Array of extend instructions to process next.
  */
 export function findChainedExtends(
   extendedSelector: Selector,
-  allExtends: Array<[Selector, Selector, boolean, any, any]>,
+  allExtends: ExtendInstruction[],
   currentTarget: Selector,
   currentSelectorWithExtend: Selector,
   originalSelector: Selector,
   originalValues?: Set<string>
-): Array<[Selector, Selector, boolean, any, any]> {
+): ExtendInstruction[] {
   return findChainedExtendsWithSkips(
     extendedSelector,
     allExtends,
@@ -3829,17 +3817,22 @@ function collectNewSelectorCandidates(
 
 function findChainedExtendsWithSkips(
   extendedSelector: Selector,
-  allExtends: Array<[Selector, Selector, boolean, any, any]>,
+  allExtends: ExtendInstruction[],
   skipKeys: Set<string>,
   originalSelector: Selector,
   originalValues = collectSelectorSubtreeValues(originalSelector)
-): Array<[Selector, Selector, boolean, any, any]> {
-  const chained: Array<[Selector, Selector, boolean, any, any]> = [];
+): ExtendInstruction[] {
+  const chained: ExtendInstruction[] = [];
   const candidates = collectNewSelectorCandidates(extendedSelector, originalValues);
   const queued = new Set<string>();
 
   for (const candidate of candidates) {
-    for (const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] of allExtends) {
+    for (const instruction of allExtends) {
+      const {
+        target: otherTarget,
+        extendWith: otherSelectorWithExtend,
+        partial: otherPartial
+      } = instruction;
       const skipKey = `${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
       if (skipKeys.has(skipKey)) {
         continue;
@@ -3858,7 +3851,7 @@ function findChainedExtendsWithSkips(
         continue;
       }
 
-      chained.push([otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
+      chained.push(instruction);
       queued.add(chainKey);
     }
   }

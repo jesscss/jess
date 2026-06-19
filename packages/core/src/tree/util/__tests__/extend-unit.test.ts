@@ -167,8 +167,8 @@ describe('createProcessedSelector', () => {
 describe('findChainedExtends', () => {
   it('returns empty when the result introduces no new selector subtree', () => {
     const extended = el('.base');
-    const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
-      [el('.a'), el('.x'), false, null, null]
+    const allExtends = [
+      { target: el('.a'), extendWith: el('.x'), partial: false }
     ];
     const result = findChainedExtends(extended, allExtends, el('.base'), el('.src'), el('.base'));
     expect(result).toHaveLength(0);
@@ -179,14 +179,14 @@ describe('findChainedExtends', () => {
     // After extending .base with .middle → SelectorList([.base, .middle])
     // Another extend targets .middle → should chain
     const extended = sellist([el('.base'), el('.middle')]);
-    const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
-      [el('.base'), el('.src1'), false, null, null],
-      [el('.middle'), el('.src2'), false, null, null]
+    const allExtends = [
+      { target: el('.base'), extendWith: el('.src1'), partial: false },
+      { target: el('.middle'), extendWith: el('.src2'), partial: false }
     ];
     const result = findChainedExtends(extended, allExtends, el('.base'), el('.src1'), el('.base'));
     expect(result).toHaveLength(1);
-    expect(result[0]![0].valueOf()).toBe('.middle');
-    expect(result[0]![1].valueOf()).toBe('.src2');
+    expect(result[0]!.target.valueOf()).toBe('.middle');
+    expect(result[0]!.extendWith.valueOf()).toBe('.src2');
   });
 
   it('does NOT chain on selectors that were in the original', () => {
@@ -195,9 +195,9 @@ describe('findChainedExtends', () => {
     // Another extend targets .existing → should NOT chain (it was original)
     const extended = sellist([el('.base'), el('.existing'), el('.child')]);
     const original = sellist([el('.base'), el('.existing')]);
-    const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
-      [el('.base'), el('.src1'), false, null, null],
-      [el('.existing'), el('.src2'), false, null, null]
+    const allExtends = [
+      { target: el('.base'), extendWith: el('.src1'), partial: false },
+      { target: el('.existing'), extendWith: el('.src2'), partial: false }
     ];
     const result = findChainedExtends(extended, allExtends, el('.base'), el('.src1'), original);
     // .existing was in original → not chained. Only .child could chain but nothing targets it.
@@ -209,15 +209,15 @@ describe('findChainedExtends', () => {
       is(sellist([el('.g'), compound([el('.i'), el('.j')])])),
       el('.h')
     ]);
-    const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
-      [el('.g'), compound([el('.i'), el('.j')]), true, null, null],
-      [el('.i'), el('.k'), true, null, null]
+    const allExtends = [
+      { target: el('.g'), extendWith: compound([el('.i'), el('.j')]), partial: true },
+      { target: el('.i'), extendWith: el('.k'), partial: true }
     ];
 
     const result = findChainedExtends(extended, allExtends, el('.g'), compound([el('.i'), el('.j')]), compound([el('.g'), el('.h')]));
     expect(result).toHaveLength(1);
-    expect(result[0]![0].valueOf()).toBe('.i');
-    expect(result[0]![1].valueOf()).toBe('.k');
+    expect(result[0]!.target.valueOf()).toBe('.i');
+    expect(result[0]!.extendWith.valueOf()).toBe('.k');
   });
 });
 
