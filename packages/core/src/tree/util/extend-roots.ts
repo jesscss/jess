@@ -46,7 +46,7 @@ function isRulesetValue(value: unknown): value is Ruleset {
 }
 
 function selectorOrUndefined(value: Selector | Nil | undefined): Selector | undefined {
-  return value instanceof Nil ? undefined : value;
+  return isSelectorValue(value) ? value : undefined;
 }
 
 function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
@@ -72,11 +72,11 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  * Returns undefined if there's no parent Ruleset (root level).
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
-  const parentRules = ruleset.parent;
+  const parentRules = ruleset.sourceParent;
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
-  const parentRuleset = parentRules.parent;
+  const parentRuleset = parentRules.sourceParent;
   if (!isRulesetValue(parentRuleset)) {
     return undefined;
   }
@@ -569,6 +569,31 @@ function selectorMayContainExtendTarget(
   return !isDisjoint(instruction.targetKeySet, parentSelector.keySet);
 }
 
+function selectorMayContainAnyExtendTarget(
+  targetKeySet: BitSet<string> | undefined,
+  hasOpaqueTarget: boolean,
+  selector: Selector,
+  parentSelector: Selector | undefined
+): boolean {
+  const library = targetKeySet?._library;
+  if (!library || hasOpaqueTarget) {
+    return true;
+  }
+  if (selector.keySetLibrary !== library) {
+    return true;
+  }
+  if (!isDisjoint(targetKeySet, selector.keySet)) {
+    return true;
+  }
+  if (!parentSelector) {
+    return false;
+  }
+  if (parentSelector.keySetLibrary !== library) {
+    return true;
+  }
+  return !isDisjoint(targetKeySet, parentSelector.keySet);
+}
+
 export function processExtends(context: Context): void {
   try {
     if (context.extends.length === 0) {
@@ -577,12 +602,12 @@ export function processExtends(context: Context): void {
 
     // Find the nearest Ruleset ancestor of an extend node.
     const findExtendingRuleset = (extendNode: Node | undefined): Ruleset | undefined => {
-      let cursor: Node | undefined = extendNode?.parent;
+      let cursor: Node | undefined = extendNode?.sourceParent;
       while (cursor) {
         if (isRulesetValue(cursor)) {
           return cursor;
         }
-        cursor = cursor.parent;
+        cursor = cursor.sourceParent;
       }
       return undefined;
     };
@@ -725,6 +750,10 @@ export function processExtends(context: Context): void {
         }
         if (parentSel) {
           parentSel.keySetLibrary ??= context.selectorBits;
+        }
+        if (!selectorMayContainAnyExtendTarget(visibleTargetKeySet, hasOpaqueVisibleTarget, selector, parentSel)) {
+          ruleset.removeFlag(F_EXTENDED);
+          continue;
         }
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
@@ -879,13 +908,13 @@ export function processExtends(context: Context): void {
             // For crossing matches, the extendWith must be the fully-composed
             // form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
             let extendWithComposed: Selector | undefined;
-            let cursor: Node | undefined = inst.extendNode?.parent;
+            let cursor: Node | undefined = inst.extendNode?.sourceParent;
             while (cursor) {
               if (isRulesetValue(cursor)) {
                 extendWithComposed = getFullComposedForm(cursor);
                 break;
               }
-              cursor = cursor.parent;
+              cursor = cursor.sourceParent;
             }
             items.push(copySelectorForExtend(extendWithComposed ?? inst.extendWith));
           }

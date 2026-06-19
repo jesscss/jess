@@ -37,10 +37,46 @@ and required docs.
 The fastest credible runtime path remains:
 
 - one canonical source tree;
+- `Node.sourceParent` only for canonical source ancestry; runtime placement,
+  callable output ownership, render indentation, and scope/frame relationships
+  must live in explicit state, not in source ancestry;
+- `sourceParent` is write-once canonical source ancestry. Parser/
+  construction/adoption may set it on a newly owned canonical child; after that
+  established value must not be rewritten. Explicit cold
+  materialization may create a new detached/materialized tree and stamp ancestry
+  on those new public nodes, but it should stamp once, should not leave the
+  ancestry pointer mutable, and must not move canonical nodes or pretend
+  runtime placement is source ancestry. `inherit()` is replacement metadata
+  only, not ownership, placement, or source ancestry;
+- normal eval/render/callable/lookup/import code must not rewrite `sourceParent`.
+  Source ancestry should be established by parser/construction/adoption of the
+  canonical tree, then treated as immutable runtime metadata. If a runtime path
+  thinks it needs to move `sourceParent`, carry placement/scope/owner state
+  directly instead;
+- `.inherit(...)` is a shrinking compatibility/replacement helper, not a design
+  primitive. It should become rare: replacement scalar results, isolated public
+  materialization, or selector/extend subset construction are the expected
+  remaining families. Treat every hot-path call as debt to audit or delete. Do
+  not add new uses without deleting larger machinery, and prefer constructor/
+  adoption-time metadata or direct result state over repeated inherit stamping.
+  `inherit()` must not indirectly adopt children or rewrite source ancestry for
+  placement; split selector/keyset metadata inheritance from source ownership
+  when needed. Do not preserve frequent `.inherit(...)` calls just because the
+  helper no longer copies `sourceParent`: call volume is itself suspicious in
+  eval/render/callable/lookup/import paths and must be driven down or isolated
+  to a named cold/materialization boundary. A queue pass that touches a file with
+  hot-path `.inherit(...)` sites should either delete/isolate at least one site
+  family or record why that family is selector/extend/public-materialization
+  work outside the active lane;
 - direct eval/render-to-string for normal output;
 - live lookup/binding/placement state instead of routine copied eval trees;
 - cold materialization only for public APIs or real semantic ownership
   boundaries;
+- no deep child copies for callable, mixin, eval, render, lookup, or
+  registration ownership. The only exceptions are narrowly scoped selector
+  subset copies for Less extend behavior after source-backed selector state is
+  not viable, and third-party JavaScript function interop materialization of
+  live binding/rules values;
 - fewer hot-path objects, arrays, recursive walks, helper calls, branch ladders,
   promise/generator states, and metadata mutations.
 
@@ -112,34 +148,41 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept extend root-target proof before `extendWith` bucket
-  widening. The CPU-backed target was `processExtends(...)` after the current
-  profile showed it at `29.49` self samples on external canonical Less
-  `benchmark.less`.
-- Verdict: keep delaying the visible `extendWith` union until after the
-  root-level visible target aggregate proves a root can match. This preserves
-  the existing registration-carried selector bucket and avoids the rejected
-  duplicate visibility scan.
-- New traversal: one loop over the already-filtered
-  `visibleExtends` array, only after the visible target aggregate proves the
-  root can contain a match. This replaces doing the same `extendWith` union
-  work during the visibility loop for dead roots; it does not walk rulesets,
-  child trees, or parent chains.
-- New node/materialization: none.
-- Render path: unchanged. Rendering does not create nodes or arrays to
-  stringify through this pass.
-- Helper/API surface: no new helper or public API.
-- Metadata mutations: none.
-- Side maps/arrays/copies: no new side maps or arrays. The flagged bitset copy
-  helper is the existing union ownership operation moved after the root-target
-  proof, so roots that cannot match avoid it.
-- Evidence: focused extend/bitset tests passed (`105` passed, `1` skipped),
-  and the ordered benchmark-path rebuild passed. A/B timing against the
-  temporarily reverted source measured control medians `172.39ms` and
-  `172.70ms`; the patch measured `170.34ms`, `174.78ms`, and `168.17ms`.
-  CPU profile
-  `profiling/core-architecture/20260618-213245-extend-deferred-with-union/CPU.20260618.213245.33269.0.001.cpuprofile`
-  reported profiler-overhead `179.15ms` / `176.20ms`, with
-  `processExtends(...)` at `14.93` self samples versus `29.49` in the refresh
-  profile. Treat as a small measured CPU-backed cleanup, not a broad speed
-  claim.
+- Latest pass: kept an extend aggregate ruleset guard and rejected a heavier
+  instruction-bucket target-discovery prototype. The rejected prototype added
+  `Map`/`Set`/array bucket work around visible extend instructions and did not
+  improve the real comparator. The kept guard uses the already-built
+  root-visible target bit union to skip a ruleset before the per-instruction
+  classification loop when neither the ruleset selector nor parent selector can
+  contain any visible target key.
+- Verdict: measured keep, but not goal completion. Temporary diagnostics
+  showed canonical `benchmark.less` had `26` visible extend instructions and
+  was doing `1,370 * 26 = 35,620` selector guard checks in the surviving root
+  for only `151` classifications. The kept guard skipped `1,281` of those
+  rulesets before the per-instruction loop and reduced selector guard checks to
+  `2,314`. Corrected Less v5/Jess comparator repeats after the guard measured
+  medians `161.26ms`, `162.56ms`, `163.07ms`, and final rebuilt
+  no-diagnostics `157.42ms` over `40` runs after `12` warmups, versus the
+  immediate pre-guard `170.28ms` run and the stored Less 4.5 target median
+  `42.16ms`. The campaign is still far from complete.
+- New traversal: one kept coarse per-ruleset bitset guard inside the existing
+  root/ruleset loop. It does not add a persistent index, registration bucket,
+  recursive walk, or per-ruleset candidate collection. Temporary diagnostic
+  counters were removed before closeout.
+- New node/materialization: none kept.
+- Render path: unchanged.
+- Helper/API surface: added one narrow internal predicate,
+  `selectorMayContainAnyExtendTarget(...)`, to delete thousands of hot
+  per-instruction predicate calls. It should not grow into a registry/index
+  layer.
+- Metadata mutations: unchanged.
+- Evidence: focused core extend matrix passed (`239` passed, `1` skipped);
+  explicit upstream Less `tests-unit/extend*` filter passed (`7` passed,
+  `58` skipped); full Less test-data gate passed (`65` passed); ordered
+  `@jesscss/core` and `jess` builds passed; `git diff --check` passed for the
+  touched files. CPU profile
+  `profiling/core-architecture/20260619-extend-aggregate-ruleset-guard-cpu`
+  moved `processExtends(...)` down to `6` total/self samples. The next target
+  should come from fresh CPU/wall-clock evidence; current larger remaining
+  frames include `Node`, `isNode`, `_processNodes`, render header/body work,
+  `copyChild`, `findWithinScopeSurface(...)`, and `lookupResolvedReference(...)`.

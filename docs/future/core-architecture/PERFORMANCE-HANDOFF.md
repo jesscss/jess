@@ -70,6 +70,20 @@ Carry this forward as the performance thesis:
 - writer capture/rollback must not stringify or slice output just to inspect
   then throw away the result;
 - copy/clone/inherit/frozen must not be routine eval/render isolation;
+- `sourceParent` is canonical source ancestry only. Set it when construction/
+  adoption first owns a canonical child, or when cold public materialization
+  creates new nodes; never rewrite an established `sourceParent` as a cheaper
+  clone/reparenting substitute. Callable/import/render placement must live in
+  frame, slot, print, or sparse runtime state. `.inherit(...)` no longer copying
+  `sourceParent` is not sufficient: frequent hot-path calls still count as
+  unfinished architecture debt and must be deleted, narrowed, or isolated behind
+  a cold/public boundary before making performance claims;
+- deep child copies must not be used for callable, mixin, eval, render, lookup,
+  or registration ownership. Repeated callable/mixin execution must use the
+  canonical source tree with live bindings and placement state. The only
+  exceptions are last-resort copying of selector subsets for Less extend
+  semantics and third-party JavaScript function interop materialization of live
+  binding/rules values, both isolated from normal eval/render ownership;
 - extend work must be selective to touched roots/rulesets and avoid repeated
   full-tree searches, selector stringification, and cloned selector structures.
 
@@ -83,6 +97,9 @@ In benchmark-leashed cutting mode:
 
 - keep the aggressive-cutting posture: delete machinery and semantic reasons
   for work rather than polishing helpers;
+- treat recursive child-copy machinery, `Reflect.construct` node copies,
+  generic node-value copying, and spread-cloned AST value objects in hot
+  callable/eval/render paths as blockers to remove, not helpers to optimize;
 - run focused tests and full gates before claiming behavior progress;
 - run stable wall-clock hot-path benchmarks before and after every
   performance-targeting hot-path edit, and record the benchmark `signal=` value
@@ -108,6 +125,23 @@ Current timed target selection must start from the latest CPU/V8 or scoped
 timing evidence. The broad `benchmark.less` lookup counters remain useful
 supporting context, but they do not make merge-reference reads or child-entry
 scans the active target by themselves.
+
+Current benchmark gate: the Less test-data gate is green and canonical
+`benchmark.less` timing is unblocked, but the campaign is not complete.
+Do not use a `.cjs` runner physically located inside the Less v5 package as a
+Less 4 comparator: from that file, `require('less')` resolves through the
+package self-reference and reports `version:"5.0.0"` even when the runner field
+says `lessPath:"less"`. Direct npm Less `4.6.3` `less.render(...)` from the
+Jess worktree measured median `35.02ms` / average `40.71ms` over `80` runs
+after `20` warmups; the stored historical v4.5 result is median `42.16ms` /
+average `47.40ms`. The active pass/fail target is built Less v5/Jess under
+`42.16ms` median on canonical `benchmark.less`. Routine passes should not
+re-benchmark Less 4; use `pnpm run benchmark:less:v4-v5 -- --runs=24
+--warmup=8` to measure v5/Jess against the stored Less 4 baseline, and use
+`--less4=measure` only for occasional comparator audits. Current corrected
+v5/Jess evidence is median `163.68ms` / average `176.72ms`, about `2.88x`
+slower than stored Less 4 by median. Choose the next target from a fresh V8/CPU
+profile or repeated stable benchmark evidence.
 
 Current broad `benchmark.less` CPU profile points first at source-surface/copy
 and extend work: `Node` construction, `copyChild`,
@@ -4423,6 +4457,285 @@ reported profiler-overhead `avg 179.15ms` / `median 176.20ms`, and moved
 `processExtends(...)` from `29.49` to `14.93` self samples. `isDisjoint(...)`
 varied upward in that profile, so this is a small CPU-backed cleanup, not proof
 that the extend family is finished.
+
+2026-06-19 binding/source-parent correctness unblocker: do not benchmark yet.
+The latest architecture pass repaired focused import/reference and selector
+attribute regressions while deleting local copy/inherit machinery:
+`AttributeSelector` resolved output no longer calls `copyWithReusableLeaves`,
+fallback callable values stringify through `MixinCollection` callable
+signatures instead of object coercion, namespace recursion uses
+`CallableRulesEntry` directly, and source-backed callable ruleset/at-rule
+wrappers use explicit shallow metadata instead of generic `.inherit(...)`.
+Focused evidence is green (`selector-attr` + `import-style`: `102` passed,
+`1` skipped; callable helper suite: `15` passed; declaration suite: `73`
+passed; core build passed). `pnpm run verify:baseline -- --changed` is still
+red in the core full test gate with `35` failures, down from the prior `44`.
+The remaining failures are mostly render-buffer/sequence/ruleset and extend
+semantics/snapshot issues, so canonical Less benchmark timing remains blocked
+until the changed baseline is green.
+
+2026-06-19 source-backed `$for` no-copy/control unblocker: do not benchmark
+yet. The latest pass removed the normal `$for` iteration child
+`copyWithReusableLeaves(...)` path and replaced it with shallow source-backed
+callable rules surfaces plus live iteration `ScopeFrame` slots. Focused
+control coverage is green (`control.test.ts`: `63` passed), sequence merge
+normalization through nested `$for` output is green (`declaration.test.ts -t
+"coalesces sequence"`: `2` passed), and core build passes. The changed
+baseline now fails only in `extend-import-style.test.ts` (`4` reference-import
+collapse failures where `:is(.visible)` is still emitted instead of
+`.visible`). Benchmark timing remains blocked until that extend cluster is
+green; no speed claim was made from this correctness/copy-deletion pass.
+
+2026-06-19 reference-compose/default-guard unblocker: do not benchmark yet.
+The reference-import extend collapse cluster is repaired by expanding generated
+reference-mode `:is(...)` wrappers during header composition while carrying
+the `F_EXTENDED` fact from the original selector-list alternative. This keeps
+authored `:is(...)` out of scope and fixes the remaining `& + &` cases that
+previously emitted `:is(.visible)` instead of `.visible`. Focused evidence:
+the targeted collapse cases pass (`4` passed), full
+`extend-import-style.test.ts` passes (`23` passed), and the broader extend
+matrix passes (`216` passed).
+
+The changed baseline then exposed parser expectation drift and one CSS
+custom-property raw-output regression. Current parser evidence is green:
+focused `less-parser` guards pass (`13` passed), full `less-parser` passes
+(`26` files, `420` tests), focused CSS parser raw/serialize/container tests
+pass (`68` passed), and full `css-parser` passes (`9` files, `110` tests).
+The CSS parser now preserves custom declaration values as one raw source
+scalar from the authored token slice, and declaration rendering marks trivia
+inside that raw scalar as already emitted so comments are not replayed at later
+boundaries.
+
+`pnpm run verify:baseline -- --changed` now reaches the Jess Less test-data
+gate and fails in `pnpm run test:less:test-data` with `19` fixture mismatches.
+The failures include custom-property spacing, CSS source serialization, guard
+ordering/scope, mixin closure, property accessor, starting-style, and
+URL/function formatting cases. Benchmark timing remains blocked until those
+fixture mismatches are repaired or narrowed to a documented non-performance
+blocker. No speed claim was made from this parser/correctness pass.
+
+2026-06-19 call-render/dimension correctness unblocker: do not benchmark yet.
+Buffered call rendering now mirrors emitted separator-owned trivia into the
+returned render text, fixing `comments2.less` without materializing call args.
+Rendered call scalar fast paths now share `serializeDimensionSyntax(...)`,
+fixing `css-3.less` `rotate(-0.0000000001deg)` normalization without public
+string-wrapper fallback. Evidence: focused call trivia tests passed (`3`
+passed), focused call/dimension render tests passed (`11` passed), ordered
+core/plugin/CLI rebuild passed, direct compiler probes for `comments2.less`
+and `css-3.less` matched the expected lines, and
+`pnpm run test:less:test-data -- --run --reporter=dot` is down to `11`
+remaining fixture failures. Benchmark timing remains blocked until the Less
+fixture gate is green or the remaining blocker is explicitly narrowed.
+
+2026-06-19 no-param callable lexical-frame unblocker: do not benchmark yet.
+No-param callable execution now wires lexical source-backed frames before the
+leaky caller fallback lane, fixing `mixins-closure.less` without copying,
+adopting, or rewriting `sourceParent`. Focused evidence: core callable/guard
+swaths passed (`4` and `5` focused tests), the `mixins-closure` Less fixture
+passed, ordered core/fns/plugin/CLI rebuild passed, and `git diff --check`
+passed. Full `pnpm run test:less:test-data -- --run --reporter=dot` improved
+to `7` remaining failures: `import-reference`, `import`, `mixins-guards`,
+`mixins-interpolated`, `operations-advanced`, `property-accessors`, and
+`scope`. A trial inline namespace-ruleset guard filter was rejected because it
+turned `#top > #deeper > .mixin(1)` into a full lookup miss; namespace guard
+work must fix guard frame preparation/evaluation rather than adding an
+unprepared sync prefix predicate. Benchmark timing remains blocked.
+
+2026-06-19 namespace guarded callable lookup unblocker: do not benchmark yet.
+Namespace callable lookup now carries namespace guard metadata through
+`CallableRulesEntry`, unions guarded sibling namespace surfaces instead of
+short-circuiting on the first ruleset prefix, filters namespace results by
+ordered source ancestry, dedupes repeated guard chains, and source-orders
+multi-hit namespace calls. This fixes the focused `mixins-guards.less` guarded
+namespace cases without cloning, adopting, or rewriting `sourceParent`.
+Evidence: ordered core/fns/plugin/parser/CLI rebuild passed; focused core
+namespace/guard swath passed (`6` tests); focused Less
+`mixins-guards|mixins-closure` passed (`3` tests). Full
+`pnpm run test:less:test-data -- --run --reporter=dot` remains red with `12`
+failures: `css-escapes`, `import-reference-issues`, `import-reference`,
+`import-remote`, `import`, `media`, `mixin-noparens`,
+`mixins-interpolated`, `namespace-targeted`, `operations-advanced`,
+`property-accessors`, and `scope`. The new result-level source-parent filter,
+dedupe scan, and source-order sort are correctness taxes; future performance
+work should try to carry those facts during the direct crawl rather than
+leaving them as post-result normalization.
+
+2026-06-19 interpolated/no-parens ruleset callable unblocker: do not benchmark
+yet. Ruleset namespace/callable lookup now keeps real `Ruleset` entries on
+canonical source ancestry (`sourceParent`, not the old `parent` slot), checks
+full exact ruleset paths before treating a first-segment namespace as a miss,
+falls through from empty nested namespace results to bounded
+`searchParents:false` remainder lookup, and recognizes evaluated/interpolated
+ruleset selector keys when expanded selector text lives in an ampersand node or
+source ancestry still contains parser interpolation placeholders. No clone,
+deep copy, wrapper `Rules`, adoption, `.inherit(...)`, or `sourceParent`
+rewrite was added. Focused evidence: ordered core/Jess rebuild passed; focused
+Less `css-escapes|mixin-noparens|namespace-targeted|mixins-interpolated`
+passed (`4` tests); focused core namespace/guard swath passed (`6` tests).
+Full `pnpm run test:less:test-data -- --run --reporter=dot` is down to `5`
+remaining failures: `import-reference`, `import`, `operations-advanced`,
+`property-accessors`, and `scope`. Benchmark timing remains blocked until the
+Less fixture gate is green or a remaining blocker is explicitly narrowed.
+
+2026-06-19 declaration ordering and ampersand-surface unblocker: do not
+benchmark yet. Direct declaration lookup now carries child-surface traversal
+order instead of comparing unrelated owner-local indexes, and callable
+child-surface summaries suppress ambient mixin lookup into bare `& { ... }`
+wrappers while preserving ruleset/reference surfaces. No clone, deep copy,
+wrapper `Rules`, adoption, `.inherit(...)`, or `sourceParent` rewrite was
+added. Focused evidence: ordered core/Jess rebuild passed; focused Less
+`scope|property-accessors` passed (`2` tests); focused core direct property
+child-surface ordering test passed. Full
+`pnpm run test:less:test-data -- --run --reporter=dot` is down to `3`
+remaining failures: `import-reference`, `import`, and `operations-advanced`.
+Benchmark timing remains blocked until the Less fixture gate is green or a
+remaining blocker is explicitly narrowed.
+
+2026-06-19 reference leaf at-rule render unblocker: do not benchmark yet.
+Rules-body render no longer treats leaf at-rules as reference-mode containers,
+so `@namespace`/unknown leaf at-rules from reference imports stay suppressed
+unless a real render path pulls them in. No clone, deep copy, wrapper `Rules`,
+adoption, `.inherit(...)`, or `sourceParent` rewrite was added. Focused
+evidence: ordered core/Jess rebuild passed; focused Less `import-reference`
+passed (`2` tests). Full `pnpm run test:less:test-data -- --run --reporter=dot`
+is down to `2` remaining failures: `import` and `operations-advanced`.
+Benchmark timing remains blocked until the Less fixture gate is green or a
+remaining blocker is explicitly narrowed.
+
+2026-06-19 fixture gate green and benchmark tie/noise: the benchmark gate is
+unblocked, but the performance goal is not complete. The final red fixtures
+were correctness issues, not clone/materialization fixes: preserve-mode
+color/dimension arithmetic now follows Less-compatible channel arithmetic and
+same-unit multiplication, and the Less test harness keeps the configured compat
+plugin plus fixture-local `plugin-simple` instead of letting fixture config
+replace it with a bare compat plugin. Evidence: focused color/dimension tests
+passed, focused `operations-advanced` passed, focused
+`tests-unit/import/import.less` passed, ordered `@jesscss/core` and `jess`
+builds passed, and `pnpm run test:less:test-data -- --run --reporter=dot`
+passed (`65` tests). `pnpm run measure:less:hotpath -- --stable` produced
+mixed sanity signals: usable medians for `functions` (`9.09ms`),
+`import-reference` (`13.47ms`), and `mixins-guards` (`12.43ms`), but unstable
+signals for `extend-chaining` and `media`.
+
+Canonical broad `benchmark.less` is now measurable, but the real comparator is
+not close. A previously recorded "Less 4" wrapper run was invalid because the
+runner file was located inside the Less v5 package; Node resolved
+`require('less')` as the package self-reference, so the JSON reported
+`version:"5.0.0"` and timed Jess/v5 again. Direct npm Less `4.6.3`
+`less.render(...)` from the Jess worktree on canonical `benchmark.less` with
+`math:'parens-division'` measured median `35.02ms`, average `40.71ms`,
+minimum `32.01ms`, p75 `38.29ms`, and max `137.07ms` over `80` measured runs
+after `20` warmups. The stored historical v4.5 result for the same benchmark
+is median `42.16ms` / average `47.40ms`. The dedicated Jess-side comparator
+`scripts/compare-less-v4-v5-benchmark.mjs` uses that historical baseline by
+default and measures only the built Less v5/Jess facade; pass `--less4=measure`
+only when intentionally auditing the comparator. Current corrected v5/Jess
+evidence is median `163.68ms` / average `176.72ms` over `24` runs after `8`
+warmups, around `2.88x` slower than stored Less 4 by median. Next target
+selection must come from a fresh V8/CPU profile or repeated stable benchmark
+evidence; the diagnostic `profile-less-benchmark.mjs` run pointed at parse and
+`Reference.evalNode` timing plus lookup child-entry skip/cache-miss volume, but
+its elapsed time is instrumentation overhead and not user-facing speed.
+
+2026-06-19 CPU refresh and rejected cuts: no production performance cut was
+kept. Ordered `@jesscss/core` and `jess` builds passed before measurement.
+Fresh CPU profile:
+`profiling/core-architecture/20260619-053743-current-cpu/CPU.20260619.053743.37247.0.001.cpuprofile`.
+Instrumentation in the profiled run reported `LessParser.parse` `97.61ms`,
+`Reference.evalNode` `53.49ms`, and direct lookup counters still dominated by
+declaration child-entry skips/cache misses. Raw V8 aggregation was noisy with
+startup/module loading, but runtime totals still pointed at
+`_prepareRulesetRegistration`, `_prepareChildRulesRegistration`,
+`Reference.evalNode`, `lookupResolvedReference`,
+`rulesMayContainMergeDeclarationSurface`, `renderRulesBody`, and
+`ensureRenderedFrames`.
+
+Rejected cut 1: cached declaration/var/merge subtree summaries on `Rules`.
+This looked aligned with the profile because repeated
+`rulesMayContainMergeDeclarationSurface(...)` scans are timed, but the first
+implementation was semantically too broad: focused callable namespace tests
+failed, including `namespace descendant fallback-frame hit skips nested lookup`
+and stable namespace mixin-ruleset calls. The patch was reverted. Follow-up
+should carry declaration-surface facts in the same direct child-entry creation
+that needs them, or cache only immutable registration-local facts, not a broad
+mutable subtree summary tied to source-parent invalidation.
+
+Rejected cut 2: reuse evaluated static scalar call arguments instead of copying
+them when `ownResults` is true. This would reduce `copyWithReusableLeaves(...)`
+under function/CSS call argument evaluation, but raw-argument diagnostics still
+expect the owned argument surface (`records metadata rawArgs placement beside
+the owned argument surface` failed). The patch was reverted. Do not revisit
+this unless raw-argument placement is split from ownership so third-party
+function interop remains understandable.
+
+Benchmark refresh after the rejected cuts: the first short v5/Jess facade run
+from `/Users/matthew/git/oss/less.js/packages/less` measured `avg 163.87ms` /
+`median 161.74ms` / `variance_pct 5.79` for `benchmark.less
+--runs=24 --warmup=8 --math=parens-division`. The subsequent "Less 4"
+`80/20` wrapper runs around `163ms` were invalid because the runner lived in
+the Less v5 package and resolved `require('less')` as the v5 package
+self-reference (`version:"5.0.0"`). Direct npm Less `4.6.3` timing from the
+Jess worktree measured median `35.02ms` / average `40.71ms` over the same
+canonical file and math mode. The next pass should target registration/render/
+reference work from the CPU profile and compare built Less v5/Jess against the
+stored Less 4 baseline with `pnpm run benchmark:less:v4-v5 -- --runs=24
+--warmup=8`. Use `--less4=measure` only when intentionally refreshing/auditing
+the comparator.
+
+2026-06-19 extend target-discovery pass: a per-root instruction bucket
+prototype was rejected. It tried to bucket visible extend instructions by
+target selector keys and collect per-ruleset candidates, but that added
+`Map`/`Set`/array work and a per-root bucket build without improving the real
+benchmark. Focused extend tests passed, but canonical
+`benchmark.less --runs=24 --warmup=8` worsened/noised around median
+`164.45ms` after the already-bad current source around `163-164ms`. The lesson
+is the same as the lookup-registry work: do not keep a new lookup/index shape
+just because it reduces theoretical candidate count; registration and
+bookkeeping are part of the timed surface.
+
+The kept extend cut is a non-indexed aggregate ruleset guard. During the
+existing visible-instruction scan, `processExtends(...)` already builds one
+union of target selector bits for a visible root. The new guard checks each
+ruleset selector and parent selector against that root-visible target union
+before entering the per-instruction classification loop. This is intentionally
+not a registry, not a per-key ruleset bucket, and not a second target index:
+it is one coarse proof that lets rulesets with no possible target key overlap
+skip all visible extend instructions.
+
+Diagnostic counters, added only temporarily and removed before committing,
+showed why this target mattered on canonical `benchmark.less`: before the
+guard, `processExtends(...)` had `26` instructions, `7` roots, root-level bits
+skipped `6` roots, but the surviving root still scanned `1,370` rulesets and
+performed `35,620` selector guard checks for only `151` classifications. After
+the aggregate guard, the same file still scanned `1,370` rulesets but skipped
+`1,281` of them before the per-instruction loop, reducing selector guard
+checks to `2,314` while preserving the same `151` classifications.
+
+Evidence: focused core extend matrix passed (`239` passed, `1` skipped);
+upstream Less test-data gate passed (`65` passed); explicit upstream
+`tests-unit/extend*` filter passed (`7` passed, `58` skipped); ordered
+`@jesscss/core` and `jess` builds passed. Corrected Less v4-vs-v5 comparator
+after the kept guard measured `benchmark.less` at median `161.26ms` /
+trimmed average `163.51ms`, repeat median `162.56ms` / trimmed average
+`162.49ms`, clean post-diagnostic repeat median `163.07ms` / trimmed average
+`166.95ms`, and final rebuilt no-diagnostics median `157.42ms` / trimmed
+average `159.08ms` over `40` runs after `12` warmups. The immediate pre-guard
+clean run was median `170.28ms`; the stored Less 4.5 target remains median
+`42.16ms`, so the campaign is still far from complete. CPU profile
+`profiling/core-architecture/20260619-extend-aggregate-ruleset-guard-cpu/CPU.20260619.061419.74264.0.001.cpuprofile`
+confirmed the target moved: `processExtends(...)` dropped to `6` total/self
+samples, `selectorMayContainExtendTarget(...)` to `2`, and
+`applyExtendsToSelector(...)` to `1`; larger remaining sampled frames include
+`Node`, `isNode`, `_processNodes`, render header/body work, `copyChild`,
+`findWithinScopeSurface(...)`, and `lookupResolvedReference(...)`.
+
+Next target direction: do not chase more extend indexing unless a fresh profile
+puts extend back near the top. The broader target remains fastest valid work
+selection, not "bitsets versus no bitsets." Current evidence says the next
+kept performance cut should come from Node construction/source-surface
+creation, parser/eval traversal, render body/header, direct lookup/reference,
+or remaining copy/materialization surfaces, with the same v4-vs-v5 comparator
+as the wall-clock gate.
 
 ## Parked Lessons
 
