@@ -454,6 +454,23 @@ total samples, `copyCallableRulesValue(...)` from `514` to `447`, and
 CPU cleanup only, not as a meaningful wall-clock win. The next target should
 still come from the larger callable copy/render stacks.
 
+2026-06-18 rejected extend instruction keyset cache: after the user called out
+the root selector-bit bucket direction, a follow-up prototype cached
+`target.keySet`, `extendWith.keySet`, and target emptiness on each
+`RootExtendInstruction` so the root/ruleset pruning loops would not repeat
+those bitset reads. Focused extend tests passed (`105` passed, `1` skipped)
+and the ordered benchmark-path rebuild passed, but wall-clock rejected the
+extra instruction shape: refreshed current source measured `avg 177.93ms` /
+`median 173.72ms` and `avg 182.77ms` / `median 178.26ms`; the prototype
+measured `avg 184.91ms` / `median 180.90ms` and `avg 182.93ms` /
+`median 180.60ms`. Profile comparison showed `processExtends(...)` unchanged
+at `18` self samples; `isEmptyBitSet(...)` disappeared, but
+`selectorMayContainExtendTarget(...)` rose from `5` to `9` samples and nearby
+copy/reference frames noised upward. Reverted. Keep the existing
+registration-carried root bit bucket; future root pruning should delete whole
+per-root/per-ruleset loops, not add cached fields to every extend instruction
+unless a profile shows repeated keyset recomputation dominating.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

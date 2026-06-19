@@ -112,34 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept a rules-like reference surface descriptor cleanup and
-  rejected nested callable body source-backed reuse. The CPU-backed target was
-  `createRulesLikeReferenceSurface(...)` as a pure self-time frame in the
-  current benchmark profile.
-- Verdict: keep only as a small CPU cleanup, not as a meaningful wall-clock
-  win. `createRulesLikeReferenceSurface(...)` still copies all own properties,
-  because non-enumerable internal fields are semantic, but it no longer builds
-  one aggregate descriptor object for `sourceNode`, `parent`, and `index`.
-  `sourceNode` and `parent` are defined individually to preserve
-  non-enumerability; `index` is assigned directly.
+- Latest pass: rejected an extend-instruction keyset cache and kept only a
+  dead-helper deletion from the extend root pruning code. The CPU-backed
+  target was `processExtends(...)` plus bitset helpers after the kept
+  registration-carried root selector bucket.
+- Verdict: do not cache `target.keySet`, `extendWith.keySet`, and target
+  emptiness on every `RootExtendInstruction`. It passed focused tests but
+  worsened/noised canonical `benchmark.less` wall-clock and left
+  `processExtends(...)` unchanged in the profile. The kept code change only
+  removes the now-unused `addSelectorKeysToBitSet(...)` helper.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none added.
+- Helper/API surface: deleted one unused local helper; none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps, arrays, or copies. The rejected
-  nested callable body source-backed prototype would have reduced copies, but
-  it either missed nested callable lookups or reparented canonical source
-  children, so it was reverted before benchmarking.
-- Evidence: exact focused rules-like/callable tests passed (`7` passed,
-  `341` skipped). Ordered benchmark-path rebuild passed. Current-source
-  refresh measured `177.43ms` average / `174.11ms` median and `174.81ms`
-  average / `173.30ms` median on external canonical Less `benchmark.less
-  --runs=24 --warmup=8 --math=parens-division`. The kept source measured
-  `177.25ms` average / `173.37ms` median, `176.49ms` average /
-  `174.47ms` median, and `174.58ms` average / `172.26ms` median. CPU profile
-  `profiling/core-architecture/20260618-202232-ruleslike-surface-descriptor-cpu/CPU.20260618.202232.50999.0.001.cpuprofile`
-  moved `createRulesLikeReferenceSurface(...)` from `24` total samples to
-  `20`; wall-clock is neutral-to-tiny. The broader matching reference test
-  remains branch-baseline red after temporarily reverse-applying this patch.
+- Side maps/arrays/copies: no new side maps, arrays, or copies in kept code.
+  The rejected prototype added fields to existing instruction objects and was
+  reverted after measurement.
+- Evidence: focused extend tests passed (`105` passed, `1` skipped). Ordered
+  benchmark-path rebuild passed. Current-source refresh measured `177.93ms`
+  average / `173.72ms` median and `182.77ms` average / `178.26ms` median on
+  external canonical Less `benchmark.less --runs=24 --warmup=8
+  --math=parens-division`. The rejected prototype measured `184.91ms`
+  average / `180.90ms` median and `182.93ms` average / `180.60ms` median.
+  CPU profile
+  `profiling/core-architecture/20260618-202834-extend-instruction-keyset-cache-rejected/CPU.20260618.202834.2030.0.001.cpuprofile`
+  kept `processExtends(...)` at `18` self samples; this is a rejection, not a
+  speed win. The final kept helper deletion passed the standard diff and
+  aggressive-cutting gates before commit.

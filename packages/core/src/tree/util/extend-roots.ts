@@ -573,10 +573,6 @@ function isInstructionVisibleForRoot(
   return visibleRoots.has(rootRules);
 }
 
-function addSelectorKeysToBitSet(keySet: BitSet<string> | undefined, selector: Selector): BitSet<string> {
-  return keySet ? keySet.or(selector.keySet) : selector.keySet.clone();
-}
-
 function rootMayContainExtendTarget(instruction: RootExtendInstruction, rootKeySet: BitSet<string> | undefined): boolean {
   if (!rootKeySet || instruction.target.keySetLibrary !== rootKeySet._library) {
     return true;
