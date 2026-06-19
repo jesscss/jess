@@ -3692,6 +3692,58 @@ Follow-up empty selector-bit check kept:
 Verdict: keep as a small measured wall-clock win. Do not widen this into a
 generic bitset-helper rewrite without a fresh CPU-selected target.
 
+Rejected follow-up: root extend reachability closure.
+
+- unsafe variant: removing the eager `extendWith` key union from
+  `processExtends(...)` made the root target prefilter more selective but broke
+  Less media chaining (`.ma -> .mb -> .mc`) in
+  `extend-eval-integration.test.ts`;
+- behavior-correct variant: start from each root's selector-bit aggregate,
+  activate only visible extends whose target intersects that aggregate, OR in
+  each activated `extendWith`, then repeat until no more instructions can
+  become reachable. Focused extend coverage passed (`110` passed, `1` skipped),
+  including media-chain and combinator cases;
+- wall-clock rejected it on external canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division`: against the current refresh of
+  average `200.72ms` / median `198.62ms`, the closure prototype reported
+  average `213.88ms` / median `215.17ms`, then `202.39ms` / `200.55ms`, then
+  `207.31ms` / `201.23ms`. Benchmark.less has few extend instructions and most
+  are chain-relevant, so the added closure loop/array costs more than it saves;
+- keep the existing production shape: root aggregate pruning plus local/parent
+  negative pruning, with eager `extendWith` union for chain safety. Do not retry
+  closure pruning unless a measured workload has many unrelated visible extends
+  per root.
+
+Rejected follow-up: pending declaration-name canonical reuse.
+
+- attempted to share the static registration path's `{ reuseCanonical: true }`
+  rule with `_retryPendingDeclarationNamePrep(...)` for non-assignment
+  declarations. The goal was to avoid the `copyValueForDerived(...)` stack
+  sampled under `_prepareRegistrationForEval(...)`;
+- focused declaration/reference coverage rejected it before benchmarking:
+  `declaration.test.ts` reintroduced the duplicate merge output
+  `src: one, two, one, three;`, and two complex selector callable reference
+  tests rendered different whitespace under nested `> .bar.baz`;
+- conclusion: pending declaration-name prep has merge/ownership side effects
+  that the static declaration path does not. Do not apply canonical reuse there
+  without first separating merge-chain occurrence state from declaration
+  materialization.
+
+Rejected follow-up: recursive negative cache for reference-import scans.
+
+- attempted to cache negative `rulesMayContainReferenceImports(...)` scans on
+  `Rules`, clearing the local cache in `registerNode(...)` and avoiding parent
+  negative caching when an unprepared child was seen;
+- focused reference/import/mixin coverage rejected it. Failures included
+  reference-import namespaces rendering optional imported namespace blocks,
+  guarded import `with` configs falling back to direct child-surface bridges,
+  missed nested mixin lookups, and setDefined mixin writes no longer updating
+  caller bindings;
+- conclusion: reference-import visibility is not just a recursive yes/no
+  subtree fact. The next safe cut must carry explicit reference-import surface
+  facts at registration/eval boundaries instead of caching negative recursive
+  discovery after the fact.
+
 Next architecture theories to test:
 
 1. Continue selector-bit/root-surface pruning only after modeling composed
