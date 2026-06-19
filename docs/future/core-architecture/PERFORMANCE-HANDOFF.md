@@ -295,6 +295,36 @@ benchmark rejected it: `avg 171.99ms` / `median 169.40ms`, then
 because `isNode(...)` appears in a profile; only keep a narrower direct check
 when the exact call site itself is isolated and wall-clock confirms it.
 
+2026-06-18 reference-import negative summary pass: the target came from the
+same current refresh/profile: `rulesMayContainReferenceImports(...)` and
+`collectStaticDeclarationInvalidationKeys(...)` were visible under
+registration/lookup work. The kept cut adds a `Rules`-owned
+`mayContainReferenceImportSurface` negative cache: it only records `false`
+after a complete scan proves no reference-import surface, and it does not
+stamp positive placement/reference-mode facts onto reusable imported `Rules`.
+The cache is invalidated up the parent chain only when registering child rules
+or style imports, the two registration events that can change this surface.
+
+Focused lookup/reference-import behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts -t "direct variable lookup enters reference-import child surfaces even when family flags are absent|direct property lookup enters reference-import child surfaces even when family flags are absent|direct variable reference-import miss does not widen ordinary property child scans|direct property reference-import miss does not widen ordinary variable child scans|child reference imports are carried apart from exact callable surfaces|late reference-import children update prepared aggregate facts|renders registration-prepared rules without deriving another root surface|routes direct Rules.evalNode through registration prep|does not retry style imports when content evaluation fails"`
+(`9` passed, `483` skipped), and the ordered benchmark-path rebuild passed.
+The broader import-reference fixture regex remains branch-baseline red even
+after reverting the source patch, so it is not valid causal evidence for or
+against this cache in this pass.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division`, after rebuilding from the Jess worktree, measured
+`avg 166.45ms` / `median 163.66ms`, `avg 170.93ms` /
+`median 167.87ms`, then `avg 166.78ms` / `median 164.18ms`, versus the
+current refresh pair `avg 173.95ms` / `median 171.11ms` and
+`avg 170.26ms` / `median 167.59ms`. CPU profile
+`profiling/core-architecture/20260618-212702-reference-import-negative-cache-cpu/CPU.20260618.212702.94674.0.001.cpuprofile`
+was mixed (`avg 185.06ms` / `median 182.60ms`), but the targeted
+`rulesMayContainReferenceImports(...)` frame stayed low at `4.58` samples and
+invalidation cost was negligible (`0.02`). Keep from wall-clock evidence while
+noting that `collectStaticDeclarationInvalidationKeys(...)` remains a live
+target.
+
 2026-06-18 callable default-assignment reuse pass: refreshed current-source
 evidence before the patch was external canonical Less `benchmark.less
 --runs=24 --warmup=8 --math=parens-division` at `avg 185.93ms` /

@@ -112,10 +112,11 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept extend self/warning cleanup. The CPU-backed target was
-  `processExtends(...)` after the current refresh measured `185.92ms` /
-  `181.67ms` and `188.69ms` / `184.57ms` on external canonical Less
-  `benchmark.less`.
+- Latest pass: kept reference-import negative summary cache. The CPU-backed
+  target was `rulesMayContainReferenceImports(...)` /
+  `collectStaticDeclarationInvalidationKeys(...)` after the current refresh
+  measured `173.95ms` / `171.11ms` and `170.26ms` / `167.59ms` on external
+  canonical Less `benchmark.less`.
 - Follow-up rejected: two-pass lazy visible instruction collection. It avoided
   some dead-root allocation but duplicated visibility and bitset checks on
   surviving roots, and CPU showed `processExtends(...)` rising from `15.79` to
@@ -124,27 +125,30 @@ Keep this section to the current pass only. Move historical evidence to
   and build passed, and the prototype reduced `isNode(...)` samples, but
   wall-clock/profile timing worsened (`194.02ms` / `194.63ms` profiled). Do
   not retry a broad direct-type rewrite; isolate exact call sites instead.
-- Verdict: keep `RootExtendInstruction.isSelfExtend` and direct warning-path
-  loops. The self-extend fact is carried while `targetValue` is already being
-  computed, and the unmatched-warning scan no longer allocates arrays for
-  `.some(...)` short-circuit checks.
-- New traversal: no new hot traversal. The warning path still scans protected
-  roots only for unmatched instructions; it now uses existing iterators and
-  breaks directly instead of materializing arrays.
+- Verdict: keep a negative-only `Rules.mayContainReferenceImportSurface`
+  summary. It records only `false` after a full scan, avoids caching positive
+  placement/reference-mode facts on reusable imported `Rules`, and invalidates
+  when child rules or style imports are registered.
+- New traversal: one new invalidation parent walk on child-rules/style-import
+  registration only. It replaces repeated recursive negative scans in
+  `rulesMayContainReferenceImports(...)`; measured invalidation cost was
+  negligible in the profile.
 - New node/materialization: none.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: no new helper or public API.
-- Metadata mutations: unchanged.
-- Side maps/arrays/copies: no new side maps. The pass deletes warning-path
-  `Array.from(...)` allocations and carries one boolean on the existing
-  instruction record.
-- Evidence: focused extend tests passed (`105` passed, `1` skipped). The
-  ordered benchmark-path rebuild passed. External canonical Less
-  `benchmark.less --runs=24 --warmup=8 --math=parens-division` moved from the
-  refresh pair `185.92ms` / `181.67ms` and `188.69ms` / `184.57ms` to
-  `168.64ms` / `166.00ms` and `173.66ms` / `169.60ms`. The profiled run
-  `profiling/core-architecture/20260618-211008-extend-self-warning-cpu/CPU.20260618.211008.64958.0.001.cpuprofile`
-  reported `179.00ms` / `177.20ms`; `processExtends(...)` moved from the
-  refresh profile's `24` self / `104` total samples to `15.79` self /
-  `15.79` total.
+- Metadata mutations: one cached boolean summary on `Rules`, cleared on
+  derived-state reset and targeted registration invalidation.
+- Side maps/arrays/copies: no new side maps, arrays, or copies.
+- Evidence: focused lookup/reference-import tests passed (`9` passed,
+  `483` skipped), and the ordered benchmark-path rebuild passed. The broader
+  import-reference regex is branch-baseline red even after source revert, so it
+  is recorded only as an inconclusive existing fixture gap. External canonical
+  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division` moved from
+  the refresh pair `173.95ms` / `171.11ms` and `170.26ms` / `167.59ms` to
+  `166.45ms` / `163.66ms`, `170.93ms` / `167.87ms`, and `166.78ms` /
+  `164.18ms`. CPU profile
+  `profiling/core-architecture/20260618-212702-reference-import-negative-cache-cpu/CPU.20260618.212702.94674.0.001.cpuprofile`
+  was mixed (`185.06ms` / `182.60ms`) but kept the target frame low:
+  `rulesMayContainReferenceImports(...)` at `4.58` samples and invalidation at
+  `0.02`.

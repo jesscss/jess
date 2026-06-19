@@ -555,6 +555,9 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
   ) {
     return true;
   }
+  if (rules.mayContainReferenceImportSurface !== undefined) {
+    return rules.mayContainReferenceImportSurface;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -572,6 +575,7 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
       return true;
     }
   }
+  rules.mayContainReferenceImportSurface = false;
   return false;
 }
 
@@ -879,6 +883,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   hasExactRulesetChildSurface = false;
   mayContainExactMixinSurface: boolean | undefined;
   mayContainExactRulesetSurface: boolean | undefined;
+  mayContainReferenceImportSurface: boolean | undefined;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
@@ -972,6 +977,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.hasExactRulesetChildSurface = false;
     this.mayContainExactMixinSurface = undefined;
     this.mayContainExactRulesetSurface = undefined;
+    this.mayContainReferenceImportSurface = undefined;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
@@ -1277,6 +1283,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(current, N.Rules)) {
         current.mayContainExactMixinSurface = undefined;
         current.mayContainExactRulesetSurface = undefined;
+      }
+      current = current.parent;
+    }
+  }
+
+  private invalidateReferenceImportSurfaceSummary(): void {
+    let current: Node | undefined = this;
+    while (current) {
+      if (isNode(current, N.Rules)) {
+        current.mayContainReferenceImportSurface = undefined;
       }
       current = current.parent;
     }
@@ -4010,6 +4026,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const declarationChildRules = childRulesOf(node);
     if (declarationChildRules) {
+      this.invalidateReferenceImportSurfaceSummary();
       const keys = directDeclarationInvalidationKeys ??= new Set<string>();
       if (!this.collectStaticDeclarationInvalidationKeys(declarationChildRules, keys)) {
         directDeclarationInvalidationIsGlobal = true;
@@ -4039,6 +4056,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._hasExtends = true;
     }
     if (node.type === 'StyleImport') {
+      this.invalidateReferenceImportSurfaceSummary();
       const importOptions = 'importOptions' in node.options
         ? node.options.importOptions
         : undefined;
