@@ -112,32 +112,30 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected an extend-instruction keyset cache and kept only a
-  dead-helper deletion from the extend root pruning code. The CPU-backed
-  target was `processExtends(...)` plus bitset helpers after the kept
-  registration-carried root selector bucket.
-- Verdict: do not cache `target.keySet`, `extendWith.keySet`, and target
-  emptiness on every `RootExtendInstruction`. It passed focused tests but
-  worsened/noised canonical `benchmark.less` wall-clock and left
-  `processExtends(...)` unchanged in the profile. The kept code change only
-  removes the now-unused `addSelectorKeysToBitSet(...)` helper.
+- Latest pass: kept the extend visible-root single-proof cut. The CPU-backed
+  target was `processExtends(...)`, specifically the separate
+  `isSameOrDescendantRoot(...)` ancestry cache under extend visibility.
+- Verdict: delete `ExtendRootRegistry.isSameOrDescendantRoot(...)`, its
+  recursive cache, and the helper call from `isInstructionVisibleForRoot(...)`.
+  The cached `getVisibleRoots(extendRoot)` result already contains the extend
+  root, unprotected descendants, and same-layer roots, so exact self/protected
+  checks plus visible-root membership are the single visibility proof.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: deleted one unused local helper; none added.
+- Helper/API surface: deleted one registry method and its private recursive
+  helper/cache; none added.
 - Metadata mutations: none added this pass.
 - Side maps/arrays/copies: no new side maps, arrays, or copies in kept code.
-  The rejected prototype added fields to existing instruction objects and was
-  reverted after measurement.
+  The cut removes one ancestry side-cache.
 - Evidence: focused extend tests passed (`105` passed, `1` skipped). Ordered
-  benchmark-path rebuild passed. Current-source refresh measured `177.93ms`
-  average / `173.72ms` median and `182.77ms` average / `178.26ms` median on
+  benchmark-path rebuild passed. Current-source refresh measured `186.11ms`
+  average / `180.49ms` median and `182.51ms` average / `178.76ms` median on
   external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division`. The rejected prototype measured `184.91ms`
-  average / `180.90ms` median and `182.93ms` average / `180.60ms` median.
-  CPU profile
-  `profiling/core-architecture/20260618-202834-extend-instruction-keyset-cache-rejected/CPU.20260618.202834.2030.0.001.cpuprofile`
-  kept `processExtends(...)` at `18` self samples; this is a rejection, not a
-  speed win. The final kept helper deletion passed the standard diff and
-  aggressive-cutting gates before commit.
+  --math=parens-division`; the kept source measured `177.64ms` average /
+  `176.83ms` median and `177.99ms` average / `176.58ms` median. CPU profile
+  `profiling/core-architecture/20260618-203401-extend-visible-roots-single-proof/CPU.20260618.203401.42590.0.001.cpuprofile`
+  moved `processExtends(...)` from `24` to `20` self samples and removed
+  `isSameOrDescendantRoot(...)`; keep as a measured wall-clock and CPU-profile
+  win.

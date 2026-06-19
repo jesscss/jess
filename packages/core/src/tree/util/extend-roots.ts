@@ -342,7 +342,6 @@ export class ExtendRootRegistry {
   private layerName = new WeakMap<Rules, string>();
   private isProtected = new WeakMap<Rules, boolean>();
   private isCompose = new WeakMap<Rules, boolean>();
-  private sameOrDescendantRootCache = new WeakMap<Rules, WeakMap<Rules, boolean>>();
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private allRoots = new Set<Rules>();
@@ -359,7 +358,6 @@ export class ExtendRootRegistry {
     parent?: Rules,
     options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
-    this.sameOrDescendantRootCache = new WeakMap();
     this.allRoots.add(rules);
     if (parent) {
       this.allRoots.add(parent);
@@ -460,45 +458,6 @@ export class ExtendRootRegistry {
     return accessible;
   }
 
-  isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
-    let cachedByExtendRoot = this.sameOrDescendantRootCache.get(rulesetRoot);
-    if (cachedByExtendRoot?.has(extendRoot)) {
-      return cachedByExtendRoot.get(extendRoot) === true;
-    }
-    cachedByExtendRoot ??= new WeakMap<Rules, boolean>();
-    this.sameOrDescendantRootCache.set(rulesetRoot, cachedByExtendRoot);
-    const result = this.computeSameOrDescendantRoot(rulesetRoot, extendRoot);
-    cachedByExtendRoot.set(extendRoot, result);
-    return result;
-  }
-
-  private computeSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
-    if (rulesetRoot === extendRoot) {
-      return true;
-    }
-    if (this.isProtected.get(rulesetRoot)) {
-      return false;
-    }
-    const layerA = this.layerName.get(rulesetRoot);
-    const layerB = this.layerName.get(extendRoot);
-    if (layerA && layerB && layerA === layerB) {
-      return true;
-    }
-    const children = this.childrenRoots.get(extendRoot);
-    if (!children) {
-      return false;
-    }
-    for (const child of children) {
-      if (this.isProtected.get(child)) {
-        continue;
-      }
-      if (this.isSameOrDescendantRoot(rulesetRoot, child)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   getAllRoots(): Set<Rules> {
     return new Set(this.allRoots);
   }
@@ -562,9 +521,6 @@ function isInstructionVisibleForRoot(
     return false;
   }
   if (instruction.extendRoot === rootRules) {
-    return true;
-  }
-  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
     return true;
   }
   const visibleRoots = getCachedVisibleRoots

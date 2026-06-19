@@ -471,6 +471,32 @@ registration-carried root bit bucket; future root pruning should delete whole
 per-root/per-ruleset loops, not add cached fields to every extend instruction
 unless a profile shows repeated keyset recomputation dominating.
 
+2026-06-18 extend visible-root single-proof pass: refreshed current-source
+evidence after the rejected keyset cache measured external canonical Less
+`benchmark.less --runs=24 --warmup=8 --math=parens-division` at
+`avg 186.11ms` / `median 180.49ms` (`variance 9.56%`) and `avg 182.51ms` /
+`median 178.76ms` (`variance 7.83%`). CPU profile
+`profiling/core-architecture/20260618-203214-current-refresh-cpu/CPU.20260618.203214.26131.0.001.cpuprofile`
+reported profiler-overhead `avg 181.22ms` / `median 177.66ms`; parsed sample
+totals showed `processExtends(...)` at `24` self samples and
+`isSameOrDescendantRoot(...)` at `9` samples.
+
+The kept cut deletes `ExtendRootRegistry.isSameOrDescendantRoot(...)`, its
+recursive cache, and the visibility helper's separate descendant proof.
+`getVisibleRoots(extendRoot)` already contains the extend root, unprotected
+descendants, and same-layer roots, so `isInstructionVisibleForRoot(...)` now
+uses exact self/protected checks plus the cached visible-root set as the single
+visibility proof. Focused extend tests passed (`105` passed, `1` skipped) and
+the ordered benchmark-path rebuild passed. External canonical Less
+`benchmark.less` measured `avg 177.64ms` / `median 176.83ms`
+(`variance 4.38%`) and `avg 177.99ms` / `median 176.58ms`
+(`variance 4.53%`). CPU profile
+`profiling/core-architecture/20260618-203401-extend-visible-roots-single-proof/CPU.20260618.203401.42590.0.001.cpuprofile`
+reported profiler-overhead `avg 181.21ms` / `median 179.41ms`; parsed
+samples moved `processExtends(...)` from `24` to `20`, removed
+`isSameOrDescendantRoot(...)`, and lowered garbage collector samples from
+`110` to `95` in that run. Keep as a measured wall-clock and CPU-profile win.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated
