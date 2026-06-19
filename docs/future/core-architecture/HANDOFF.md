@@ -103,6 +103,61 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: callable lookup search-closure extraction plus callable-output
+  sort placement.
+- Verdict: accepted as eval/render/callable machinery reduction, not an
+  end-to-end speed claim. `Rules.findMixinsFast(...)`,
+  `Rules.findVisibleExactCallableRulesetPath(...)`, and
+  `Rules.findVisibleCallableRulesetPrefixMatches(...)` no longer allocate
+  per-call nested collector/search closures for their recursive callable
+  surface walks. `finalizeCallableEvalOutput(...)` no longer sorts callable
+  output before knowing whether the result is empty or single-output; the
+  existing `sort(comparePosition)` now runs only at the multi-output wrapper
+  boundary that consumes ordered children.
+- New traversal: none. Existing recursive callable surface walks moved from
+  per-call nested closures into private `Rules` methods. Existing
+  `state.outputRules.sort(comparePosition)` moved later, from the unconditional
+  eval finalizer path to the existing multi-output wrapper branch.
+- Review-flagged allocations: deleted per-call closure allocation for the
+  `findMixinsFast(...)` bucket collector and recursive surface walk, plus the
+  exact/prefix `searchSurface(...)` closures. Added
+  `appendCallableBucketResults(...)` so callers append into an existing result
+  array without caller-local collector closure state.
+- New node/materialization: none. No cache, registry, side map, copied node,
+  materialized callable surface, wrapper `Rules`, or source/parent write was
+  added in production. The focused callable-output test uses local fixture
+  `Rules` nodes only to prove multi-output ordering.
+- Render path: unchanged except for skipping the sort on empty/single callable
+  output. No render path resolves into arrays/nodes just to stringify.
+- Helper/API surface: added private/node-local callable search helpers only to
+  replace same-body nested closures; no public API, compatibility shim, or
+  lookup registry shape was added.
+- Metadata mutations: none added.
+- Routine error control: none added in production. Test-only `throw new Error`
+  guards assert the multi-output path does not use the empty factory.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-output.test.ts`
+  passed (`6` tests). Focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts`
+  passed (`574` passed, `15` skipped, `9` deferred markers). `pnpm --filter
+  @jesscss/core build` passed. `node scripts/profile-less-benchmark.mjs`
+  reported `LessParser.parse` `75.94ms`, `Reference.evalNode` `46.62ms`,
+  unchanged direct lookup counters including
+  `declaration.childEntryFamilySkip=9024`,
+  `declaration.childEntryMergeFamilySkip=6435`, and
+  `declaration.cacheMiss=3641`, plus the still-open render-preview counters
+  `duplicateDeclarationPrerenderedDeclarations=884` and
+  `emissionRenderNodeTextPreviewCalls=4095`. Same-load
+  `benchmark.less` comparator over `60` runs after `15` warmups measured Less
+  4.6.3 median `37.64ms` / trimmed average `38.21ms` versus Jess median
+  `135.56ms` / trimmed average `137.37ms`; no speed win is claimed.
+- Rejected shapes: helper audit rejected `isNode` changes because typed calls
+  are already direct bitmask checks, and rejected OutputWriter ladder work
+  because writer mark/getSince/restore remains small beside Reference/parser
+  time. JS function argument copying stays as the documented third-party
+  boundary. Ruleset comparable-header/readback and duplicate-declaration
+  render-preview paths remain for a larger render-frontier pass.
+
 - Latest pass: Less parser `value()` runtime OR-allocation cut plus parser
   queue wrap-up.
 - Verdict: accepted as a parser production machinery cut, not a broad

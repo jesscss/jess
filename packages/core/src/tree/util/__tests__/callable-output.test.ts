@@ -116,6 +116,33 @@ describe('callable output helpers', () => {
     });
   });
 
+  it('sorts multiple output rules at the wrapper boundary only', () => {
+    const state = createCallableOutputState();
+    const sourceRules = rules([]);
+    const laterOutput = rules([decl({ name: 'z-index', value: any('2') })]);
+    const earlierOutput = rules([decl({ name: 'z-index', value: any('1') })]);
+    laterOutput.index = 10;
+    earlierOutput.index = 1;
+
+    recordCallableOutputSourceRules(state, sourceRules);
+    pushCallableOutputRules(state, [laterOutput, earlierOutput]);
+
+    const output = finalizeCallableOutput({
+      state,
+      restrictMixinOutputLookup: true,
+      createEmptyOutput: () => {
+        throw new Error('should not create empty output');
+      },
+      createWrapperOutput: source => rules([], undefined, undefined, source.sourceRoot?._treeContext).inherit(source),
+      resolveSingleOutputSourceRules: outputRules => outputRules,
+      isIndexedRuleChild: () => true
+    });
+
+    expect(output.value).toEqual([earlierOutput, laterOutput]);
+    expect(earlierOutput.index).toBe(0);
+    expect(laterOutput.index).toBe(1);
+  });
+
   it('flushes pending default outputs before sorting and finalizing', async () => {
     const context = new Context();
     const state = createCallableOutputState();

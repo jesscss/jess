@@ -83,7 +83,6 @@ export async function finalizeCallableEvalOutput({
     }
     pushCallableOutputRules(state, defaultExecution.outputs);
   }
-  state.outputRules.sort(comparePosition);
   return finalizeCallableOutput({
     state,
     restrictMixinOutputLookup,
@@ -123,6 +122,7 @@ export function finalizeCallableOutput({
     throw new ReferenceError('Mixin output source surface was not established.');
   }
 
+  state.outputRules.sort(comparePosition);
   const output = createWrapperOutput(state.sourceRules, restrictMixinOutputLookup);
   for (const rule of state.outputRules) {
     output.push(rule);

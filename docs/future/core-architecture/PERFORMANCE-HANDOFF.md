@@ -214,6 +214,34 @@ mark/readback totals. Direct lookup counters remain diagnostic:
 includes module-load/parser-initialization noise and should be treated as a
 target-selection prompt, not a clean CPU attribution.
 
+2026-06-19 callable eval/render closure/sort cut: kept a combined
+machinery-reduction pass in `packages/core/src/tree/rules.ts` and
+`packages/core/src/tree/util/callable-output.ts`. Callable exact/prefix
+surface walks no longer allocate per-call nested collector/search closures in
+`Rules.findMixinsFast(...)`,
+`Rules.findVisibleExactCallableRulesetPath(...)`, and
+`Rules.findVisibleCallableRulesetPrefixMatches(...)`; equivalent loops now live
+in private `Rules` methods and append bucket hits through
+`appendCallableBucketResults(...)`. `finalizeCallableEvalOutput(...)` no
+longer sorts `state.outputRules` before knowing whether finalization will
+return empty or single output; `sort(comparePosition)` now runs only in the
+multi-output wrapper branch of `finalizeCallableOutput(...)`, where order is
+needed before wrapper insertion and placement index assignment. Focused
+callable-output tests passed (`6` tests), and the focused
+reference/mixin/import/rules suite passed (`574` passed, `15` skipped,
+`9` deferred markers). `@jesscss/core` build passed. Same-load
+`benchmark.less` comparator over `60` runs after `15` warmups with
+`--less4=measure` measured Less 4.6.3 median `37.64ms` / trimmed average
+`38.21ms` versus Jess median `135.56ms` / trimmed average `137.37ms`; this is
+neutral/noisy versus the local pre-batch median and is not a speed-win claim.
+Scoped profile after the patch reported `LessParser.parse` `75.94ms`,
+`Reference.evalNode` `46.62ms`, and unchanged direct lookup counters
+(`declaration.childEntryFamilySkip=9024`,
+`declaration.childEntryMergeFamilySkip=6435`,
+`declaration.cacheMiss=3641`). Render-preview pressure remains open:
+`duplicateDeclarationPrerenderedDeclarations=884` and
+`emissionRenderNodeTextPreviewCalls=4095`.
+
 2026-06-19 measurement audit refresh: same-load Less 4 comparator over
 `40` runs after `10` warmups measured `benchmark.less` at Less 4.6.3 median
 `38.33ms` / trimmed average `38.73ms` versus Jess/Less-v5 median `145.82ms` /

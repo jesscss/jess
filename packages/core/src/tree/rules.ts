@@ -805,7 +805,14 @@ function collectCallableBucketResults(
   bucket: CallableLookupEntry[],
   includeRulesets: boolean
 ): MixinEntry[] | undefined {
-  let results: MixinEntry[] | undefined;
+  return appendCallableBucketResults(bucket, includeRulesets);
+}
+
+function appendCallableBucketResults(
+  bucket: CallableLookupEntry[],
+  includeRulesets: boolean,
+  results?: MixinEntry[]
+): MixinEntry[] | undefined {
   for (let i = bucket.length - 1; i >= 0; i--) {
     const entry = bucket[i]!;
     if (entry.match.length !== 0) {
@@ -1723,81 +1730,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MixinEntry[] {
     let results: MixinEntry[] | undefined;
     const includeRulesets = options?.includeRulesets !== false;
-    const collectBucketResults = (candidates: CallableLookupEntry[]): boolean => {
-      let found = false;
-      for (let i = candidates.length - 1; i >= 0; i--) {
-        const entry = candidates[i]!;
-        if (entry.match.length !== 0) {
-          continue;
-        }
-        const candidate = entry.value;
-        if (!includeRulesets && isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        (results ??= []).push(candidate);
-        found = true;
-      }
-      return found;
-    };
-    const collectWithinScopeSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      visited?: Set<Rules>,
-      includeCurrentSurface = true
-    ): Set<Rules> | undefined => {
-      if (visited?.has(scope)) {
-        return visited;
-      }
-      if (visited) {
-        visited.add(scope);
-      }
-
-      if (includeCurrentSurface) {
-        const candidates = scope.getCallableEntriesForKey(key);
-        if (candidates.length > 0) {
-          collectBucketResults(candidates);
-        }
-      }
-
-      if (scope.directChildRuleEntries === null) {
-        return visited;
-      }
-      const childEntries = scope.directChildRuleEntries !== undefined
-        ? (scope.directChildRuleEntries ?? undefined)
-        : scope.collectDirectChildRulesEntries();
-      if (!childEntries?.length) {
-        return visited;
-      }
-
-      visited ??= new Set<Rules>([scope]);
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (
-          !includeRulesets
-          && entry.hasExactMixinSurface === false
-          && entry.hasReferenceImportSurface !== true
-        ) {
-          continue;
-        }
-        if (entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-        visited = collectWithinScopeSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local),
-          visited,
-          true
-        );
-      }
-
-      return visited;
-    };
 
     let cursor: Node | undefined = this;
     let first = true;
@@ -1810,7 +1742,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        collectWithinScopeSurface(
+        results = scope.collectMixinsFastWithinScopeSurface(
+          key,
+          options,
+          includeRulesets,
+          results,
           scope,
           options?.local,
           undefined,
@@ -1823,6 +1759,74 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     return results ?? [];
+  }
+
+  private collectMixinsFastWithinScopeSurface(
+    key: string,
+    options: ExactCallableFindOptions | undefined,
+    includeRulesets: boolean,
+    results: MixinEntry[] | undefined,
+    scope: Rules,
+    localContext: boolean | undefined,
+    visited?: Set<Rules>,
+    includeCurrentSurface = true
+  ): MixinEntry[] | undefined {
+    if (visited?.has(scope)) {
+      return results;
+    }
+    if (visited) {
+      visited.add(scope);
+    }
+
+    if (includeCurrentSurface) {
+      const candidates = scope.getCallableEntriesForKey(key);
+      if (candidates.length > 0) {
+        results = appendCallableBucketResults(candidates, includeRulesets, results);
+      }
+    }
+
+    if (scope.directChildRuleEntries === null) {
+      return results;
+    }
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return results;
+    }
+
+    visited ??= new Set<Rules>([scope]);
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        continue;
+      }
+      if (
+        !includeRulesets
+        && entry.hasExactMixinSurface === false
+        && entry.hasReferenceImportSurface !== true
+      ) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (localContext && entry.node.options?.local) {
+        continue;
+      }
+      results = this.collectMixinsFastWithinScopeSurface(
+        key,
+        options,
+        includeRulesets,
+        results,
+        entry.node,
+        localContext || Boolean(entry.node.options?.local),
+        visited,
+        true
+      );
+    }
+
+    return results;
   }
 
   private findMixinsFastForUncoveredCallable(
@@ -2409,71 +2413,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context?: Context;
     }
   ): Ruleset[] {
-    const searchSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      results: Ruleset[],
-      visited?: Set<Rules>
-    ): void => {
-      if (visited?.has(scope)) {
-        return;
-      }
-      if (visited) {
-        visited.add(scope);
-      }
-
-      for (let i = scope.rules.length - 1; i >= 0; i--) {
-        const candidate = scope.rules[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keyPaths = getCallableRulesetKeyPaths(candidate);
-        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
-          const keys = keyPaths[keyPathIndex]!;
-          if (
-            keys.length === path.length
-            && keysStartWith(keys, path)
-          ) {
-            results.push(candidate);
-            break;
-          }
-        }
-      }
-
-      if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
-        return;
-      }
-      const childEntries = scope.directChildRuleEntries !== undefined
-        ? (scope.directChildRuleEntries ?? undefined)
-        : scope.collectDirectChildRulesEntries();
-      if (!childEntries?.length) {
-        return;
-      }
-
-      visited ??= new Set<Rules>([scope]);
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (entry.hasExactRulesetSurface === false) {
-          continue;
-        }
-        if (entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-        searchSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local),
-          results,
-          visited
-        );
-      }
-    };
-
     const results: Ruleset[] = [];
     let cursor: Node | undefined = this;
     let first = true;
@@ -2486,7 +2425,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        searchSurface(scope, options?.local, results);
+        this.collectVisibleExactCallableRulesetPathSurface(scope, path, options, options?.local, results);
       }
       if (options?.searchParents === false) {
         break;
@@ -2494,6 +2433,80 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       cursor = cursor.sourceParent;
     }
     return results;
+  }
+
+  private collectVisibleExactCallableRulesetPathSurface(
+    scope: Rules,
+    path: string[],
+    options: {
+      hasTarget?: boolean;
+      local?: boolean;
+      searchParents?: boolean;
+      context?: Context;
+    } | undefined,
+    localContext: boolean | undefined,
+    results: Ruleset[],
+    visited?: Set<Rules>
+  ): void {
+    if (visited?.has(scope)) {
+      return;
+    }
+    if (visited) {
+      visited.add(scope);
+    }
+
+    for (let i = scope.rules.length - 1; i >= 0; i--) {
+      const candidate = scope.rules[i]!;
+      if (!isNode(candidate, N.Ruleset)) {
+        continue;
+      }
+      const keyPaths = getCallableRulesetKeyPaths(candidate);
+      for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
+        const keys = keyPaths[keyPathIndex]!;
+        if (
+          keys.length === path.length
+          && keysStartWith(keys, path)
+        ) {
+          results.push(candidate);
+          break;
+        }
+      }
+    }
+
+    if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
+      return;
+    }
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return;
+    }
+
+    visited ??= new Set<Rules>([scope]);
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        continue;
+      }
+      if (entry.hasExactRulesetSurface === false) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (localContext && entry.node.options?.local) {
+        continue;
+      }
+      this.collectVisibleExactCallableRulesetPathSurface(
+        entry.node,
+        path,
+        options,
+        localContext || Boolean(entry.node.options?.local),
+        results,
+        visited
+      );
+    }
   }
 
   private findVisibleCallableRulesetPrefixMatches(
@@ -2505,71 +2518,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context?: Context;
     }
   ): CallableRulesetPrefixMatch[] {
-    const searchSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      results: CallableRulesetPrefixMatch[],
-      visited?: Set<Rules>
-    ): void => {
-      if (visited?.has(scope)) {
-        return;
-      }
-      if (visited) {
-        visited.add(scope);
-      }
-
-      for (let i = scope.rules.length - 1; i >= 0; i--) {
-        const candidate = scope.rules[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keyPaths = getCallableRulesetKeyPaths(candidate);
-        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
-          const keys = keyPaths[keyPathIndex]!;
-          if (
-            keys.length > 0
-            && keys.length < path.length
-            && keysStartWith(path, keys)
-          ) {
-            results.push({ ruleset: candidate, consumed: keys, scope });
-          }
-        }
-      }
-
-      if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
-        return;
-      }
-      const childEntries = scope.directChildRuleEntries !== undefined
-        ? (scope.directChildRuleEntries ?? undefined)
-        : scope.collectDirectChildRulesEntries();
-      if (!childEntries?.length) {
-        return;
-      }
-
-      visited ??= new Set<Rules>([scope]);
-      for (let i = childEntries.length - 1; i >= 0; i--) {
-        const entry = childEntries[i]!;
-        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
-          continue;
-        }
-        if (entry.hasExactRulesetSurface === false) {
-          continue;
-        }
-        if (entry.node.options?.forward) {
-          continue;
-        }
-        if (localContext && entry.node.options?.local) {
-          continue;
-        }
-        searchSurface(
-          entry.node,
-          localContext || Boolean(entry.node.options?.local),
-          results,
-          visited
-        );
-      }
-    };
-
     const results: CallableRulesetPrefixMatch[] = [];
     let cursor: Node | undefined = this;
     let first = true;
@@ -2582,7 +2530,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         first = false;
-        searchSurface(scope, options?.local, results);
+        this.collectVisibleCallableRulesetPrefixMatchSurface(scope, path, options, options?.local, results);
       }
       if (options?.searchParents === false) {
         break;
@@ -2590,6 +2538,80 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       cursor = cursor.sourceParent;
     }
     return results;
+  }
+
+  private collectVisibleCallableRulesetPrefixMatchSurface(
+    scope: Rules,
+    path: string[],
+    options: {
+      hasTarget?: boolean;
+      local?: boolean;
+      searchParents?: boolean;
+      context?: Context;
+    } | undefined,
+    localContext: boolean | undefined,
+    results: CallableRulesetPrefixMatch[],
+    visited?: Set<Rules>
+  ): void {
+    if (visited?.has(scope)) {
+      return;
+    }
+    if (visited) {
+      visited.add(scope);
+    }
+
+    for (let i = scope.rules.length - 1; i >= 0; i--) {
+      const candidate = scope.rules[i]!;
+      if (!isNode(candidate, N.Ruleset)) {
+        continue;
+      }
+      const keyPaths = getCallableRulesetKeyPaths(candidate);
+      for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
+        const keys = keyPaths[keyPathIndex]!;
+        if (
+          keys.length > 0
+          && keys.length < path.length
+          && keysStartWith(path, keys)
+        ) {
+          results.push({ ruleset: candidate, consumed: keys, scope });
+        }
+      }
+    }
+
+    if (scope.directChildRuleEntries !== undefined && !scope.hasExactRulesetChildSurface) {
+      return;
+    }
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return;
+    }
+
+    visited ??= new Set<Rules>([scope]);
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        continue;
+      }
+      if (entry.hasExactRulesetSurface === false) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (localContext && entry.node.options?.local) {
+        continue;
+      }
+      this.collectVisibleCallableRulesetPrefixMatchSurface(
+        entry.node,
+        path,
+        options,
+        localContext || Boolean(entry.node.options?.local),
+        results,
+        visited
+      );
+    }
   }
 
   findMixinNamespacePathFast(
