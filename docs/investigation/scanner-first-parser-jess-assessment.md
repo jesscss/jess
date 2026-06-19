@@ -1602,10 +1602,14 @@ its claims.
 - [x] Focused performance smoke guard: report parse/eval/render phase timings
   across current parser, structural-only sidecar, selected materialization
   sidecar, and structural-fed prototype paths while preserving output equality.
-- [ ] Broader performance guard: report full parse/eval/render phase timings
-  across representative CSS/Less corpus fixtures so the current parser,
-  structural-only, selected materialization, and structural-fed paths can be
-  compared without relying on a single tiny inline fixture.
+- [x] Broader Less compiler performance guard: report full parse/eval/render
+  phase timings across representative checked-in CSS-shaped and Less fixtures
+  so the current parser, structural-only, selected materialization, and
+  structural-fed paths can be compared without relying on a single tiny inline
+  fixture.
+- [ ] CSS-owned compiler performance guard: add this only if a CSS compiler
+  plugin/activation path exists; current compiler e2e timing coverage renders
+  CSS-shaped fixtures through the Less-compatible compiler path.
 - [x] Verification: focused CSS e2e tests pass.
 - [x] Verification: focused Less e2e tests pass.
 - [ ] Verification: existing CSS parser tests pass or any pre-existing failures

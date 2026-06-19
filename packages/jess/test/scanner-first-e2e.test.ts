@@ -24,6 +24,18 @@ type CapturedProfile = {
   }>;
 };
 
+type ProfiledRender = {
+  profile: CapturedProfile;
+  result: string;
+};
+
+type ProfileModeResults = {
+  results: Map<string, ProfiledRender>;
+  structuralOnlyPlugin: ReturnType<typeof lessPlugin>;
+  selectedMaterializationPlugin: ReturnType<typeof lessPlugin>;
+  structuralFedPlugin: ReturnType<typeof lessPlugin>;
+};
+
 async function captureProfile<T>(render: () => Promise<T>): Promise<{
   profile: CapturedProfile;
   result: T;
@@ -78,6 +90,72 @@ function expectParseEvalRenderPhases(profile: CapturedProfile): void {
       })
     );
   }
+}
+
+function findRepoRoot(start = process.cwd()): string {
+  let current = start;
+
+  while (current !== path.dirname(current)) {
+    if (fs.existsSync(path.join(current, 'pnpm-workspace.yaml'))) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+
+  throw new Error(`Could not find Jess repo root from ${start}.`);
+}
+
+async function renderProfileModes(source: string): Promise<ProfileModeResults> {
+  const structuralOnlyPlugin = lessPlugin({ scannerFirstProbe: true });
+  const selectedMaterializationPlugin = lessPlugin({
+    scannerFirstProbe: {
+      materializeIslandKinds: ['declaration-value']
+    }
+  });
+  const structuralFedPlugin = lessPlugin({
+    scannerFirstProbe: {
+      structuralFedPrototype: true
+    }
+  });
+  const cases = [
+    {
+      name: 'current',
+      render: () => new Compiler().renderString(source, { language: 'less' })
+    },
+    {
+      name: 'structural-only',
+      render: () =>
+        new Compiler({
+          compile: { plugins: [structuralOnlyPlugin] }
+        }).renderString(source, { language: 'less' })
+    },
+    {
+      name: 'selected-materialization',
+      render: () =>
+        new Compiler({
+          compile: { plugins: [selectedMaterializationPlugin] }
+        }).renderString(source, { language: 'less' })
+    },
+    {
+      name: 'structural-fed',
+      render: () =>
+        new Compiler({
+          compile: { plugins: [structuralFedPlugin] }
+        }).renderString(source, { language: 'less' })
+    }
+  ];
+  const results = new Map<string, ProfiledRender>();
+
+  for (const testCase of cases) {
+    results.set(testCase.name, await captureProfile(testCase.render));
+  }
+
+  return {
+    results,
+    structuralOnlyPlugin,
+    selectedMaterializationPlugin,
+    structuralFedPlugin
+  };
 }
 
 describe('scanner-first CSS/Less e2e probe', () => {
@@ -216,49 +294,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
   it('reports parse/eval/render phase timings across current and scanner-first paths', async () => {
     const source = '.a {\n  color: blue;\n}\n.b { width: 1px; }\n';
-    const structuralOnlyPlugin = lessPlugin({ scannerFirstProbe: true });
-    const selectedMaterializationPlugin = lessPlugin({
-      scannerFirstProbe: {
-        materializeIslandKinds: ['declaration-value']
-      }
-    });
-    const structuralFedPlugin = lessPlugin({
-      scannerFirstProbe: {
-        structuralFedPrototype: true
-      }
-    });
-    const cases = [
-      {
-        name: 'current',
-        render: () => new Compiler().renderString(source, { language: 'less' })
-      },
-      {
-        name: 'structural-only',
-        render: () =>
-          new Compiler({
-            compile: { plugins: [structuralOnlyPlugin] }
-          }).renderString(source, { language: 'less' })
-      },
-      {
-        name: 'selected-materialization',
-        render: () =>
-          new Compiler({
-            compile: { plugins: [selectedMaterializationPlugin] }
-          }).renderString(source, { language: 'less' })
-      },
-      {
-        name: 'structural-fed',
-        render: () =>
-          new Compiler({
-            compile: { plugins: [structuralFedPlugin] }
-          }).renderString(source, { language: 'less' })
-      }
-    ];
-
-    const results = new Map<string, { profile: CapturedProfile; result: string }>();
-    for (const testCase of cases) {
-      results.set(testCase.name, await captureProfile(testCase.render));
-    }
+    const {
+      results,
+      structuralOnlyPlugin,
+      selectedMaterializationPlugin,
+      structuralFedPlugin
+    } = await renderProfileModes(source);
     const baseline = results.get('current')!;
 
     for (const rendered of [
@@ -299,6 +340,44 @@ describe('scanner-first CSS/Less e2e probe', () => {
       actualParses: 4,
       fallbackFullTreeMaterializations: 0
     });
+
+    const repoRoot = findRepoRoot();
+    const fixturePaths = [
+      'packages/css-parser/test/css/decls.css',
+      'packages/css-parser/test/css/nesting.css',
+      'packages/jess/test/less/test.less'
+    ];
+
+    for (const fixturePath of fixturePaths) {
+      const fixtureSource = fs.readFileSync(path.join(repoRoot, fixturePath), 'utf8');
+      const {
+        results: fixtureResults,
+        structuralOnlyPlugin: fixtureStructuralOnlyPlugin,
+        selectedMaterializationPlugin: fixtureSelectedMaterializationPlugin,
+        structuralFedPlugin: fixtureStructuralFedPlugin
+      } = await renderProfileModes(fixtureSource);
+      const fixtureBaseline = fixtureResults.get('current')!;
+
+      for (const [name, rendered] of fixtureResults) {
+        expectParseEvalRenderPhases(rendered.profile);
+        if (name !== 'current') {
+          expect(rendered.result, fixturePath).toBe(fixtureBaseline.result);
+        }
+      }
+      expect(fixtureStructuralOnlyPlugin.lastScannerFirstProbe).toMatchObject({
+        actualParses: 0,
+        fallbackFullTreeMaterializations: 0
+      });
+      expect(fixtureSelectedMaterializationPlugin.lastScannerFirstProbe).toMatchObject({
+        fallbackFullTreeMaterializations: 0
+      });
+      expect(fixtureStructuralFedPlugin.lastScannerFirstPrototype).toEqual(
+        expect.objectContaining({
+          runtimeTreeSource: expect.stringMatching(/^(structural-fed|canonical-fallback)$/),
+          fallbackFullTreeMaterializations: expect.any(Number)
+        })
+      );
+    }
   });
 
   it('feeds a bounded plain rule through structural parse and materialized islands', async () => {
