@@ -136,6 +136,49 @@ stayed essentially flat (`64.45ms` to `64.07ms`). Focused extend tests passed
 except `extend-rules.test.ts` deep `.l -> ... -> .t` chaining, which was
 confirmed failing on branch baseline before this patch.
 
+2026-06-18 rejected root activation closure: a stricter prototype tried to
+start each root from its actual selector aggregate, activate only visible
+extends whose target bits intersected that aggregate, then add each activated
+`extendWith` bitset and repeat until no more visible extends could become
+root-relevant. This modeled the "one bitset per extend root can prove whether
+anything in the root can match" idea more tightly than the kept coarse
+root-bit pruning, while still updating the root aggregate when selectors
+mutated. Focused extend tests passed except the known branch-baseline
+`extend-rules.test.ts` deep `.l -> ... -> .t` chaining failure. The first
+prototype had neutral wall-clock (`avg 208.04ms` / `median 208.46ms`, then
+`avg 207.08ms` / `median 206.60ms`) and a promising profiled
+`processExtends(...)` self-time around `22.28ms`, but the order-preserving
+version kept wall-clock neutral/noisy (`avg 209.69ms` / `median 207.40ms`,
+then `avg 210.90ms` / `median 206.87ms`) and profiled
+`processExtends(...)` back up around `38.72ms`. Reverted. Keep the existing
+coarse root-level bitset guard; do not add activation-closure arrays/loops
+unless a future profile shows enough irrelevant visible extends to outweigh
+the closure overhead.
+
+2026-06-18 rejected extend helper micro-cut: replacing two
+`targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
+passed focused extend tests and the full Jess package rebuild, but wall-clock
+was unstable/no better (`avg 230.99ms` / `median 231.15ms`, then
+`avg 213.21ms` / `median 209.41ms`) against the refreshed branch baseline
+(`avg 206.88ms` / `median 203.95ms`). Reverted with the activation prototype.
+Do not keep bitset helper micro-cuts without a clear wall-clock or CPU signal.
+
+2026-06-18 rejected reference-import cache: caching
+`rulesMayContainReferenceImports(...)` as a tri-state on `Rules` dropped that
+named CPU frame from about `23.07ms` to `1.64ms`, but canonical
+`benchmark.less` wall-clock worsened/noised (`avg 214.64ms` /
+`median 207.13ms`, then `avg 216.91ms` / `median 213.47ms` versus refreshed
+baseline `avg 206.88ms` / `median 203.95ms`) and garbage collection rose.
+Reverted. Do not retry as a generic node flag; if revisited, tie it to an
+existing construction/adoption fact.
+
+2026-06-18 rejected selector-key cache: caching ordered selector keys on the
+selector node, then in a side table with ampersand skips, failed focused
+namespace/ampersand tests. Failures included complex selector mixin-ruleset
+indentation in `reference.test.ts` and nested mixin-ruleset lookups in
+`mixin.test.ts`. Reverted. A future key cache would need to be scoped to the
+semantic selector surface/context, not the raw selector object.
+
 The previous binding/lookup target was `findWithinScopeSurface(...)` and the
 callers that still make declaration lookup branch through strategy objects,
 child visibility gates, and assignment occurrence fallback.

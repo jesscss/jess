@@ -112,32 +112,29 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept selector/parent bit pruning for extend classification and
-  made normal `isDisjoint(...)` checks non-allocating.
-- Verdict: production code keeps safe negative pruning only. Root aggregates
-  still prune visible instructions by root; each ruleset now skips an
-  instruction only when neither the local selector nor its parent selector
-  shares target bits. No selector bucket/index registry was added.
-- New traversal: accepted one backing-word loop in `isDisjoint(...)` that
-  replaces the old `a.and(b)` allocation plus intersection scan for normal
-  bitsets. The added per-instruction bit check runs inside the existing
-  visible-instruction classification loop and avoids the existing
-  classifier/apply traversal when it returns false.
+- Latest pass: tested and rejected a stricter root activation closure for
+  extend pruning, plus two helper/cache micro-prototypes. No production code
+  was kept from this pass.
+- Verdict: the already-kept coarse root aggregate remains the right bitset
+  shape for now: one root bitset can reject visible extends whose target bits
+  are absent, and selector mutation updates that aggregate. The stricter
+  activation closure added arrays/loops and did not beat the real benchmark.
+- New traversal: none kept. The rejected activation prototype added a
+  root-local closure loop over visible extends; it was reverted after neutral
+  wall-clock and worse order-preserving CPU self-time.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
-  stringify through this patch.
-- Helper/API surface: one private helper in `extend-roots.ts`; no public API or
-  compatibility shim was added.
+  stringify through this pass.
+- Helper/API surface: none kept.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new maps/arrays/copies kept. `isDisjoint(...)`
-  now avoids allocating an intersection bitset for non-inverted bitsets.
+- Side maps/arrays/copies: none kept. The rejected activation prototype added
+  root-local arrays and was reverted.
 - Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8`
-  improved from the refreshed root-bit baseline `avg 219.93ms` /
-  `median 212.96ms` to `avg 209.26ms` / `median 207.83ms` after the combined
-  cut. CPU self-time moved as intended: `processExtends(...)`
-  `57.25ms -> 31.42ms`, `applyExtendsToSelector(...)` `43.43ms -> 0.00ms`,
-  `wouldMatchNode(...)` `30.71ms -> 3.32ms`, and `BitSet` `15.03ms -> 9.09ms`.
-  Focused bitset/fast-reject/extend tests passed (`110` passed, `1` skipped).
-  Registration-time root aggregation was tested and rejected because it moved
-  selector-bit work into the always-on registration path and worsened/noised
-  wall-clock.
+  for the order-preserving activation prototype was neutral/noisy
+  (`avg 209.69ms` / `median 207.40ms`, then `avg 210.90ms` /
+  `median 206.87ms`) against the refreshed branch baseline
+  (`avg 206.88ms` / `median 203.95ms`), and CPU self-time showed
+  `processExtends(...)` around `38.72ms`. Focused extend tests passed except
+  the known branch-baseline deep chaining failure in `extend-rules.test.ts`.
+  Details for this and the other rejected prototypes are in
+  `PERFORMANCE-HANDOFF.md`.
