@@ -112,37 +112,34 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept registration-carried extend root bit buckets. The
-  CPU-backed target was `processExtends(...)`, especially the pre-matching
-  pass that walked every registered ruleset just to snapshot selectors and
-  build root selector key buckets.
-- Verdict: keep as a measured wall-clock and CPU-profile win. Ruleset
-  registration now records the pre-extend selector snapshot and root selector
-  key bucket while the evaluated selector is already in hand, and
-  `processExtends(...)` no longer performs a separate snapshot/keyset walk.
-  Extend application still updates the same root bucket when selectors mutate.
+- Latest pass: kept a rules-like reference surface descriptor cleanup and
+  rejected nested callable body source-backed reuse. The CPU-backed target was
+  `createRulesLikeReferenceSurface(...)` as a pure self-time frame in the
+  current benchmark profile.
+- Verdict: keep only as a small CPU cleanup, not as a meaningful wall-clock
+  win. `createRulesLikeReferenceSurface(...)` still copies all own properties,
+  because non-enumerable internal fields are semantic, but it no longer builds
+  one aggregate descriptor object for `sourceNode`, `parent`, and `index`.
+  `sourceNode` and `parent` are defined individually to preserve
+  non-enumerability; `index` is assigned directly.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: one private helper,
-  `registerRootRulesetSelector(...)`, isolates the registration-time bucket
-  update and replaces the removed `processExtends(...)` pre-pass.
+- Helper/API surface: none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps or arrays. Existing
-  `selectorKeySetByRoot` population moved from the extend pre-pass to
-  registration. The existing `preExtendSelectors` WeakMap is now filled during
-  registration and reset after processing.
-- Evidence: focused extend/bitset tests passed (`105` passed, `1` skipped).
-  Ordered benchmark-path rebuild passed. Current-source refresh measured
-  `177.56ms` average / `175.02ms` median and `178.61ms` average /
-  `175.71ms` median on external canonical Less `benchmark.less --runs=24
-  --warmup=8 --math=parens-division`. The kept source measured `172.58ms`
-  average / `170.42ms` median, `173.70ms` average / `171.07ms` median, and
-  `172.91ms` average / `170.03ms` median. CPU profile
-  `profiling/core-architecture/20260618-201331-registration-carried-extend-buckets/CPU.20260618.201331.88082.0.001.cpuprofile`
-  moved `processExtends(...)` from `30` self / `142` total samples to `25`
-  self / `116` total, with new registration bucket work at
-  `registerRulesetWithRoot(...)` `37` total samples. `import-style.test.ts`
-  remains branch-baseline red with the same eight failures after temporarily
-  reverse-applying this patch.
+- Side maps/arrays/copies: no new side maps, arrays, or copies. The rejected
+  nested callable body source-backed prototype would have reduced copies, but
+  it either missed nested callable lookups or reparented canonical source
+  children, so it was reverted before benchmarking.
+- Evidence: exact focused rules-like/callable tests passed (`7` passed,
+  `341` skipped). Ordered benchmark-path rebuild passed. Current-source
+  refresh measured `177.43ms` average / `174.11ms` median and `174.81ms`
+  average / `173.30ms` median on external canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division`. The kept source measured
+  `177.25ms` average / `173.37ms` median, `176.49ms` average /
+  `174.47ms` median, and `174.58ms` average / `172.26ms` median. CPU profile
+  `profiling/core-architecture/20260618-202232-ruleslike-surface-descriptor-cpu/CPU.20260618.202232.50999.0.001.cpuprofile`
+  moved `createRulesLikeReferenceSurface(...)` from `24` total samples to
+  `20`; wall-clock is neutral-to-tiny. The broader matching reference test
+  remains branch-baseline red after temporarily reverse-applying this patch.

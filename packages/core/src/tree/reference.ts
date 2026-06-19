@@ -2545,26 +2545,19 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
       : value;
   }
   const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
-  Object.defineProperties(preservedValue, {
-    sourceNode: {
-      value: directValue,
-      writable: true,
-      enumerable: false,
-      configurable: false
-    },
-    parent: {
-      value: directValue.parent ?? sourceNode.parent,
-      writable: true,
-      enumerable: false,
-      configurable: true
-    },
-    index: {
-      value: directValue.index ?? sourceNode.index,
-      writable: true,
-      enumerable: true,
-      configurable: true
-    }
+  Object.defineProperty(preservedValue, 'sourceNode', {
+    value: directValue,
+    writable: true,
+    enumerable: false,
+    configurable: false
   });
+  Object.defineProperty(preservedValue, 'parent', {
+    value: directValue.parent ?? sourceNode.parent,
+    writable: true,
+    enumerable: false,
+    configurable: true
+  });
+  preservedValue.index = directValue.index ?? sourceNode.index;
   return preservedValue;
 }
 

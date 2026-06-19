@@ -406,6 +406,54 @@ tax, the next cut should carry a cheap parser/registration fact that the tree
 contains extend effects and use it to avoid root-bucket population entirely on
 no-extend roots.
 
+2026-06-18 rules-like reference surface descriptor pass: refreshed
+current-source evidence after the extend bucket pass was external canonical
+Less `benchmark.less --runs=24 --warmup=8 --math=parens-division` at
+`avg 177.43ms` / `median 174.11ms` (`variance 5.75%`) and `avg 174.81ms` /
+`median 173.30ms` (`variance 5.12%`). CPU profile
+`profiling/core-architecture/20260618-201702-current-refresh-cpu/CPU.20260618.201702.7369.0.001.cpuprofile`
+reported profiler-overhead `avg 186.77ms` / `median 185.64ms`; parsed
+sample totals showed `createRulesLikeReferenceSurface(...)` as a pure
+self-time frame at `24` total samples, with larger remaining callable-copy
+and render stacks still above it.
+
+Rejected prototype: letting copied nested callable `Rules` wrappers use
+source-backed static children failed focused mixin tests. When the nested
+wrapper was marked registration-prepared, nested callable lookups missed; when
+it was left unprepared, registration reparented canonical source children.
+That means nested ruleset body copying still needs a placement-state design,
+not a quick source-backed wrapper reuse.
+
+The kept cut removes the aggregate `Object.defineProperties(...)` descriptor
+object from `createRulesLikeReferenceSurface(...)`. It keeps
+`Object.getOwnPropertyNames(...)` because non-enumerable internal fields are
+semantic for preserved rules-like surfaces, but defines `sourceNode` and
+`parent` individually and assigns `index` directly. This preserves
+non-enumerability for `sourceNode`/`parent`; a broader `for...in` prototype
+failed a branch-baseline spacing-sensitive reference test by skipping internal
+fields.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/call.test.ts src/tree/util/__tests__/callable-special-case.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts -t "preserves rules-like variable references as shallow owned surfaces|renders rules-like variable references through shallow owned surfaces|keeps canonical rules-like sources unfrozen alongside preserved surfaces|derives preserve-rules-like variable call names without cloning the source reference|keeps rules-like variable call names canonical across render and resolve|handles ruleset candidates through ruleset-placement output|handles ordinary callable entries through candidate setup and execution"`
+(`7` passed, `341` skipped). The broader pattern run still trips
+`reference.test.ts` `fast-paths complex selector callable ruleset paths under
+a ruleset namespace prefix`; that exact test fails the same way after
+temporarily reverse-applying this patch, so treat it as branch-baseline red.
+Ordered benchmark-path rebuild passed before timing.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` reported `avg 177.25ms` / `median 173.37ms`
+(`variance 6.20%`), `avg 176.49ms` / `median 174.47ms`
+(`variance 5.46%`), and `avg 174.58ms` / `median 172.26ms`
+(`variance 4.64%`), so wall-clock is neutral-to-tiny. CPU profile
+`profiling/core-architecture/20260618-202232-ruleslike-surface-descriptor-cpu/CPU.20260618.202232.50999.0.001.cpuprofile`
+reported profiler-overhead `avg 181.28ms` / `median 179.56ms`; parsed
+sample totals moved `createRulesLikeReferenceSurface(...)` from `24` to `20`
+total samples, `copyCallableRulesValue(...)` from `514` to `447`, and
+`copyCallableRulesNode(...)` from `448` to `394` in that run. Keep as a small
+CPU cleanup only, not as a meaningful wall-clock win. The next target should
+still come from the larger callable copy/render stacks.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated
