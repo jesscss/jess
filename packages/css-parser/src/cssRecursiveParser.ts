@@ -528,11 +528,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     const tokValue = token.image;
     const tokName = token.tokenType?.name ?? '';
     const T = this.T;
-    let dimValue: { number: number; unit?: string } | undefined;
-    let numValue: number | undefined;
-    const getDimension = (v: Exclude<typeof dimValue, undefined>) =>
-      new Dimension(v, undefined, this.getLocationInfo(token), this.context);
-    const getNumber = (v: number) => new Num(v, undefined, this.getLocationInfo(token), this.context);
 
     if (this.matchToken(token, T.Ident) || this.matchToken(token, T.PlainIdent)) {
       const colorKey = tokValue.toLowerCase();
@@ -557,10 +552,15 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     }
     if (this.matchToken(token, T.Dimension)) {
       const pl = token.payload as [string, string] | undefined;
-      dimValue = { number: parseFloat(pl?.[0] ?? '0'), unit: pl?.[1] ?? '' };
-      return getDimension(dimValue);
+      return new Dimension(
+        { number: parseFloat(pl?.[0] ?? '0'), unit: pl?.[1] ?? '' },
+        undefined,
+        this.getLocationInfo(token),
+        this.context
+      );
     }
     if (tokName === 'MathConstant') {
+      let numValue: number | undefined;
       switch (tokValue.toLowerCase()) {
         case 'pi':
           numValue = Math.PI;
@@ -578,10 +578,10 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           numValue = NaN;
           break;
       }
-      return getNumber(numValue!);
+      return new Num(numValue!, undefined, this.getLocationInfo(token), this.context);
     }
     if (this.matchToken(token, T.Number)) {
-      return getNumber(parseFloat(tokValue));
+      return new Num(parseFloat(tokValue), undefined, this.getLocationInfo(token), this.context);
     }
     if (this.matchToken(token, T.Color)) {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);

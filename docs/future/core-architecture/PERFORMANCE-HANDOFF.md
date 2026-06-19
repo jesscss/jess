@@ -151,20 +151,38 @@ Current target swath:
    `_processNodes(...)` calls after the direct-child constructor pass. Do not
    keep pushing constructor work unless a fresh profile/counter shows it
    reappearing in real benchmark execution.
-2. Validate the next target with current CPU/scoped timing evidence. The latest
-   scoped profiler run points at `LessParser.parse` (`3` calls / `97.38ms`) and
-   `Reference.evalNode` (`3547` calls / `63.64ms`) after constructor
-   processing; the accompanying V8 profile was polluted by module load/parser
-   initialization, so use a warm or narrower profile before claiming a CPU
-   target. Parser and reference/lookup are the next two candidate lanes.
-3. Spawn disjoint sub-agent work from those two lanes: one parser/tokenizer
-   worker should look for routine allocations/branching in parse startup and
-   repeated benchmark parsing; one reference/lookup worker should reduce
-   `Reference.evalNode` and declaration child-entry skip volume without adding
-   registries, broad caches, deep copies, or negative Error-style control flow;
-   one measurement/audit worker should produce a cleaner warm CPU profile or
-   scoped timings that exclude module-load noise.
-4. Keep running disjoint sub-agent experiments in separate worktrees for the
+2. Keep `Reference.evalNode` plus direct declaration lookup as the primary
+   eval target. Clean scoped `scope-lookup-stress.less` timing reports parse
+   median `0.813ms`, eval median `49.847ms`, render median `3.224ms`, and
+   `Reference.evalNode` `6528` calls / `22.327ms` per run. Direct lookup
+   counters remain led by `declaration.cacheMiss=2250`,
+   `declaration.childEntryFamilySkip=2025`,
+   `declaration.childEntriesFamilySkip=1485`, and
+   `declaration.childEntriesScanned=405` per run. The next reference cut must
+   actually reduce child-entry eligibility/scan work or remove eval wrapper /
+   allocation work; do not repeat predicate-dispatch reshuffles that leave
+   counters unchanged.
+3. Keep parser/tokenizer as a parallel target, not the only top priority.
+   Broad `benchmark.less` scoped timing still shows parse as a major bucket:
+   `LessParser.parse` `77.86ms` and `Reference.evalNode` `48.07ms` in the
+   latest integration-worktree profile. A direct parse split after warmup
+   attributes about `35.92ms/run` to `parser.parse(...)`, with tokenization
+   about `3.61ms/run`, parser rule execution / AST construction about
+   `30.34ms/run`, and wrapper/result work about `1.97ms/run`. Parser cuts
+   should therefore target rule execution, AST construction, or upstream
+   Chevrotain grammar/precomputed data that does not add runtime branch ladders.
+4. Keep a narrow Chevrotain upstream lane for pre-recorded grammar/GAST or
+   setup reuse. Local Chevrotain history has old serialized grammar commits
+   (`#749`, `#755`) and newer fast-dispatch/speculation experiments, but the
+   rejected risk is adding more hot-path logic branching. Any revival must
+   avoid turning precomputation into a slower runtime branch ladder. Current
+   evidence says resurrecting `serializedGrammar` is not the next Jess-side
+   steady-state fix: Jess already caches Less lexer/parser singletons, cold
+   constructor/self-analysis is near zero after the first parser, and warm
+   parse cost is dominated by rule execution / AST construction. If pursuing
+   Chevrotain, target runtime dispatch or strict parser surfaces against
+   Jess's Less parser execution.
+5. Keep running disjoint sub-agent experiments in separate worktrees for the
    active queue: implementation slices, field/use-case audits, and
    measurement/profiling validation. Main integration owns docs, gates, commit,
    push, and reseeding.
@@ -191,15 +209,90 @@ after `25` warmups with live Less `4.6.3` measured in the same process
 than the Less 4 target, so the campaign is not complete.
 
 Current scoped `benchmark.less` profile after constructor-processing points at
-parse and reference eval: `LessParser.parse` `97.38ms`, `Reference.evalNode`
-`63.64ms` over `3547` calls, `Context.getTree` `6.63ms`, then small
-`OutputWriter` mark/readback totals. Direct lookup counters remain diagnostic:
+parse and reference eval: latest integration-worktree run reports
+`LessParser.parse` `77.86ms` over `3` calls, `Reference.evalNode` `48.07ms`
+over `3547` calls, `Context.getTree` `5.82ms`, then small `OutputWriter`
+mark/readback totals. Direct lookup counters remain diagnostic:
 `declaration.childEntryFamilySkip` `9024`,
 `declaration.childEntryMergeFamilySkip` `6435`, and
-`declaration.cacheMiss` `3641`. The paired V8 CPU profile artifact is
-`profiling/core-architecture/20260619-101839-post-constructor-processing-cpu`,
-but it includes module-load/parser-initialization noise and should be treated
-as a target-selection prompt, not a clean CPU attribution.
+`declaration.cacheMiss` `3641`. The older paired V8 CPU profile artifact
+`profiling/core-architecture/20260619-101839-post-constructor-processing-cpu`
+includes module-load/parser-initialization noise and should be treated as a
+target-selection prompt, not a clean CPU attribution.
+
+2026-06-19 measurement audit refresh: same-load Less 4 comparator over
+`40` runs after `10` warmups measured `benchmark.less` at Less 4.6.3 median
+`38.33ms` / trimmed average `38.73ms` versus Jess/Less-v5 median `145.82ms` /
+trimmed average `147.60ms`. `benchmark-v39.less` measured Less 4 median
+`1.25ms` versus Jess `6.97ms`; `benchmark-color-stress.less` measured Less 4
+median `0.84ms` versus Jess `4.89ms`. Clean scoped
+`scope-lookup-stress.less` timing over `30` measured runs after `8` warmups
+measured parse median `0.813ms`, eval median `49.847ms`, render median
+`3.224ms`, total median `54.096ms`; `Reference.evalNode` accounted for
+`6528` calls / `22.327ms` per run while `OutputWriter.mark/getSince/restore`
+combined stayed near `1.118ms` per run. This keeps Reference/direct lookup as
+the primary eval target even while parser remains a broad benchmark target.
+
+2026-06-19 parser allocation cleanup: kept the worker patch in
+`packages/css-parser/src/cssRecursiveParser.ts` that deletes per-token local
+`getDimension(...)` / `getNumber(...)` closure allocation from
+`CssRecursiveParser.processValueToken(...)` and constructs `Dimension` / `Num`
+directly. This touched parser code only and adds no cache, registry, traversal,
+copy helper, or error-control path. Worker evidence found
+`processValueToken(...)` on the `benchmark.less` parse path with `82,060`
+calls over `20` parses; same-worktree timing was neutral/noisy, so this is an
+allocation/machinery cut, not a speed claim. Integration focused gates passed:
+ordered builds through `@jesscss/less-parser`, full `@jesscss/css-parser`
+tests (`110` passed), and full `@jesscss/less-parser` tests (`420` passed).
+Integration benchmark sanity after the patch over `40` runs after `10` warmups
+with `--less4=measure` measured Jess at `131.64ms` median / `133.18ms`
+trimmed average and Less 4.6.3 at `35.41ms` median / `35.85ms` trimmed
+average. `profile-less-benchmark.mjs` still reported `LessParser.parse`
+`78.13ms`, `Reference.evalNode` `46.66ms`, and unchanged direct lookup skip
+counters, so no speed claim is attached to this cleanup.
+
+2026-06-19 Chevrotain cache/prerecording audit: rejected a Jess-side
+`serializedGrammar`/pre-recorded-GAST revival as the next steady-state parser
+move. Local history confirms the old Chevrotain serialized grammar path
+(`752fbd00`, `044d9141`) and its removal after Chevrotain no longer relied on
+`Function.prototype.toString`; newer local Chevrotain history includes
+optional `performSelfAnalysis`, GAST recorder extraction, strict/smart parser,
+and committed dispatch experiments. The useful finding is negative: Jess
+already has the important cold-path singleton parser cache
+(`6bbb6b728 perf(less-parser): cache Lexer + Parser singletons...`), and a
+parser-phase worker measurement put warm parser-only `benchmark.less` median
+at `46.814ms`, tokenization median `3.053ms`, parser input/trivia filtering
+median `1.693ms`, and rule execution / AST construction median `41.866ms`.
+Compiler mode showed exactly `3` stylesheet parses per render: the root plus
+two imports. Do not spend the main Jess lane on grammar serialization unless a
+new benchmark shows cold construction is the target. A valid upstream
+Chevrotain experiment should test branch-light runtime dispatch /
+OR-MANY-OPTION committed closures or strict parser surfaces against Jess's
+Less parser execution.
+
+2026-06-19 rejected reference predicate-dispatch experiment: a sub-agent
+prototype replaced per-strategy direct-declaration predicate functions with
+inline family switches in `direct-rules-lookup.ts`. Focused
+`reference.test.ts` and lookup-heavy `mixin.test.ts` selections passed, but
+same-load benchmark evidence was unfavorable/noisy (patched Jess median
+`153.43ms` versus temporary origin/dev baseline `145.86ms`) and direct lookup
+counters did not move: `declaration.childEntryFamilySkip` stayed `9024` and
+`declaration.childEntryMergeFamilySkip` stayed `6435`. The patch was reverted
+in the worker worktree. Do not retry predicate-dispatch reshaping without a
+new shape that reduces scan eligibility, object allocation, or call volume.
+
+2026-06-19 rejected reference cached-handle fast-probe experiment: a second
+sub-agent added a 93-line fast helper in `reference.ts` that probes
+`_rulesLookupHandle` before building the usual lookup env/filter state. Focused
+`reference.test.ts`, `mixin.test.ts`, `import-style.test.ts`, `rules.test.ts`,
+`pnpm run build`, `git diff --check`, and
+`pnpm run verify:aggressive-cutting-review` passed in the worker worktree.
+However, the patch added a parallel branch ladder / helper surface, did not
+change child-entry skip counters (`declaration.childEntryFamilySkip` remained
+`9024`, `declaration.childEntryMergeFamilySkip` remained `6435`), and
+profile/short same-load results were neutral at best. Do not integrate this
+shape as-is; if revisiting handle hits, delete or collapse the normal wrapper
+path instead of adding a second preflight copy of its eligibility checks.
 
 2026-06-19 direct-child constructor completion pass: kept the final
 `_processNodes` constructor reduction for canonical `benchmark.less`.

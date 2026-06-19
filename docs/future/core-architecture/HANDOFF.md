@@ -103,6 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: parser value-token closure allocation cleanup plus performance
+  queue refresh.
+- Verdict: accepted as a parser allocation/machinery cut and evidence refresh,
+  not a speed claim. `CssRecursiveParser.processValueToken(...)` no longer
+  creates local `getDimension(...)` / `getNumber(...)` closures for every value
+  token; it constructs `Dimension` and `Num` directly at the existing branch
+  sites. `PERFORMANCE-HANDOFF.md` now records the fresh measurement audit, the
+  accepted parser cleanup, and the rejected reference predicate-dispatch
+  experiment.
+- New traversal: none.
+- Review-flagged allocations: removed two per-call closure allocations from a
+  hot parser token-processing method; no replacement array, cache, registry, or
+  side map was added.
+- New node/materialization: none beyond the existing `Dimension` / `Num`
+  construction already required by the parser result tree.
+- Render path: unchanged.
+- Helper/API surface: deleted local helper closures; no public API or helper
+  surface added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: worker evidence counted
+  `CssRecursiveParser.processValueToken(...)` on the `benchmark.less` parse
+  path at `82,060` calls over `20` parses; same-worktree timing was
+  neutral/noisy, so the pass is kept as allocation cleanup only.
+- Evidence: integration ran ordered builds through `@jesscss/less-parser`, full
+  `@jesscss/css-parser` tests (`110` passed), full `@jesscss/less-parser`
+  tests (`420` passed), and a corrected parser split showing tokenization is a
+  small part of parse time (`3.61ms/run`) versus parser rule execution / AST
+  construction (`30.34ms/run`). A reference predicate-dispatch prototype was
+  rejected in a sub-agent worktree because counters stayed unchanged and the
+  benchmark was unfavorable/noisy. A second reference cached-handle fast-probe
+  was rejected because it added a 93-line parallel helper / branch ladder while
+  leaving child-entry skip counters unchanged. A Chevrotain cache/prerecording
+  audit was recorded as a negative finding for steady-state Jess performance:
+  singleton parser caching already covers cold self-analysis, and warm parser
+  cost is mostly rule execution / AST construction.
+
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
   still-open `Mixin` row. Static direct mixin output and ruleset-as-mixin
