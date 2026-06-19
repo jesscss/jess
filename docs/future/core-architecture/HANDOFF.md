@@ -112,41 +112,31 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept direct `Rules` callable copy. The CPU-backed target was the
-  callable copy stack (`copyCallableRulesValue(...)`,
-  `copyCallableRulesNode(...)`, and `constructCallableRulesNode(...)`) after
-  extend allocation cleanup was rejected.
-- Verdict: keep the direct `Rules` branch in `copyCallableDirectFieldNode(...)`.
-  It gives `Rules` callable surfaces the same concrete constructor lane already
-  used for `Mixin`, `Ruleset`, and `AtRule`, avoiding generic value recursion
-  and `Reflect.construct(...)` for that node family.
-- New traversal: no net-new traversal. Child copying still uses the existing
-  `copyCallableRulesChildren(...)` loop; the kept change routes `Rules`
-  through that loop directly instead of rediscovering child values through
-  generic `copyCallableRulesValue(...)`.
-- New node/materialization: no new materialization category. Callable owned
-  `Rules` surfaces were already copied; this changes the constructor path from
-  generic `Reflect.construct(...)` to explicit `new Rules(...)`.
+- Latest pass: kept extend self/warning cleanup. The CPU-backed target was
+  `processExtends(...)` after the current refresh measured `185.92ms` /
+  `181.67ms` and `188.69ms` / `184.57ms` on external canonical Less
+  `benchmark.less`.
+- Verdict: keep `RootExtendInstruction.isSelfExtend` and direct warning-path
+  loops. The self-extend fact is carried while `targetValue` is already being
+  computed, and the unmatched-warning scan no longer allocates arrays for
+  `.some(...)` short-circuit checks.
+- New traversal: no new hot traversal. The warning path still scans protected
+  roots only for unmatched instructions; it now uses existing iterators and
+  breaks directly instead of materializing arrays.
+- New node/materialization: none.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: no new helper or public API; one existing helper gained a
-  `Rules` branch.
-- Metadata mutations: unchanged. The direct branch still uses `.inherit(node)`
-  and `node.sourceRoot?._treeContext` like the previous generic constructor
-  path; it makes those requirements concrete instead of hiding them behind
-  `Reflect.construct(...)`.
-- Side maps/arrays/copies: no new side maps. Existing callable child copying
-  remains; generic object/value recursion is skipped for `Rules`.
-- Evidence: current-source refresh measured `183.95ms` average /
-  `178.21ms` median and `181.07ms` average / `177.13ms` median on external
-  canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
-  CPU profile
-  `profiling/core-architecture/20260618-205806-current-refresh-cpu/CPU.20260618.205806.59918.0.001.cpuprofile`
-  showed `copyCallableRulesValue(...)` at `23` self / `520` total and
-  `constructCallableRulesNode(...)` at `21` self / `78` total. The kept patch
-  passed focused callable tests, rebuilt the benchmark package chain, and
-  benchmarked `180.20ms` / `175.73ms`, `180.83ms` / `175.72ms`, then
-  `171.59ms` / `169.72ms`. CPU profile
-  `profiling/core-architecture/20260618-210313-callable-rules-direct-copy-cpu/CPU.20260618.210313.6061.0.001.cpuprofile`
-  moved `copyCallableRulesValue(...)` to `18` self / `395` total and
-  `constructCallableRulesNode(...)` to `14` self / `73` total.
+- Helper/API surface: no new helper or public API.
+- Metadata mutations: unchanged.
+- Side maps/arrays/copies: no new side maps. The pass deletes warning-path
+  `Array.from(...)` allocations and carries one boolean on the existing
+  instruction record.
+- Evidence: focused extend tests passed (`105` passed, `1` skipped). The
+  ordered benchmark-path rebuild passed. External canonical Less
+  `benchmark.less --runs=24 --warmup=8 --math=parens-division` moved from the
+  refresh pair `185.92ms` / `181.67ms` and `188.69ms` / `184.57ms` to
+  `168.64ms` / `166.00ms` and `173.66ms` / `169.60ms`. The profiled run
+  `profiling/core-architecture/20260618-211008-extend-self-warning-cpu/CPU.20260618.211008.64958.0.001.cpuprofile`
+  reported `179.00ms` / `177.20ms`; `processExtends(...)` moved from the
+  refresh profile's `24` self / `104` total samples to `15.79` self /
+  `15.79` total.

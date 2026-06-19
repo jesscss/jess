@@ -233,6 +233,32 @@ bitset per extend root is useful, and selector mutations must update it, but
 do not add per-update subset checks unless a profile shows duplicate root
 ORs are hotter than the subset bookkeeping.
 
+2026-06-18 extend self/warning cleanup pass: the current-source refresh before
+the patch measured external canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` at `avg 185.92ms` /
+`median 181.67ms`, then `avg 188.69ms` / `median 184.57ms`. CPU profile
+`profiling/core-architecture/20260618-210603-current-refresh-cpu/CPU.20260618.210603.23457.0.001.cpuprofile`
+reported `avg 195.05ms` / `median 192.74ms`, with `processExtends(...)`
+at `24` self / `104` total samples. The kept cut carries `isSelfExtend` on
+`RootExtendInstruction` when `targetValue` is already being computed and
+replaces unmatched-warning `Array.from(...).some(...)` scans with direct
+short-circuit loops. Focused extend tests passed (`105` passed, `1` skipped).
+After the ordered benchmark-path rebuild, the same external benchmark measured
+`avg 168.64ms` / `median 166.00ms`, then `avg 173.66ms` /
+`median 169.60ms`. Profile
+`profiling/core-architecture/20260618-211008-extend-self-warning-cpu/CPU.20260618.211008.64958.0.001.cpuprofile`
+reported `avg 179.00ms` / `median 177.20ms`, with `processExtends(...)`
+at `15.79` self / `15.79` total. Keep as a measured wall-clock and
+extend-profile win.
+
+Next extend target: the root-level selector bit aggregate already provides the
+coarse "can any target exist in this root" proof and is updated when selectors
+mutate. The next experiment should try a larger-grain instruction/root bucket:
+avoid rebuilding and filtering a per-root visible instruction array when a
+root-level target-bit bucket proves no current visible target can hit, and keep
+selector mutation updates cheap enough that the bookkeeping does not repeat the
+rejected sparse subset-update failure.
+
 2026-06-18 callable default-assignment reuse pass: refreshed current-source
 evidence before the patch was external canonical Less `benchmark.less
 --runs=24 --warmup=8 --math=parens-division` at `avg 185.93ms` /

@@ -25,6 +25,7 @@ type RootExtendInstruction = ExtendInstruction & {
   targetBitLibrary: BitSet<string>['_library'];
   targetHasOpaqueKeys: boolean;
   targetValue: string;
+  isSelfExtend: boolean;
   extendWithKeySet: BitSet<string>;
   extendWithValue: string;
 };
@@ -596,10 +597,12 @@ export function processExtends(context: Context): void {
         | 'targetBitLibrary'
         | 'targetHasOpaqueKeys'
         | 'targetValue'
+        | 'isSelfExtend'
       >
     ): RootExtendInstruction => {
       const targetKeySet = target.keySet;
       const targetBitLibrary = targetKeySet._library;
+      const targetValue = target.valueOf();
       return {
         ...base,
         target,
@@ -607,7 +610,8 @@ export function processExtends(context: Context): void {
         targetKeySetLibrary: target.keySetLibrary,
         targetBitLibrary,
         targetHasOpaqueKeys: !targetBitLibrary || isEmptyBitSet(targetKeySet),
-        targetValue: target.valueOf()
+        targetValue,
+        isSelfExtend: targetValue === base.extendWithValue
       };
     };
 
@@ -731,8 +735,7 @@ export function processExtends(context: Context): void {
           if (!selectorMayContainExtendTarget(instruction, selector, parentSel)) {
             continue;
           }
-          const isSelfExtend = instruction.targetValue === instruction.extendWithValue;
-          if (isSelfExtend) {
+          if (instruction.isSelfExtend) {
             const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
             classifications.set(instruction, selfMatches ? 'local' : false);
           } else {
@@ -776,7 +779,7 @@ export function processExtends(context: Context): void {
           }
           const activatesReferenceVisibility = (
             !instruction.partial
-            || instruction.targetValue === instruction.extendWithValue
+            || instruction.isSelfExtend
           );
           instructionMatched.add(instruction);
           if (matchType === 'within-ampersand') {
@@ -1066,22 +1069,29 @@ export function processExtends(context: Context): void {
       const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
       const targetFile = instruction.target.sourceRoot?._treeContext?.file;
       const targetFilePath = targetFile?.fullPath;
-      const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {
+      let blockedProtectedRootExists = false;
+      for (const root of rulesetsByRoot.keys()) {
         if (!root) {
-          return false;
+          continue;
         }
         if (isInstructionVisibleForRoot(context, root, instruction, getCachedVisibleRoots)) {
-          return false;
+          continue;
         }
         const rulesets = rulesetsByRoot.get(root);
         if (!rulesets) {
-          return false;
+          continue;
         }
-        return Array.from(rulesets).some((ruleset) => {
+        for (const ruleset of rulesets) {
           const sel = selectorOrUndefined(ruleset.selector);
-          return !!sel && wouldInstructionChangeSel(sel, instruction);
-        });
-      });
+          if (sel && wouldInstructionChangeSel(sel, instruction)) {
+            blockedProtectedRootExists = true;
+            break;
+          }
+        }
+        if (blockedProtectedRootExists) {
+          break;
+        }
+      }
       const diagnostic = (
         blockedProtectedRootExists
           ? WARN.extendNotAccessible({
