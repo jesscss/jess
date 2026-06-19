@@ -493,6 +493,10 @@ export abstract class Node<
    * @note - This will not process the children nodes of children nodes.
    */
   private _processNodes<T>(value: T): T {
+    if ((this.constructor as typeof Node).childKeys === null) {
+      return value;
+    }
+
     if (isArray(value)) {
       for (let val of value) {
         if (val instanceof Node) {

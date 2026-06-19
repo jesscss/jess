@@ -148,40 +148,30 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the selector-key traversal dispatch cut in
-  `getOrderedSelectorKeys(...)`. Fresh CPU evidence after the prior render gate
-  showed `isNode(...)` still first by repo self-time, with the hottest caller
-  family inside `getOrderedSelectorKeys(...)` and its local selector walker
-  named `visit(...)`. This is not the external visitor framework.
+- Latest pass: kept the `_processNodes(...)` leaf-node skip from the isolated
+  Node-shape experiment. Node construction now skips value introspection when a
+  node class explicitly declares `childKeys === null`; `JsObject` and `JsArray`
+  no longer declare that leaf marker because their dynamic values may contain
+  nodes and still need canonical adoption.
 - Verdict: measured keep, but not goal completion. The stored Less 4.5 target
-  remains median `42.16ms`; the best kept selector-key `40`/`12` comparator
-  measured `137.83ms` median / `140.98ms` trimmed average. Jess is still about
-  `3.27x` slower than the target by median.
-- New traversal: none. The existing selector-key recursive walker now reads
-  `nodeType` once per selector node instead of calling `isNode(...)` for nil,
-  ampersand, combinator, and basic-selector checks.
+  remains median `42.16ms`; the paired main-worktree A/B under current load
+  measured unpatched `167.64ms` median and patched `147.42ms` median on
+  `24`/`8`. Jess is still about `3.50x` slower than the target by patched
+  median.
+- New traversal: none. This removes constructor-time value walking for classes
+  that explicitly promise they have no child nodes.
 - New node/materialization: none.
-- Render path: unchanged; this pass only removes hot type-helper call volume
-  while collecting callable selector keys.
+- Render path: unchanged.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Copy/materialization danger tokens in the diff are documentation-only next
-  target references. No `copyChild`, `constructCopy`, `.copy(...)`,
-  `.clone(...)`, `.inherit(...)`, adoption, or frozen/source metadata path was
-  added or changed by this pass.
-- Rejected: the adjacent `Ruleset.ensureSelectorVisible(...)` /
-  `needsVisibleSelectorClone(...)` direct-dispatch experiment passed focused
-  selector/render tests but had weaker/noisy `40`/`12` benchmark evidence after
-  the clean selector-key run, so it was reverted.
-- Evidence: focused lookup/callable tests passed (`213` passed, `283` skipped,
-  `7` open Vitest markers). Focused selector/render tests for the rejected
-  adjacent experiment also passed (`114` passed, `1` skipped), but benchmark
-  evidence did not justify keeping it. Ordered `@jesscss/core` and `jess`
-  builds passed.
-  Selector-key `24`/`8` measured `150.33ms` median / `152.90ms` trimmed
-  average; selector-key `40`/`12` measured `137.83ms` median / `140.98ms`
-  trimmed average. A post-patch CPU-profile comparator run measured
-  `144.58ms` median / `147.86ms` trimmed average with `8.74%` variance and
-  showed remaining top self-time in `isNode`, the selector-key local
-  `visit(...)` walker, `_processNodes`, callable collection/search, and
-  render-body paths.
+- Rejected this pass: direct `nodeType` rewrites across `Rules` surface
+  classifiers reduced some `isNode` samples but did not improve wall-clock in
+  this worktree, so they were reverted. The extend root aggregate skip from an
+  isolated worker remains promising, but the main-worktree combined/isolated
+  timings did not reproduce a keep signal, so it was also reverted for this
+  batch.
+- Evidence: focused node/callable/lookup/extend tests passed (`200` passed,
+  `261` skipped, `5` open Vitest markers). Ordered `@jesscss/core` and `jess`
+  builds passed. Isolated worker proof for the Node-shape patch included
+  `verify:baseline -- --changed`, `verify:node-constructor-metadata`,
+  `verify:aggressive-cutting-review`, and `git diff --check`.

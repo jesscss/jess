@@ -5,8 +5,6 @@ import { Node, defineType } from './node.js';
  * A plain JS array.
  */
 export class JsArray extends Node<readonly any[]> {
-  static override childKeys = null;
-
   override resolve(_context: Context): this {
     return this;
   }

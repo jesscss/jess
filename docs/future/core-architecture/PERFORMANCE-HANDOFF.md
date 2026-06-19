@@ -150,6 +150,34 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 Node-shape leaf-constructor pass: kept the `_processNodes(...)`
+leaf skip from the isolated Node-shape worker. `Node._processNodes(...)` now
+returns immediately when the class declares `childKeys === null`, so true leaf
+nodes do not recursively inspect constructor values for child adoption.
+`JsObject` and `JsArray` had their `childKeys = null` markers removed because
+their dynamic values may contain nodes and must keep source-parent/source-root
+adoption. This adds no nodes, clone paths, caches, or new traversal. Isolated
+worker A/B measured final patched `147.55ms` median / `150.61ms` trimmed
+average versus warm reverse baseline `159.60ms` median / `163.02ms` trimmed
+average. Main-worktree paired A/B under noisy system load measured unpatched
+`167.64ms` median / `171.94ms` trimmed average and patched `147.42ms` median /
+`150.82ms` trimmed average on `24`/`8`. Focused node/callable/lookup/extend
+tests passed (`200` passed, `261` skipped, `5` open Vitest markers), ordered
+`@jesscss/core` and `jess` builds passed, and the isolated worker also ran
+`verify:baseline -- --changed`, `verify:node-constructor-metadata`,
+`verify:aggressive-cutting-review`, and `git diff --check`.
+
+2026-06-19 rejected same-pass experiments: the isolated extend worker found a
+promising root aggregate skip (`selectorMayContainAnyExtendTarget` profile
+down from `55.80ms` to `1.27ms` in that worktree), but the main worktree did
+not reproduce a wall-clock keep signal: extend-only measured `149.61ms` median
+on `40`/`12`, and combined with the Node-shape patch worsened to `155.77ms`
+median. Reverted for now; revisit only with a cleaner paired A/B or after the
+copy/materialization agents land larger cuts. Also rejected direct `nodeType`
+rewrites across `Rules` surface classifiers: they reduced `isNode` samples in
+profile but measured `157.11ms` median in the profiled run and did not beat the
+prior selector-key evidence, so the patch was reverted.
+
 2026-06-19 selector-key dispatch pass: fresh CPU evidence after the
 render-staging gate showed `isNode(...)` still first by repo self-time, and a
 temporary caller diagnostic put the hottest caller family in
