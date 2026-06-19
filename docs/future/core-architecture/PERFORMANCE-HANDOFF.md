@@ -545,6 +545,23 @@ coarse root-level bitset guard; do not add activation-closure arrays/loops
 unless a future profile shows enough irrelevant visible extends to outweigh
 the closure overhead.
 
+2026-06-18 rejected rules-like reference `Object.assign` surface: the current
+profile after the visible-root pass showed `createRulesLikeReferenceSurface(...)`
+at `20` self samples. A prototype replaced the manual
+`Object.getOwnPropertyNames(...)` copy loop with `Object.assign(...)`, while
+keeping the existing `_options` clone and source/parent/index semantics.
+Focused rules-like reference and callable placement coverage passed. External
+canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`
+rejected it: current-source refresh was average `181.99ms` / median
+`180.22ms`, then average `182.99ms` / median `179.89ms`; the prototype
+reported average `189.75ms` / median `188.01ms`, then average `187.73ms` /
+median `181.22ms` with higher variance. CPU samples did move
+`createRulesLikeReferenceSurface(...)` from `20` self to `2` self, but garbage
+collection rose sharply (`119` to `166` samples) and the profiled run was too
+noisy (`avg 246.94ms` / `median 229.92ms`). Reverted. The next rules-like
+surface cut should delete the need for the shallow surface or specialize
+known fields without a generic bulk copy, and it must prove GC does not rise.
+
 2026-06-18 rejected extend helper micro-cut: replacing two
 `targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
 passed focused extend tests and the full Jess package rebuild, but wall-clock

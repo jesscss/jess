@@ -112,14 +112,14 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected two post-visible-root follow-ups and kept no code. The
-  CPU-backed targets were remaining `processExtends(...)` in-loop allocation
-  work and render comparable-header work after the visible-root cut.
-- Verdict: revert both prototypes. The indexed classification-array rewrite
-  moved `processExtends(...)` samples only slightly and worsened/noised
-  wall-clock and garbage collection. The render-frame identity fast path
-  changed indentation in complex mixin-ruleset reference output before
-  benchmarking.
+- Latest pass: rejected the rules-like reference `Object.assign(...)` surface
+  prototype and kept no code. The CPU-backed target was
+  `createRulesLikeReferenceSurface(...)` after the current refresh showed it at
+  `20` self samples.
+- Verdict: revert the prototype. It cut
+  `createRulesLikeReferenceSurface(...)` samples to `2`, but wall-clock
+  regressed/noised and garbage collection rose sharply, so the local CPU win
+  was not a real benchmark win.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
@@ -127,14 +127,13 @@ Keep this section to the current pass only. Move historical evidence to
 - Helper/API surface: none added or kept.
 - Metadata mutations: none added this pass.
 - Side maps/arrays/copies: no new side maps, arrays, or copies in kept code.
-- Evidence: current-source refresh measured `181.10ms` average /
-  `179.64ms` median and `181.37ms` average / `180.91ms` median on external
+- Evidence: current-source refresh measured `181.99ms` average /
+  `180.22ms` median and `182.99ms` average / `179.89ms` median on external
   canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
   CPU profile
-  `profiling/core-architecture/20260618-203625-current-refresh-cpu/CPU.20260618.203625.57311.0.001.cpuprofile`
-  showed `processExtends(...)` at `19` self samples. The classification-array
-  prototype passed focused extend tests but benchmarked `185.11ms` /
-  `180.57ms`, then `180.29ms` / `177.94ms`, and profiled worse at
-  `184.81ms` / `183.42ms`; reverted. The render-frame prototype failed
-  focused render/reference coverage with indentation drift; reverted before
-  benchmarking.
+  `profiling/core-architecture/20260618-204548-current-refresh-cpu/CPU.20260618.204548.47605.0.001.cpuprofile`
+  showed `createRulesLikeReferenceSurface(...)` at `20` self samples. The
+  `Object.assign(...)` prototype passed focused rules-like reference/callable
+  tests but benchmarked `189.75ms` / `188.01ms`, then `187.73ms` /
+  `181.22ms`; profile samples moved the target to `2` self while garbage
+  collection rose from `119` to `166` samples. Reverted.
