@@ -404,21 +404,21 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Rules)) {
+  if (node.type === 'Rules') {
     return node;
   }
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
-    return node.rules;
+  if (node.type === 'Ruleset' || node.type === 'AtRule' || node.type === 'Mixin') {
+    return (node as Ruleset | AtRule | Mixin).rules;
   }
   return undefined;
 }
 
 function childCallableRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Rules)) {
+  if (node.type === 'Rules') {
     return node;
   }
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
-    return node.rules;
+  if (node.type === 'Ruleset' || node.type === 'AtRule') {
+    return (node as Ruleset | AtRule).rules;
   }
   return undefined;
 }

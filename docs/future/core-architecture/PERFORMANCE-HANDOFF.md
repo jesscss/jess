@@ -271,6 +271,35 @@ reported `avg 181.40ms` / `median 180.15ms`, and moved the targeted stacks:
 `copyCallableRulesNode` total `505.29ms -> 491.43ms`, and `copyChild` total
 `389.18ms -> 280.24ms`. Keep as a measured wall-clock and CPU-profile win.
 
+2026-06-18 direct child-rule type checks pass: post-callable refresh measured
+external canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` at `avg 178.45ms` / `median 176.92ms`
+(`variance 5.99%`). The CPU profile
+`profiling/core-architecture/20260618-195000-post-callable-reuse-refresh-cpu/CPU.20260618.195000.35206.0.001.cpuprofile`
+showed `isNode(...)` as a visible self-time frame while local child
+rules/callable-rules probes were on lookup/render stacks.
+
+The kept cut replaces `isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin)`
+calls inside `childRulesOf(...)` and `childCallableRulesOf(...)` with direct
+`node.type` checks for those known node types. It adds no helpers, state, or
+traversal.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts -t "real Less merge-chain property refs avoid public lookup bridges|routes mixin setDefined writes through the resolved caller binding|evaluates mixin setDefined writes from live parameter bindings|direct variable lookup still skips children without variable or reference-import surfaces|direct property lookup still skips children without property or reference-import surfaces|renders registration-prepared rules without deriving another root surface|routes direct Rules.evalNode through registration prep|ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables|ScopeFrame callable buckets: prepared child entries stop recursive surface rediscovery"`
+(`9` passed, `483` skipped), and
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-candidate-state.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/callable-candidate-execution.test.ts src/tree/util/__tests__/callable-eval.test.ts src/tree/util/__tests__/callable-special-case.test.ts`
+(`15` passed). Ordered benchmark-path rebuild passed before timing.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` reported `avg 174.32ms` / `median 172.11ms`
+(`variance 6.25%`) and then `avg 171.53ms` / `median 169.61ms`
+(`variance 4.25%`). CPU profile
+`profiling/core-architecture/20260618-195354-direct-child-rule-type-checks-cpu/CPU.20260618.195354.57146.0.001.cpuprofile`
+reported profiler-overhead `avg 181.64ms` / `median 179.08ms`; parsed samples
+showed `isNode(...)` reduced to scattered tiny samples and `processExtends(...)`
+as the clearest next core self-time frame (`28` self samples / `151` total in
+that run). Keep as a small measured wall-clock and CPU-profile cleanup.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

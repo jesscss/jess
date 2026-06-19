@@ -112,35 +112,27 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept callable default-assignment child reuse. The CPU-backed
-  target was callable placement/copy work under
-  `createOwnedCallableRulesSurface(...)` and
-  `prepareCallableCandidateState(...)`. `canReuseStaticCallableChildren(...)`
-  now treats parser-default declaration assignment `':'` as ordinary default
-  assignment instead of forcing the owned callable-copy path.
-- Verdict: keep as a measured wall-clock and CPU-profile win. The cut is
-  intentionally narrow: nested rulesets, at-rules, non-default assignment
-  forms, and `setDefined` declarations still force owned callable surfaces.
-  The first prototype allowed `setDefined` through; focused mixin tests caught
-  the caller-binding write regression, and that shape was rejected before
-  benchmarking.
+- Latest pass: kept direct child-rule type checks in local `Rules` lookup
+  helpers. The CPU-backed target was the post-callable profile's `isNode(...)`
+  self-time around child rules/callable rules probing.
+- Verdict: keep as a small measured wall-clock and CPU-profile cleanup. The
+  change is local to `childRulesOf(...)` / `childCallableRulesOf(...)` and
+  replaces generic bitmask helper calls with direct `node.type` checks for the
+  known `Rules`, `Ruleset`, `AtRule`, and `Mixin` cases.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps or arrays. The kept path removes
-  owned callable child copies for source-static callable bodies whose only
-  declaration assignment marker is parser-default `':'`.
+- Side maps/arrays/copies: none added.
 - Evidence: focused callable helper tests passed (`15` passed), and focused
-  declaration/reference/mixin smoke passed (`7` passed, `467` skipped).
-  Ordered benchmark-path rebuild passed. Current-source refresh before the
-  patch measured `185.93ms` average / `183.36ms` median on external canonical
-  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`. The kept
-  source measured one noisy outlier run (`204.74ms` average / `180.89ms`
-  median), then stable repeats at `175.16ms` average / `170.38ms` median and
-  `172.94ms` average / `172.41ms` median. Clean CPU profile moved
-  `createOwnedCallableRulesSurface(...)` total `152.30ms -> 132.62ms`,
-  `prepareCallableCandidateState(...)` total `152.65ms -> 130.99ms`, and
-  `copyChild(...)` total `389.18ms -> 280.24ms`.
+  reference/mixin/rules smoke passed (`9` passed, `483` skipped). Ordered
+  benchmark-path rebuild passed. Post-callable refresh measured `178.45ms`
+  average / `176.92ms` median. The kept source measured `174.32ms` average /
+  `172.11ms` median and `171.53ms` average / `169.61ms` median on external
+  canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
+  CPU profile
+  `profiling/core-architecture/20260618-195354-direct-child-rule-type-checks-cpu/CPU.20260618.195354.57146.0.001.cpuprofile`
+  showed `isNode(...)` reduced to scattered tiny samples while
+  `processExtends(...)` became the clearest next core self-time target.
