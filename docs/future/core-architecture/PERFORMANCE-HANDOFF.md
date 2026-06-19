@@ -168,6 +168,12 @@ Current target swath:
    the highest eval/render-adjacent blocker. The wrapped-up parser lesson is:
    delete hot production machinery only when it removes runtime allocation or
    call scaffolding without adding per-token/per-rule branch ladders.
+   Parser-lane handoff branches are pushed for the next agent:
+   `feature/parser-production-machinery-cut` for the Less `value()` direct
+   dispatch prototype, `feature/parser-tokenizer-cutting` for the CSS token
+   conversion closure cut, `feature/scanner-first-parser-docs` for the
+   scanner-first design notes, and `feature/chevrotain-cache-investigation`
+   for the parser phase profiler.
 4. Keep only a constrained Chevrotain upstream lane, preferably outside this
    eval/render-focused worktree. Old serialized grammar / prerecorded-GAST
    history is not automatically promising: the failure mode is moving analysis
