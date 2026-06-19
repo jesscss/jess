@@ -151,17 +151,21 @@ Current target swath:
    `_processNodes(...)` calls after the direct-child constructor pass. Do not
    keep pushing constructor work unless a fresh profile/counter shows it
    reappearing in real benchmark execution.
-2. Local next swath moves back to eval/render cutting. Keep
-   `Reference.evalNode` plus direct lookup/callable collection as the primary
-   local target. Latest measurement audit still reports `Reference.evalNode`
-   around `46-51ms` on canonical `benchmark.less` and `55-57ms` on
-   `scope-lookup-stress.less`. Direct declaration child-entry work should not
-   repeat family predicates, bitmasks, or public-variable binding reuse probes:
-   those shapes did not reduce `childEntriesScanned` or `childEntryEntered`.
-   Next viable cuts should target reference-import / visibility-guarded
-   surfaces, callable collection/search (`collectCallableEntriesForKeyFrom`,
-   `getCallableEntriesForKey`, `searchSurface`), or other eval wrapper /
-   allocation work that shows up in timed profiles.
+2. Local next swath stays in eval/render cutting, but do not repeat the just-cut
+   direct Reference `copyWithReusableLeaves(declValue)` path, internal callable
+   binding `cloneBoundValue(...)`, or callable empty-array miss allocation
+   seams. Fresh measurement still reports `Reference.evalNode` around `49ms`
+   on canonical `benchmark.less`; same-load wall clock remains around `131ms`
+   median for Jess versus `36ms` for Less 4. The next viable cuts should target
+   `isNode`/node-shape/source-metadata self-time, remaining callable
+   collection/search (`getCallableEntriesForKey`,
+   `collectCallableEntriesForKeyFrom`,
+   `collectVisibleCallableRulesetPrefixMatchSurface`), visibility-guarded or
+   reference-import surfaces, render/materialization/readback that actually
+   moves canonical counters, or remaining normal-path copy/materialization
+   surfaces. Direct declaration child-entry work should not repeat family
+   predicates, bitmasks, or public-variable binding reuse probes: those shapes
+   did not reduce `childEntriesScanned` or `childEntryEntered`.
 3. Parser execution remains a real timed bucket, but hand it off to a separate
    parser-focused agent for now. This worktree's next queue should not keep
    consuming local passes on parser exploration unless new evidence makes it
@@ -223,6 +227,50 @@ mark/readback totals. Direct lookup counters remain diagnostic:
 `profiling/core-architecture/20260619-101839-post-constructor-processing-cpu`
 includes module-load/parser-initialization noise and should be treated as a
 target-selection prompt, not a clean CPU attribution.
+
+2026-06-19 Reference/callable binding copy cut: kept a three-part eval/callable
+machinery reduction from parallel worktree agents. First,
+`evaluateReferenceValueNode(...)` now evaluates the canonical declaration value
+directly instead of routing normal dynamic declaration/reference values through
+`copyWithReusableLeaves(declValue).eval(context)`. Focused tests assert that
+dynamic declaration reference containers and mixin reference target rules no
+longer inherit/materialize source copies while preserving canonical
+`sourceParent`. Second, internal callable binding deleted
+`cloneBoundValue(...)` and its `copyWithReusableLeaves(...).detachTrivia(true)`
+path: rest/@arguments/param binding prep now reuses the selected live/canonical
+arg nodes, while `define-function.ts` keeps and documents the third-party JS
+interop `rawArgs` copy boundary with a remove-when condition. Third, callable
+collection/search now reuses module-local empty arrays for cached callable miss
+reads and no-remainder selector entries, and avoids allocating an empty
+`parentKeys` array when there is no parent selector. The render-preview
+duplicate-declaration prototype was rejected for this batch: it added a
+parallel simple syntax writer and did not move canonical
+`duplicateDeclarationPrerenderedDeclarations=884` or
+`emissionRenderNodeTextPreviewCalls=4095` counters, so it is not the right
+shape unless a future patch attacks the actual benchmark cases.
+
+Evidence: ordered rebuilds passed for `@jesscss/awaitable-pipe`,
+`@jesscss/core`, CSS/Less parsers, fns, style-resolver, plugin-less,
+plugin-less-compat, and `jess`. Focused core tests passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts
+src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts
+src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts
+src/tree/util/__tests__/callable-binding.test.ts
+src/tree/util/__tests__/callable-live-slots.test.ts
+src/__tests__/define-function.test.ts
+src/__tests__/define-function-split-sequence.test.ts
+src/tree/__tests__/import-style.test.ts` (`867` passed, `15` skipped,
+`9` deferred markers). `node scripts/profile-less-benchmark.mjs` reported
+`LessParser.parse=86.48ms`, `Reference.evalNode=49.06ms`,
+`Context.getTree=8.40ms`, unchanged render-preview counters, and direct lookup
+counters including `declaration.childEntryFamilySkip=29316`,
+`declaration.childEntryMergeFamilySkip=6435`, and
+`declaration.cacheMiss=4471`. Same-load
+`pnpm run benchmark:less:v4-v5 -- --runs=50 --warmup=15 --less4=measure`
+measured Less 4.6.3 median `35.94ms` / trimmed average `36.19ms` versus
+Jess median `130.79ms` / trimmed average `132.58ms`. This is accepted as
+normal-path copy/allocation/helper deletion with usable wall-clock evidence;
+do not claim the performance campaign is complete.
 
 2026-06-19 post-reference-strategy-cache refresh: after rebuilding core,
 CSS/Less parsers, fns, style-resolver, plugin-less, and plugin-less-compat,

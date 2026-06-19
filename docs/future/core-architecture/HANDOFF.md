@@ -103,6 +103,57 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Reference/callable binding copy cut.
+- Verdict: accepted as a normal-path copy/allocation/helper deletion with
+  benchmark evidence, not performance-goal completion.
+  `evaluateReferenceValueNode(...)` now evaluates canonical declaration values
+  directly instead of copying through
+  `copyWithReusableLeaves(declValue).eval(context)`. Internal callable binding
+  deleted `cloneBoundValue(...)` and reuses selected live/canonical arg nodes
+  for rest/@arguments/param binding prep. Callable lookup reuses module-local
+  empty arrays for cached misses and no-remainder selector entries, and skips
+  empty `parentKeys` allocation when no parent selector exists. The third-party
+  JS `rawArgs` copy boundary remains in `define-function.ts` with an inline
+  remove-when condition.
+- New traversal: none. Existing `createRestBindingValue(...)` and
+  `createArgumentsBindingValue(...)` loops remain, but their per-node clone
+  calls are deleted. Existing callable lookup loops are unchanged.
+- Review-flagged allocations: deleted one normal Reference
+  `copyWithReusableLeaves(...)` call, the exported/private callable-binding
+  `cloneBoundValue(...)` helper and its recursive copy call, fresh empty arrays
+  for callable cache misses/no-remainder selector matches, and one empty
+  parent-key array. No registry/index, side map, broad cache, wrapper `Rules`,
+  copied node, materialized AST surface, or deep child copy was added.
+- New node/materialization: none. Tests assert dynamic declaration reference
+  containers and mixin reference targets no longer inherit/materialize source
+  copies while retaining canonical `sourceParent`.
+- Render path: unchanged. A render-preview duplicate-declaration prototype was
+  rejected because it added a parallel simple syntax writer and did not move
+  canonical render-preview counters.
+- Helper/API surface: deleted `cloneBoundValue(...)`; added no helper or public
+  API. Two module-local empty array constants replace repeated private empty
+  array creation in callable lookup internals.
+- Metadata mutations: none added. The remaining `rawArgs` materialization is
+  documented as a third-party JS interop boundary, with a remove-when condition
+  for a read-only live arg view or copy-on-write surface.
+- Routine error control: none added.
+- Evidence: ordered rebuilds passed for `@jesscss/awaitable-pipe`,
+  `@jesscss/core`, CSS/Less parsers, fns, style-resolver, plugin-less,
+  plugin-less-compat, and `jess`. Focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts src/tree/__tests__/declaration.test.ts src/tree/__tests__/call.test.ts src/tree/util/__tests__/callable-binding.test.ts src/tree/util/__tests__/callable-live-slots.test.ts src/__tests__/define-function.test.ts src/__tests__/define-function-split-sequence.test.ts src/tree/__tests__/import-style.test.ts`
+  passed (`867` passed, `15` skipped, `9` deferred markers).
+  `profile-less-benchmark.mjs` reported `LessParser.parse=86.48ms`,
+  `Reference.evalNode=49.06ms`, `Context.getTree=8.40ms`, and unchanged
+  render-preview counters. Same-load
+  `pnpm run benchmark:less:v4-v5 -- --runs=50 --warmup=15 --less4=measure`
+  measured Less 4.6.3 median `35.94ms` versus Jess median `130.79ms`; Jess
+  remains far above the `42.16ms` target.
+- Rejected shapes: rejected the render duplicate-declaration simple-syntax
+  prototype because it grew a parallel syntax serializer without moving
+  canonical benchmark counters. Did not repeat family predicates, bitmasks,
+  public-variable binding reuse, parser work, selector-key caches, registry
+  fallback layers, broad side maps, or deep child copies.
+
 - Latest pass: callable/selector lookup machinery cut.
 - Verdict: accepted as a Reference/callable machinery reduction, not a speed
   claim. `tryReadInitialSourceStaticRulesLookupHandle(...)` returns the handle

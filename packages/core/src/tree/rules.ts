@@ -151,6 +151,8 @@ type CallableRulesetPathResult = {
 };
 const DEFINITE_MIXIN_NAMESPACE_MISS = Symbol('definite-mixin-namespace-miss');
 type CallableNamespaceFastResult = CallableRulesetPathResult | typeof DEFINITE_MIXIN_NAMESPACE_MISS | undefined;
+const EMPTY_CALLABLE_LOOKUP_ENTRIES: CallableLookupEntry[] = [];
+const EMPTY_CALLABLE_MATCH: string[] = [];
 const UNCOVERED_CALLABLE_MISS: MixinEntry[] = [];
 const UNCOVERED_CALLABLE_UNSUPPORTED = Symbol('uncovered-callable-unsupported');
 type UncoveredCallableResult =
@@ -1960,7 +1962,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (key === undefined) {
       return;
     }
-    this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
+    this.addCallableEntry(lookupKey, key, ruleset, match ?? EMPTY_CALLABLE_MATCH, bucket);
   }
 
   private collectCallableEntriesForKeyFrom(
@@ -2046,9 +2048,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           : undefined;
         const parentKeys = parentSelector && ((parentSelector.nodeType ?? 0) & N.Nil) === 0
           ? getOrderedSelectorKeys(parentSelector)
-          : [];
+          : undefined;
         if (
-          parentKeys.length > 0
+          parentKeys !== undefined
+          && parentKeys.length > 0
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
@@ -2066,7 +2069,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): CallableLookupEntry[] {
     const entries = this.callableLookupCache;
     if (entries?.has(lookupKey)) {
-      return entries.get(lookupKey) ?? [];
+      return entries.get(lookupKey) ?? EMPTY_CALLABLE_LOOKUP_ENTRIES;
     }
 
     const bucket: CallableLookupEntry[] = [];

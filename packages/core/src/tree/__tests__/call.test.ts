@@ -940,7 +940,7 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
-  it('passes stylesheet function args through the callable binding surface once', async () => {
+  it('reuses stylesheet function args through the callable binding surface', async () => {
     class CountingSequence extends Sequence {
       static countConstructions = false;
       static constructedCopies = 0;
@@ -990,7 +990,7 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      expect(CountingSequence.constructedCopies).toBe(2);
+      expect(CountingSequence.constructedCopies).toBe(1);
       expect(collectionEvalCalls).toBe(0);
       expect(originalArg.sourceParent).toBe(originalArgs);
       expect(originalArgs.sourceParent).toBe(rule);

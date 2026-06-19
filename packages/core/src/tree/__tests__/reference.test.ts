@@ -1197,7 +1197,8 @@ describe('reference', () => {
     });
 
     it('renders dynamic declaration reference containers without post-eval reference ownership copies', async () => {
-      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
+      const sourceChildReference = ref({ key: 'tone' }, { type: 'variable' });
+      const sourceValue = list([sourceChildReference]);
       const node = rules([
         vardecl({ name: any('tone'), value: any('red') }),
         decl({
@@ -1244,7 +1245,9 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const originalInherit = List.prototype.inherit;
+      const originalReferenceInherit = Reference.prototype.inherit;
       let inheritedFromReference = 0;
+      let copiedSourceChildReferences = 0;
       List.prototype.inherit = function inheritForCounting(
         this: List,
         ...args: Parameters<typeof originalInherit>
@@ -1254,6 +1257,15 @@ describe('reference', () => {
         }
         return originalInherit.apply(this, args);
       };
+      Reference.prototype.inherit = function inheritForCounting(
+        this: Reference,
+        ...args: Parameters<typeof originalReferenceInherit>
+      ): ReturnType<typeof originalReferenceInherit> {
+        if (args[0] === sourceChildReference) {
+          copiedSourceChildReferences++;
+        }
+        return originalReferenceInherit.apply(this, args);
+      };
 
       try {
         const resolved = await refNode.resolve(context);
@@ -1261,10 +1273,12 @@ describe('reference', () => {
         expect(resolved).toBeInstanceOf(List);
         expect(resolved.toTrimmedString()).toBe('red');
         expect(inheritedFromReference).toBe(0);
+        expect(copiedSourceChildReferences).toBe(0);
         expect(sourceValue.sourceParent?.type).toBe('Declaration');
         expect(context.referenceStack).toBe(0);
       } finally {
         List.prototype.inherit = originalInherit;
+        Reference.prototype.inherit = originalReferenceInherit;
       }
     });
 
@@ -2406,7 +2420,7 @@ describe('reference', () => {
       }
     });
 
-    it('materializes mixin reference targets without double-inheriting evaluated rules', async () => {
+    it('resolves mixin reference targets without inheriting evaluated rules', async () => {
       const mixinRules = rules([
         decl({ name: 'color', value: any('green') })
       ]);
@@ -2442,7 +2456,8 @@ describe('reference', () => {
         expect(await renderNodeToString(evald, context)).toBeString(`
           out: green;
         `);
-        expect(inheritedFromMixinRules).toBe(1);
+        expect(inheritedFromMixinRules).toBe(0);
+        expect(mixinRules.sourceParent).toBe(mixinDef);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.inherit = originalInherit;

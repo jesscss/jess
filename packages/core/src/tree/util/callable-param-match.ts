@@ -5,14 +5,14 @@ import { Sequence } from '../sequence.js';
 import { Nil } from '../nil.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
-import { cloneBoundValue, createRestBindingValue } from './callable-binding.js';
+import { createRestBindingValue } from './callable-binding.js';
 import { getCallableNodeSignature, getCallableRestSignature, getCallableSignatureKey } from './callable-signature.js';
 
-function cloneDefinedBoundValue(value: Node | undefined): Node {
+function getDefinedBoundValue(value: Node | undefined): Node {
   if (!value) {
     throw new TypeError('Callable parameter binding requires a value');
   }
-  return cloneBoundValue(value);
+  return value;
 }
 
 export type CallableParamBindingRecord = {
@@ -120,7 +120,7 @@ export function matchCallableParams({
       bindingRecordsByIndex[paramIndex] = {
         name: param.name.valueOf(),
         value: argValue,
-        prepareValue: cloneDefinedBoundValue,
+        prepareValue: getDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
       };
@@ -129,7 +129,7 @@ export function matchCallableParams({
       bindingRecordsByIndex[paramIndex] = {
         name: param.valueOf(),
         value: argValue,
-        prepareValue: cloneDefinedBoundValue,
+        prepareValue: getDefinedBoundValue,
         sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
       };
       signatureParts[paramIndex] = getCallableNodeSignature(argValue);
@@ -183,7 +183,7 @@ export function matchCallableParams({
       bindingRecordsByIndex[i] = {
         name: param.name.valueOf(),
         value: param.valueNode,
-        prepareValue: cloneDefinedBoundValue,
+        prepareValue: getDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
       };

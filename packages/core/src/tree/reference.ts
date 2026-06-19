@@ -14,7 +14,6 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -3048,7 +3047,7 @@ function evaluateReferenceValueNode(
     ) {
       return declValue;
     }
-    return copyWithReusableLeaves(declValue).eval(context);
+    return declValue.eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }

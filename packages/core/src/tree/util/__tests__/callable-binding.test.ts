@@ -38,12 +38,12 @@ describe('callable binding helpers', () => {
     expect(rest.value[0]).toBe(value);
   });
 
-  it('keeps static containers on the owned binding path for now', () => {
+  it('reuses static containers on the internal binding path', () => {
     const source = list([any('4px')]);
 
     const rest = createRestBindingValue([source]);
 
-    expect(rest.value[0]).not.toBe(source);
+    expect(rest.value[0]).toBe(source);
     expect(rest.value[0]?.valueOf()).toBe(source.valueOf());
     expect(source.value[0]?.sourceParent).toBe(source);
   });

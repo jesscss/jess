@@ -382,6 +382,10 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     return runtimeFn.call(context, ...args);
   }
 
+  // Third-party JS interop boundary: params metadata exposes `this.rawArgs` as
+  // an ordinary mutable List, so external callbacks must not receive canonical
+  // call args. Remove when that public API is replaced by a read-only live arg
+  // view or explicit copy-on-write surface.
   /** Normalize positional args into a List node for tracking original arguments */
   let originalArgsList: List;
   if (listArg) {
