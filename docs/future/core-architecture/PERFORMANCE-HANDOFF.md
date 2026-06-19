@@ -274,6 +274,27 @@ from `15.79` to `28.09` self samples and `isDisjoint(...)` from `11.83` to
 `18.14`. Do not retry a duplicate-visibility pass; a better root bucket must
 carry visibility or target buckets without rescanning the same instructions.
 
+Rejected follow-up: broad `rules.ts` direct `node.type` checks. Current refresh
+before the patch measured external canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` at `avg 173.95ms` /
+`median 171.11ms`, then `avg 170.26ms` / `median 167.59ms`; profile
+`profiling/core-architecture/20260618-211602-current-refresh-cpu/CPU.20260618.211602.93756.0.001.cpuprofile`
+reported `avg 177.28ms` / `median 175.15ms`, with visible `isNode(...)`,
+`childRulesOf(...)`, `processDeclarationOccurrence(...)`, and registration
+frames. A prototype replaced several `isNode(...)` calls in rules-surface,
+registration, static invalidation, document-order, and merge-declaration
+helpers with direct `node.type` checks. Focused lookup/merge/registration
+tests passed (`11` passed, plus the known branch-baseline red merge test still
+failed when included), and the ordered benchmark-path rebuild passed. The real
+benchmark rejected it: `avg 171.99ms` / `median 169.40ms`, then
+`avg 181.58ms` / `median 175.11ms`, and profiled timing worsened to
+`avg 194.02ms` / `median 194.63ms`. Although `isNode(...)` samples fell
+(`100.91 -> 80.90`) and `processDeclarationOccurrence(...)` samples fell
+(`30.08 -> 15.06`), total/runtime signal was worse with higher `Node`/GC and
+`processExtends(...)`. Reverted. Do not do broad direct-type rewrites just
+because `isNode(...)` appears in a profile; only keep a narrower direct check
+when the exact call site itself is isolated and wall-clock confirms it.
+
 2026-06-18 callable default-assignment reuse pass: refreshed current-source
 evidence before the patch was external canonical Less `benchmark.less
 --runs=24 --warmup=8 --math=parens-division` at `avg 185.93ms` /

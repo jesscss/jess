@@ -120,6 +120,10 @@ Keep this section to the current pass only. Move historical evidence to
   some dead-root allocation but duplicated visibility and bitset checks on
   surviving roots, and CPU showed `processExtends(...)` rising from `15.79` to
   `28.09` self samples. See `PERFORMANCE-HANDOFF.md` for the full evidence.
+- Follow-up rejected: broad `rules.ts` direct `node.type` checks. Focused tests
+  and build passed, and the prototype reduced `isNode(...)` samples, but
+  wall-clock/profile timing worsened (`194.02ms` / `194.63ms` profiled). Do
+  not retry a broad direct-type rewrite; isolate exact call sites instead.
 - Verdict: keep `RootExtendInstruction.isSelfExtend` and direct warning-path
   loops. The self-extend fact is carried while `targetValue` is already being
   computed, and the unmatched-warning scan no longer allocates arrays for
