@@ -116,6 +116,10 @@ Keep this section to the current pass only. Move historical evidence to
   `processExtends(...)` after the current refresh measured `185.92ms` /
   `181.67ms` and `188.69ms` / `184.57ms` on external canonical Less
   `benchmark.less`.
+- Follow-up rejected: two-pass lazy visible instruction collection. It avoided
+  some dead-root allocation but duplicated visibility and bitset checks on
+  surviving roots, and CPU showed `processExtends(...)` rising from `15.79` to
+  `28.09` self samples. See `PERFORMANCE-HANDOFF.md` for the full evidence.
 - Verdict: keep `RootExtendInstruction.isSelfExtend` and direct warning-path
   loops. The self-extend fact is carried while `targetValue` is already being
   computed, and the unmatched-warning scan no longer allocates arrays for

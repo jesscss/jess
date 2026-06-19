@@ -259,6 +259,21 @@ root-level target-bit bucket proves no current visible target can hit, and keep
 selector mutation updates cheap enough that the bookkeeping does not repeat the
 rejected sparse subset-update failure.
 
+Rejected follow-up: two-pass lazy visible instruction collection. A prototype
+first scanned each root only for visible target-bit existence, then skipped
+`visibleExtends` allocation and `extendWith` aggregation on dead roots; roots
+that survived paid a second visibility scan to collect chain instructions.
+Focused extend tests passed (`105` passed, `1` skipped), but the canonical
+external Less `benchmark.less` signal was mixed (`avg 174.28ms` /
+`median 170.54ms`, then `avg 170.01ms` / `median 167.04ms`) versus the kept
+shape's `168.64ms` / `166.00ms` and `173.66ms` / `169.60ms`. CPU rejected it:
+profile
+`profiling/core-architecture/20260618-211328-extend-lazy-visible-cpu/CPU.20260618.211328.79358.0.001.cpuprofile`
+reported `avg 179.96ms` / `median 177.89ms`, but `processExtends(...)` rose
+from `15.79` to `28.09` self samples and `isDisjoint(...)` from `11.83` to
+`18.14`. Do not retry a duplicate-visibility pass; a better root bucket must
+carry visibility or target buckets without rescanning the same instructions.
+
 2026-06-18 callable default-assignment reuse pass: refreshed current-source
 evidence before the patch was external canonical Less `benchmark.less
 --runs=24 --warmup=8 --math=parens-division` at `avg 185.93ms` /
