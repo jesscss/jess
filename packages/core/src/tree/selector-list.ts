@@ -48,9 +48,15 @@ export class SelectorList extends Selector<Selector[]> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.selectors = value;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
   }
 
   private ownSelector(item: Selector): Selector {

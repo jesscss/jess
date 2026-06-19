@@ -59,9 +59,15 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.components = value;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
   }
 
   private ownComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {

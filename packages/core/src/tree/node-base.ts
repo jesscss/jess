@@ -516,9 +516,10 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: NodeLocation
+    location?: NodeLocation,
+    processChildren?: boolean
   ) {
-    this.value = this._processNodes(value);
+    this.value = processChildren === false ? value : this._processNodes(value);
     this._location = location;
     this._options = options;
   }

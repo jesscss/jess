@@ -131,9 +131,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   readonly preserveWhitespace: boolean | undefined;
 
   constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.items = value;
     this.preserveWhitespace = options?.preserveWhitespace;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
   }
 
   private withValue(value: Node[]): Sequence {

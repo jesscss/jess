@@ -153,6 +153,39 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 explicit hot-container adoption pass: kept the first `_processNodes`
+constructor reduction. `List`, `Sequence`, `SelectorList`,
+`CompoundSelector`, `ComplexSelector`, and `Rules` now pass
+`processChildren=false` to `Node` and adopt their known direct child arrays in
+their own constructors. This removes generic recursive `_processNodes(...)`
+dispatch for these hot array/container families without adding nodes, clone
+paths, side maps, caches, or runtime materialization. Focused structural,
+lookup, reference, and mixin tests passed after rebuilding built package
+outputs (`649` passed, `14` skipped, `9` todo). Live `benchmark.less`
+comparator evidence over `100` runs after `25` warmups with `--less4=measure`
+measured patched Jess at `133.50ms` median / `137.34ms` trimmed average, then
+`134.42ms` / `137.58ms`; the immediate earlier same-machine control was
+`135.08ms` / `137.97ms`. Keep as a small but repeatable runtime win and a
+structural step toward eliminating constructor `_processNodes(...)`.
+
+Same-pass rejected lessons: a lazy `rulesParent` getter cache passed focused
+tests but measured flat/slower than control (`136.04ms` / `137.61ms` patched
+vs `134.57ms` / `137.36ms` reverted control), so it was reverted. A plain
+`rulesParent` field plus exported `getRulesParent(...)` resolver also passed
+focused tests but worsened (`138.65ms` / `142.43ms`), so it was reverted.
+Broad `childKeys`-driven `_processNodes(...)` shortcuts were rejected as the
+wrong abstraction: `childKeys` names instance fields, not constructor input
+shape, and even guarded variants were noisy/tiny. Future `_processNodes`
+elimination should prefer explicit constructor adoption/value-shape contracts
+or removing the need for source-parent mutation, not retrofitting `childKeys`
+as constructor metadata.
+
+Benchmark discipline reminder from this pass: this repo's Vitest config
+resolves workspace package imports through built `lib/` output. After source
+edits, rebuild affected Jess packages before interpreting package tests,
+profiles, or the Less v5 harness; stale built output produced false
+Chevrotain/source-map failures during this pass.
+
 2026-06-19 ruleset ownSelector copy deletion: kept the copy/materialization
 worker's safe deletion in `Ruleset._storeOwnSelector(...)`. Registration
 already passes the owned pre-eval selector into `_storeOwnSelector(...)`, so

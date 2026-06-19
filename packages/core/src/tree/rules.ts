@@ -4056,10 +4056,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(value ?? [], mergedOptions, location);
-    this.rules = value;
+    const rules = value ?? [];
+    super(rules, mergedOptions, location, false);
+    this.rules = rules;
     this._sourceRoot = this;
     this._treeContext = treeContext;
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i];
+      if (rule instanceof Node) {
+        this.adopt(rule);
+      }
+    }
   }
 
   /**

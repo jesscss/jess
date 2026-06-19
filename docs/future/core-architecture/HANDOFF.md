@@ -166,38 +166,29 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: direct `nodeType` masks in hot `Rules` callable/declaration
-  surface lookup plus an executable root runtime-library setup build.
-- Verdict: accepted as a measured performance cut, not goal completion. The
-  direct-mask patch removes repeated `isNode(...)` helper calls from hot
-  callable/declaration-surface loops in `packages/core/src/tree/rules.ts` and
-  improves same-load `benchmark.less` A/B from Jess median `121.25ms` /
-  trimmed `122.71ms` to `116.30ms` / `118.01ms` over `100` runs after `25`
-  warmups. Jess is still far slower than Less 4.x (`29-32ms` live here and
-  stored Less 4.5 median `42.16ms`).
-- New traversal: none. Existing loops in `getCallableRulesetKeyPaths(...)`,
-  `childRulesOf(...)`, `childCallableRulesOf(...)`,
-  `rulesMayContain*Surface(...)`, `collectCallableEntriesForKeyFrom(...)`, and
-  direct callable selector entry setup now use local `nodeType` masks instead
-  of calling `isNode(...)`.
+- Latest pass: explicit adoption for hot constructor container families.
+- Verdict: accepted as a small measured performance cut, not goal completion.
+  `List`, `Sequence`, `SelectorList`, `CompoundSelector`, `ComplexSelector`,
+  and `Rules` now opt out of base constructor `_processNodes(...)` and adopt
+  their known direct child arrays in the concrete constructor.
+- New traversal: six direct constructor array scans. They replace the previous
+  generic base `_processNodes(...)` array scan for the same constructor values;
+  they do not recurse into object values or discover new child surfaces.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: no hot helper added. Root `package.json` now exposes
-  `pnpm build` as the runtime-library dependency setup command required by
-  sub-agent/performance docs.
-- Metadata mutations: none.
+- Helper/API surface: one internal constructor flag only.
+- Metadata mutations: six `adopt(...)` loops. They preserve the previous
+  source-parent/static/async flag adoption semantics for already-known direct
+  child arrays, but run in concrete constructors instead of the generic base
+  scanner.
 - Copy/materialization: none.
-- Danger-token note: `PERFORMANCE-HANDOFF.md` continues to mention
-  `needsVisibleSelectorClone`, `constructCopy`, `copyChild`, and `inherit` only
-  as profile evidence and next-target families, not as newly accepted runtime
-  machinery.
-- Evidence: `pnpm build` passed; focused
-  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts`
-  passed (`483` passed, `14` skipped, `9` deferred-case markers);
-  `git diff --check` passed;
-  live comparator A/B on `benchmark.less` used `--runs=100 --warmup=25
-  --less4=measure`; CPU profile
-  `profiling/core-architecture/20260619-083627-rules-direct-node-type-cpu`
-  shows `isNode` down to `93` self samples with next targets in
-  `_processNodes`, selector traversal, callable search, selector visibility
-  clone, and copy/inherit families.
+- Materialized array/object note: `const rules = value ?? []` preserves the
+  existing default empty array value used by `Rules`; it is not a copy and does
+  not allocate for non-empty caller-provided rules arrays.
+- Danger-token note: none added. No clone/copy/materialization path was added.
+- Evidence: ordered affected-package rebuild passed; focused
+  `@jesscss/core` structural/lookup/reference/mixin suite passed (`649`
+  passed, `14` skipped, `9` deferred markers); live comparator on `benchmark.less` used
+  `--runs=100 --warmup=25 --less4=measure` and measured patched Jess at
+  `133.50ms` median / `137.34ms` trimmed average, then `134.42ms` /
+  `137.58ms`, versus the immediate earlier control at `135.08ms` / `137.97ms`.

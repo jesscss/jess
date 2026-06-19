@@ -265,9 +265,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   readonly sep: ListOptions['sep'];
 
   constructor(value: T[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.items = value;
     this.sep = options?.sep;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
   }
 
   private withResolvedValue(value: Node[]): List<Node> {
