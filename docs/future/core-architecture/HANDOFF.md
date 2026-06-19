@@ -112,30 +112,29 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the extend visible-root single-proof cut. The CPU-backed
-  target was `processExtends(...)`, specifically the separate
-  `isSameOrDescendantRoot(...)` ancestry cache under extend visibility.
-- Verdict: delete `ExtendRootRegistry.isSameOrDescendantRoot(...)`, its
-  recursive cache, and the helper call from `isInstructionVisibleForRoot(...)`.
-  The cached `getVisibleRoots(extendRoot)` result already contains the extend
-  root, unprotected descendants, and same-layer roots, so exact self/protected
-  checks plus visible-root membership are the single visibility proof.
+- Latest pass: rejected two post-visible-root follow-ups and kept no code. The
+  CPU-backed targets were remaining `processExtends(...)` in-loop allocation
+  work and render comparable-header work after the visible-root cut.
+- Verdict: revert both prototypes. The indexed classification-array rewrite
+  moved `processExtends(...)` samples only slightly and worsened/noised
+  wall-clock and garbage collection. The render-frame identity fast path
+  changed indentation in complex mixin-ruleset reference output before
+  benchmarking.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
-  stringify through this pass.
-- Helper/API surface: deleted one registry method and its private recursive
-  helper/cache; none added.
+  stringify through this pass; the render fast path was reverted.
+- Helper/API surface: none added or kept.
 - Metadata mutations: none added this pass.
 - Side maps/arrays/copies: no new side maps, arrays, or copies in kept code.
-  The cut removes one ancestry side-cache.
-- Evidence: focused extend tests passed (`105` passed, `1` skipped). Ordered
-  benchmark-path rebuild passed. Current-source refresh measured `186.11ms`
-  average / `180.49ms` median and `182.51ms` average / `178.76ms` median on
-  external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division`; the kept source measured `177.64ms` average /
-  `176.83ms` median and `177.99ms` average / `176.58ms` median. CPU profile
-  `profiling/core-architecture/20260618-203401-extend-visible-roots-single-proof/CPU.20260618.203401.42590.0.001.cpuprofile`
-  moved `processExtends(...)` from `24` to `20` self samples and removed
-  `isSameOrDescendantRoot(...)`; keep as a measured wall-clock and CPU-profile
-  win.
+- Evidence: current-source refresh measured `181.10ms` average /
+  `179.64ms` median and `181.37ms` average / `180.91ms` median on external
+  canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
+  CPU profile
+  `profiling/core-architecture/20260618-203625-current-refresh-cpu/CPU.20260618.203625.57311.0.001.cpuprofile`
+  showed `processExtends(...)` at `19` self samples. The classification-array
+  prototype passed focused extend tests but benchmarked `185.11ms` /
+  `180.57ms`, then `180.29ms` / `177.94ms`, and profiled worse at
+  `184.81ms` / `183.42ms`; reverted. The render-frame prototype failed
+  focused render/reference coverage with indentation drift; reverted before
+  benchmarking.

@@ -497,6 +497,35 @@ samples moved `processExtends(...)` from `24` to `20`, removed
 `isSameOrDescendantRoot(...)`, and lowered garbage collector samples from
 `110` to `95` in that run. Keep as a measured wall-clock and CPU-profile win.
 
+2026-06-18 rejected post-visible-root follow-ups: refreshed current-source
+evidence after the visible-root pass measured external canonical Less
+`benchmark.less --runs=24 --warmup=8 --math=parens-division` at
+`avg 181.10ms` / `median 179.64ms` (`variance 6.62%`) and `avg 181.37ms` /
+`median 180.91ms` (`variance 6.68%`). CPU profile
+`profiling/core-architecture/20260618-203625-current-refresh-cpu/CPU.20260618.203625.57311.0.001.cpuprofile`
+reported profiler-overhead `avg 181.13ms` / `median 179.81ms`; parsed sample
+totals still showed `processExtends(...)` at `19` self samples, with
+`renderRulesBody(...)`, callable copying, rules-like reference surfaces, and
+lookup surface search in the same broad band.
+
+Two prototypes were rejected before commit. First, replacing the per-ruleset
+extend classification keyed lookup and exclusion table with indexed arrays passed focused
+extend tests (`105` passed, `1` skipped), but wall-clock was mixed/worse:
+`avg 185.11ms` / `median 180.57ms`, then `avg 180.29ms` /
+`median 177.94ms`, and profiled benchmark overhead worsened to `avg
+184.81ms` / `median 183.42ms`. Profile samples moved `processExtends(...)`
+only from `19` to `17`, while garbage collector samples rose from `98` to
+`103` and `selectorMayContainExtendTarget(...)` rose from `2` to `6`.
+Reverted. Do not retry this as a local allocation polish unless the profile
+shows keyed lookup table construction itself dominating.
+
+Second, a render-frame fast path skipped comparable header rendering when the
+current frame was exactly the already-open prior frame. It targeted
+`writeHeaderSelector(...)` / header-string samples, but focused render/reference
+coverage rejected it before benchmarking by changing indentation in complex
+mixin-ruleset reference output. Reverted. A future render-frame cut must prove
+the frame-depth/header semantics first; exact node identity alone is not enough.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated
