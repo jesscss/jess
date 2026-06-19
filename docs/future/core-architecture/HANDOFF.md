@@ -112,41 +112,24 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: source-backed callable surface prep skip.
-- Verdict: accepted as a correctness fix and local prep/adoption reduction, not
-  as a proven broad benchmark speed win. Static source-backed callable surfaces
-  reuse canonical source children; ordinary registration prep re-adopted those
-  children into the output wrapper and broke source-backed placement ownership.
-- Rejected during pass: a raw `_location` shortcut in `cloning.ts` was
-  reverted after the ruleset-as-mixin ownership proof failed. The same proof
-  still failed after reverting, which exposed the source-backed callable prep
-  bug fixed here.
+- Latest pass: rejected callable bitmask and binding-location shortcuts.
+- Verdict: no production code kept. The current CPU profile made
+  `collectCallableEntriesForKeyFrom(...)` and `cloneBoundValue(...)` tempting
+  targets, but focused tests showed both local shortcuts cut across semantics
+  that are still encoded in complex selector lookup and live binding writes.
+- Rejected during pass: a callable collector `nodeType` / local selector-key
+  prototype passed simple callable tests but failed complex selector and
+  ampersand descendant lookup behavior; a `cloneBoundValue(...)` `_location`
+  shortcut passed helper tests but failed the setDefined caller-binding case.
+  Both were fully reverted.
 - New traversal: none.
-- New node/materialization: no nodes, wrappers, copies, arrays, or render-time
-  materialization were added. The patch prevents registration prep from
-  materializing/adopting source-backed callable wrapper children that are
-  intentionally canonical-source children.
+- New node/materialization: none.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: added `Rules.markSourceBackedCallableSurfacePrepared()`.
-  It is intentionally narrow and internal to callable-surface construction; it
-  exists so the source-backed wrapper can mark the same prepared flags the
-  normal prep path owns without running that prep and moving source children.
-  Delete or inline it if another caller appears or if callable surface creation
-  moves this state into construction.
-- Metadata mutations: the source-backed wrapper sets `_registrationPrepared`
-  and `registrationPrepared` at construction. This is semantic placement state:
-  the wrapper is already registration-prepared because it has no owned children
-  to register, only canonical source children referenced through placement
-  slots.
-- Evidence: focused callable/mixin ownership and namespace tests passed.
-  Ordered benchmark-path rebuild passed. External CPU-profiled
-  `benchmark.less` reported median `314.79ms` with `22.66%` variance and is
-  attribution-only; profile comparison showed `_storePreparedRegistrationNode`
-  and `adopt` self-time down, while broader `Node`/`isNode`/extend frames
-  remained noisy. Non-profiled `benchmark.less` reruns were noisy/mixed
-  (`264.95ms` median with `64.30%` variance; then `346.02ms` median with
-  `45.63%` variance). Stable hotpath remained noisy/unstable. The
-  `_location` and `copyChild(...)` mentions in this pass are a reverted
-  experiment note and profiler frame names only; they are not new source
-  mutation or copy helpers. See `PERFORMANCE-HANDOFF.md`.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Evidence: code edits were reverted to a clean worktree. The callable
+  collector prototype failed broader `mixin`/`reference` lookup tests around
+  complex selector callable paths. The binding-location prototype failed
+  `routes mixin setDefined writes through the resolved caller binding`. No
+  benchmark speed claim was made. See `PERFORMANCE-HANDOFF.md`.

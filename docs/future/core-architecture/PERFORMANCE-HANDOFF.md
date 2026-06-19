@@ -3282,6 +3282,33 @@ Follow-up source-backed callable surface prep skip:
   source-backed callable ownership contract and removes local prep work, not
   because broad wall-clock speed is proven.
 
+Rejected follow-up audit from the same CPU profile:
+
+- callable collector bitmask/selector-key prototype was rejected. The fresh CPU
+  profile showed `isNode(...)` under `collectCallableEntriesForKeyFrom(...)`,
+  so the prototype tried direct `nodeType` checks for callable child categories
+  and a callable-local selector-key walker. Focused simple callable/namespace
+  tests passed, but broader reference/mixin lookup tests failed on complex
+  selector and ampersand descendant callable paths. Restoring the shared
+  selector-key utility still left complex-path failures until the entire
+  collector change was reverted. Do not retry this as local bit-twiddling;
+  complex selector callable lookup needs semantic-state changes or broader
+  extend/callable tests first;
+- binding leaf location shortcut was rejected. The copy profile showed
+  `cloneBoundValue(...)` under live binding reads, so the prototype changed the
+  source-free scalar check from `value.location.length` to `_location`. Focused
+  binding helper tests passed, but the mixin setDefined caller-binding test
+  failed (`after-call` / `after-root` stayed `red` instead of becoming `blue`).
+  Treat location materialization as semantic in this binding path until the
+  live binding/write contract is redesigned;
+- no production code was kept. The worktree was restored clean after both
+  experiments. A broad grep test command still fails on existing branch debt:
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
+  src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts -t
+  "callable|mixin-ruleset|namespace|reference|lookup"` reports complex
+  mixin-ruleset formatting/ampersand misses even with no diff. Use narrower
+  focused tests for future edits until that baseline debt is addressed.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame
