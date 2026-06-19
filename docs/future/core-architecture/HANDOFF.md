@@ -126,6 +126,21 @@ cutting rules. Workers must not make overlapping edits, revert unrelated work,
 commit independently, or change the selected focus. The main agent owns
 integration, verification, docs, commit, push, and continuation.
 
+Every sub-agent prompt must include minimum setup steps before it edits or
+measures:
+
+1. Work in its assigned worktree only; never use the base dev checkout.
+2. Run `git status --short --branch` and read this router plus the selected
+   focus tracker.
+3. Materialize built workspace libraries before tests, profiling, declaration
+   builds, or external Less harness runs. At minimum run the dependency-chain
+   builds for touched packages; performance agents should use the ordered
+   benchmark-path build list in `PERFORMANCE-HANDOFF.md`. If a workspace
+   package cannot resolve another Jess package, treat that as missing build
+   output/setup, not as a reason to skip verification.
+4. Report exact tests, builds, benchmark commands, and any setup failures back
+   to the main agent. Sub-agents do not commit or push.
+
 ## Gate Rules
 
 Always run the smallest relevant test first. Before commit, run:
@@ -148,27 +163,29 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the `TriviaMap.runs` deletion. `createTriviaMap(...)` no
-  longer scans the `before`/`after` indexes into a secondary run set, no longer
-  allocates an empty compatibility `Set`, and trivia guards now validate the
-  actual lookup/entries/has contract only. The pass also reviewed lazy rest
-  parameter validation as a candidate and left it parked until a fresh profile
-  shows direct `defineFunction(...)` validation as hot.
-- Verdict: parser/trivia machinery deletion with no speed claim, not goal
-  completion. Live same-load comparison after the cut measured Less 4.6.3
-  median `35.64ms` and Jess median `145.74ms` over `50` runs after `15`
-  warmups. Jess remains far slower than the stored Less 4.5 target median
-  `42.16ms`.
-- New traversal: none. The change deletes the previous `before.values()` and
-  `after.values()` scans in `createTriviaMap(...)`.
+- Latest pass: hardened sub-agent setup rules and rejected three measured
+  prototypes: `getOrderedSelectorKeys(...)` no-closure traversal,
+  `defineFunction(...)` normalized-signature precompute, and ruleset header
+  selector visibility clone deletion/temp-flag replacement. All source
+  prototypes were reverted because wall-clock evidence did not support keeping
+  them. `PERFORMANCE-HANDOFF.md` records the exact runs.
+- Verdict: docs/evidence batch with no speed claim, not goal completion. The
+  best current live same-load comparisons still put Jess around `137-146ms`
+  median on `benchmark.less`, far slower than Less 4.6.3 around `35-41ms` live
+  and the stored Less 4.5 target median `42.16ms`.
+- New traversal: none kept in source. The rejected ruleset temp-flag prototype
+  added recursive selector visibility traversal plus restore and was reverted.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: deletes the stale `runs` member from `TriviaMap`; no new
-  helper added.
+- Helper/API surface: no source helper kept. The central router now requires
+  sub-agent prompts to include worktree/status/tracker/build setup; the
+  serialization tracker points back to that rule; the performance build list now
+  includes `@jesscss/fns`.
 - Metadata mutations: none.
 - Copy/materialization: none.
-- Evidence: focused core trivia/render tests passed (`76` tests), focused
-  css-parser serialization/output tests passed (`61` tests), ordered
-  `@jesscss/core` and `jess` builds passed, and `git diff --check` passed.
-  Benchmark evidence is recorded in `PERFORMANCE-HANDOFF.md`; it supports no
-  material regression, not a speed win.
+- Danger-token note: `PERFORMANCE-HANDOFF.md` mentions `needsVisibleSelectorClone`,
+  `constructCopy`, and `copyChild` only as CPU-profile evidence for rejected
+  prototypes and next-target selection. No source copy/materialization change is
+  kept in this batch.
+- Evidence: focused tests and benchmarks for rejected prototypes are recorded
+  in `PERFORMANCE-HANDOFF.md`. Kept docs passed `git diff --check`.

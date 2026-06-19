@@ -1056,16 +1056,21 @@ pnpm --filter @jesscss/less-parser build
 pnpm --filter @jesscss/plugin-less build
 pnpm --filter @jesscss/plugin-less-compat build
 pnpm --filter @jesscss/plugin-js build
+pnpm --filter @jesscss/fns build
 pnpm --filter jess build
 ```
 
 In a fresh worktree, do not rely on the narrower historical build set alone:
 `jess` imports `styles-config` and `@jesscss/core` imports
-`@jesscss/awaitable-pipe`, so both must have `lib/` output before
-`measure:less:hotpath` or `profile-less-benchmark.mjs` can run. A full
-`pnpm -r --if-present build` may still fail in packages unrelated to this
-benchmark path, such as `@jesscss/language-service`; treat that as a setup
-signal, then run the focused benchmark-path build set above.
+`@jesscss/awaitable-pipe`; the external Less v5 benchmark path also needs
+current `@jesscss/fns` output. These packages must have `lib/` output before
+`measure:less:hotpath`, `profile-less-benchmark.mjs`, or
+`compare-less-v4-v5-benchmark.mjs` can run. If `@jesscss/fns` declaration build
+cannot resolve `@jesscss/core`, rebuild the ordered dependency chain instead of
+treating the failure as a safe skip. A full `pnpm -r --if-present build` may
+still fail in packages unrelated to this benchmark path, such as
+`@jesscss/language-service`; treat that as a setup signal, then run the focused
+benchmark-path build set above.
 
 Use profiler/counter runs for diagnosis, not user-facing speed claims:
 
@@ -4972,6 +4977,40 @@ and was reverted. A future lazy-validation experiment may be valid if it
 isolates third-party/direct-call validation from normal Less eval, but it must
 be benchmarked because try/catch around hot calls can perturb V8 as much as the
 validation scan it avoids.
+
+2026-06-19 follow-up performance pass: hardened sub-agent setup docs and
+rejected three measured/noisy prototypes. Fresh post-trivia CPU profile
+`profiling/core-architecture/20260619-081733-post-selector-helper-cpu` still
+showed selector-key traversal and clone/materialization families hot:
+`isNode` `188`, `_processNodes` `77`, `pushOrderedSelectorKeys` `74`,
+`searchSurface` `60`, `collectCallableEntriesForKeyFrom` `47`,
+`needsVisibleSelectorClone` `32`, `constructCopy` `30`, `copyChild` `28`, and
+`inherit` `27` self samples. Profiled elapsed time is not app runtime.
+
+Rejected prototypes:
+
+- `getOrderedSelectorKeys(...)` no-closure helper: focused reference/mixin/
+  selector tests and ordered `@jesscss/core`/`jess` builds passed. Live
+  comparator runs measured Jess medians `135.15ms`, `137.79ms`, and after
+  rebuild restore `137.73ms`, which is only noise-level against the prior
+  old-code A/B `138.77ms`. CPU attribution simply moved old `visit` samples
+  into `pushOrderedSelectorKeys`/`getOrderedSelectorKeys` (`74 + 16` samples).
+  Reverted because it added helper surface without proving a win.
+- `defineFunction(...)` normalized-signature/rest-position precompute:
+  focused define-function tests passed (`82` tests), `@jesscss/core` and
+  `jess` builds passed, and `@jesscss/fns` emitted JS before its declaration
+  build exposed missing workspace type output. Live comparator regressed to
+  Jess medians `141.90ms` and `142.12ms` versus the same-pass selector-helper
+  range around `135-138ms`. Reverted. The doc contract now says sub-agents must
+  materialize dependency-chain builds before tests/profiles/declaration builds.
+- Ruleset header selector visibility clone deletion: focused selector/ruleset/
+  extend tests passed (`139` plus `132` tests). A direct deletion of the
+  `needsVisibleSelectorClone(...)`/`copySelectorForRulesetMetadata(...)` header
+  path regressed live comparator runs to Jess medians `145.20ms` and
+  `143.64ms`. A second temporary-flag/restore prototype also passed the same
+  tests but measured Jess median `143.58ms`. Both were reverted. The clone path
+  is still architecturally ugly, but replacing it with extra flag traversal/
+  restore moved cost instead of improving the real benchmark.
 
 Next target direction: keep field shape monomorphic unless measurement says
 otherwise. Do not reintroduce per-node descriptors or non-enumerability for
