@@ -1046,7 +1046,14 @@ node scripts/profile-less-benchmark.mjs --file=benchmark.less
 
 ## Required Profile Inputs
 
-Build the relevant packages before profiling:
+Minimum setup for any main-agent or sub-agent performance work is a full
+workspace build before package-specific commands:
+
+```sh
+pnpm build
+```
+
+Then rebuild the benchmark-path packages after edits, in dependency order:
 
 ```sh
 pnpm --filter styles-config build
@@ -1066,11 +1073,10 @@ In a fresh worktree, do not rely on the narrower historical build set alone:
 current `@jesscss/fns` output. These packages must have `lib/` output before
 `measure:less:hotpath`, `profile-less-benchmark.mjs`, or
 `compare-less-v4-v5-benchmark.mjs` can run. If `@jesscss/fns` declaration build
-cannot resolve `@jesscss/core`, rebuild the ordered dependency chain instead of
-treating the failure as a safe skip. A full `pnpm -r --if-present build` may
-still fail in packages unrelated to this benchmark path, such as
-`@jesscss/language-service`; treat that as a setup signal, then run the focused
-benchmark-path build set above.
+cannot resolve `@jesscss/core`, treat it as missing workspace setup or stale
+build output: run `pnpm build`, then repeat the ordered benchmark-path build
+set above. Do not record package-resolution failures as benchmark evidence or
+as a reason to skip verification.
 
 Use profiler/counter runs for diagnosis, not user-facing speed claims:
 
@@ -5002,7 +5008,8 @@ Rejected prototypes:
   build exposed missing workspace type output. Live comparator regressed to
   Jess medians `141.90ms` and `142.12ms` versus the same-pass selector-helper
   range around `135-138ms`. Reverted. The doc contract now says sub-agents must
-  materialize dependency-chain builds before tests/profiles/declaration builds.
+  run `pnpm build` before package-specific tests/profiles/declaration builds,
+  then rerun the ordered benchmark-path builds after edits.
 - Ruleset header selector visibility clone deletion: focused selector/ruleset/
   extend tests passed (`139` plus `132` tests). A direct deletion of the
   `needsVisibleSelectorClone(...)`/`copySelectorForRulesetMetadata(...)` header

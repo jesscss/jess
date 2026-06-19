@@ -133,11 +133,13 @@ measures:
 2. Run `git status --short --branch` and read this router plus the selected
    focus tracker.
 3. Materialize built workspace libraries before tests, profiling, declaration
-   builds, or external Less harness runs. At minimum run the dependency-chain
-   builds for touched packages; performance agents should use the ordered
-   benchmark-path build list in `PERFORMANCE-HANDOFF.md`. If a workspace
-   package cannot resolve another Jess package, treat that as missing build
-   output/setup, not as a reason to skip verification.
+   builds, or external Less harness runs. The minimum setup is `pnpm build`
+   from the assigned worktree before package-specific commands. Performance
+   agents should then use the ordered benchmark-path build list in
+   `PERFORMANCE-HANDOFF.md` after edits so affected packages are freshly built
+   in dependency order. If a workspace package cannot resolve another Jess
+   package, treat that as missing build output/setup, not as a reason to skip
+   verification.
 4. Report exact tests, builds, benchmark commands, and any setup failures back
    to the main agent. Sub-agents do not commit or push.
 
