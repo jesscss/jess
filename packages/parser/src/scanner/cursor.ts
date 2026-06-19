@@ -23,19 +23,23 @@ export class ScannerCursor {
     return this.source.length;
   }
 
+  /** Returns true when the supplied offset, or current offset, is at EOF. */
   eof(offset: number = this.offset): boolean {
     return offset >= this.length;
   }
 
+  /** Peeks a UTF-16 code unit relative to the current offset, or `-1` at EOF. */
   peekCode(ahead = 0): number {
     const offset = this.offset + ahead;
     return offset < this.length ? this.text.charCodeAt(offset) : -1;
   }
 
+  /** Reads a UTF-16 code unit at an absolute offset, or `-1` at EOF. */
   codeAt(offset: number): number {
     return offset < this.length ? this.text.charCodeAt(offset) : -1;
   }
 
+  /** Advances by `count` code units and returns the new offset. */
   advance(count = 1): number {
     const nextOffset = this.offset + count;
     if (!Number.isInteger(count) || count < 0 || nextOffset > this.length) {
@@ -45,6 +49,7 @@ export class ScannerCursor {
     return this.offset;
   }
 
+  /** Moves to an absolute source offset after range validation. */
   moveTo(offset: number): void {
     if (!Number.isInteger(offset) || offset < 0 || offset > this.length) {
       throw new RangeError(`Offset ${offset} is outside the source range.`);
@@ -52,10 +57,12 @@ export class ScannerCursor {
     this.offset = offset;
   }
 
+  /** Tests whether the source at the current offset starts with `text`. */
   match(text: string): boolean {
     return this.source.text.startsWith(text, this.offset);
   }
 
+  /** Consumes `text` only when it matches exactly at the current offset. */
   consume(text: string): boolean {
     if (!this.match(text)) {
       return false;
@@ -64,6 +71,7 @@ export class ScannerCursor {
     return true;
   }
 
+  /** Returns a checked slice from `start` through `end` or current offset. */
   slice(start: number, end: number = this.offset): string {
     return this.source.slice(start, end);
   }

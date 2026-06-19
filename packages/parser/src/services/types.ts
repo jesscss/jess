@@ -6,10 +6,20 @@ import type {
   StructuralNode
 } from '../structure/index.js';
 
-/** Provider-selected result shape, such as selector AST or value-reference. */
+/**
+ * Provider-selected result shape, such as selector AST or value-reference.
+ *
+ * The same island kind may support several target shapes; the target shape is
+ * part of the provider/cache key so visitors only promote the data they need.
+ */
 export type IslandTargetShape = string;
 
-/** JSON-stable provider configuration used as part of island cache keys. */
+/**
+ * JSON-stable provider configuration used as part of island cache keys.
+ *
+ * Parser packages should keep this small and deterministic; it is intended for
+ * language modes/options, not large compiler objects.
+ */
 export type ParserConfigKey =
   | string
   | number
@@ -18,7 +28,12 @@ export type ParserConfigKey =
   | readonly ParserConfigKey[]
   | { readonly [key: string]: ParserConfigKey };
 
-/** Lookup key for a provider that can parse one kind of island. */
+/**
+ * Lookup key for a provider that can parse one kind of island.
+ *
+ * Providers are language-owned. The shared registry only matches keys and does
+ * not know about compiler AST classes.
+ */
 export type IslandProviderKey = {
   language: string;
   islandKind: IslandKind;
@@ -51,14 +66,24 @@ export type IslandExecutionContext = {
   diagnostics: ParserDiagnostic[];
 };
 
-/** Provider result for one island parse, including diagnostics and fallback. */
+/**
+ * Provider result for one island parse, including diagnostics and fallback.
+ *
+ * `fallbackFullTree` is a signal to the caller that this local promotion cannot
+ * preserve semantics and the current compiler parser should own the file.
+ */
 export type IslandParseResult<T = unknown> = {
   value?: T;
   diagnostics?: readonly ParserDiagnostic[];
   fallbackFullTree?: boolean;
 };
 
-/** Function that promotes one raw island into a requested target shape. */
+/**
+ * Function that promotes one raw island into a requested target shape.
+ *
+ * Providers should parse only `context.island` and avoid materializing sibling
+ * islands unless they deliberately return `fallbackFullTree`.
+ */
 export type IslandParserProvider<T = unknown> = (
   context: IslandExecutionContext
 ) => IslandParseResult<T>;
@@ -90,14 +115,24 @@ export type IslandParseCounters = {
   visitorPlans: number;
 };
 
-/** Visitor planning rule that states which island kinds need promotion. */
+/**
+ * Visitor planning rule that states which island kinds need promotion.
+ *
+ * Adapter layers can derive these rules from registered visitor methods so
+ * traversal promotes only the structural node families a visitor can observe.
+ */
 export type VisitorMaterializationRule = {
   nodeKind: StructuralNode['kind'];
   islandKinds?: readonly IslandKind[];
   targetShape: IslandTargetShape;
 };
 
-/** Declarative visitor request used to avoid eagerly parsing every island. */
+/**
+ * Declarative visitor request used to avoid eagerly parsing every island.
+ *
+ * A broad visitor may produce broad rules, but the plan still requests islands
+ * as traversal reaches matching structural nodes.
+ */
 export type VisitorShape = {
   nodeKinds?: readonly StructuralNode['kind'][];
   islandKinds?: readonly IslandKind[];

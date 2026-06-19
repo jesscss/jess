@@ -8,7 +8,13 @@ import type {
   RuleHeaderKind
 } from './types.js';
 
-/** Configuration object for constructing a language profile. */
+/**
+ * Configuration object for constructing a language profile.
+ *
+ * Parser packages and plugins own this data. The shared parser intentionally
+ * does not hard-code CSS/Less/SCSS/Jess profiles so third-party CSS-family
+ * languages can register equivalent structural behavior.
+ */
 export type ProfileConfig = {
   name: LanguageProfile['name'];
   variablePrefixes: readonly string[];

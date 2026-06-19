@@ -21,7 +21,12 @@ export type StructuralNodeKind =
   | 'rule'
   | 'variable-declaration';
 
-/** Shared range and parent metadata for every structural node. */
+/**
+ * Shared range and parent metadata for every structural node.
+ *
+ * Ranges are source-owned half-open offsets. Parent links describe structural
+ * containment only and do not imply compiler AST parentage.
+ */
 export type StructuralNodeBase = {
   kind: StructuralNodeKind;
   start: number;
@@ -29,7 +34,13 @@ export type StructuralNodeBase = {
   parent?: StructuralContainerNode;
 };
 
-/** Container node whose children own nested structural ranges. */
+/**
+ * Container node whose children own nested structural ranges.
+ *
+ * `headerStart`/`headerEnd` identify the pre-block header that can later be
+ * promoted as selector, at-rule prelude, mixin signature, or another provider
+ * target without parsing the body.
+ */
 export type StructuralContainerNode = StructuralNodeBase & {
   kind: 'at-rule' | 'block' | 'document' | 'mixin-definition' | 'rule';
   headerStart: number;
@@ -37,7 +48,12 @@ export type StructuralContainerNode = StructuralNodeBase & {
   children: StructuralNode[];
 };
 
-/** Leaf statement with name/value spans but no language-specific AST payload. */
+/**
+ * Leaf statement with name/value spans but no language-specific AST payload.
+ *
+ * Consumers that only need indexing can read these offsets directly; consumers
+ * that need expression/value ASTs should request the corresponding raw island.
+ */
 export type StructuralStatementNode = StructuralNodeBase & {
   kind: 'declaration' | 'import' | 'mixin-call' | 'variable-declaration';
   nameStart: number;
@@ -92,7 +108,12 @@ export type ChangedRange = {
   newEnd: number;
 };
 
-/** Scanner options that affect trivia ownership but not language semantics. */
+/**
+ * Scanner options that affect trivia ownership but not language semantics.
+ *
+ * Language packages choose these options when they expose structural parse
+ * entrypoints; changing them should not alter compiler AST behavior.
+ */
 export type ParseStructureOptions = {
   lineComments?: boolean;
 };

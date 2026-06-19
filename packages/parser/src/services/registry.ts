@@ -14,6 +14,12 @@ import { providerKeyString } from './keys.js';
 export class IslandParserRegistry {
   #providers = new Map<string, IslandParserProvider>();
 
+  /**
+   * Registers one provider for an exact language/island/target/config key.
+   *
+   * Later registrations for the same key replace earlier ones, allowing plugin
+   * layers to override package defaults deliberately.
+   */
   register<T>(
     key: IslandProviderKey,
     provider: IslandParserProvider<T>
@@ -21,10 +27,12 @@ export class IslandParserRegistry {
     this.#providers.set(providerKeyString(key), provider as IslandParserProvider);
   }
 
+  /** Returns the provider for an exact key without falling back to siblings. */
   get(key: IslandProviderKey): IslandParserProvider | undefined {
     return this.#providers.get(providerKeyString(key));
   }
 
+  /** Tests whether a provider is available for an exact key. */
   has(key: IslandProviderKey): boolean {
     return this.#providers.has(providerKeyString(key));
   }

@@ -1,4 +1,9 @@
-/** Half-open source range in UTF-16 offsets. */
+/**
+ * Half-open source range in UTF-16 offsets.
+ *
+ * Parser structures store offsets as numbers first; this object shape is the
+ * API view used when callers need to pass or persist a range.
+ */
 export type SourceSpan = {
   start: number;
   end: number;
@@ -19,14 +24,23 @@ export type DelimitedSpan = {
   closeEnd: number;
 };
 
-/** Trivia categories preserved outside the structural node tree. */
+/**
+ * Trivia categories preserved outside the structural node tree.
+ *
+ * Trivia remains source-owned so formatting and exact-source consumers can opt
+ * in without making every structural node carry whitespace/comment fields.
+ */
 export type TriviaKind =
   | 'whitespace'
   | 'line-comment'
   | 'block-comment'
   | 'newline';
 
-/** One contiguous trivia run owned by the source, not by an AST node. */
+/**
+ * One contiguous trivia run owned by the source, not by an AST node.
+ *
+ * `start`/`end` are half-open offsets into the original source.
+ */
 export type TriviaRun = {
   start: number;
   end: number;

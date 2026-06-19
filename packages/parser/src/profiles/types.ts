@@ -1,6 +1,12 @@
 import type { SourceText, SourceSpan } from '../source/index.js';
 
-/** Language/profile identifier supplied by a parser package or plugin. */
+/**
+ * Language/profile identifier supplied by a parser package or plugin.
+ *
+ * `@jesscss/parser` treats this as opaque; CSS, Less, Tailwind-like dialects,
+ * and future Jess-family profiles register their own names outside this
+ * substrate package.
+ */
 export type LanguageName = string & {};
 
 /** Coarse at-rule classes used by structural and semantic services. */
@@ -27,7 +33,12 @@ export type StatementStarterKind =
   | 'rule'
   | 'variable';
 
-/** Prefix heuristic for classifying a statement before scanning its body. */
+/**
+ * Prefix heuristic for classifying a statement before scanning its body.
+ *
+ * These are cheap recognizers, not full grammar productions. Expensive or rare
+ * syntax can remain in island providers or canonical fallback paths.
+ */
 export type StatementStarter = {
   text: string;
   kind: StatementStarterKind;
@@ -50,7 +61,12 @@ export type RuleHeaderKind =
   | 'selector'
   | 'unknown';
 
-/** Raw island categories that can be promoted by language-specific providers. */
+/**
+ * Raw island categories that can be promoted by language-specific providers.
+ *
+ * The structural parser may record several island kinds for one span when a
+ * later consumer could reasonably ask for different target shapes.
+ */
 export type IslandKind =
   | 'at-rule-prelude'
   | 'declaration-value'
@@ -73,6 +89,11 @@ export type IslandClassificationContext = {
  * Profiles classify spans for the scanner-first parser without owning parsing
  * or materialization; service registries decide later which raw islands become
  * full language ASTs.
+ *
+ * Third-party languages should keep these callbacks cheap and side-effect
+ * free. They should return classification data only, leaving AST construction,
+ * visitor adapters, and fallback policy to island providers or compiler/plugin
+ * layers.
  */
 export type LanguageProfile = {
   name: LanguageName;

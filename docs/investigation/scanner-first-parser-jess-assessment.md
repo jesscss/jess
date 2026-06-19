@@ -1348,7 +1348,7 @@ Goal: replace the package internals with offset-first source primitives.
   trivia consumer requests them.
 - [x] Implement `LineMap` for LF, CRLF, CR, and form-feed.
 - [x] Export source primitives from `@jesscss/parser`.
-- [ ] Add JSDoc for exported source primitives and lazy line-map behavior.
+- [x] Add JSDoc for exported source primitives and lazy line-map behavior.
 - [x] Test line/column conversion in both directions.
 - [ ] Test newline ownership and trivia ranges across comments, blank lines,
   and EOF.
@@ -1370,7 +1370,7 @@ Goal: add shared CSS-family scanning primitives without compiler AST nodes.
 - [x] Implement recovery scanning to the next statement or block boundary.
 - [x] Implement structured parser diagnostics with expected construct, actual
   range, context, and recovery boundary data.
-- [ ] Add JSDoc for scanner helpers, diagnostics, and recovery semantics.
+- [x] Add JSDoc for scanner helpers, diagnostics, and recovery semantics.
 - [x] Test strings, comments, escapes, delimiters, EOF, recovery, and rendered
   error messages.
 - [ ] Performance guard: report input bytes, trivia ranges, delimiter scans,
@@ -1396,7 +1396,7 @@ Goal: make CSS/Less/SCSS/Jess classification data-driven and DRY.
   base language shape.
 - [x] Test parser substrate profile extensibility with fixture profiles rather
   than exported CSS/Less/SCSS/Jess built-ins.
-- [ ] Add JSDoc for profile extension points and third-party language
+- [x] Add JSDoc for profile extension points and third-party language
   registration expectations.
 - [x] Performance guard: profile callbacks return classification data only and
   do not allocate compiler nodes.
@@ -1423,7 +1423,7 @@ and raw islands.
 - [x] Implement `symbols()`.
 - [x] Implement `islands(kind?)`.
 - [x] Implement `changedRanges(previousDocument)`.
-- [ ] Add JSDoc for structural nodes, document queries, islands, and span
+- [x] Add JSDoc for structural nodes, document queries, islands, and span
   ownership.
 - [x] Test multi-line selectors, declaration values, custom properties,
   comments around nodes, incomplete declarations, and EOF blocks.
@@ -1457,7 +1457,7 @@ Goal: add core-blind planning machinery for demand-driven promotion requests.
 - [x] Cache request/execution diagnostics separately from exceptional failures.
 - [x] Add counters for requests, actual parses, cache hits/misses, promoted
   bytes, and fallback full-tree materialization.
-- [ ] Add JSDoc for registry keys, parse plans, activation registry, counters,
+- [x] Add JSDoc for registry keys, parse plans, activation registry, counters,
   and fallback/full-tree semantics.
 - [x] Test cache hits and misses with mocked providers.
 - [x] Test that registering a visitor does not promote the whole tree.

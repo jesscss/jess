@@ -15,7 +15,9 @@ import type { SourceText, TriviaRun } from '../source/index.js';
  * Read-only facade over the scanner-first structural tree.
  *
  * The document owns diagnostics, trivia, and raw island indexes produced during
- * parsing; richer language ASTs are intentionally left to service plans.
+ * parsing; richer language ASTs are intentionally left to service plans. Query
+ * methods operate on offsets and structural nodes only, so editor/index
+ * consumers can use them without triggering island materialization.
  */
 export class StructuralDocument {
   readonly source: SourceText;
