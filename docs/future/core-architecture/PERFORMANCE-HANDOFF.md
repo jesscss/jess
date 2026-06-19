@@ -3520,6 +3520,59 @@ the currently fragile complex-target behavior.
 The performance campaign remains open; the historical Less 4.x comparison
 target remains about `47.4ms`.
 
+Follow-up selector/parent bit negative kept; registration-time aggregate
+rejected:
+
+- rejected prototype: moved root selector-bit aggregation from the
+  `processExtends(...)` prepass into `registerRulesetWithRoot(...)`. Focused
+  extend tests passed, and CPU self-time for `processExtends(...)` dropped
+  (`57.25ms -> 37.93ms` against the refreshed root-bit profile), but this
+  created an always-on registration/keyset tax that would also hit no-extend
+  files. Same-harness wall-clock rejected it:
+  `benchmark.less --runs=24 --warmup=8` reported average `222.50ms`, median
+  `219.20ms`, then average `235.72ms`, median `233.03ms`. The prototype was
+  reverted;
+- kept cut: before classifying a visible instruction for a ruleset,
+  `processExtends(...)` now checks the instruction target bits against the
+  local selector and the parent selector. If neither surface shares target
+  bits, the full classifier/apply path is skipped. This preserves composed
+  parent/child boundary matching while avoiding the rejected local selector
+  bucket/index shape;
+- kept companion cut: `isDisjoint(...)` now checks backing bitset words
+  directly for the normal non-inverted case instead of allocating
+  `a.and(b)`. The old allocation path remains for inverted bitsets;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/bitset.test.ts
+  src/tree/util/__tests__/fast-reject.test.ts
+  src/tree/util/__tests__/process-extends.test.ts
+  src/tree/__tests__/extend-roots.test.ts
+  src/tree/__tests__/extend-eval-integration.test.ts
+  src/tree/util/__tests__/extend-combinator-handling.test.ts` (`110` passed,
+  `1` skipped);
+- ordered benchmark-path rebuild passed before each external benchmark run;
+- wall-clock evidence on external canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division`: refreshed root-bit baseline
+  was average `219.93ms`, median `212.96ms`; selector/parent bit skip produced
+  average `212.38ms`, median `208.59ms`, then average `213.51ms`, median
+  `211.39ms`; after the non-allocating `isDisjoint(...)` cut, the same harness
+  reported average `209.26ms`, median `207.83ms`;
+- CPU profile evidence: refreshed baseline profile
+  `profiling/core-architecture/20260618-post-root-bits-refresh-cpu/CPU.20260618.181934.84133.0.001.cpuprofile`
+  reported `processExtends(...)` `57.25ms`,
+  `applyExtendsToSelector(...)` `43.43ms`, `wouldMatchNode(...)` `30.71ms`,
+  `BitSet` `15.03ms`, and `isNode(...)` `178.13ms`. The kept combined
+  profile
+  `profiling/core-architecture/20260618-selector-parent-bit-skip-nonalloc-cpu/CPU.20260618.182836.46477.0.001.cpuprofile`
+  reported `processExtends(...)` `31.42ms`,
+  `applyExtendsToSelector(...)` `0.00ms`, `wouldMatchNode(...)` `3.32ms`,
+  `BitSet` `9.09ms`, and `isNode(...)` `120.97ms`.
+
+Verdict: keep as a measured wall-clock and CPU-profile win. The safe shape is
+root aggregate pruning plus local-or-parent negative pruning; do not move
+selector-bit aggregation into registration unless no-extend files can avoid
+the cost.
+
 Next architecture theories to test:
 
 1. Continue selector-bit/root-surface pruning only after modeling composed

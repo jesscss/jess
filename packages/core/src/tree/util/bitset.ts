@@ -166,6 +166,20 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
+  if (!isInverted(a) && !isInverted(b)) {
+    const aData = dataOf(a);
+    const bData = dataOf(b);
+    if (!aData || !bData) {
+      return true;
+    }
+    const length = Math.min(aData.length, bData.length);
+    for (let i = 0; i < length; i++) {
+      if (((aData[i] ?? 0) & (bData[i] ?? 0)) !== 0) {
+        return false;
+      }
+    }
+    return true;
+  }
   const intersection = a.and(b);
   const data = dataOf(intersection);
   if (!data) {

@@ -112,34 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept coarse extend root-bit pruning for roots that share no
-  selector bits with a visible extend target.
-- Verdict: production code keeps only the safe root-level negative. It does not
-  use selector-level buckets, required-key containment, or composed-selector
-  assumptions; extended selector outputs update the root aggregate for chaining.
-- New traversal: accepted one root prepass over `rulesetsByRoot` plus one
-  scoped instruction loop per root because the old path already performs the
-  per-root/per-ruleset/per-instruction classify/apply work. The new loops are
-  only justified by measured lower benchmark time and lower
-  `applyExtendsToSelector(...)` self-time; remove or reshape them if a future
-  profile shows the aggregate cost overtaking the skipped apply work.
+- Latest pass: kept selector/parent bit pruning for extend classification and
+  made normal `isDisjoint(...)` checks non-allocating.
+- Verdict: production code keeps safe negative pruning only. Root aggregates
+  still prune visible instructions by root; each ruleset now skips an
+  instruction only when neither the local selector nor its parent selector
+  shares target bits. No selector bucket/index registry was added.
+- New traversal: accepted one backing-word loop in `isDisjoint(...)` that
+  replaces the old `a.and(b)` allocation plus intersection scan for normal
+  bitsets. The added per-instruction bit check runs inside the existing
+  visible-instruction classification loop and avoids the existing
+  classifier/apply traversal when it returns false.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: private helpers only. No public API or compatibility shim
-  was added.
-- Metadata mutations: extend assignment now keeps `ruleset.value.selector`
-  aligned with `ruleset.selector`, matching direct value-shape readers.
-- Side maps/arrays/copies: accepted one transient `selectorKeySetByRoot` map,
-  one per-root `visibleExtends` array, and `BitSet` clone/or operations because
-  they are cleared at `processExtends(...)` exit and reduce measured real
-  benchmark time. This is not a blanket approval for selector-level bucket
-  registries; the rejected per-selector candidate pruning remains rejected.
-- Evidence: external canonical Less `benchmark.less` improved from the
-  guard-only refresh `avg 235.00ms` / `median 222.37ms` to `avg 224.17ms` /
-  `median 221.04ms`, then `avg 216.93ms` / `median 212.81ms`; after loop-shape
-  cleanup the rerun was `avg 221.06ms` / `median 218.47ms`. Profiled
-  `applyExtendsToSelector(...)` self-time fell from about `42.46ms` to
-  `26.81ms`; `processExtends(...)` self-time was flat. Focused extend tests
-  pass except the deep `.l -> ... -> .t` chaining test, which was confirmed
-  failing on branch baseline before this patch.
+- Helper/API surface: one private helper in `extend-roots.ts`; no public API or
+  compatibility shim was added.
+- Metadata mutations: none added this pass.
+- Side maps/arrays/copies: no new maps/arrays/copies kept. `isDisjoint(...)`
+  now avoids allocating an intersection bitset for non-inverted bitsets.
+- Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8`
+  improved from the refreshed root-bit baseline `avg 219.93ms` /
+  `median 212.96ms` to `avg 209.26ms` / `median 207.83ms` after the combined
+  cut. CPU self-time moved as intended: `processExtends(...)`
+  `57.25ms -> 31.42ms`, `applyExtendsToSelector(...)` `43.43ms -> 0.00ms`,
+  `wouldMatchNode(...)` `30.71ms -> 3.32ms`, and `BitSet` `15.03ms -> 9.09ms`.
+  Focused bitset/fast-reject/extend tests passed (`110` passed, `1` skipped).
+  Registration-time root aggregation was tested and rejected because it moved
+  selector-bit work into the always-on registration path and worsened/noised
+  wall-clock.

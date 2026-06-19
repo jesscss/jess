@@ -576,6 +576,31 @@ function rootMayContainExtendTarget(instruction: RootExtendInstruction, rootKeyS
   return !isDisjoint(targetKeys, rootKeySet);
 }
 
+function selectorMayContainExtendTarget(
+  instruction: RootExtendInstruction,
+  selector: Selector,
+  parentSelector: Selector | undefined
+): boolean {
+  const targetKeys = instruction.target.keySet;
+  const library = targetKeys._library;
+  if (!library || targetKeys.equals(library.getBitset())) {
+    return true;
+  }
+  if (selector.keySetLibrary !== library) {
+    return true;
+  }
+  if (!isDisjoint(targetKeys, selector.keySet)) {
+    return true;
+  }
+  if (!parentSelector) {
+    return false;
+  }
+  if (parentSelector.keySetLibrary !== library) {
+    return true;
+  }
+  return !isDisjoint(targetKeys, parentSelector.keySet);
+}
+
 export function processExtends(context: Context): void {
   try {
     if (context.extends.length === 0) {
@@ -708,6 +733,9 @@ export function processExtends(context: Context): void {
         // First pass: classify each instruction.
         const classifications = new Map<RootExtendInstruction, MatchResult>();
         for (const instruction of visibleExtends) {
+          if (!selectorMayContainExtendTarget(instruction, selector, parentSel)) {
+            continue;
+          }
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
             const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
