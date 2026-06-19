@@ -26,9 +26,10 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    this.adopt(value);
   }
 
   get isClass() {

@@ -21,9 +21,12 @@ export class Rest extends Node<Node | string | undefined> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
   }
 
   get name(): string {

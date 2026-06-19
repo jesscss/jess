@@ -31,9 +31,12 @@ export class Expression extends Node<Node> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     this.addFlag(F_NON_STATIC);
   }
 

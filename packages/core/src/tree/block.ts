@@ -45,9 +45,12 @@ export class Block extends Node<Node, BlockOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
   }
 
   private renderBlockSyntax(value = this.node, options?: PrintOptions): string {

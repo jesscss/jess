@@ -27,9 +27,15 @@ export class ExtendList extends Node<Extend[]> {
   override allowRuleRoot = true;
 
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.nodes = value;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i];
+      if (node instanceof Node) {
+        this.adopt(node);
+      }
+    }
     this.removeFlag(F_VISIBLE);
   }
 

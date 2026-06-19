@@ -146,18 +146,24 @@ queue.
 
 Current target swath:
 
-1. Finish the current constructor-processing investigation only while
-   `_processNodes(...)` remains a measured/counted hot constructor surface.
-   For each remaining node family, decide from field use cases whether eager
-   source-child adoption/flag bubbling is needed, can be direct and local, can
-   be lazy, or can be deleted.
-2. Refresh CPU/profile timing after constructor-processing stops being a top
-   surface or after one more coherent pass, whichever comes first.
-3. Select the next target from refreshed timed evidence. Likely candidates from
-   current history are copy/materialization (`copyChild`, `constructCopy`,
-   rules-like/reference surfaces), extend processing, `isNode`/selector-key
-   traversal, render body/header work, or lookup/reference frames, but do not
-   promote any candidate without current measurement.
+1. Constructor-processing is drained for canonical `benchmark.less`:
+   `pnpm run profile:constructor-child-processing -- --limit=20` reports no
+   `_processNodes(...)` calls after the direct-child constructor pass. Do not
+   keep pushing constructor work unless a fresh profile/counter shows it
+   reappearing in real benchmark execution.
+2. Validate the next target with current CPU/scoped timing evidence. The latest
+   scoped profiler run points at `LessParser.parse` (`3` calls / `97.38ms`) and
+   `Reference.evalNode` (`3547` calls / `63.64ms`) after constructor
+   processing; the accompanying V8 profile was polluted by module load/parser
+   initialization, so use a warm or narrower profile before claiming a CPU
+   target. Parser and reference/lookup are the next two candidate lanes.
+3. Spawn disjoint sub-agent work from those two lanes: one parser/tokenizer
+   worker should look for routine allocations/branching in parse startup and
+   repeated benchmark parsing; one reference/lookup worker should reduce
+   `Reference.evalNode` and declaration child-entry skip volume without adding
+   registries, broad caches, deep copies, or negative Error-style control flow;
+   one measurement/audit worker should produce a cleaner warm CPU profile or
+   scoped timings that exclude module-load noise.
 4. Keep running disjoint sub-agent experiments in separate worktrees for the
    active queue: implementation slices, field/use-case audits, and
    measurement/profiling validation. Main integration owns docs, gates, commit,
@@ -178,17 +184,39 @@ against the stored Less 4 baseline, but same-load evidence wins whenever the
 machine is noisy, multiple sub-agents are running, or the benchmark result is
 being used to accept/reject a close call. In those cases run the live comparator
 with `--less4=measure` so Less 4 and Less v5/Jess are measured in the same
-process under the same system load. Current corrected v5/Jess evidence is
-median `163.68ms` / average `176.72ms`, about `2.88x` slower than stored Less 4
-by median. Choose the next target from a fresh V8/CPU profile or repeated
-stable benchmark evidence.
+process under the same system load. Current post-constructor-processing v5/Jess
+evidence is median `131.20ms` / trimmed average `133.60ms` over `100` runs
+after `25` warmups with live Less `4.6.3` measured in the same process
+(`34.88ms` median / `35.44ms` trimmed average). Jess is still about `3x` slower
+than the Less 4 target, so the campaign is not complete.
 
-Current broad `benchmark.less` CPU profile points first at source-surface/copy
-and extend work: `Node` construction, `copyChild`,
-`createRulesLikeReferenceSurface(...)`, `constructCopy`, garbage collection,
-`processExtends(...)`, `isSameOrDescendantRoot(...)`, and
-`applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
-profile also shows lookup/reference frames as the real hot task.
+Current scoped `benchmark.less` profile after constructor-processing points at
+parse and reference eval: `LessParser.parse` `97.38ms`, `Reference.evalNode`
+`63.64ms` over `3547` calls, `Context.getTree` `6.63ms`, then small
+`OutputWriter` mark/readback totals. Direct lookup counters remain diagnostic:
+`declaration.childEntryFamilySkip` `9024`,
+`declaration.childEntryMergeFamilySkip` `6435`, and
+`declaration.cacheMiss` `3641`. The paired V8 CPU profile artifact is
+`profiling/core-architecture/20260619-101839-post-constructor-processing-cpu`,
+but it includes module-load/parser-initialization noise and should be treated
+as a target-selection prompt, not a clean CPU attribution.
+
+2026-06-19 direct-child constructor completion pass: kept the final
+`_processNodes` constructor reduction for canonical `benchmark.less`.
+`Expression`, `Paren`, `Url`, `Block`, `Negative`, `Rest`,
+`SelectorCapture`, `InterpolatedSelector`, `AtRule`, `Condition`, `Extend`,
+`ExtendList`, `StyleImport`, and `JsImport` now skip generic child processing
+and adopt only concrete source-child fields. Import constructors retain
+`instanceof Node` guards because Chevrotain grammar recording can return
+non-node placeholders despite the production's source type. The new diagnostic
+script `pnpm run profile:constructor-child-processing -- --limit=20`
+monkey-patches built `Node.prototype._processNodes(...)` for one benchmark
+render and now reports an empty row set. Focused core import/extend/at-rule/
+condition/wrapper/node-flags/visitor tests passed (`379` passed, `2` skipped).
+Ordered benchmark-path rebuild passed. Live comparator over `100` runs after
+`25` warmups with `--less4=measure` measured Jess at `131.20ms` median /
+`133.60ms` trimmed average. Keep as a structural/crawl deletion with a small
+favorable timing signal, not performance-goal completion.
 
 2026-06-19 high-count constructor ownership pass: kept the fourth
 `_processNodes` constructor reduction and corrected the acceptance doctrine

@@ -829,11 +829,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.path = value.path;
     this.with = value.with;
     this.withNode = value.with?.node;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
+    if (this.withNode instanceof Node) {
+      this.adopt(this.withNode);
+    }
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }

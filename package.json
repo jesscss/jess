@@ -73,6 +73,7 @@
     "verify:aggressive-cutting-review": "node scripts/verify-aggressive-cutting-review.mjs",
     "audit:node-creation": "node scripts/audit-node-creation-hotspots.mjs",
     "benchmark:less:v4-v5": "node scripts/compare-less-v4-v5-benchmark.mjs",
+    "profile:constructor-child-processing": "node scripts/profile-constructor-child-processing.mjs",
     "measure:less:hotpath": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs",
     "measure:less:hotpath:record": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs --save --compare-latest",
     "prototype:binding-frame-layout": "node scripts/prototype-binding-frame-layout.mjs",

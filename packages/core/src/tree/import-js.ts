@@ -42,10 +42,13 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.path = value.path;
     this.imports = value.imports;
     this._treeContext = treeContext;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
     // JS imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }

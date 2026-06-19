@@ -178,39 +178,37 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: direct constructor ownership for high-count source-bearing
-  nodes plus corrected cutting acceptance doctrine.
+- Latest pass: direct-child constructor completion for canonical
+  `benchmark.less`.
 - Verdict: accepted as a structural/crawl reduction, not performance-goal
-  completion. `Reference`, `Call`, `Interpolated`, `PseudoSelector`,
-  `AttributeSelector`, `Quoted`, and `Color` now pass `processChildren=false`
-  and adopt only their real source-child slots. The review also corrected the
-  rule for future cuts: do not reject a real object/crawl/helper deletion solely
-  because it is neutral/noisy on wall-clock; reject it only for correctness
-  failure, offsetting machinery, or material/consistent benchmark regression.
-- New traversal: none. `Interpolated` directly loops its known replacement
-  array; no generic object/array recursion was added. This deletes thousands of
-  constructor `_processNodes(...)` calls instead of replacing them with another
-  discovery scan.
+  completion. The migrated wrapper, extend/at-rule/condition, and import
+  constructors now pass `processChildren=false` and adopt only concrete
+  source-child fields. This drains `_processNodes(...)` from the canonical
+  benchmark constructor profile.
+- New traversal: the only added loop is `ExtendList` over its known `Extend[]`
+  value to preserve source-child adoption without generic recursion. This
+  replaces a broader base-constructor scan of the same array shape. No new
+  object recursion, parent/source walk, side-map lookup, `map/filter/sort`, or
+  generator was added.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: none added; the existing internal constructor flag is
-  used by more constructors.
+- Helper/API surface: added diagnostic script
+  `scripts/profile-constructor-child-processing.mjs` and package script
+  `profile:constructor-child-processing`; no production helper/API surface was
+  added.
 - Metadata mutations: no new mutation families. Existing source-child adoption
-  is preserved explicitly, including `Reference.rawKey` when it is a node,
-  without recursively scanning semantic payload objects.
+  is preserved explicitly for known child fields. `StyleImport` and `JsImport`
+  guard adoption with `instanceof Node` because parser grammar recording can
+  produce non-node placeholders.
 - Copy/materialization: none.
 - Materialized array/object note: no new arrays or objects are created by this
   pass.
 - Danger-token note: none added. No clone/copy/materialization path was added.
-- Evidence: focused `@jesscss/core` reference/call/color/pseudo/attr/
-  interpolated/quoted/node-flags/visitor suite passed (`494` passed, `5`
-  skipped, `5` deferred markers). Constructor instrumentation on canonical
-  `benchmark.less` now reports `Reference`, `Color`, `Call`, `Interpolated`,
-  `PseudoSelector`, `Quoted`, and `AttributeSelector` at `0`
-  `_processNodes(...)` calls; top remaining calls are `Expression` `610`,
-  `Paren` `332`, `Extend` `184`, `Url` `69`, `AtRule` `42`, and `Condition`
-  `21`. Live comparator on `benchmark.less` used
-  `--runs=100 --warmup=25 --less4=measure`; Jess measured `132.35ms` median /
-  `135.22ms` trimmed average, neutral against the immediate Color-only
-  `132.67ms` / `134.91ms` run and old Color-scanner control `132.84ms` /
-  `134.95ms`, with no material regression.
+- Evidence: `pnpm --filter @jesscss/core test -- --run` on import/extend/
+  at-rule/condition/wrapper/node-flags/visitor tests passed (`379` passed, `2`
+  skipped). Ordered benchmark-path rebuild passed. `pnpm run
+  profile:constructor-child-processing -- --limit=20` reports an empty row set
+  on canonical `benchmark.less`. Live comparator on `benchmark.less` used
+  `--runs=100 --warmup=25 --less4=measure`; Jess measured `131.20ms` median /
+  `133.60ms` trimmed average. Scoped profiler now points next at parse and
+  reference eval rather than constructor child processing.

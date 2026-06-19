@@ -641,11 +641,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   rules: AtRuleValue['rules'];
 
   constructor(value: AtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.name = value.name;
     this.prelude = value.prelude;
     this.rules = value.rules;
     this._treeContext = treeContext;
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.prelude instanceof Node) {
+      this.adopt(value.prelude);
+    }
+    if (value.rules instanceof Node) {
+      this.adopt(value.rules);
+    }
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {

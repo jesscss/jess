@@ -75,12 +75,18 @@ export class Extend extends Node<ExtendValue> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.selector = value.selector;
     this.target = value.target;
     this.namespace = value.namespace;
     this.flag = value.flag;
+    if (this.selector instanceof Node) {
+      this.adopt(this.selector);
+    }
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }

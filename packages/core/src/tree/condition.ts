@@ -49,12 +49,18 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
     this.negate = options?.negate === true;
     this._treeContext = treeContext;
+    if (this.left instanceof Node) {
+      this.adopt(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.adopt(this.right);
+    }
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

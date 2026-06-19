@@ -26,9 +26,12 @@ export class Negative extends Node<Node> {
   }
 
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

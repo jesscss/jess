@@ -108,9 +108,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.node = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
