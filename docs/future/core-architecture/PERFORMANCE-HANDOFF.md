@@ -3369,6 +3369,39 @@ extend/process hot path. This is progress toward the canonical target, not
 completion: the historical Less 4.x comparison target remains about `47.4ms`
 average for `benchmark.less`, so Jess is still materially slower.
 
+Rejected follow-up scratch-writer source tracking cut:
+
+- the fresh profile showed `sourceSegmentFor(...)` under scratch header/value
+  rendering, so the prototype changed text-only scratch writers in
+  `Ruleset.renderHeaderSelectorString(...)`, `Rules.writeDetached(...)`,
+  `Declaration.stringifyDetached(...)`, and
+  `Declaration.renderDeclarationPartsToBuffer(...)` to `new
+  OutputWriter(false)`;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/sourcemap.test.ts
+  src/tree/util/__tests__/outputwriter.test.ts
+  src/tree/__tests__/ruleset.test.ts
+  src/tree/__tests__/declaration.test.ts -t
+  "source map|OutputWriter|HeaderString|writeHeader|getComparableHeaderString|render|custom property|Declaration render"`
+  (`115` passed, `67` skipped), and the ordered benchmark-path rebuild passed;
+- CPU attribution moved as intended:
+  `sourceSegmentFor(...)` dropped `27.48ms -> 10.08ms` in
+  `profiling/core-architecture/20260618-172931-scratch-writer-no-source-post-cpu/CPU.20260618.172931.21697.0.001.cpuprofile`;
+- real speed evidence did not support keeping it. The first non-profiled
+  `benchmark.less --runs=24 --warmup=8` run looked slightly better (average
+  `229.13ms`, median `224.72ms`, variance `6.15%`), but confirmations were
+  noisy/worse: another `24/8` run reported average `259.82ms`, median
+  `236.53ms`, variance `23.61%`; a `32/10` run reported average `256.78ms`,
+  median `231.97ms`, variance `30.61%`;
+- stable hotpath sanity also did not support it: compared with the kept extend
+  pass, most trimmed medians worsened or became noisy (`functions.less`
+  `11.61ms -> 12.07ms`, `import-reference.less` `17.95ms -> 18.59ms`,
+  `extend-chaining.less` `4.77ms -> 4.90ms`, `media.less` `5.07ms -> 5.77ms`
+  with noisy signal). The prototype was fully reverted. Do not retry this as a
+  blind scratch-writer default flip; if source tracking remains hot, isolate a
+  narrower text-only writer path and prove it with wall-clock first.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame

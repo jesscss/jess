@@ -112,36 +112,21 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: extend instruction-shape cut.
-- Verdict: kept. The CPU profile selected `processExtends(...)` /
-  `applyExtendsToSelector(...)`; `applyExtendsToSelector(...)` now avoids eager
-  selector-list expansion arrays on the common path, and chained extend
-  discovery returns existing `ExtendInstruction` objects instead of tuple
-  projections followed by value-based recovery.
-- New traversal: the `expandExactSelectorListTargets(...)` loop changed from
-  `for...of` to indexed iteration so it can copy the prefix only when the first
-  selector-list target is found; it replaces the old unconditional loop, not an
-  additional pass. The two `for (const chainedInstruction of chained)` loops
-  replace tuple destructuring loops and delete the nested
-  `expandedAllExtends.find(...)` scans. The `for (const instruction of
-  allExtends)` loop in `findChainedExtendsWithSkips(...)` replaces tuple
-  destructuring over the same array and returns the existing instruction.
-- New node/materialization: no node materialization. Array materialization is
-  narrowed: `instructions.slice(0, i)` occurs only when selector-list target
-  expansion is actually needed, and the mutable instruction queue uses one
-  shallow `.slice()` because the loop splices processed instructions. This
-  replaces the prior two unconditional expanded arrays plus tuple-projection
-  array.
+- Latest pass: rejected scratch-writer source tracking cut.
+- Verdict: no production code kept. The fresh profile showed
+  `sourceSegmentFor(...)` under scratch header/value rendering, so the
+  prototype disabled source tracking for several text-only scratch
+  `OutputWriter`s. CPU attribution moved, but repeated real wall-clock and
+  stable hotpath sanity were noisy or worse.
+- New traversal: none kept.
+- New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: no helper added. `findChainedExtends(...)` now uses the
-  same `ExtendInstruction` model as production callers instead of a local tuple
-  shape.
+- Helper/API surface: none added.
 - Metadata mutations: none added.
-- Evidence: focused extend behavior passed (`34` tests). The eval-flow
-  `process-extends.test.ts` file still fails `7` cases against clean `HEAD`,
-  so it is recorded as baseline debt rather than a regression signal.
-  Benchmark-path rebuild passed. External `benchmark.less` wall-clock held at
-  about `227ms` median across `16/6` and `24/8` non-profiled runs, and CPU
-  profile comparison moved `processExtends(...)` from `88.37ms` to `63.29ms`.
-  See `PERFORMANCE-HANDOFF.md`.
+- Evidence: source-map/output-writer/declaration/ruleset focused tests and
+  benchmark-path rebuild passed during the prototype. CPU profile moved
+  `sourceSegmentFor(...)` from `27.48ms` to `10.08ms`, but confirmation
+  `benchmark.less` runs were noisy/worse and stable hotpath medians regressed
+  or became noisy. The code was reverted; only `PERFORMANCE-HANDOFF.md` records
+  the rejected experiment.
