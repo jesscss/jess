@@ -685,6 +685,34 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom: red');
   });
 
+  it('preserves leading trivia for interpolated custom property values', async () => {
+    const interpolatedValue = interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
+    });
+    interpolatedValue._location = [50, 1, 51, 72, 1, 73];
+    const value = new Sequence([interpolatedValue]);
+    value._location = interpolatedValue.location;
+    const trivia = createTriviaMap({
+      before: new Map([[interpolatedValue.location[0], [token(' ', 'WS', 49)]]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const node = rules([
+      vardecl({
+        name: any('string_w_comment'),
+        value: any('/* // Not commented out // */')
+      }),
+      customdecl({
+        name: any('--comment'),
+        value
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context, { trivia })).toBeString(`
+      --comment: /* // Not commented out // */;
+    `);
+  });
+
   it('preserves generic calls in custom property values during render(context)', () => {
     const node = decl({
       name: any('--custom'),

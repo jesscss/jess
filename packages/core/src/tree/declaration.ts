@@ -11,7 +11,7 @@ import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
-import { spaced } from './sequence.js';
+import { Sequence, spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
@@ -29,7 +29,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitCommentTriviaAfterNode } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -255,6 +255,45 @@ const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value i
   && !Array.isArray(value)
   && value.source instanceof Interpolated
 );
+
+const getSingleInterpolatedCustomValue = (node: Node): Interpolated | undefined => (
+  node instanceof Interpolated
+    ? node
+    : node instanceof Sequence && node.items.length === 1 && node.items[0] instanceof Interpolated
+      ? node.items[0]
+      : undefined
+);
+
+const emitLeadingTriviaForSingleInterpolatedCustomValue = (
+  value: Node,
+  source: Interpolated,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  if (!(value instanceof Sequence) || value.items[0] !== source) {
+    return;
+  }
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, source.location[0], 'before', options), options);
+};
+
+const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
+  const source = getSingleInterpolatedCustomValue(sourceValue);
+  return source ? evaluatedValue.inherit(source) : evaluatedValue;
+};
+
+const emitLeadingTriviaForCustomValue = (
+  value: Node,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, value.location[0], 'before', options), options);
+};
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
@@ -653,6 +692,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
+    const customInterpolatedSource = renderState?.customInterpolatedValue?.source;
+    const hasCustomInterpolatedRender = Boolean(
+      customInterpolatedSource
+      && getSingleInterpolatedCustomValue(value) === customInterpolatedSource
+    );
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
@@ -682,24 +726,31 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const customValueText = nodeValueText(value);
       const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
       if (
-        renderState?.customInterpolatedValue?.source !== value
+        !hasCustomInterpolatedRender
         && fallbackOut === undefined
         && customValueText !== undefined
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
+        emitLeadingTriviaForCustomValue(value, options);
         value.writeSyntax(options);
       } else if (fallbackOut !== undefined) {
         const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
-      } else if (renderState?.customInterpolatedValue?.source === value) {
+      } else if (hasCustomInterpolatedRender) {
         const valueMark = w.mark();
-        renderState.customInterpolatedValue.source.writeWithReplacements(
-          renderState.customInterpolatedValue.replacements,
+        emitLeadingTriviaForSingleInterpolatedCustomValue(
+          value,
+          customInterpolatedSource!,
+          options
+        );
+        customInterpolatedSource!.writeWithReplacements(
+          renderState!.customInterpolatedValue!.replacements,
           options
         );
         w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
         const valueMark = w.mark();
+        emitLeadingTriviaForCustomValue(value, options);
         value.writeSyntax(options);
         w.replaceSince(valueMark, (valueOut) => {
           const customOut = fallbackOut === undefined
@@ -981,8 +1032,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       let maybeValue: MaybePromise<DeclarationRenderValue>;
       try {
-        maybeValue = isCustomProperty && state.value instanceof Interpolated && !state.renderAssignment
-          ? this.evalCustomInterpolatedRenderValue(context, state.value)
+        const customInterpolatedValue = isCustomProperty && !state.renderAssignment
+          ? getSingleInterpolatedCustomValue(state.value)
+          : undefined;
+        maybeValue = customInterpolatedValue
+          ? this.evalCustomInterpolatedRenderValue(context, customInterpolatedValue)
           : state.renderAssignment
             ? evaluateRenderAssignment()
             : state.value.eval(context);
@@ -1279,7 +1333,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             type,
             fallbackValue: new Nil(),
             excludedDeclarations,
-            filter: n => {
+            filter: (n) => {
               const source = n.sourceNode ?? n;
               return n !== outputNode
                 && n !== this
@@ -1330,7 +1384,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               fallbackValue: new Nil(),
               excludedDeclarations,
               // Prevent self-referential reads while normalizing copied/prepared nodes.
-              filter: n => {
+              filter: (n) => {
                 const source = n.sourceNode ?? n;
                 return n !== outputNode
                   && n !== this
@@ -1482,6 +1536,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             if (newValue instanceof Nil) {
               return newValue.inherit(node);
             }
+            if (isCustomProperty) {
+              newValue = inheritCustomInterpolatedValuePlacement(value, newValue);
+            }
             setVal(newValue);
             normalizeMergedLeadingPlaceholder();
             const importantState = finalizeContextualImportantPublicState(context, state.important);
@@ -1498,7 +1555,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (!(maybeNewValue instanceof Node)) {
           return node;
         }
-        setVal(maybeNewValue);
+        setVal(isCustomProperty ? inheritCustomInterpolatedValuePlacement(value, maybeNewValue) : maybeNewValue);
         normalizeMergedLeadingPlaceholder();
         const importantState = finalizeContextualImportantPublicState(context, state.important);
         if (importantState.important && importantState.important !== state.important) {

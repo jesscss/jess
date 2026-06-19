@@ -68,5 +68,9 @@ export function getTestCases(lessFilePath: string): TestCase[] {
     }
   }
 
+  if (testCases.length === 0) {
+    throw new Error(`No expected output CSS found for ${lessFilePath}`);
+  }
+
   return testCases;
 }

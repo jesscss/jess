@@ -41,7 +41,7 @@ export class BasicSelector extends SimpleSelector<string> {
 
   override evalNode(context: Context): BasicSelector {
     const node = this;
-    super.evalNode(context);
+    void super.evalNode(context);
     if (node.isClass) {
       context.hashClass(node.value);
     }
@@ -49,7 +49,7 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
+    return (this._valueOf ??= (this.isTag && !this.value.includes('\\') ? this.value.toLowerCase() : this.value));
   }
 
   override toTrimmedString(options?: PrintOptions): string {

@@ -20,7 +20,12 @@ import {
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
-import { consumeTrivia, emitCommentTriviaBetweenNodes, emitTriviaTokens } from './util/trivia.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBetweenNodes,
+  emitTriviaTokens,
+  getPrintableTriviaTokens
+} from './util/trivia.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
@@ -36,6 +41,27 @@ function stringifyValueOf(value: unknown): string {
 
 function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
+}
+
+function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia']> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  return (
+    'runs' in value
+    && value.runs instanceof Set
+    && 'lookup' in value
+    && typeof value.lookup === 'function'
+    && 'entries' in value
+    && typeof value.entries === 'function'
+    && 'has' in value
+    && typeof value.has === 'function'
+  );
+}
+
+function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
+  const trivia = node.sourceRoot?._treeContext?.opts?.trivia;
+  return isTriviaMap(trivia) ? trivia : undefined;
 }
 
 function createImportantFlag(): Any<'flag'> {
@@ -82,6 +108,27 @@ function emitCallArgSeparator(
       { skipLeadingWhitespace: !preserveLeadingWhitespace }
     );
   }
+}
+
+function emitCommentTriviaBetweenCallArgs(
+  prev: Node,
+  next: Node,
+  options: FinalPrintOptions
+): string {
+  const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
+  const prevEnd = prev.location[3];
+  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+    return '';
+  }
+  const tokens = trivia.lookup(prevEnd, 'after');
+  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+    return '';
+  }
+  const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
+  emitTriviaTokens(consumed, options);
+  return getPrintableTriviaTokens(consumed, options)
+    ?.map(token => token.image)
+    .join('') ?? '';
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
@@ -157,15 +204,6 @@ type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 type CallRenderArgOptions = { evaluateCalcArgs: boolean };
 
-function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions): string {
-  const writer = new OutputWriter(printOptions.compress);
-  node.writeSyntax({
-    ...printOptions,
-    writer
-  });
-  return writer.toString();
-}
-
 function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
   const chunks = Reflect.get(writer as object, 'chunks');
   if (!Array.isArray(chunks) || position >= chunks.length) {
@@ -193,22 +231,6 @@ function writeCallNodeTextToActiveWriter(
   return getWriterTextSincePosition(writer, position);
 }
 
-function isHorizontalWhitespace(code: number): boolean {
-  return code === 9 || code === 12 || code === 13 || code === 32;
-}
-
-function trimHorizontalCallText(text: string): string {
-  let start = 0;
-  while (start < text.length && isHorizontalWhitespace(text.charCodeAt(start))) {
-    start++;
-  }
-  let end = text.length;
-  while (end > start && isHorizontalWhitespace(text.charCodeAt(end - 1))) {
-    end--;
-  }
-  return start === 0 && end === text.length ? text : text.slice(start, end);
-}
-
 function getRenderedCallNameText(name: string | Node | unknown): string | undefined {
   if (typeof name === 'string') {
     return name;
@@ -229,7 +251,7 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       return node.value ? 'true' : 'false';
     case 'Dimension':
       return typeof node.number === 'number'
-        ? `${node.number}${node.unit ?? ''}`
+        ? node.toTrimmedString()
         : undefined;
     case 'Num':
       return typeof node.number === 'number' ? `${node.number}` : undefined;
@@ -355,7 +377,7 @@ function getKnownSourceCallText(node: Node): string | undefined {
       return node.value ? 'true' : 'false';
     case 'Dimension':
       return typeof node.number === 'number'
-        ? `${node.number}${node.unit ?? ''}`
+        ? node.toTrimmedString()
         : undefined;
     case 'Num':
       return typeof node.number === 'number' ? `${node.number}` : undefined;
@@ -594,10 +616,18 @@ export class Call extends Node<CallValue, CallOptions> {
     const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
       ? String(name.key)
       : stringifyValueOf(fallbackValue);
-    const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
-      args: state.args,
-      ...(state.contentNode && { contentNode: state.contentNode })
-    });
+    const rendered = await state.source.renderFinalizedCallSyntax(
+      fallbackName,
+      state,
+      context,
+      prepareRenderPrintState(context, {
+        trivia: sourceTriviaForNode(state.source)
+      }),
+      {
+        args: state.args,
+        ...(state.contentNode && { contentNode: state.contentNode })
+      }
+    );
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
@@ -860,7 +890,9 @@ export class Call extends Node<CallValue, CallOptions> {
           : stringifyValueOf(evaluatedName),
         state,
         context,
-        prepareRenderPrintState(context)
+        prepareRenderPrintState(context, {
+          trivia: sourceTriviaForNode(state.source)
+        })
       );
       return this.markCallOutput(new Any(rendered, { role: 'any' }), ownOutput);
     });
@@ -961,10 +993,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (next > last) {
         return;
       }
-      emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+      const commentTriviaText = emitCommentTriviaBetweenCallArgs(arg, rawArgs[next]!, printOptions);
       w.add(', ');
       if (textState?.text !== undefined) {
-        textState.text += ', ';
+        textState.text += `${commentTriviaText}, `;
       }
     };
     const finishArg = (arg: Node, argText: string, next: number): void => {

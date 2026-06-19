@@ -87,6 +87,25 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('page selector names preserve authored casing', () => {
+    const { errors, tree } = cssParser.parse('@page Test:first { margin: 1cm; }');
+    expect(errors.length).toBe(0);
+
+    const out = serializeTypes(tree);
+    expect(out).toContainString(`
+      (AtRule
+        name:
+          (Any [role=atkeyword] '@page')
+        prelude:
+          (List
+            items:
+              [
+                (Any [role=ident] 'Test:first')
+              ]
+          )
+    `);
+  });
+
   test('pseudo with arguments', () => {
     const { tree } = cssParser.parse('a:is(b, c) { d: e }');
     const out = serializeTypes(tree);

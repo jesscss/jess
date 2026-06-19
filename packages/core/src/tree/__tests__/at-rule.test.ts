@@ -1854,6 +1854,30 @@ describe('AtRule', () => {
     expect(writer.restores).toBe(0);
   });
 
+  it('normalizes leading prelude whitespace when writing direct leaf at-rules', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
+    });
+    node.getHeaderString = () => {
+      throw new Error('direct leaf at-rule writeSyntax should not use header string transport');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBe('@namespace foo url(http://www.example.com);');
+  });
+
+  it('normalizes leading prelude whitespace when rendering evaluated leaf at-rules', () => {
+    const node = atrule({
+      name: any('@impor', { role: 'atkeyword' }),
+      prelude: quoted(any('impor-typo-dont-parse-as-@import.less'))
+    });
+    node.removeFlag(F_STATIC);
+
+    expect(node.render(context)).toBe('@impor "impor-typo-dont-parse-as-@import.less";');
+  });
+
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
     const writer = new CountingWriter();
     const first = atrule({

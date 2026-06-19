@@ -1473,6 +1473,38 @@ describe('Call', () => {
     }
   });
 
+  it('renders optional fallback call dimensions through normal dimension serialization', async () => {
+    const args = list([dimension([-0.0000000001, 'deg'])]);
+    const name = ref({ key: 'rotate' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(0deg)');
+    expect(await rule.render(context, buffer)).toBe('rotate(0deg)');
+    expect(buffer.parts).toEqual(['rotate(0deg)']);
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'rotate(0deg)'
+    });
+  });
+
+  it('preserves source trivia in optional fallback call arguments', async () => {
+    const first = new Color({ node: '#333' }, undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Color({ node: '#111' }, undefined, [40, 1, 41, 43, 1, 44]);
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const args = list([first, second]);
+    const name = ref({ key: 'linear-gradient' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'linear-gradient(#333 /*{comment}*/, #111)'
+    });
+  });
+
   it('resolves optional missing dynamic function fallback without evaluating the source call surface', async () => {
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });

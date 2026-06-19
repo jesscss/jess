@@ -173,10 +173,15 @@ function writeDirectLeafAtRuleHeader(
   w.add(nameText, parts.name);
   if (preludeText) {
     if (hasNonAtRuleWhitespace(preludeText)) {
-      if (!(endsWithAtRuleWhitespace(nameText) || startsWithAtRuleWhitespace(preludeText))) {
+      const nameEndsWithSpace = endsWithAtRuleWhitespace(nameText);
+      const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeText);
+      if (!(nameEndsWithSpace || preludeStartsWithSpace)) {
         w.add(' ');
       }
-      w.add(trimAtRuleLeadingWhitespace(preludeText), prelude!);
+      w.add(
+        trimAtRuleLeadingWhitespace(preludeText, nameEndsWithSpace ? '' : ' '),
+        prelude!
+      );
     }
   }
   w.add(';');
@@ -878,7 +883,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       ? renderAtRuleLeafNodeSyntax(parts.prelude, printOptions)
       : '';
     const rendered = hasNonAtRuleWhitespace(preludeOut)
-      ? `${nameOut}${endsWithAtRuleWhitespace(nameOut) || startsWithAtRuleWhitespace(preludeOut) ? '' : ' '}${trimAtRuleLeadingWhitespace(preludeOut)};`
+      ? `${buildComparableAtRuleHeader(nameOut, preludeOut)};`
       : `${nameOut};`;
     return isRenderBuffer(bufferOrOptions)
       ? writeRenderText(bufferOrOptions, rendered)
