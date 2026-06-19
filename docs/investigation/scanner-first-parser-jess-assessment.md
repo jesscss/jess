@@ -1547,11 +1547,12 @@ proof is useful, but it was not proof that materialized islands feed evaluation
 or rendering.
 
 The current prototype adds a hidden structural-fed path for a bounded subset:
-top-level ordinary rules with ordinary declarations. It uses structural rule
-and declaration shells, materializes only selector and declaration-value
-islands through the Less providers, constructs canonical `@jesscss/core`
-`Rules`/`Ruleset`/`Declaration` nodes, and records `canonical-fallback` for
-unsupported Less features instead of silently widening its claims.
+ordinary rules whose bodies contain ordinary declarations and nested ordinary
+rules. It uses structural rule and declaration shells, materializes only
+selector and declaration-value islands through the Less providers, constructs
+canonical `@jesscss/core` `Rules`/`Ruleset`/`Declaration` nodes, and records
+`canonical-fallback` for unsupported Less features instead of silently widening
+its claims.
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default

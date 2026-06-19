@@ -179,6 +179,36 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstProbe?.requestedIslands).toBe(0);
   });
 
+  it('feeds nested ordinary rules through structural parse and canonical rendering', async () => {
+    const source = '.a {\n  color: blue;\n  .b { width: 1px; }\n}\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('.b');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 4,
+      requestedIslands: 4
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({
+      selector: 2,
+      'declaration-value': 2
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({
+      rule: 2,
+      declaration: 2
+    });
+  });
+
   it('falls back canonically for Less features outside the first structural-fed subset', async () => {
     const source = '@brand: blue;\n.a { color: @brand; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -236,5 +266,28 @@ describe('scanner-first CSS/Less e2e probe', () => {
         fallbackFullTreeMaterializations: 1
       });
     }
+  });
+
+  it('preflights nested unsupported syntax before materializing islands', async () => {
+    const source = '.a { color: blue; .b { width: 1px ! important; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'important declarations are not in the first structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      requestedIslands: 0,
+      actualParses: 0,
+      promotedBytes: 0
+    });
   });
 });

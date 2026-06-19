@@ -34,8 +34,10 @@ import {
   IslandParsePlan,
   IslandParserRegistry,
   type LanguageActivation,
+  type ParserConfigKey,
   type ParseStructureOptions,
   type RawIslandNode,
+  type StructuralContainerNode,
   type StructuralDocument
 } from '@jesscss/parser';
 import path from 'node:path';
@@ -252,11 +254,12 @@ export class LessPlugin extends AbstractPlugin {
   /**
    * Attempts the first structural-fed compiler tree for a tiny CSS/Less subset.
    *
-   * This is intentionally hidden and conservative. It supports top-level
-   * ordinary rules with ordinary declarations, while still delegating selector
-   * and value materialization to the Less island providers. Anything outside
-   * that shape records a canonical fallback instead of pretending the
-   * structural path owns more Less semantics than it actually proves.
+   * This is intentionally hidden and conservative. It supports ordinary rules
+   * whose bodies contain ordinary declarations and nested ordinary rules, while
+   * still delegating selector and value materialization to the Less island
+   * providers. Anything outside that shape records a canonical fallback instead
+   * of pretending the structural path owns more Less semantics than it actually
+   * proves.
    */
   runScannerFirstPrototype(
     filePath: string,
@@ -316,73 +319,22 @@ export class LessPlugin extends AbstractPlugin {
       return fallback('comments require canonical trivia preservation');
     }
 
-    const ownerIslands = indexIslandsByOwner(plan.document.islands());
     const rules: Node[] = [];
+    const ownerIslands = indexIslandsByOwner(plan.document.islands());
 
     for (const child of plan.document.root.children) {
       if (child.kind !== 'rule') {
         return fallback(`unsupported root node ${child.kind}`);
       }
-      const selectorIsland = singleIsland(ownerIslands, child, 'selector');
-      if (!selectorIsland) {
-        return fallback('rule selector island missing');
+      const eligibilityReason = validateStructuralFedRule(plan.document, child);
+      if (eligibilityReason) {
+        return fallback(eligibilityReason);
       }
-      const selectorRecord = plan.execute<Selector>(
-        plan.requestIsland(selectorIsland, 'less-selector', configKey)
-      );
-      if (selectorRecord.fallbackFullTree || selectorRecord.diagnostics.length > 0) {
-        return fallback('selector island did not materialize cleanly');
+      const result = buildStructuralFedRuleset(plan, child, ownerIslands, configKey, context);
+      if ('reason' in result) {
+        return fallback(result.reason);
       }
-      if (!(selectorRecord.value instanceof Selector)) {
-        return fallback('selector island returned a non-selector value');
-      }
-
-      const declarations: Node[] = [];
-      for (const statement of child.children) {
-        if (statement.kind !== 'declaration') {
-          return fallback(`unsupported rule child ${statement.kind}`);
-        }
-        const name = plan.document.source.slice(statement.nameStart, statement.nameEnd);
-        const valueText = plan.document.source.slice(statement.valueStart, statement.valueEnd);
-        const assignmentText = plan.document.source.slice(statement.nameEnd, statement.valueStart);
-        if (!isPlainStructuralFedDeclarationName(name)) {
-          return fallback('declaration name is outside the first structural-fed subset');
-        }
-        if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
-          return fallback('declaration assignment is outside the first structural-fed subset');
-        }
-        if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
-          return fallback('important declarations are not in the first structural-fed subset');
-        }
-        const valueIsland = singleIsland(ownerIslands, statement, 'declaration-value');
-        if (!valueIsland) {
-          return fallback('declaration value island missing');
-        }
-        const valueRecord = plan.execute<Node>(
-          plan.requestIsland(valueIsland, 'less-value', configKey)
-        );
-        if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
-          return fallback('declaration value island did not materialize cleanly');
-        }
-        if (!(valueRecord.value instanceof Node)) {
-          return fallback('declaration value island returned a non-node value');
-        }
-        declarations.push(new Declaration({
-          name: new Any(name, { role: 'property' }, locationFromRange(plan.document, statement.nameStart, statement.nameEnd), context),
-          value: valueRecord.value
-        }, { assign: ':' }, locationFromRange(plan.document, statement.start, statement.end), context));
-      }
-
-      const body = new Rules(
-        declarations,
-        undefined,
-        locationFromRange(plan.document, child.start, child.end),
-        context
-      );
-      rules.push(new Ruleset({
-        selector: selectorRecord.value,
-        rules: body
-      }, undefined, locationFromRange(plan.document, child.start, child.end), context));
+      rules.push(result.node);
     }
 
     const tree = new Rules(
@@ -769,6 +721,112 @@ function singleIsland(
 ): RawIslandNode | undefined {
   const matches = (byOwner.get(owner) ?? []).filter(island => island.islandKind === islandKind);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+type StructuralFedBuildResult =
+  | { node: Ruleset }
+  | { reason: string };
+
+function validateStructuralFedRule(
+  document: StructuralDocument,
+  rule: StructuralContainerNode
+): string | undefined {
+  for (const child of rule.children) {
+    if (child.kind === 'rule') {
+      const nestedReason = validateStructuralFedRule(document, child);
+      if (nestedReason) {
+        return nestedReason;
+      }
+      continue;
+    }
+    if (child.kind !== 'declaration') {
+      return `unsupported rule child ${child.kind}`;
+    }
+
+    const name = document.source.slice(child.nameStart, child.nameEnd);
+    const valueText = document.source.slice(child.valueStart, child.valueEnd);
+    const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
+    if (!isPlainStructuralFedDeclarationName(name)) {
+      return 'declaration name is outside the first structural-fed subset';
+    }
+    if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
+      return 'declaration assignment is outside the first structural-fed subset';
+    }
+    if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+      return 'important declarations are not in the first structural-fed subset';
+    }
+  }
+  return undefined;
+}
+
+function buildStructuralFedRuleset(
+  plan: IslandParsePlan,
+  rule: StructuralContainerNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  configKey: ParserConfigKey,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
+  if (!selectorIsland) {
+    return { reason: 'rule selector island missing' };
+  }
+  const selectorRecord = plan.execute<Selector>(
+    plan.requestIsland(selectorIsland, 'less-selector', configKey)
+  );
+  if (selectorRecord.fallbackFullTree || selectorRecord.diagnostics.length > 0) {
+    return { reason: 'selector island did not materialize cleanly' };
+  }
+  if (!(selectorRecord.value instanceof Selector)) {
+    return { reason: 'selector island returned a non-selector value' };
+  }
+
+  const rules: Node[] = [];
+  for (const child of rule.children) {
+    if (child.kind === 'rule') {
+      const nested = buildStructuralFedRuleset(plan, child, ownerIslands, configKey, context);
+      if ('reason' in nested) {
+        return nested;
+      }
+      rules.push(nested.node);
+      continue;
+    }
+    if (child.kind !== 'declaration') {
+      return { reason: `unsupported rule child ${child.kind}` };
+    }
+
+    const name = plan.document.source.slice(child.nameStart, child.nameEnd);
+
+    const valueIsland = singleIsland(ownerIslands, child, 'declaration-value');
+    if (!valueIsland) {
+      return { reason: 'declaration value island missing' };
+    }
+    const valueRecord = plan.execute<Node>(
+      plan.requestIsland(valueIsland, 'less-value', configKey)
+    );
+    if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
+      return { reason: 'declaration value island did not materialize cleanly' };
+    }
+    if (!(valueRecord.value instanceof Node)) {
+      return { reason: 'declaration value island returned a non-node value' };
+    }
+    rules.push(new Declaration({
+      name: new Any(name, { role: 'property' }, locationFromRange(plan.document, child.nameStart, child.nameEnd), context),
+      value: valueRecord.value
+    }, { assign: ':' }, locationFromRange(plan.document, child.start, child.end), context));
+  }
+
+  const body = new Rules(
+    rules,
+    undefined,
+    locationFromRange(plan.document, rule.start, rule.end),
+    context
+  );
+  return {
+    node: new Ruleset({
+      selector: selectorRecord.value,
+      rules: body
+    }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
+  };
 }
 
 function locationFromRange(
