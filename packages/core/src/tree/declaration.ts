@@ -1244,6 +1244,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     } else if (rawAssign === '+_:') {
       assign = AssignmentType.MergeSequence;
     }
+    if (assign === AssignmentType.Default) {
+      assign = undefined;
+    }
     if (!assign && this.options?.normalizedFromAssign) {
       state.normalizedFromAssign = this.options.normalizedFromAssign;
       return;

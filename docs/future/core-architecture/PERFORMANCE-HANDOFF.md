@@ -154,6 +154,42 @@ was `avg 213.75ms` / `median 208.33ms`; CPU attribution showed
 sampled standalone cost for the aggregate merge. Keep as a small
 wall-clock/median win unless a later broader run contradicts it.
 
+2026-06-18 default-assignment canonical registration pass: current profile
+selection came from
+`profiling/core-architecture/20260618-192941-current-refresh-cpu/CPU.20260618.192941.10969.0.001.cpuprofile`,
+where `copyChild(...)` self was `352.00ms` / stack `1172.87ms`;
+`copyValueForDerived(...)` stack was `325.11ms`; and
+`createRegistrationState(...)` stack was `347.39ms`, mostly ordinary Less
+declarations whose parser options carried `AssignmentType.Default` (`:`).
+The kept cut treats default `:` as no assignment during declaration
+registration normalization and lets `Rules._prepareRegisterableNode(...)` use
+the existing `reuseCanonical` declaration lane for declarations whose only
+assignment marker is default `:`. Merge/add/conditional assignments still take
+the owned materialization path.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/rules.test.ts -t "renders assignment families without reparenting authored declaration values|normalizes assignment registration without preparing value subtrees|normalizes assignment registration without deriving a declaration surface|does not pull a prior plain declaration into Less-style property merge chains|real Less merge-chain property refs avoid public lookup bridges|routes direct Rules.evalNode through registration prep|renders registration-prepared rules without deriving another root surface"`
+(`7` passed, `363` skipped). The broader
+`declaration.test.ts -t "coalesces merged declaration lists without recopying
+copied leaves"` remains branch-baseline red: it failed with the same
+`src: one, two, one, three;` output after temporarily backing out this patch.
+`pnpm run verify:baseline -- --changed` also remains branch-baseline red in
+this worktree; representative import/mixin/nesting failures sampled from that
+run reproduced with this patch backed out.
+
+Ordered benchmark-path rebuild passed before timing. External canonical Less
+`benchmark.less --runs=24 --warmup=8 --math=parens-division` measured
+`avg 178.73ms` / `median 176.21ms`, then `avg 184.53ms` /
+`median 179.40ms`, versus the current refresh `avg 213.86ms` /
+`median 199.20ms` with high variance and the previous clean kept-run evidence
+around `avg 202.89ms` / `median 200.16ms`. Profiled benchmark
+`profiling/core-architecture/20260618-193228-default-assign-canonical-cpu/CPU.20260618.193228.34197.0.001.cpuprofile`
+reported `avg 186.21ms` / `median 183.60ms`. CPU attribution moved as
+intended: `copyChild(...)` self `352.00ms -> 17.23ms`,
+`copyValueForDerived(...)` stack `325.11ms -> 3.18ms`, and
+`createRegistrationState(...)` stack `347.39ms -> 1.69ms`. Keep as a measured
+wall-clock and CPU-profile win.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

@@ -112,32 +112,34 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept an extend root target-aggregate guard. During the existing
-  per-root visibility scan, `processExtends(...)` now accumulates one bitset of
-  visible extend targets and skips the root's ruleset loop when that bitset is
-  disjoint from the root's original selector bits.
-- Verdict: keep as a small measured wall-clock/median win. This is the cheap
-  "can this root contain any target at all?" guard; the rejected activation
-  closure remains rejected because its extra arrays/loops did not beat the
-  benchmark.
-- New traversal: no new tree traversal. The pass adds one bitset merge/check
-  while already scanning visible extend instructions for a root.
-- New node/materialization: none kept.
+- Latest pass: kept default-assignment canonical declaration registration.
+  Parser-default `AssignmentType.Default` (`:`) no longer makes ordinary Less
+  declarations take assignment-normalization materialization, and
+  `Rules._prepareRegisterableNode(...)` may use the existing `reuseCanonical`
+  lane when default `:` is the only assignment marker.
+- Verdict: keep as a measured wall-clock and CPU-profile win. This is not a
+  general assignment reuse rule; merge/add/conditional assignments still own
+  their prepared registration surfaces.
+- New traversal: none.
+- New node/materialization: none added. The change deletes routine copied
+  declaration registration surfaces for unchanged default-colon declarations.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none added.
+- Helper/API surface: none added. One existing enum import was widened from
+  type-only to value import in `rules.ts`.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps, arrays, or node copies. The
-  existing `visibleExtends` array remains. Two bitset clones seed the target
-  and `extendWith` aggregates, replacing broader per-ruleset classification
-  work and preserving the root's original selector-bit proof before chained
-  `extendWith` bits broaden the root keyset.
-- Evidence: focused fast-reject/process-extends/extend-root/extend-integration
-  tests passed (`78` passed, `1` skipped), the ordered benchmark-path rebuild
-  passed, and external canonical Less `benchmark.less --runs=24 --warmup=8
-  --math=parens-division` measured `211.69ms` average / `200.74ms` median, then
-  `206.95ms` average / `201.76ms` median; after removing the extra
-  `visibleExtends` pass and rebuilding the exact source shape, the final run
-  measured `202.89ms` average / `200.16ms` median, versus the clean refresh
-  `210.71ms` average / `210.70ms` median. CPU profile kept
-  `processExtends(...)` in the same self-time band (`29.39ms`).
+- Side maps/arrays/copies: no new side maps or arrays. The kept change removes
+  the hot declaration `copyValueForDerived(...)` / `copyChild(...)` path for
+  unchanged default-colon declarations.
+- Evidence: focused registration/assignment/merge-chain tests passed (`7`
+  passed, `363` skipped), with the broader merge coalescing failure confirmed
+  branch-baseline red after temporarily backing out this patch.
+  `verify:baseline -- --changed` remains branch-baseline red; sampled
+  import/mixin/nesting failures reproduced with the patch backed out. The
+  ordered benchmark-path rebuild passed. External canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division` measured `178.73ms` average /
+  `176.21ms` median, then `184.53ms` average / `179.40ms` median, versus the
+  current refresh `213.86ms` average / `199.20ms` median with high variance.
+  CPU attribution moved as intended: `copyChild(...)` self `352.00ms ->
+  17.23ms`, `copyValueForDerived(...)` stack `325.11ms -> 3.18ms`, and
+  `createRegistrationState(...)` stack `347.39ms -> 1.69ms`.
