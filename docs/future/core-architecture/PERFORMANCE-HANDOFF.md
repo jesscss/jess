@@ -169,19 +169,19 @@ Current target swath:
    attributes about `35.92ms/run` to `parser.parse(...)`, with tokenization
    about `3.61ms/run`, parser rule execution / AST construction about
    `30.34ms/run`, and wrapper/result work about `1.97ms/run`. Parser cuts
-   should therefore target rule execution, AST construction, or upstream
-   Chevrotain grammar/precomputed data that does not add runtime branch ladders.
-4. Keep a narrow Chevrotain upstream lane for pre-recorded grammar/GAST or
-   setup reuse. Local Chevrotain history has old serialized grammar commits
-   (`#749`, `#755`) and newer fast-dispatch/speculation experiments, but the
-   rejected risk is adding more hot-path logic branching. Any revival must
-   avoid turning precomputation into a slower runtime branch ladder. Current
-   evidence says resurrecting `serializedGrammar` is not the next Jess-side
-   steady-state fix: Jess already caches Less lexer/parser singletons, cold
-   constructor/self-analysis is near zero after the first parser, and warm
-   parse cost is dominated by rule execution / AST construction. If pursuing
-   Chevrotain, target runtime dispatch or strict parser surfaces against
-   Jess's Less parser execution.
+   should therefore target rule execution, AST construction, or branch-light
+   parser precomputation that removes hot execution work instead of adding
+   runtime dispatch ladders.
+4. Keep only a constrained Chevrotain upstream lane. Old serialized grammar /
+   prerecorded-GAST history is not automatically promising: the failure mode is
+   moving analysis into more per-token/per-rule branching and making the hot
+   parse path slower. Current evidence says resurrecting `serializedGrammar` is
+   not the next Jess-side steady-state fix: Jess already caches Less
+   lexer/parser singletons, cold constructor/self-analysis is near zero after
+   the first parser, and warm parse cost is dominated by rule execution / AST
+   construction. If pursuing Chevrotain, target branch-light committed
+   dispatch, precomputed closures, or strict parser surfaces against Jess's
+   Less parser execution; reject runtime branch ladders.
 5. Keep running disjoint sub-agent experiments in separate worktrees for the
    active queue: implementation slices, field/use-case audits, and
    measurement/profiling validation. Main integration owns docs, gates, commit,
@@ -293,6 +293,37 @@ change child-entry skip counters (`declaration.childEntryFamilySkip` remained
 profile/short same-load results were neutral at best. Do not integrate this
 shape as-is; if revisiting handle hits, delete or collapse the normal wrapper
 path instead of adding a second preflight copy of its eligibility checks.
+
+2026-06-19 reference lookup-result wrapper deletion: kept the worker patch in
+`packages/core/src/tree/reference.ts` that makes `lookupResolvedReference(...)`
+return the lookup value directly instead of allocating `{ returnVal, valueKey }`
+on every normal lookup. Callers now carry the `valueKey` they already received
+from key evaluation. This adds no preflight helper, registry, cache, traversal,
+copy path, or deep materialization; it deletes normal-path wrapper churn only.
+Focused `reference.test.ts`, `mixin.test.ts`, `import-style.test.ts`, and
+`rules.test.ts` passed after rebuilding `@jesscss/core` (`574` passed,
+`15` skipped, `9` todo). Same-load benchmark over `40` runs after `10`
+warmups with `--less4=measure` measured Less 4.6.3 median `30.32ms` /
+trimmed average `31.19ms` versus Jess median `111.36ms` / trimmed average
+`112.98ms`; the same-load ratio remains about `2.67x`, so this is an
+allocation/machinery cut, not a speed-win claim. Profile still reports
+`LessParser.parse` `72.10ms`, `Reference.evalNode` `43.38ms`, and unchanged
+direct lookup counters (`childEntryFamilySkip=9024`,
+`childEntryMergeFamilySkip=6435`, `cacheMiss=3641`).
+
+2026-06-19 rejected direct declaration child-entry eligibility bitmask: a
+sub-agent prototype carried a compact direct-declaration lookup mask on child
+entries and used it before the old family/merge/visibility checks. It moved
+diagnostic counters from `childEntryFamilySkip=9024` and
+`childEntryMergeFamilySkip=6435` to `childEntryEligibilitySkip=15459`, but did
+not reduce `childEntriesScanned` (`743`) or `childEntryEntered` (`946`) on
+`benchmark.less`; the scoped stress file likewise kept `childEntriesScanned`
+and entered counts unchanged. Short same-load stress timing was neutral /
+slightly slower (`42.81ms` baseline median versus `43.09ms` patched median).
+Reject this shape as new entry state/helper machinery that compresses branches
+without shrinking the iterated candidate set. The next direct-lookup cut should
+reduce the child-entry list we iterate, carry a scope-level eligible-list fact
+without growing hot state excessively, or delete eval wrapper/allocation work.
 
 2026-06-19 direct-child constructor completion pass: kept the final
 `_processNodes` constructor reduction for canonical `benchmark.less`.

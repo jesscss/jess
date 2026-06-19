@@ -2026,10 +2026,7 @@ function lookupResolvedReference(args: {
   target: ReferenceValue['target'];
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
-}): MaybePromise<{
-  returnVal: ReferenceLookupReturnValue;
-  valueKey: NormalizedLookupKey;
-}> {
+}): MaybePromise<ReferenceLookupReturnValue> {
   const {
     referenceNode,
     resolvedTarget,
@@ -2060,10 +2057,7 @@ function lookupResolvedReference(args: {
       env
     );
     if (sourceStaticHandleResult !== undefined) {
-      return {
-        returnVal: sourceStaticHandleResult === CACHED_RULES_LOOKUP_MISS ? undefined : sourceStaticHandleResult,
-        valueKey
-      };
+      return sourceStaticHandleResult === CACHED_RULES_LOOKUP_MISS ? undefined : sourceStaticHandleResult;
     }
   }
   const strategy = getCachedReferenceLookupStrategy(referenceNode, lookupType);
@@ -2131,10 +2125,7 @@ function lookupResolvedReference(args: {
           handleShape
         );
     if (handleResult !== undefined) {
-      return {
-        returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
-        valueKey
-      };
+      return handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult;
     }
   } else if (targetRules) {
     referenceNode._rulesLookupHandle = undefined;
@@ -2165,10 +2156,7 @@ function lookupResolvedReference(args: {
           resolved
         );
       }
-      return {
-        returnVal: resolved,
-        valueKey
-      };
+      return resolved;
     });
   }
   if (targetRules && handleStrategy) {
@@ -2184,7 +2172,7 @@ function lookupResolvedReference(args: {
       returnVal
     );
   }
-  return { returnVal, valueKey };
+  return returnVal;
 }
 
 function tryReadInitialSourceStaticRulesLookupHandle(args: {
@@ -3249,7 +3237,7 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .then(returnVal => finalizeRawReferenceLookupTarget(returnVal))
       .finally(() => {
         context.popReference();
       });
@@ -3273,7 +3261,7 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .then(returnVal => finalizeRawReferenceLookupTarget(returnVal))
       .finally(() => {
         context.popReference();
       });
@@ -3296,7 +3284,7 @@ function resolveRawReferenceLookupTarget(
         originalFilter: referenceNode.options.filter,
         context
       }))
-      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .then(returnVal => finalizeRawReferenceLookupTarget(returnVal))
       .finally(() => {
         context.popReference();
       });
@@ -3313,14 +3301,14 @@ function resolveRawReferenceLookupTarget(
   });
   if (isThenable(lookup)) {
     return Promise.resolve(lookup)
-      .then(({ returnVal }) => finalizeRawReferenceLookupTarget(returnVal))
+      .then(returnVal => finalizeRawReferenceLookupTarget(returnVal))
       .finally(() => {
         context.popReference();
       });
   }
 
   context.popReference();
-  return finalizeRawReferenceLookupTarget(lookup.returnVal);
+  return finalizeRawReferenceLookupTarget(lookup);
 }
 
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
@@ -3433,31 +3421,32 @@ function evaluateReferenceNode(args: {
         valueKey,
         context
       }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
+      .then(([resolvedTarget, valueKey]) => {
+        return Promise.resolve(lookupResolvedReference({
           referenceNode,
-          returnVal,
-          valueKey,
+          resolvedTarget,
           lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
+          valueKey,
+          target,
+          originalFilter,
+          context
+        })).then(returnVal => {
+          const directRenderValue = directStaticRender === true
+            ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+            : undefined;
+          if (directRenderValue) {
+            return directRenderValue;
+          }
+          return finalizeReferenceLookupResult(
+            referenceNode,
+            returnVal,
+            valueKey,
+            lookupType,
+            fallbackValue,
+            context,
+            renderTextOnly
+          );
+        });
       });
   }
   const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
@@ -3469,31 +3458,32 @@ function evaluateReferenceNode(args: {
         valueKey,
         context
       }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
+      .then(([resolvedTarget, valueKey]) => {
+        return Promise.resolve(lookupResolvedReference({
           referenceNode,
-          returnVal,
-          valueKey,
+          resolvedTarget,
           lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
+          valueKey,
+          target,
+          originalFilter,
+          context
+        })).then(returnVal => {
+          const directRenderValue = directStaticRender === true
+            ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+            : undefined;
+          if (directRenderValue) {
+            return directRenderValue;
+          }
+          return finalizeReferenceLookupResult(
+            referenceNode,
+            returnVal,
+            valueKey,
+            lookupType,
+            fallbackValue,
+            context,
+            renderTextOnly
+          );
+        });
       });
   }
   const resolvedValue = resolveReferenceTargetValue({
@@ -3504,31 +3494,32 @@ function evaluateReferenceNode(args: {
   });
   if (isThenable(resolvedValue)) {
     return Promise.resolve(resolvedValue)
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
+      .then(([resolvedTarget, valueKey]) => {
+        return Promise.resolve(lookupResolvedReference({
           referenceNode,
-          returnVal,
-          valueKey,
+          resolvedTarget,
           lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
+          valueKey,
+          target,
+          originalFilter,
+          context
+        })).then(returnVal => {
+          const directRenderValue = directStaticRender === true
+            ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+            : undefined;
+          if (directRenderValue) {
+            return directRenderValue;
+          }
+          return finalizeReferenceLookupResult(
+            referenceNode,
+            returnVal,
+            valueKey,
+            lookupType,
+            fallbackValue,
+            context,
+            renderTextOnly
+          );
+        });
       });
   }
   const lookup = lookupResolvedReference({
@@ -3542,7 +3533,7 @@ function evaluateReferenceNode(args: {
   });
   if (isThenable(lookup)) {
     return Promise.resolve(lookup)
-      .then(({ returnVal, valueKey }) => {
+      .then(returnVal => {
         const directRenderValue = directStaticRender === true
           ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
           : undefined;
@@ -3552,7 +3543,7 @@ function evaluateReferenceNode(args: {
         return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
-          valueKey,
+          resolvedValue[1],
           lookupType,
           fallbackValue,
           context,
@@ -3562,15 +3553,15 @@ function evaluateReferenceNode(args: {
   }
 
   const directRenderValue = directStaticRender === true
-    ? finalizeDirectRawRenderValue(referenceNode, lookup.returnVal, context)
+    ? finalizeDirectRawRenderValue(referenceNode, lookup, context)
     : undefined;
   if (directRenderValue) {
     return directRenderValue;
   }
   return finalizeReferenceLookupResult(
     referenceNode,
-    lookup.returnVal,
-    lookup.valueKey,
+    lookup,
+    resolvedValue[1],
     lookupType,
     fallbackValue,
     context,

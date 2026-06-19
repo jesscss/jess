@@ -103,6 +103,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Reference lookup-result wrapper deletion plus parser/lookup
+  worker triage.
+- Verdict: accepted as a narrow normal-path allocation cut, not a speed claim.
+  `lookupResolvedReference(...)` now returns the looked-up value directly; the
+  callers already own the `valueKey` from key evaluation and no longer receive
+  a freshly allocated `{ returnVal, valueKey }` wrapper for each normal lookup.
+  The direct declaration child-entry eligibility bitmask prototype was
+  rejected because it added entry state and a refresh helper while leaving scan
+  and entered counts unchanged. The Chevrotain lane was narrowed to
+  branch-light precomputation only; serialized/prerecorded grammar work is not
+  a target if it adds runtime dispatch branches.
+- New traversal: none.
+- Review-flagged allocations: deleted a per-lookup result wrapper object from
+  the Reference lookup path; no replacement cache, registry, side map, array,
+  or helper branch ladder was added.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: no helper or public API added. One worker helper/mask
+  prototype was explicitly rejected and left out of this branch.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: normal `lookupResolvedReference(...)` paths now return
+  `ReferenceLookupReturnValue` directly. The initial source-static handle
+  object remains because that path still computes a `valueKey` before the
+  normal lookup pipeline starts.
+- Evidence: `pnpm --filter @jesscss/core build` passed. Focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/import-style.test.ts src/tree/__tests__/rules.test.ts`
+  passed (`574` passed, `15` skipped, `9` deferred markers) after avoiding a parallel
+  build/test race. `node scripts/profile-less-benchmark.mjs` still points at
+  parse plus Reference (`LessParser.parse` `72.10ms`,
+  `Reference.evalNode` `43.38ms`) with unchanged direct lookup counters.
+  Same-load `benchmark.less` comparator over `40` runs after `10` warmups with
+  `--less4=measure` measured Less 4.6.3 median `30.32ms` / trimmed average
+  `31.19ms` versus Jess median `111.36ms` / trimmed average `112.98ms`; no
+  speed win is claimed.
+
 - Latest pass: parser value-token closure allocation cleanup plus performance
   queue refresh.
 - Verdict: accepted as a parser allocation/machinery cut and evidence refresh,
