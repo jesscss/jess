@@ -1500,13 +1500,15 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
   productions, and parser tests before implementing it. CSS work should use
   `cssTokens.ts` plus CSS productions as compatibility guide rails; Less work
   should use `lessTokens.ts` plus Less overrides/additions the same way. This
-  does not mean every spec-maximal token edge case is automatically worth
-  reimplementing in the scanner hot path. Expansive Unicode ranges, rarely used
-  recovery behavior, or other high-cost edge cases should be evaluated against
-  real Jess corpus usage, diagnostics quality, language-service usefulness,
-  and fallback/materialization behavior. Any divergence from existing
-  productions must be documented as an intentional structural-stage tradeoff,
-  not accidental grammar drift.
+  does not make the current grammar sacred or require every spec-maximal token
+  edge case to live in the scanner hot path. Classify provider coverage into
+  hot-path structural recognition, deferred island parsing, canonical fallback,
+  and unsupported/recovery behavior before implementing the provider.
+  Expansive Unicode ranges, rarely used recovery behavior, or other high-cost
+  edge cases should be evaluated against real Jess corpus usage, diagnostics
+  quality, language-service usefulness, and fallback/materialization behavior.
+  Any divergence from existing productions must be documented as an intentional
+  structural-stage cost/coverage tradeoff, not accidental grammar drift.
 - [x] Add CSS selector island provider in `@jesscss/css-parser`.
 - [x] Add CSS value/prelude island providers in `@jesscss/css-parser`.
 - [x] Add Less selector island provider in `@jesscss/less-parser`.
@@ -1577,6 +1579,11 @@ its claims.
   path.
 - [ ] Ensure failures report source offsets and human diagnostics through the
   same diagnostic path expected by compiler users.
+  - [x] Prototype records offset-first structural diagnostic ranges before
+    falling back to the canonical parser.
+  - [ ] Canonical compiler diagnostics still need normalized finite
+    line/column positions for parse fallback failures; current fallback output
+    can still surface `NaN:NaN`.
 - [x] Keep default `safeParse` behavior unchanged until the prototype evidence
   says a broader migration is safe.
 - [x] Add JSDoc to any hidden/test-only e2e entrypoints explaining that they are

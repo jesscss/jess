@@ -79,6 +79,17 @@ export type LessPluginOptions = LessOptions & {
 export type ScannerFirstPrototypeResult = ScannerFirstProbeResult & {
   runtimeTreeSource: 'structural-fed' | 'canonical-fallback';
   fallbackReason?: string;
+  /**
+   * Offset-first structural diagnostics promoted to line/column only for probe
+   * reporting. The compiler still owns user-facing diagnostic formatting.
+   */
+  structuralDiagnosticRanges?: Array<{
+    code: string;
+    start: number;
+    end: number;
+    line: number;
+    column: number;
+  }>;
 };
 
 export class LessPlugin extends AbstractPlugin {
@@ -307,7 +318,8 @@ export class LessPlugin extends AbstractPlugin {
         materializationMs: nowMs() - startedAt,
         totalProbeMs: nowMs() - startedAt,
         requestsByIslandKind: countRequestedIslandKinds(plan),
-        requestsByOwnerKind: countRequestedOwnerKinds(plan)
+        requestsByOwnerKind: countRequestedOwnerKinds(plan),
+        structuralDiagnosticRanges: structuralDiagnosticRanges(plan.document)
       });
       return { result };
     };
@@ -675,6 +687,22 @@ function createStructuralProbeSnapshot(
     availableByOwnerKind,
     structuralNodesByKind
   };
+}
+
+function structuralDiagnosticRanges(document: StructuralDocument): ScannerFirstPrototypeResult['structuralDiagnosticRanges'] {
+  if (document.diagnostics.length === 0) {
+    return undefined;
+  }
+  return document.diagnostics.map(diagnostic => {
+    const position = document.source.offsetToLineColumn(diagnostic.start);
+    return {
+      code: diagnostic.code,
+      start: diagnostic.start,
+      end: diagnostic.end,
+      line: position.line,
+      column: position.column
+    };
+  });
 }
 
 function getScannerFirstProbeOptions(
