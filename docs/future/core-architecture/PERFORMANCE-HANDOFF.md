@@ -1285,6 +1285,23 @@ CPU profile options:
 node --cpu-prof --cpu-prof-dir=profiling/core-architecture scripts/profile-less-benchmark.mjs --file=benchmark.less
 ```
 
+For canonical `benchmark.less` CPU profiles, prefer the warm script-only route
+when module-load or parser-initialization noise would hide the real render
+pass:
+
+```sh
+node --expose-gc scripts/warm-profile-less-benchmark.mjs --file=benchmark.less --warmup=8 --runs=3
+```
+
+This script imports the built Less v5/Jess facade, runs warmup renders, then
+starts V8's inspector profiler only around the profiled renders. It writes the
+full `.cpuprofile` and a parsed `summary.json` under
+`profiling/core-architecture/<timestamp>-warm-benchmark-less/`. It requires the
+built packages listed above and the sibling Less checkout at `../less.js` unless
+`--less-repo-root=<path>` is provided. Treat the parsed top-frame summary as
+target-selection evidence only; use same-load benchmark comparisons before
+claiming a speed win.
+
 Use phase timing only as diagnostic support:
 
 ```sh
