@@ -233,6 +233,44 @@ bitset per extend root is useful, and selector mutations must update it, but
 do not add per-update subset checks unless a profile shows duplicate root
 ORs are hotter than the subset bookkeeping.
 
+2026-06-18 callable default-assignment reuse pass: refreshed current-source
+evidence before the patch was external canonical Less `benchmark.less
+--runs=24 --warmup=8 --math=parens-division` at `avg 185.93ms` /
+`median 183.36ms` (`variance 4.82%`). The CPU profile
+`profiling/core-architecture/20260618-194511-current-refresh-cpu/CPU.20260618.194511.6804.0.001.cpuprofile`
+pointed at callable placement/copy stacks: `createOwnedCallableRulesSurface`
+total `152.30ms`, `prepareCallableCandidateState` total `152.65ms`,
+`copyCallableRulesValue` total `558.88ms`, `copyCallableRulesNode` total
+`505.29ms`, and `copyChild` total `389.18ms`.
+
+The kept cut lets `canReuseStaticCallableChildren(...)` treat parser-default
+declaration assignment `':'` as ordinary default assignment instead of forcing
+the owned callable-copy path. It still rejects nested rulesets, at-rules,
+non-default assignment forms, and `setDefined` declarations. The first
+prototype allowed `setDefined` through and focused tests caught the semantic
+bug: mixin `setDefined` writes stopped updating the resolved caller binding.
+That prototype was narrowed before benchmarking.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/callable-candidate-state.test.ts src/tree/util/__tests__/callable-candidate-loop.test.ts src/tree/util/__tests__/callable-candidate-execution.test.ts src/tree/util/__tests__/callable-eval.test.ts src/tree/util/__tests__/callable-special-case.test.ts`
+(`15` passed), and
+`pnpm --filter @jesscss/core test -- --run src/tree/__tests__/declaration.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts -t "does not pull a prior plain declaration into Less-style property merge chains|real Less merge-chain property refs avoid public lookup bridges|routes mixin setDefined writes through the resolved caller binding|evaluates mixin setDefined writes from live parameter bindings|continues a property merge chain after a mixin emits the first declaration|continues a property merge chain with direct important state after mixin output|continues a property merge chain after a callable ruleset emits the first declaration"`
+(`7` passed, `467` skipped). Ordered benchmark-path rebuild passed before
+timing.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` reported one noisy run with a large outlier
+(`avg 204.74ms`, `median 180.89ms`, `variance 35.59%`), then stable repeats
+at `avg 175.16ms` / `median 170.38ms` and `avg 172.94ms` /
+`median 172.41ms`. Clean CPU profile
+`profiling/core-architecture/20260618-194811-callable-default-assign-reuse-clean-cpu/CPU.20260618.194811.25741.0.001.cpuprofile`
+reported `avg 181.40ms` / `median 180.15ms`, and moved the targeted stacks:
+`createOwnedCallableRulesSurface` total `152.30ms -> 132.62ms`,
+`prepareCallableCandidateState` total `152.65ms -> 130.99ms`,
+`copyCallableRulesValue` total `558.88ms -> 553.12ms`,
+`copyCallableRulesNode` total `505.29ms -> 491.43ms`, and `copyChild` total
+`389.18ms -> 280.24ms`. Keep as a measured wall-clock and CPU-profile win.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

@@ -196,7 +196,8 @@ function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
     if (
       child.type === 'Ruleset'
       || child.type === 'AtRule'
-      || child.options?.assign !== undefined
+      || child.options?.setDefined === true
+      || (child.options?.assign !== undefined && child.options.assign !== ':')
     ) {
       return false;
     }

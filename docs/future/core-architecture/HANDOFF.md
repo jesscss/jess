@@ -112,40 +112,35 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept bitset data guard cleanup plus the default-assignment
-  import-cycle repair; rejected sparse extend-root aggregate updates.
-  `dataOf(...)` now trusts the bitset package's internal numeric `data` array
-  after `Array.isArray(...)` instead of running `.every(...)` on every hot-path
-  bitset read. `Rules._prepareRegisterableNode(...)` now compares the default
-  assignment literal `':'` directly so `rules.ts` does not value-import
-  `AssignmentType` and reopen the declaration import cycle.
-- Verdict: keep the bitset cleanup as a small CPU-profile cleanup and
-  neutral-to-small wall-clock win; keep the literal comparison as a correctness
-  repair for the previous pass. Reject the root aggregate subset-update check:
-  the existing one-bitset-per-root model is useful and selector mutations must
-  update it, but extra per-update subset bookkeeping regressed/noised the real
-  benchmark.
+- Latest pass: kept callable default-assignment child reuse. The CPU-backed
+  target was callable placement/copy work under
+  `createOwnedCallableRulesSurface(...)` and
+  `prepareCallableCandidateState(...)`. `canReuseStaticCallableChildren(...)`
+  now treats parser-default declaration assignment `':'` as ordinary default
+  assignment instead of forcing the owned callable-copy path.
+- Verdict: keep as a measured wall-clock and CPU-profile win. The cut is
+  intentionally narrow: nested rulesets, at-rules, non-default assignment
+  forms, and `setDefined` declarations still force owned callable surfaces.
+  The first prototype allowed `setDefined` through; focused mixin tests caught
+  the caller-binding write regression, and that shape was rejected before
+  benchmarking.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: none added. One defensive helper was deleted from the
-  internal bitset path.
+- Helper/API surface: none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: no new side maps or arrays. The kept bitset path
-  deletes repeated per-word validation. The rejected root aggregate variant
-  added subset checks around the existing aggregate map update and was reverted.
-- Evidence: focused extend/bitset tests passed (`95` passed, `1` skipped);
-  broader focused extend coverage for the rejected root aggregate variant also
-  passed (`110` passed, `1` skipped), so rejection is performance-based, not
-  behavior-based. The assignment/registration smoke passed (`7` passed,
-  `363` skipped). Ordered benchmark-path rebuild passed. External canonical
-  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division` measured
-  `177.37ms` average / `173.85ms` median, then `182.55ms` average /
-  `179.24ms` median for the kept bitset guard; after reverting the rejected
-  root aggregate subset-update prototype and rebuilding the accepted source
-  shape, the same harness reported `176.81ms` average / `173.09ms` median.
-  CPU attribution moved `isNumberArray(...)` from `9.73ms` self / `12.43ms`
-  total to zero and `dataOf(...)` total from `12.43ms` to `1.52ms`. The
-  rejected root aggregate subset-update variant measured `189.38ms` average /
-  `185.05ms` median and was reverted.
+- Side maps/arrays/copies: no new side maps or arrays. The kept path removes
+  owned callable child copies for source-static callable bodies whose only
+  declaration assignment marker is parser-default `':'`.
+- Evidence: focused callable helper tests passed (`15` passed), and focused
+  declaration/reference/mixin smoke passed (`7` passed, `467` skipped).
+  Ordered benchmark-path rebuild passed. Current-source refresh before the
+  patch measured `185.93ms` average / `183.36ms` median on external canonical
+  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`. The kept
+  source measured one noisy outlier run (`204.74ms` average / `180.89ms`
+  median), then stable repeats at `175.16ms` average / `170.38ms` median and
+  `172.94ms` average / `172.41ms` median. Clean CPU profile moved
+  `createOwnedCallableRulesSurface(...)` total `152.30ms -> 132.62ms`,
+  `prepareCallableCandidateState(...)` total `152.65ms -> 130.99ms`, and
+  `copyChild(...)` total `389.18ms -> 280.24ms`.
