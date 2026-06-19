@@ -31,22 +31,14 @@ export function createRestBindingValue(args: Node[]): Sequence {
 export function createArgumentsBindingValue(args: Node[]): Sequence {
   const value = new Sequence([]);
   for (let i = 0; i < args.length; i++) {
-    value.value.push(args[i]!);
-  }
-  return value;
-}
-
-export function getArgumentsBindingValues(args: Node[]): Node[] {
-  const argumentNodes: Node[] = [];
-  for (let i = 0; i < args.length; i++) {
     const argNode = args[i]!;
     if (argNode instanceof Sequence) {
       for (let j = 0; j < argNode.items.length; j++) {
-        argumentNodes.push(argNode.items[j]!);
+        value.value.push(argNode.items[j]!);
       }
     } else {
-      argumentNodes.push(argNode);
+      value.value.push(argNode);
     }
   }
-  return argumentNodes;
+  return value;
 }

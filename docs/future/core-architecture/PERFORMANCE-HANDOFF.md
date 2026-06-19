@@ -135,13 +135,16 @@ says `lessPath:"less"`. Direct npm Less `4.6.3` `less.render(...)` from the
 Jess worktree measured median `35.02ms` / average `40.71ms` over `80` runs
 after `20` warmups; the stored historical v4.5 result is median `42.16ms` /
 average `47.40ms`. The active pass/fail target is built Less v5/Jess under
-`42.16ms` median on canonical `benchmark.less`. Routine passes should not
-re-benchmark Less 4; use `pnpm run benchmark:less:v4-v5 -- --runs=24
---warmup=8` to measure v5/Jess against the stored Less 4 baseline, and use
-`--less4=measure` only for occasional comparator audits. Current corrected
-v5/Jess evidence is median `163.68ms` / average `176.72ms`, about `2.88x`
-slower than stored Less 4 by median. Choose the next target from a fresh V8/CPU
-profile or repeated stable benchmark evidence.
+`42.16ms` median on canonical `benchmark.less`. Routine single-agent passes may
+use `pnpm run benchmark:less:v4-v5 -- --runs=24 --warmup=8` to measure v5/Jess
+against the stored Less 4 baseline, but same-load evidence wins whenever the
+machine is noisy, multiple sub-agents are running, or the benchmark result is
+being used to accept/reject a close call. In those cases run the live comparator
+with `--less4=measure` so Less 4 and Less v5/Jess are measured in the same
+process under the same system load. Current corrected v5/Jess evidence is
+median `163.68ms` / average `176.72ms`, about `2.88x` slower than stored Less 4
+by median. Choose the next target from a fresh V8/CPU profile or repeated
+stable benchmark evidence.
 
 Current broad `benchmark.less` CPU profile points first at source-surface/copy
 and extend work: `Node` construction, `copyChild`,
@@ -4881,6 +4884,65 @@ Current measured state after those cleanups: `pnpm run benchmark:less:v4-v5 --
 `134.35ms`, trimmed average `134.91ms`, min `126.79ms`, and max `174.66ms`
 against the stored Less 4.5 median `42.16ms`. This is better than the
 descriptor-only `144-147ms` runs, but the campaign is still not complete.
+
+2026-06-19 live-comparator note under multi-agent load: because sub-agents and
+parallel experiments were active, wall-clock comparisons must use live Less 4
+instead of only the stored historical target. `node
+scripts/compare-less-v4-v5-benchmark.mjs --runs=24 --warmup=8
+--files=benchmark.less --less4=measure` measured Less 4.6.3 at median
+`37.85ms`, trimmed average `39.77ms`, average `41.98ms`, variance `22.34%`;
+Less v5/Jess measured median `150.53ms`, trimmed average `156.24ms`, average
+`159.79ms`, variance `14.80%`. Same-load ratio: median `2.98x`, trimmed
+average `2.93x`. Treat this as the decision-quality wall-clock comparator while
+parallel agents are running; the stored Less 4.5 `42.16ms` median remains the
+campaign pass/fail target.
+
+Rejected same-load experiments from this pass:
+
+- Render-local selector visibility flag: focused selector/ruleset/extend tests
+  passed after replacing the `renderHeaderSelector(...)` clone/visibility walk
+  with a print-state flag, but same-load benchmarking did not justify keeping
+  it. Live Less 4 comparator was too noisy (`40`/`12` Less 4 variance
+  `65.54%`), and stored-baseline mode measured Jess at median `143.93ms`, worse
+  than the documented `134.35ms` current state. Reverted.
+- `callWithContext(...)` no-params sync fast path: focused define-function/call
+  tests and ordered `@jesscss/core`/`jess` builds passed after splitting the
+  no-params path out of the `async` wrapper, but live `40`/`12 --less4=measure`
+  measured Jess median `151.44ms` and stored-baseline mode measured median
+  `149.17ms`. Reverted. Do not retry a broad sync-wrapper split unless a fresh
+  profile proves no-params `callWithContext(...)` specifically dominates and the
+  prototype includes a better A/B harness.
+- `defineFunction(...)` signature precompute / single parse: focused
+  define-function/call tests and ordered `@jesscss/core`/`jess` builds passed
+  after moving signature normalization/rest-position checks to construction and
+  reusing the matched `callWithContext(...)` record instead of parsing twice.
+  Live `40`/`12 --less4=measure` measured Jess median `148.81ms`; stored
+  baseline mode measured median `143.57ms`, still worse than the documented
+  `134.35ms` current state. Reverted. The visible abstraction tax is likely in
+  heavier raw-arg ownership/copying, validation/eval loops, or metadata-only
+  function requirements, not this shallow signature table.
+- `callWithContext(...)` eager validation lower bound: temporarily removed
+  non-lazy `validateArgumentIfNeeded(...)` calls after argument evaluation. This
+  intentionally failed the validation contract (`callWithContext` accepted a
+  `Dimension` where a `Color` was required), so it is not a candidate patch.
+  Even as an unsafe lower bound, it measured only Jess median `144.66ms` live
+  (`40`/`12 --less4=measure`) and `138.30ms` stored-baseline, still far from
+  Less 4 and only a small move from the documented `134.35ms` current state.
+  Reverted. Lazy/catch validation is not a priority unless a future profile
+  shows `validateArgumentIfNeeded(...)` or `validateValue(...)` dominating a
+  different workload.
+
+Kept simplification from the aggressive-cutting sub-agent: deleted exported
+`getArgumentsBindingValues(...)` and made `createArgumentsBindingValue(...)`
+flatten rest `Sequence` values directly. `createCallableLiveSlots(...)` now
+passes its current argument nodes straight to `createArgumentsBindingValue(...)`
+instead of allocating a second flattened `Node[]` first. This is not a speed
+claim: focused callable/call tests passed (`145` tests), ordered
+`@jesscss/core` and `jess` builds passed, and live comparator noise remained
+high (`40`/`12 --less4=measure`: Less 4 median `35.79ms`, variance `54.52%`;
+Jess median `139.06ms`, variance `30.57%`). Stored-baseline mode measured Jess
+median `143.31ms`. Keep as a small allocation/API cut with no material
+regression signal, not as performance goal progress.
 
 Next target direction: keep field shape monomorphic unless measurement says
 otherwise. Do not reintroduce per-node descriptors or non-enumerability for

@@ -1,7 +1,7 @@
 import type { Node } from '../node.js';
 import { F_VISIBLE } from '../node.js';
 import { type BindingCell, getBindingCellValue } from '../scope-frame.js';
-import { createArgumentsBindingValue, getArgumentsBindingValues } from './callable-binding.js';
+import { createArgumentsBindingValue } from './callable-binding.js';
 import type { CallableParamBindingRecord } from './callable-param-match.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -45,7 +45,7 @@ export function createCallableLiveSlots({
           paramValues.push(getBindingCellValue(paramCells[i]!));
         }
         const argumentNodes = (paramValues.length > 0) ? paramValues : nodeArgs;
-        return createArgumentsBindingValue(getArgumentsBindingValues(argumentNodes));
+        return createArgumentsBindingValue(argumentNodes);
       },
       readonly: true
     });

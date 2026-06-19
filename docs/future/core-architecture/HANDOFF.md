@@ -148,28 +148,28 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the ruleset registration `ownSelector` duplicate-copy
-  deletion from the copy/materialization experiment. `_storeOwnSelector(...)`
-  now records the already-owned pre-eval selector passed into registration
-  instead of immediately sending it through `copySelectorForRulesetMetadata(...)`
-  for a second deep selector copy.
-- Verdict: measured keep, but not goal completion. The stored Less 4.5 target
-  remains median `42.16ms`; the main-worktree `40`/`12` run with the patch
-  measured `145.78ms` median / `150.73ms` trimmed average. Paired `24`/`8`
-  evidence under noisy load measured unpatched `159.04ms` median and patched
-  `149.34ms` median. Jess is still about `3.46x` slower than the target by
-  the `40`/`12` median.
+- Latest pass: kept the callable `@arguments` flattening simplification and
+  measurement-doctrine updates. `createArgumentsBindingValue(...)` now flattens
+  rest `Sequence` values directly, and `createCallableLiveSlots(...)` no
+  longer allocates a temporary flattened `Node[]` before creating the
+  `@arguments` binding. The pass also recorded live Less 4 comparator rules for
+  noisy multi-agent benchmarking and rejected three measured define/call
+  abstraction prototypes in `PERFORMANCE-HANDOFF.md`.
+- Verdict: small allocation/API cut with no speed claim, not goal completion.
+  The stored Less 4.5 target remains median `42.16ms`; noisy same-load
+  comparator evidence after the kept simplification measured Less 4.6.3 median
+  `35.79ms` and Jess median `139.06ms`, while stored-baseline mode measured
+  Jess median `143.31ms`. Jess remains far slower than the target.
 - New traversal: none.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: none added.
+- Helper/API surface: deletes exported `getArgumentsBindingValues(...)`; no new
+  helper added.
 - Metadata mutations: none.
-- Copy/materialization: deletes one registration-time deep selector copy. The
-  remaining `copySelectorForRulesetMetadata(...)` uses are render/header
-  selector materialization paths and stay as the next copy-audit target, not as
-  a new ownership strategy.
-- Evidence: focused ruleset/callable/extend/reference tests passed (`109`
-  passed, `314` skipped, `5` open Vitest markers). Ordered `@jesscss/core` and
-  `jess` builds passed. The isolated worker also passed Less test-data,
-  `verify:baseline -- --changed`, `verify:aggressive-cutting-review`, and
-  `git diff --check`.
+- Copy/materialization: deletes one temporary flattened `Node[]` allocation in
+  the lazy `@arguments` binding path. The remaining callable/raw-arg copying
+  surfaces stay open.
+- Evidence: focused callable-binding/live-slots/call tests passed (`145`
+  tests). Ordered `@jesscss/core` and `jess` builds passed. Benchmark evidence
+  is recorded in `PERFORMANCE-HANDOFF.md`; it supports no material regression,
+  not a speed win.

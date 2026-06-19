@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
 import { list } from '../../list.js';
-import { createArgumentsBindingValue, createRestBindingValue, getArgumentsBindingValues } from '../callable-binding.js';
+import { createArgumentsBindingValue, createRestBindingValue } from '../callable-binding.js';
 
 describe('callable binding helpers', () => {
   it('creates rest binding values through a named helper', () => {
@@ -27,7 +27,7 @@ describe('callable binding helpers', () => {
     const second = any('2px');
     const rest = createRestBindingValue([first, second]);
 
-    expect(getArgumentsBindingValues([rest])).toEqual(rest.value);
+    expect(createArgumentsBindingValue([rest]).items).toEqual(rest.value);
   });
 
   it('reuses source-free static scalar leaves for rest bindings', () => {
