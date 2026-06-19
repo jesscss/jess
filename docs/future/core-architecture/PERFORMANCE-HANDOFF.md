@@ -4392,6 +4392,38 @@ frame cannot honestly cover the lookup. Keep pursuing registry removal through
 this architecture, but continue rejecting direct-callable-only work until it
 deletes enough old candidate/registry machinery to beat the current fast path.
 
+2026-06-18 extend deferred extendWith-union pass: refreshed current-source
+evidence after the reference-import negative summary cache was noisy on first
+wall-clock (`avg 201.43ms` / `median 177.23ms`, variance `33.70%`), so the
+target came from CPU profile
+`profiling/core-architecture/20260618-213125-current-extend-refresh/CPU.20260618.213125.18623.0.001.cpuprofile`:
+`processExtends(...)` was still a named hot frame at `29.49` self samples,
+with `searchSurface(...)`, `renderRulesBody(...)`, `childRulesOf(...)`, and
+node construction/copying still above it.
+
+The kept cut keeps the existing registration-carried root selector bit bucket
+but delays visible `extendWith` keyset union until after the root-level visible
+target aggregate proves the root can contain a target. This uses the "one
+bitset per extend root" proof without adding a second visibility pass, a root
+activation closure, a candidate index, or new cache state. Selector mutations
+that extend a ruleset still call `addRootSelectorKeys(...)`, so chained extend
+effects continue to widen the root bucket when they actually materialize.
+
+Focused extend/bitset behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/process-extends.test.ts src/tree/__tests__/extend-roots.test.ts src/tree/__tests__/extend-eval-integration.test.ts src/tree/__tests__/extend.test.ts src/tree/util/__tests__/fast-reject.test.ts src/tree/util/__tests__/bitset.test.ts`
+(`105` passed, `1` skipped). Ordered benchmark-path rebuild passed before
+timing.
+
+Because the first refresh was noisy, this pass used an A/B rebuild check:
+temporary control source medians were `172.39ms` and `172.70ms`; the patch
+measured `170.34ms`, `174.78ms`, and `168.17ms` on external canonical Less
+`benchmark.less --runs=24 --warmup=8 --math=parens-division`. CPU profile
+`profiling/core-architecture/20260618-213245-extend-deferred-with-union/CPU.20260618.213245.33269.0.001.cpuprofile`
+reported profiler-overhead `avg 179.15ms` / `median 176.20ms`, and moved
+`processExtends(...)` from `29.49` to `14.93` self samples. `isDisjoint(...)`
+varied upward in that profile, so this is a small CPU-backed cleanup, not proof
+that the extend family is finished.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

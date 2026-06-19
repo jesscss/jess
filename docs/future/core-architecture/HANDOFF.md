@@ -112,43 +112,34 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept reference-import negative summary cache. The CPU-backed
-  target was `rulesMayContainReferenceImports(...)` /
-  `collectStaticDeclarationInvalidationKeys(...)` after the current refresh
-  measured `173.95ms` / `171.11ms` and `170.26ms` / `167.59ms` on external
-  canonical Less `benchmark.less`.
-- Follow-up rejected: two-pass lazy visible instruction collection. It avoided
-  some dead-root allocation but duplicated visibility and bitset checks on
-  surviving roots, and CPU showed `processExtends(...)` rising from `15.79` to
-  `28.09` self samples. See `PERFORMANCE-HANDOFF.md` for the full evidence.
-- Follow-up rejected: broad `rules.ts` direct `node.type` checks. Focused tests
-  and build passed, and the prototype reduced `isNode(...)` samples, but
-  wall-clock/profile timing worsened (`194.02ms` / `194.63ms` profiled). Do
-  not retry a broad direct-type rewrite; isolate exact call sites instead.
-- Verdict: keep a negative-only `Rules.mayContainReferenceImportSurface`
-  summary. It records only `false` after a full scan, avoids caching positive
-  placement/reference-mode facts on reusable imported `Rules`, and invalidates
-  when child rules or style imports are registered.
-- New traversal: one new invalidation parent walk on child-rules/style-import
-  registration only. It replaces repeated recursive negative scans in
-  `rulesMayContainReferenceImports(...)`; measured invalidation cost was
-  negligible in the profile.
+- Latest pass: kept extend root-target proof before `extendWith` bucket
+  widening. The CPU-backed target was `processExtends(...)` after the current
+  profile showed it at `29.49` self samples on external canonical Less
+  `benchmark.less`.
+- Verdict: keep delaying the visible `extendWith` union until after the
+  root-level visible target aggregate proves a root can match. This preserves
+  the existing registration-carried selector bucket and avoids the rejected
+  duplicate visibility scan.
+- New traversal: one loop over the already-filtered
+  `visibleExtends` array, only after the visible target aggregate proves the
+  root can contain a match. This replaces doing the same `extendWith` union
+  work during the visibility loop for dead roots; it does not walk rulesets,
+  child trees, or parent chains.
 - New node/materialization: none.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: no new helper or public API.
-- Metadata mutations: one cached boolean summary on `Rules`, cleared on
-  derived-state reset and targeted registration invalidation.
-- Side maps/arrays/copies: no new side maps, arrays, or copies.
-- Evidence: focused lookup/reference-import tests passed (`9` passed,
-  `483` skipped), and the ordered benchmark-path rebuild passed. The broader
-  import-reference regex is branch-baseline red even after source revert, so it
-  is recorded only as an inconclusive existing fixture gap. External canonical
-  Less `benchmark.less --runs=24 --warmup=8 --math=parens-division` moved from
-  the refresh pair `173.95ms` / `171.11ms` and `170.26ms` / `167.59ms` to
-  `166.45ms` / `163.66ms`, `170.93ms` / `167.87ms`, and `166.78ms` /
-  `164.18ms`. CPU profile
-  `profiling/core-architecture/20260618-212702-reference-import-negative-cache-cpu/CPU.20260618.212702.94674.0.001.cpuprofile`
-  was mixed (`185.06ms` / `182.60ms`) but kept the target frame low:
-  `rulesMayContainReferenceImports(...)` at `4.58` samples and invalidation at
-  `0.02`.
+- Metadata mutations: none.
+- Side maps/arrays/copies: no new side maps or arrays. The flagged bitset copy
+  helper is the existing union ownership operation moved after the root-target
+  proof, so roots that cannot match avoid it.
+- Evidence: focused extend/bitset tests passed (`105` passed, `1` skipped),
+  and the ordered benchmark-path rebuild passed. A/B timing against the
+  temporarily reverted source measured control medians `172.39ms` and
+  `172.70ms`; the patch measured `170.34ms`, `174.78ms`, and `168.17ms`.
+  CPU profile
+  `profiling/core-architecture/20260618-213245-extend-deferred-with-union/CPU.20260618.213245.33269.0.001.cpuprofile`
+  reported profiler-overhead `179.15ms` / `176.20ms`, with
+  `processExtends(...)` at `14.93` self samples versus `29.49` in the refresh
+  profile. Treat as a small measured CPU-backed cleanup, not a broad speed
+  claim.

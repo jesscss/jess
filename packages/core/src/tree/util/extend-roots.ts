@@ -660,7 +660,6 @@ export function processExtends(context: Context): void {
       let rootKeySet = selectorKeySetByRoot.get(rootRules);
       const rootKeySetLibrary = rootKeySet?._library;
       let visibleTargetKeySet: BitSet<string> | undefined;
-      let visibleExtendWithKeySet: BitSet<string> | undefined;
       let hasOpaqueVisibleTarget = !rootKeySetLibrary;
       const visibleExtends: RootExtendInstruction[] = [];
       for (const instruction of instructions) {
@@ -678,9 +677,6 @@ export function processExtends(context: Context): void {
               ? visibleTargetKeySet.or(instruction.targetKeySet)
               : instruction.targetKeySet.clone();
           }
-          visibleExtendWithKeySet = visibleExtendWithKeySet
-            ? visibleExtendWithKeySet.or(instruction.extendWithKeySet)
-            : instruction.extendWithKeySet.clone();
           visibleExtends.push(instruction);
         }
       }
@@ -691,6 +687,13 @@ export function processExtends(context: Context): void {
         && isDisjoint(visibleTargetKeySet, rootKeySet)
       ) {
         continue;
+      }
+      let visibleExtendWithKeySet: BitSet<string> | undefined;
+      for (let i = 0; i < visibleExtends.length; i++) {
+        const instruction = visibleExtends[i]!;
+        visibleExtendWithKeySet = visibleExtendWithKeySet
+          ? visibleExtendWithKeySet.or(instruction.extendWithKeySet)
+          : instruction.extendWithKeySet.clone();
       }
       if (visibleExtendWithKeySet) {
         rootKeySet = rootKeySet ? rootKeySet.or(visibleExtendWithKeySet) : visibleExtendWithKeySet;
