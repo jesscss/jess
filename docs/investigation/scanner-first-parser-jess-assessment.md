@@ -1662,9 +1662,9 @@ visitor APIs.
   `Node.accept`.
 - [x] Test `@jesscss/plugin-less` structural activation through the plugin
   extension binding and island parse plan.
-- [ ] Add JSDoc for plugin activation helpers and why `safeParse` remains the
+- [x] Add JSDoc for plugin activation helpers and why `safeParse` remains the
   default compiler entrypoint.
-- [ ] Test that plugins implementing only `safeParse` continue to work.
+- [x] Test that plugins implementing only `safeParse` continue to work.
 - [ ] Test generic, typed, replacing, selector, declaration/value, at-rule, and
   Less-compatible visitors.
 - [ ] Cache visitor method tables and avoid allocating fresh request arrays on
