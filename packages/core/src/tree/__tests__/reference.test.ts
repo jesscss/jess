@@ -1463,7 +1463,6 @@ describe('reference', () => {
 
       expect(indexRef.eval(context).valueOf()).toBe('orange');
       expect(indexRef._rulesLookupHandle).toBeUndefined();
-      expect(indexRef._lookupStrategy?.lookupType).toBe('index');
       expect(context.referenceStack).toBe(0);
     });
 
@@ -5435,9 +5434,7 @@ describe('reference', () => {
         }
         const handle = read.lookupRef._rulesLookupHandle;
         expect(handle).toBeDefined();
-        expect(read.lookupRef._lookupStrategy).toBeDefined();
 
-        read.lookupRef._lookupStrategy = undefined;
         const second = read.lookupRef.eval(context);
 
         if (read.expectValue) {
@@ -5451,11 +5448,10 @@ describe('reference', () => {
           expect(Array.isArray(second)).toBe(read.expectArray);
         }
         expect(read.lookupRef._rulesLookupHandle).toBe(handle);
-        expect(read.lookupRef._lookupStrategy).toBeUndefined();
       }
     });
 
-    it('source-static handles rebuild lookup strategy for unstable reference facts', async () => {
+    it('source-static handles rebuild handle state for unstable reference facts', async () => {
       const node = rules([
         vardecl({ name: 'tone-var', value: any('purple') }),
         decl({ name: 'tone-prop', value: any('orange') })
@@ -5465,20 +5461,18 @@ describe('reference', () => {
       const snapshotRef = ref({ key: 'tone-var' }, { type: 'variable' });
       expect(snapshotRef.eval(context).valueOf()).toBe('purple');
       expect(snapshotRef._rulesLookupHandle?.lookupType).toBe('variable');
-      snapshotRef._lookupStrategy = undefined;
       snapshotRef.options.readMode = 'snapshot';
 
       expect(snapshotRef.eval(context).valueOf()).toBe('purple');
-      expect(snapshotRef._lookupStrategy?.lookupType).toBe('variable');
+      expect(snapshotRef._rulesLookupHandle?.lookupType).toBe('variable');
 
       const filteredRef = ref({ key: 'tone-prop' }, { type: 'property' });
       expect(filteredRef.eval(context).valueOf()).toBe('orange');
       expect(filteredRef._rulesLookupHandle?.lookupType).toBe('property');
-      filteredRef._lookupStrategy = undefined;
       filteredRef.options.filter = node => node.type === 'Declaration';
 
       expect(filteredRef.eval(context).valueOf()).toBe('orange');
-      expect(filteredRef._lookupStrategy?.lookupType).toBe('property');
+      expect(filteredRef._rulesLookupHandle).toBeUndefined();
     });
 
     it('static property occurrence handles invalidate when owner rules changes', async () => {
@@ -6215,7 +6209,7 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('reference strategy cache rejects stale lookup types in one node slot', async () => {
+    it('reference handle rejects stale lookup types in one node slot', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({ name: any('color'), value: any('blue') })
@@ -6224,13 +6218,11 @@ describe('reference', () => {
       const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
-      expect(lookupRef._lookupStrategy?.lookupType).toBe('property');
       expect(lookupRef._rulesLookupHandle?.lookupType).toBe('property');
 
       lookupRef.options.type = 'variable';
 
       expect(lookupRef.eval(context).valueOf()).toBe('red');
-      expect(lookupRef._lookupStrategy?.lookupType).toBe('variable');
       expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
     });
 

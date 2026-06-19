@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Reference lookup-strategy cache deletion.
+- Verdict: accepted as a narrow Reference/direct lookup machinery cut, not a
+  speed claim. `lookupResolvedReference(...)` already computes the singleton
+  lookup strategy once for source-static handle probing; the deleted
+  `getCachedReferenceLookupStrategy(...)` call and per-`Reference`
+  `_lookupStrategy` field duplicated that state on every reference node.
+- New traversal: none.
+- Review-flagged allocations: deleted the per-reference `_lookupStrategy`
+  field surface and cache branch. No replacement object, helper, side map,
+  preflight ladder, registry shape, copy, or materialization was added.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: deleted the private
+  `getCachedReferenceLookupStrategy(...)` helper; no helper was added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Evidence: subagent worktree verification passed `pnpm --filter
+  @jesscss/core build`, the focused reference/mixin/import/rules suite
+  (`574` passed, `15` skipped, `9` deferred markers),
+  `node scripts/profile-less-benchmark.mjs`, same-load
+  `pnpm run benchmark:less:v4-v5 -- --runs=24 --warmup=8 --less4=measure`
+  with Less 4.6.3 median `36.64ms` vs Jess median `142.71ms`,
+  `git diff --check`, and `pnpm run verify:aggressive-cutting-review`.
+  Integration-worktree gates reran before commit.
+- Rejected shapes: did not retry predicate-dispatch direct declaration lookup,
+  direct-declaration child-entry bitmasking, public-variable binding reuse, or
+  cached-handle fast-probe.
+
 - Latest pass: callable lookup search-closure extraction plus callable-output
   sort placement.
 - Verdict: accepted as eval/render/callable machinery reduction, not an

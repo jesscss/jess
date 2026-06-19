@@ -2005,19 +2005,6 @@ function isReferenceHandleLookupStrategy(
   }
 }
 
-function getCachedReferenceLookupStrategy(
-  referenceNode: Reference,
-  lookupType: LookupType
-): ReferenceLookupStrategy {
-  const cached = referenceNode._lookupStrategy;
-  if (cached?.lookupType === lookupType) {
-    return cached;
-  }
-  const strategy = getReferenceLookupStrategy(lookupType);
-  referenceNode._lookupStrategy = strategy;
-  return strategy;
-}
-
 function lookupResolvedReference(args: {
   referenceNode: Reference;
   resolvedTarget: unknown;
@@ -2060,10 +2047,8 @@ function lookupResolvedReference(args: {
       return sourceStaticHandleResult === CACHED_RULES_LOOKUP_MISS ? undefined : sourceStaticHandleResult;
     }
   }
-  const strategy = getCachedReferenceLookupStrategy(referenceNode, lookupType);
-  const handleStrategy = isReferenceHandleLookupStrategy(strategy)
-    ? strategy
-    : undefined;
+  const strategy = uncachedStrategy;
+  const handleStrategy = uncachedHandleStrategy;
 
   const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
@@ -3577,7 +3562,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  _lookupStrategy: ReferenceLookupStrategy | undefined;
   readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
   readonly rawKey: ReferenceValue['rawKey'];
