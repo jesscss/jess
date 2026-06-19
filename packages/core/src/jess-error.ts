@@ -264,9 +264,12 @@ function stringField(value: Record<string, unknown>, key: string): string | unde
   return typeof field === 'string' ? field : undefined;
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 function numberField(value: Record<string, unknown>, key: string): number | undefined {
-  const field = value[key];
-  return typeof field === 'number' ? field : undefined;
+  return finiteNumber(value[key]);
 }
 
 function recognitionToken(error: IRecognitionException | ILexingError): IRecognitionException['token'] | undefined {
@@ -736,11 +739,11 @@ export function getErrorFromParser(
   const record = hasObjectShape(error) ? error : {};
 
   const line =
-    token?.startLine
+    finiteNumber(token?.startLine)
     ?? numberField(record, 'line');
 
   const column =
-    token?.startColumn
+    finiteNumber(token?.startColumn)
     ?? numberField(record, 'column');
 
   const message = errorMessage(error);

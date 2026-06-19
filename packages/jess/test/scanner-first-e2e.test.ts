@@ -291,7 +291,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
   });
 
-  it('records probe-only structural diagnostic ranges before canonical fallback diagnostics', async () => {
+  it('records structural diagnostic ranges and finite canonical fallback diagnostics', async () => {
     const source = '.a {\n  color: blue;\n';
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -310,8 +310,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0]).toMatchObject({
       phase: 'parse',
-      filePath: 'virtual.jess'
+      filePath: 'virtual.jess',
+      line: 1,
+      column: 1
     });
+    expect(Number.isFinite(result.errors[0]?.line)).toBe(true);
+    expect(Number.isFinite(result.errors[0]?.column)).toBe(true);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'structural diagnostics are present',

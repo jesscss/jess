@@ -1577,13 +1577,12 @@ its claims.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   selected-island parsing, fallback full-tree parsing, or the existing parser
   path.
-- [ ] Ensure failures report source offsets and human diagnostics through the
+- [x] Ensure failures report source offsets and human diagnostics through the
   same diagnostic path expected by compiler users.
   - [x] Prototype records offset-first structural diagnostic ranges before
     falling back to the canonical parser.
-  - [ ] Canonical compiler diagnostics still need normalized finite
-    line/column positions for parse fallback failures; current fallback output
-    can still surface `NaN:NaN`.
+  - [x] Canonical compiler diagnostics normalize non-finite parser coordinates
+    to finite fallback line/column positions before rendering diagnostics.
 - [x] Keep default `safeParse` behavior unchanged until the prototype evidence
   says a broader migration is safe.
 - [x] Add JSDoc to any hidden/test-only e2e entrypoints explaining that they are
