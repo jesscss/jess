@@ -255,7 +255,7 @@ describe('Extend Ampersand Handling Tests', () => {
 
         expect(selectorCopies).toBe(0);
         expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
-        expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
+        expect(output).toBe('> :is(.container.item, .new-item)'); // Updated: modern :is() syntax without an extra leading combinator space
       } finally {
         selector.copy = originalCopy;
       }

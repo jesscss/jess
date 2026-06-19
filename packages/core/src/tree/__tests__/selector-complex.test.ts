@@ -90,6 +90,15 @@ describe('Complex selector', () => {
       expect(writer.captures).toBe(0);
     });
 
+    test('does not prepend indent-breaking space before a leading combinator', () => {
+      const node = sel([
+        co('>'),
+        el('.foo')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('> .foo');
+    });
+
     test('renders resolved complex selector values through render(context)', async () => {
       const node = rules([
         vardecl({

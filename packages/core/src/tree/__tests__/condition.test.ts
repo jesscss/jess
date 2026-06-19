@@ -2,6 +2,7 @@ import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rul
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
+import { Node } from '../node.js';
 
 let context: Context;
 
@@ -11,6 +12,16 @@ class CountingWriter extends OutputWriter {
   override getSince(mark: number): string {
     this.reads++;
     return super.getSince(mark);
+  }
+}
+
+class WriteOnlyNode extends Node<string> {
+  override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
+    options.writer.add(this.value);
+  }
+
+  override toTrimmedString(): string {
+    throw new Error('Condition.toTrimmedString should not use child public string transport');
   }
 }
 
@@ -76,6 +87,19 @@ describe('Condition', () => {
 
       expect(condition([bool(true), '=', bool(false)]).toTrimmedString({ writer })).toBe('(true = false)');
       expect(writer.toString()).toBe('(true = false)');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('writes child condition syntax without child public string transport', () => {
+      const writer = new CountingWriter();
+      const node = condition([
+        new WriteOnlyNode('left'),
+        '=',
+        new WriteOnlyNode('right')
+      ]);
+
+      expect(node.toTrimmedString({ writer })).toBe('(left = right)');
+      expect(writer.toString()).toBe('(left = right)');
       expect(writer.reads).toBe(0);
     });
 

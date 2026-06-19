@@ -2,18 +2,29 @@ import { Node, F_MAY_ASYNC, F_STATIC, defineType, type NodeLocation } from './no
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
-import { compareNodeArray } from './util/compare.js';
+import { compareNodeArray, normalizeComparableWhitespace } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import {
+  type FinalPrintOptions,
+  OutputWriter,
+  type PrintOptions,
+  getPrintOptions,
+  prepareRenderPrintState
+} from './util/print.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBetweenNodes,
+  emitNodeSourceSyntaxWithTrivia,
+  emitTriviaTokens
+} from './util/trivia.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   evaluateNodeArrayMaybe,
@@ -41,30 +52,16 @@ function hasUnemittedTriviaTokens(
   return Boolean(tokens?.length && !printOptions.emittedTrivia?.has(tokens));
 }
 
-function bufferSharesContextWriter(buffer: RenderBuffer, context: Context): boolean {
-  const writer = context.printState.writer;
-  return buffer.kind === 'flat'
-    && (buffer as { shareWriter?: boolean }).shareWriter === true
-    && !!writer
-    && writer.writesTo(buffer.parts);
+function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {
+  const sourceTrivia = node.sourceRoot?._treeContext?.opts?.trivia;
+  return sourceTrivia && sourceTrivia !== true
+    ? sourceTrivia
+    : node._treeContext?.opts?.trivia;
 }
 
 function canFallbackSpaceAfterEmptyTrivia(prev: Node, node: Node): boolean {
   return isNode(prev, N.Dimension | N.Color)
     && isNode(node, N.Dimension | N.Color);
-}
-
-function prepareSequenceBufferPrintState(
-  context: Context,
-  buffer: RenderBuffer,
-  options?: PrintOptions
-): ReturnType<typeof getPrintOptions> {
-  const writer = bufferSharesContextWriter(buffer, context)
-    ? context.printState.writer
-    : undefined;
-  return writer
-    ? prepareRenderPrintState(context, { ...options, writer })
-    : prepareBufferPrintState(context, options);
 }
 
 function emitRenderedSequenceNode(
@@ -104,18 +101,8 @@ function writeRenderedSequenceNode(
     : writeRenderText(buffer, rendered as string);
 }
 
-function writeSingleSequenceNodeToBuffer(
-  buffer: RenderBuffer,
-  node: Node,
-  context: Context,
-  options?: PrintOptions
-): MaybePromise<string> {
-  const prepared = prepareSequenceBufferPrintState(context, buffer, options);
-  const rendered = node.render(context, prepared);
-  if (bufferSharesContextWriter(buffer, context)) {
-    return rendered;
-  }
-  return writeRenderedSequenceNode(buffer, rendered);
+function sequenceRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
+  return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
 }
 
 /**
@@ -207,10 +194,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return result;
     }
     if (other.type === 'Any') {
-      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-      const left = normalize(this.renderSequenceSyntax());
-      const right = normalize(String(other.valueOf?.() ?? other.value));
-      return left === right ? 0 : undefined;
+      return normalizeComparableWhitespace(this.toTrimmedString())
+        === normalizeComparableWhitespace(String(other.valueOf?.() ?? ''))
+        ? 0
+        : undefined;
     }
     return undefined;
   }
@@ -222,13 +209,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return '';
     }
     if (printOptions.inCustom) {
-      const w = printOptions.writer!;
+      const w = printOptions.writer;
       const mark = w.mark();
       for (const node of value) {
-        if (node instanceof Nil) {
-          continue;
+        if (!(node instanceof Nil)) {
+          node.writeSyntax(printOptions);
         }
-        node.writeSyntax(printOptions);
       }
       return sharedParts ? sharedParts.slice(mark).join('') : w.getSince(mark);
     }
@@ -236,7 +222,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const mark = w.position();
     let prev: Node | undefined;
 
-    // Serialize subsequent nodes with normalized spacing
     for (let i = 0; i < length; i++) {
       const node = value[i]!;
       if (node instanceof Nil) {
@@ -264,18 +249,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return sharedParts ? sharedParts.slice(mark).join('') : w.getSince(mark);
   }
 
-  private renderSequenceDirect(context: Context, options?: PrintOptions): string {
+  private renderSequenceValueDirect(context: Context, value: readonly Node[], options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
-    if (!this.hasRenderableItems()) {
+    const w = printOptions.writer;
+    if (value.length === 0) {
       return '';
     }
-    const w = printOptions.writer;
     const mark = w.mark();
     let prev: Node | undefined;
 
     if (printOptions.inCustom) {
-      for (let i = 0; i < this.items.length; i++) {
-        const node = this.items[i]!;
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -284,42 +269,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return w.getSince(mark);
     }
 
-    for (let i = 0; i < this.items.length; i++) {
-      const node = this.items[i]!;
+    for (let i = 0; i < value.length; i++) {
+      const node = value[i]!;
       if (node instanceof Nil) {
         continue;
       }
       if (prev) {
-        const prevLastChar = w.lastChar();
-        const prevEndsWithSpace = prevLastChar === ' ';
-      const sourceTrivia = Boolean(printOptions.trivia);
-        const trivia = sourceTrivia ? printOptions.trivia : undefined;
-        const hasTrivia = Boolean(
-          trivia
-          && (
-            hasUnemittedTriviaTokens(trivia.lookup(prev.location[3], 'after'), printOptions)
-            || hasUnemittedTriviaTokens(trivia.lookup(node.location[0], 'before'), printOptions)
-          )
-        );
-        const prevEnd = prev.location[3];
-        const nodeStart = node.location[0];
-        const noSep = Boolean(
-          sourceTrivia
-          && prevEnd !== undefined
-          && nodeStart !== undefined
-          && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
-        );
-        const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
-
-        if (
-          !prevEndsWithSpace
-          && !hasTrivia
-          && (!noSep || needsMergeGuard)
-        ) {
-          w.queueSpacer(' ', needsMergeGuard
-            ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
-            : undefined);
-        }
+        this.emitDirectSeparator(prev, node, printOptions);
       }
       emitRenderedSequenceNode(node, context, printOptions);
       prev = node;
@@ -328,12 +284,16 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
+  private renderSequenceDirect(context: Context, options?: PrintOptions): string {
+    return this.renderSequenceValueDirect(context, this.items, options);
+  }
+
   private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
     const printOptions = getPrintOptions(options);
-    if (!this.hasRenderableItems()) {
+    const w = printOptions.writer;
+    if (this.items.length === 0) {
       return '';
     }
-    const w = printOptions.writer;
     const mark = w.mark();
 
     const renderCustomRest = async (start: number): Promise<string> => {
@@ -402,17 +362,37 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     printOptions: ReturnType<typeof getPrintOptions>
   ): boolean {
     const w = printOptions.writer;
-    const prevLastChar = w.lastChar();
-    const prevEndsWithSpace = prevLastChar === ' ';
-    const sourceTrivia = Boolean(printOptions.trivia);
-    const trivia = sourceTrivia ? printOptions.trivia : undefined;
+    const sourceTrivia = (
+      printOptions.trivia
+      && sequenceNodeTrivia(prev) === printOptions.trivia
+      && sequenceNodeTrivia(node) === printOptions.trivia
+    )
+      ? printOptions.trivia
+      : undefined;
     const hasTrivia = Boolean(
-      trivia
+      sourceTrivia
       && (
-        hasUnemittedTriviaTokens(trivia.lookup(prev.location[3], 'after'), printOptions)
-        || hasUnemittedTriviaTokens(trivia.lookup(node.location[0], 'before'), printOptions)
+        hasUnemittedTriviaTokens(sourceTrivia.lookup(prev.location[3], 'after'), printOptions)
+        || hasUnemittedTriviaTokens(sourceTrivia.lookup(node.location[0], 'before'), printOptions)
       )
     );
+    const beforeCommentTriviaPosition = w.position();
+    const beforeCommentTriviaLastChar = w.lastChar();
+    emitCommentTriviaBetweenNodes(prev, node, printOptions);
+    const emittedCommentTrivia = w.position() !== beforeCommentTriviaPosition
+      || w.lastChar() !== beforeCommentTriviaLastChar;
+    const leadingTrivia = sourceTrivia
+      ? consumeTrivia(sourceTrivia, node.location[0], 'before', printOptions)
+      : undefined;
+    if (leadingTrivia) {
+      emitTriviaTokens(leadingTrivia, printOptions);
+      return true;
+    }
+    if (emittedCommentTrivia) {
+      return true;
+    }
+    const prevLastChar = w.lastChar();
+    const prevEndsWithSpace = prevLastChar === ' ';
     const prevEnd = prev.location[3];
     const nodeStart = node.location[0];
     const noSep = Boolean(
@@ -451,6 +431,24 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     );
   }
 
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    let prev: Node | undefined;
+    for (let i = 0; i < this.items.length; i++) {
+      const node = this.items[i]!;
+      if (node instanceof Nil) {
+        continue;
+      }
+      if (prev) {
+        this.emitDirectSeparator(prev, node, options);
+        node.writeSyntax(options);
+      } else {
+        emitNodeSourceSyntaxWithTrivia(node, options);
+      }
+      prev = node;
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderSequenceSyntax(this.items, options);
   }
@@ -459,113 +457,82 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return this.renderSequenceSyntax();
   }
 
-  private hasRenderableItems(value = this.items): boolean {
-    for (let i = 0; i < value.length; i++) {
-      if (!(value[i] instanceof Nil)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? sequenceRenderSharesWriter(buffer)
+        ? prepareRenderPrintState(context, {
+            ...options,
+            writer: buffer.kind === 'flat' && context.printState.writer?.writesTo(buffer.parts)
+              ? context.printState.writer
+              : new OutputWriter(false, buffer.kind === 'flat' ? buffer.parts : undefined)
+          })
+        : prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedValue(context, this.items, bufferOrOptions, options);
+      return this.renderResolvedValue(context, this.items, prepared, buffer);
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.renderDirectValue(context, bufferOrOptions, options);
+      return this.renderDirectValue(context, prepared, buffer);
     }
-    return this.renderDirectValueMaybe(context, bufferOrOptions, options);
+    return this.renderDirectValueMaybe(context, prepared, buffer);
   }
 
   private renderResolvedValue(
     context: Context,
     value: Node | Node[],
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
+    prepared: FinalPrintOptions,
+    buffer?: RenderBuffer
   ): MaybePromise<string> {
-    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     if (value instanceof Node) {
-      return buffer
-        ? writeSingleSequenceNodeToBuffer(buffer, value, context, options)
-        : value.render(context, bufferOrOptions);
-    }
-    let count = 0;
-    let only: Node | undefined;
-    let hasNil = false;
-    for (let i = 0; i < value.length; i++) {
-      const node = value[i]!;
-      if (!node || node instanceof Nil) {
-        hasNil = true;
-        continue;
+      if (!buffer) {
+        return value.render(context, prepared);
       }
-      count++;
-      only = node;
-    }
-    if (count === 1 && !this.preserveWhitespace) {
-      const node = only!;
-      return buffer
-        ? writeSingleSequenceNodeToBuffer(buffer, node, context, options)
-        : node.render(context, bufferOrOptions);
-    }
-    let renderValue = value;
-    if (hasNil) {
-      renderValue = new Array<Node>(count);
-      let outIndex = 0;
-      for (let i = 0; i < value.length; i++) {
-        const node = value[i]!;
-        if (node && !(node instanceof Nil)) {
-          renderValue[outIndex++] = node;
-        }
+      if (sequenceRenderSharesWriter(buffer)) {
+        return value.render(context, prepared);
       }
+      return writeRenderedSequenceNode(buffer, value.render(context, prepared));
     }
-    const prepared = buffer
-      ? prepareSequenceBufferPrintState(context, buffer, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
     const out = this.renderSequenceSyntax(
-      renderValue,
+      value,
       prepared,
-      buffer && bufferSharesContextWriter(buffer, context) && buffer.kind === 'flat'
+      buffer && sequenceRenderSharesWriter(buffer) && buffer.kind === 'flat'
         ? buffer.parts
         : undefined
     );
-    return buffer
-      ? (bufferSharesContextWriter(buffer, context) ? out : writeRenderText(buffer, out))
+    return buffer && !sequenceRenderSharesWriter(buffer)
+      ? writeRenderText(buffer, out)
       : out;
   }
 
   private renderDirectValue(
     context: Context,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
+    prepared: FinalPrintOptions,
+    buffer?: RenderBuffer
   ): string {
-    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareSequenceBufferPrintState(context, buffer, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
     const out = this.renderSequenceDirect(context, prepared);
-    return buffer
-      ? (bufferSharesContextWriter(buffer, context) ? out : writeRenderText(buffer, out))
+    return buffer && !sequenceRenderSharesWriter(buffer)
+      ? writeRenderText(buffer, out)
       : out;
   }
 
   private renderDirectValueMaybe(
     context: Context,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
+    prepared: FinalPrintOptions,
+    buffer?: RenderBuffer
   ): MaybePromise<string> {
-    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareSequenceBufferPrintState(context, buffer, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
     const out = this.renderSequenceDirectMaybe(context, prepared);
     if (isThenable(out)) {
-      return (out as Promise<string>).then(rendered => buffer ? (bufferSharesContextWriter(buffer, context) ? rendered : writeRenderText(buffer, rendered)) : rendered);
+      return (out as Promise<string>).then(rendered => (
+        buffer && !sequenceRenderSharesWriter(buffer)
+          ? writeRenderText(buffer, rendered)
+          : rendered
+      ));
     }
-    return buffer
-      ? (bufferSharesContextWriter(buffer, context) ? out as string : writeRenderText(buffer, out as string))
+    return buffer && !sequenceRenderSharesWriter(buffer)
+      ? writeRenderText(buffer, out as string)
       : out;
   }
 

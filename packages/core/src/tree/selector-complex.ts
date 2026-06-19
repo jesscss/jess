@@ -162,7 +162,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         let co = component.value;
         if (co !== ' ') {
           if (co !== '|') {
-            w.add(` ${co} `, component);
+            w.add(i === 0 ? `${co} ` : ` ${co} `, component);
           } else {
             w.add(co, component);
           }

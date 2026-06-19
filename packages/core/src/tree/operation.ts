@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type Node
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
+import { OutputWriter, getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -23,6 +23,18 @@ export type OperationValue = [
   op: Operator,
   right: Node
 ];
+
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
 
 type OperationRenderResult =
   | Node
@@ -114,9 +126,9 @@ export class Operation extends Node<OperationValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

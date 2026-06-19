@@ -131,6 +131,20 @@ describe('Declaration', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('captures declaration source syntax without the outer declaration readback', () => {
+    const writer = new CountingWriter();
+    const rule = decl({
+      name: any('color'),
+      value: any('red'),
+      important: any('!important', { role: 'flag' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('color: red !important');
+    expect(writer.toString()).toBe('color: red !important');
+    expect(writer.captures).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('renders resolved declarations through render(context)', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
@@ -775,8 +789,8 @@ describe('Declaration', () => {
     expect(node.toTrimmedString({ writer })).toBe('--custom: red /* kept raw */');
     expect(writer.toString()).toBe('--custom: red /* kept raw */');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('keeps trailing-line-break custom property values on the normalization boundary', () => {
@@ -788,8 +802,8 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('--custom:red');
     expect(writer.toString()).toBe('--custom:red');
-    expect(writer.marks).toBeGreaterThan(1);
-    expect(writer.readbacks).toBeGreaterThan(1);
+    expect(writer.marks).toBeGreaterThan(0);
+    expect(writer.readbacks).toBeGreaterThan(0);
   });
 
   it('normalizes custom property trailing declaration newlines with horizontal whitespace by scan', () => {
@@ -801,8 +815,8 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('--custom:red');
     expect(writer.toString()).toBe('--custom:red');
-    expect(writer.marks).toBeGreaterThan(1);
-    expect(writer.readbacks).toBeGreaterThan(1);
+    expect(writer.marks).toBeGreaterThan(0);
+    expect(writer.readbacks).toBeGreaterThan(0);
   });
 
   it('serializes important declarations with one space before !important', async () => {
@@ -996,8 +1010,8 @@ describe('Declaration', () => {
 
     expect(node.render(context, { writer })).toBe('background-color: red, foo');
     expect(writer.toString()).toBe('background-color: red, foo');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders merged declaration sequences without an extra space-value readback window', () => {
@@ -1013,8 +1027,8 @@ describe('Declaration', () => {
 
     expect(node.render(context, { writer })).toBe('background-color: red foo');
     expect(writer.toString()).toBe('background-color: red foo');
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
   });
 
   it('renders assignment merges without evaluating temporary sequence containers', async () => {

@@ -59,6 +59,18 @@ function markTriviaInRangeEmitted(
   }
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -659,9 +671,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeDeclarationValueSyntax(valueParts, options, renderState);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   private writeDeclarationValueSyntax(
@@ -1325,14 +1337,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             type,
             fallbackValue: new Nil(),
             excludedDeclarations,
-            filter: n => {
+            filter: (n) => {
               const source = n.sourceNode ?? n;
               return n !== outputNode
                 && n !== this
                 && source !== (outputNode?.sourceNode ?? outputNode)
                 && source !== (this.sourceNode ?? this)
                 && !sameConcreteLocation(n.location, outputNode?.location)
-              && !sameConcreteLocation(n.location, this.location);
+                && !sameConcreteLocation(n.location, this.location);
             },
             requiredDeclarationAssignments: [
               AssignmentType.MergeList,
@@ -1379,7 +1391,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               fallbackValue: new Nil(),
               excludedDeclarations,
               // Prevent self-referential reads while normalizing copied/prepared nodes.
-              filter: n => {
+              filter: (n) => {
                 const source = n.sourceNode ?? n;
                 return n !== outputNode
                   && n !== this

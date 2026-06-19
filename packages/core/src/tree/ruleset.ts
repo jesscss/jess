@@ -57,6 +57,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
+
 function copySelectorForRulesetMetadata(selector: Selector): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
   if (isRulesetSelectorMetadata(copied)) {
@@ -587,9 +599,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     const opts = getPrintOptions(options);
     const w = opts.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(opts);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -1501,50 +1513,50 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
       const evalBodyWithSelector = (resolvedSelector: Ruleset['selector']): MaybePromise<Ruleset | Rules | Nil> => {
         selector = resolvedSelector;
-      if (selector instanceof Nil) {
+        if (selector instanceof Nil) {
         // If selector evaluates to Nil, return the rules body directly instead of the ruleset.
+          this.adopt(selector);
+          this.selector = selector;
+          this.invalidateSelectorValueCache(selector);
+          const evaluatedRules = this.rules.eval(context);
+          if (isThenable(evaluatedRules)) {
+            return (evaluatedRules as Promise<Rules>).then((rules) => {
+              this.adopt(rules);
+              this.rules = rules;
+              return finishEvaluatedRules(rules);
+            });
+          }
+          this.adopt(evaluatedRules as Rules);
+          this.rules = evaluatedRules as Rules;
+          return finishEvaluatedRules(evaluatedRules);
+        }
         this.adopt(selector);
         this.selector = selector;
         this.invalidateSelectorValueCache(selector);
-        const evaluatedRules = this.rules.eval(context);
-        if (isThenable(evaluatedRules)) {
-          return (evaluatedRules as Promise<Rules>).then((rules) => {
-            this.adopt(rules);
-            this.rules = rules;
-            return finishEvaluatedRules(rules);
-          });
+        if (context.opts.collapseNesting && context.sourceBackedCallableEvalDepth === 0) {
+          this.hoistToRoot = true;
         }
-        this.adopt(evaluatedRules as Rules);
-        this.rules = evaluatedRules as Rules;
-        return finishEvaluatedRules(evaluatedRules);
-      }
-      this.adopt(selector);
-      this.selector = selector;
-      this.invalidateSelectorValueCache(selector);
-      if (context.opts.collapseNesting && context.sourceBackedCallableEvalDepth === 0) {
-        this.hoistToRoot = true;
-      }
-      pushedRulesetFrameCount = context.rulesetFrames.length;
-      pushedFrameCount = context.frames.length;
-      context.rulesetFrames.push(this);
-      context.frames.push(this);
-      pushedFrames = true;
-      let evaluatedRules: MaybePromise<Rules>;
-      try {
-        evaluatedRules = this.rules.eval(context);
-      } catch (error) {
-        restorePushedEvalFrames();
-        throw error;
-      }
-      return isThenable(evaluatedRules)
-        ? (evaluatedRules as Promise<Rules>).then(
-            finishEvaluatedRules,
-            (error) => {
-              restorePushedEvalFrames();
-              throw error;
-            }
-          )
-        : finishEvaluatedRules(evaluatedRules);
+        pushedRulesetFrameCount = context.rulesetFrames.length;
+        pushedFrameCount = context.frames.length;
+        context.rulesetFrames.push(this);
+        context.frames.push(this);
+        pushedFrames = true;
+        let evaluatedRules: MaybePromise<Rules>;
+        try {
+          evaluatedRules = this.rules.eval(context);
+        } catch (error) {
+          restorePushedEvalFrames();
+          throw error;
+        }
+        return isThenable(evaluatedRules)
+          ? (evaluatedRules as Promise<Rules>).then(
+              finishEvaluatedRules,
+              (error) => {
+                restorePushedEvalFrames();
+                throw error;
+              }
+            )
+          : finishEvaluatedRules(evaluatedRules);
       };
       const selectorResult = (
         context.sourceBackedCallableEvalDepth > 0

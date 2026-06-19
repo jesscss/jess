@@ -126,6 +126,18 @@ type RulesResolveState = {
   output: Rules;
   kind: 'public-resolve';
 };
+
+function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
+}
 type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
@@ -1972,11 +1984,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           const entry = node.sourceParent === rules
             ? node
             : callableRulesEntry({
-              name: node.name,
-              params: node.params,
-              rules: node.rules,
-              guard: node.guard
-            }, rules, node.index);
+                name: node.name,
+                params: node.params,
+                rules: node.rules,
+                guard: node.guard
+              }, rules, node.index);
           this.addCallableEntry(lookupKey, String(name.valueOf()), entry, [], bucket);
         }
         continue;
@@ -2756,7 +2768,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? withRulesetNamespaceGuards(resolved.entries, rulesetNamespace)
           : callableNamespace
             ? withCallableNamespaceGuards(resolved.entries, callableNamespace)
-          : resolved.entries;
+            : resolved.entries;
         if (nestedResults === undefined) {
           nestedResults = resolvedEntries;
           nestedResultsOwned = resolved.owned || resolvedEntries !== resolved.entries;
@@ -3133,8 +3145,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             mixinNamespaceCovered = true;
           } else if (
             !mixinNamespaceCovered
-            &&
-            prefixMatches.length > 0
+            &&            prefixMatches.length > 0
             && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
               scope,
               segment,
@@ -3790,16 +3801,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
         }
         mixinNamespaceFast = namespaceMixins && namespaceMixins.length > 0
-        ? this.findCallableDescendantsWithinMixinNamespaces(
-          namespaceMixins,
-          keys,
-          options
-        )
+          ? this.findCallableDescendantsWithinMixinNamespaces(
+              namespaceMixins,
+              keys,
+              options
+            )
           : undefined;
       }
       let fast = mixinNamespaceFast ?? (
         rulesetNamespaceFast !== undefined
-          && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly === true)
+        && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly === true)
           ? undefined
           : this.findMixinNamespacePathFast(keys, mixinFilterType, options)
       );
@@ -4397,9 +4408,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return getWriterTextSincePosition(w, position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -5792,25 +5803,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const preparedIdentities = prepareDynamicIdentityLane();
         const afterPreparedIdentities = () => {
           const calls = evaluateLane(rule => isNode(rule, N.Call), false);
-        const afterCalls = () => {
-          const normal = evaluateLane((rule) => {
-            if (isNode(rule, N.VarDeclaration)) {
-              return rule.options?.setDefined === true;
+          const afterCalls = () => {
+            const normal = evaluateLane((rule) => {
+              if (isNode(rule, N.VarDeclaration)) {
+                return rule.options?.setDefined === true;
+              }
+              if (isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
+                return false;
+              }
+              return true;
+            }, false);
+            if (isThenable(normal)) {
+              return (normal as Promise<void>).then(() => rulesToHoist);
             }
-            if (isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
-              return false;
-            }
-            return true;
-          }, false);
-          if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => rulesToHoist);
+            return rulesToHoist;
+          };
+          if (isThenable(calls)) {
+            return (calls as Promise<void>).then(afterCalls);
           }
-          return rulesToHoist;
-        };
-        if (isThenable(calls)) {
-          return (calls as Promise<void>).then(afterCalls);
-        }
-        return afterCalls();
+          return afterCalls();
         };
         if (isThenable(preparedIdentities)) {
           return (preparedIdentities as Promise<void>).then(afterPreparedIdentities);

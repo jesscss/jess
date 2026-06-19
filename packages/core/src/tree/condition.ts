@@ -27,8 +27,16 @@ export type ConditionOptions = {
 
 type ConditionResultValue = Node | boolean;
 
-function conditionOperandSyntax(node: Node): string {
-  return node.toTrimmedString();
+function getWriterTextSincePosition(writer: { position(): number }, position: number): string {
+  const chunks = Reflect.get(writer as object, 'chunks');
+  if (!Array.isArray(chunks) || position >= chunks.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = position; i < chunks.length; i++) {
+    out += chunks[i] ?? '';
+  }
+  return out;
 }
 
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
@@ -90,24 +98,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
+    const position = options.writer.position();
     this.writeSyntax(options);
-    const { left, operator: op, right, negate } = this;
-    const needsParens = Boolean(right || negate);
-    let out = '';
-    if (negate) {
-      out += 'not ';
-    }
-    if (needsParens) {
-      out += '(';
-    }
-    out += conditionOperandSyntax(left);
-    if (op && right) {
-      out += ` ${op} ${conditionOperandSyntax(right)}`;
-    }
-    if (needsParens) {
-      out += ')';
-    }
-    return out;
+    return getWriterTextSincePosition(options.writer, position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

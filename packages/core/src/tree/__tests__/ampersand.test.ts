@@ -15,6 +15,20 @@ import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
+
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  readbacks = 0;
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 describe('Ampersand', () => {
   beforeEach(() => {
     context = new Context();
@@ -105,6 +119,13 @@ describe('Ampersand', () => {
     amp('-bar').writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('& &(-bar)');
+  });
+
+  it('captures ampersand source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+
+    expect(amp('-bar').toTrimmedString({ writer })).toBe('&(-bar)');
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('resolves framed ampersands without touching render state', async () => {

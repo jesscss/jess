@@ -13,6 +13,17 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 let context: Context;
 
 describe('Let', () => {
@@ -37,6 +48,17 @@ describe('Let', () => {
       expect(rule.toTrimmedString()).toBe('$brandColor: #eee');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+    });
+
+    it('captures var declaration syntax without outer whole-buffer readback', () => {
+      const writer = new WholeBufferCountingWriter();
+      const rule = vardecl({
+        name: 'brandColor',
+        value: any('#eee')
+      });
+
+      expect(rule.toTrimmedString({ writer })).toBe('$brandColor: #eee');
+      expect(writer.wholeBufferReads).toBe(0);
     });
 
     it('should serialize a collection', () => {

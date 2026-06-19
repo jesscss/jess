@@ -7,6 +7,8 @@ import { createTriviaMap } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { OutputWriter } from '../util/print.js';
+import { Node } from '../node.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -28,6 +30,25 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
   context.rulesContext = evald;
 }
 
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
+class WriteOnlyNode extends Node<string> {
+  override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
+    options.writer.add(this.value);
+  }
+
+  override toString(): string {
+    throw new Error('Block.toTrimmedString should not use child public string transport');
+  }
+}
+
 describe('Block', () => {
   let context: Context;
 
@@ -37,6 +58,15 @@ describe('Block', () => {
 
   it('renders block syntax through toTrimmedString()', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
+  });
+
+  it('writes block syntax without child public string transport', () => {
+    const writer = new CountingWriter();
+    const node = block(new WriteOnlyNode('foo'));
+
+    expect(node.toTrimmedString({ writer })).toBe('{foo}');
+    expect(writer.toString()).toBe('{foo}');
+    expect(writer.reads).toBe(0);
   });
 
   it('stores the block child on a constructor-owned direct field', () => {

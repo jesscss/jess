@@ -692,8 +692,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
               : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
-                ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
-                : leafFrames[i]!.getHeaderString(options);
+                  ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
+                  : leafFrames[i]!.getHeaderString(options);
             frameHeaders[i] = s;
           } else if (s === '') {
             s = (
@@ -701,8 +701,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             )
               ? renderHoistedParentHeader(hoistedParent, options, i)
               : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
-                ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
-                : leafFrames[i]!.getHeaderString(options, true);
+                  ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
+                  : leafFrames[i]!.getHeaderString(options, true);
             frameHeaders[i] = s;
           }
           if (s !== DIRECT_RULESET_HEADER) {
@@ -764,6 +764,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (hoistedParent) {
           leafFrames = [...inFrames, hoistedParent.frame];
         }
+        const renderedFrameBaseline = lastRenderedFrames.length;
+        const frameHeaderBaseline = frameHeaders.length;
+        const renderedPositionBaseline = w.position();
         if (isNode(nn, N.Rules)) {
           const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
           const childReferenceMode = inReferenceMode || ownReferenceMode;
@@ -771,7 +774,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringChildReferenceMode ? false : renderEnabled)
             : true;
-          const hasRenderableChild = nn.rules.some(child => {
+          const hasRenderableChild = nn.rules.some((child) => {
             if (hasPrintableTrivia(child, options)) {
               return true;
             }
@@ -824,6 +827,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const wrote = w.position() !== before;
           restorePrintState(options, leafSaved);
           if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
+            w.restore(renderedPositionBaseline);
+            lastRenderedFrames.length = renderedFrameBaseline;
+            frameHeaders.length = frameHeaderBaseline;
             continue;
           }
           w.add('\n');

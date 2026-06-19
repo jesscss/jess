@@ -29,16 +29,16 @@ export function createRestBindingValue(args: Node[]): Sequence {
 }
 
 export function createArgumentsBindingValue(args: Node[]): Sequence {
-  const value = new Sequence([]);
+  const value: Node[] = [];
   for (let i = 0; i < args.length; i++) {
     const argNode = args[i]!;
     if (argNode instanceof Sequence) {
       for (let j = 0; j < argNode.items.length; j++) {
-        value.value.push(argNode.items[j]!);
+        value.push(cloneBoundValue(argNode.items[j]!));
       }
     } else {
-      value.value.push(argNode);
+      value.push(cloneBoundValue(argNode));
     }
   }
-  return value;
+  return new Sequence(value);
 }

@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
+import { OutputWriter } from '../util/print.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
+
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
 
 describe('Func', () => {
   it('serializes function definitions through toTrimmedString()', () => {
@@ -16,6 +28,26 @@ describe('Func', () => {
         return: 42;
       }
     `);
+  });
+
+  it('captures function source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = fn({
+      name: any('answer'),
+      params: list([
+        vardecl({ name: 'value', value: nil() }, { paramVar: true })
+      ]),
+      body: rules([
+        decl({ name: 'return', value: ref('value') })
+      ])
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $function answer($value) {
+        return: $value;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(0);
   });
 
   it('resolves function definitions without touching render state', async () => {
