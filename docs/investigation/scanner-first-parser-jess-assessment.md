@@ -211,8 +211,8 @@ The strategy is to add a structural parsing layer that is useful on its own,
 then wire it into the existing parser/plugin system without immediately
 replacing compiler parsing.
 
-The package-level shape should reuse the existing `@jesscss/parser` package as
-the shared parser foundation:
+The package-level shape should replace the current `@jesscss/parser`
+implementation while keeping that package name as the shared parser foundation:
 
 ```text
 @jesscss/parser
@@ -268,9 +268,11 @@ is the bottleneck.
 
 ### `@jesscss/parser`
 
-Existing package name, repurposed as the shared parser foundation. Replace the
-current throwaway implementation rather than creating `@jesscss/source`,
-`@jesscss/structure-parser`, or `@jesscss/parse-services` as public packages.
+Replacement package using the existing package name. The scanner-first
+experiment should replace the current throwaway implementation, not expand it
+incrementally. Keep this as one public package instead of creating
+`@jesscss/source`, `@jesscss/structure-parser`, or `@jesscss/parse-services`
+as public packages.
 
 Internal module layout:
 
@@ -928,15 +930,16 @@ Verification:
 - Do not replace `@jesscss/core` AST with structural nodes.
 - Do not hand raw placeholders to current compiler visitors.
 - Do not remove Chevrotain from compiler parsers as part of structural parser
-  work; benchmark `@jesscss/parser` migration separately.
+  work.
 - Do not silently weaken CSS spec behavior in compile mode.
 - Do not add Less 4.x as production parser dependency.
 
 ## Recommendation
 
-Expand the existing `@jesscss/parser` package into the shared parser foundation.
-Do not create new public packages for source spans, structural parsing, or parse
-services unless the module boundaries later prove too large for one package.
+Replace the current `@jesscss/parser` implementation with the new shared parser
+foundation. Do not create new public packages for source spans, structural
+parsing, or parse services unless the module boundaries later prove too large
+for one package.
 Wire `@jesscss/parser` into the language-service and plugin hooks before
 touching the default compiler parse path. Treat visitor registration as a
 materialization policy input. Treat exact spans and newline/trivia ownership as
