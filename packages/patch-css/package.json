@@ -11,7 +11,7 @@
     "dist": "rollup -c",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json && pnpm dist",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly && pnpm dist",
     "dev": "tsc -p tsconfig.build.json -w",
     "serve": "lite-server --baseDir=\"test\"",
     "test:tofix": "pnpm dist && jest",

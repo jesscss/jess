@@ -275,7 +275,7 @@ export class LessCompatPlugin extends AbstractPlugin {
       return false;
     }
     const load = loader(ext);
-    return isThenable(load) ? load.then(finish) : finish(load);
+    return isThenable(load) ? Promise.resolve(load).then(finish) : finish(load);
   }
 
   beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
@@ -303,7 +303,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    */
   get visitor(): PluginVisitor | PluginVisitor[] | undefined {
     const cache = this.opts.cache !== false;
-    const cacheMap = cache ? new WeakMap() : undefined;
+    const cacheMap: WeakMap<any, any> | undefined = cache ? new WeakMap() : undefined;
 
     // Use our own Less.js-compatible structures (no dependency on actual Less.js library)
     const LessVisitor = LessVisitorClass;

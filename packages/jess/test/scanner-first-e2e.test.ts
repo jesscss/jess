@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,73 @@ afterEach(() => {
     fs.rmSync(dir, { force: true, recursive: true });
   }
 });
+
+type CapturedProfile = {
+  label: string;
+  metadata: Record<string, unknown>;
+  totalDurationMs: number;
+  phases: Array<{
+    phase: string;
+    durationMs: number;
+    memoryDelta: Record<string, number>;
+  }>;
+};
+
+async function captureProfile<T>(render: () => Promise<T>): Promise<{
+  profile: CapturedProfile;
+  result: T;
+}> {
+  const previousProfileFlag = process.env.JESS_PROFILE;
+  const profileLines: string[] = [];
+  const originalError = console.error;
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    const line = args.map(String).join(' ');
+    if (line.startsWith('[jess-profile] ')) {
+      profileLines.push(line.slice('[jess-profile] '.length));
+      return;
+    }
+    originalError(...args);
+  });
+
+  try {
+    process.env.JESS_PROFILE = '1';
+    const result = await render();
+    expect(profileLines).toHaveLength(1);
+    return {
+      profile: JSON.parse(profileLines[0]!) as CapturedProfile,
+      result
+    };
+  } finally {
+    if (previousProfileFlag === undefined) {
+      delete process.env.JESS_PROFILE;
+    } else {
+      process.env.JESS_PROFILE = previousProfileFlag;
+    }
+    errorSpy.mockRestore();
+  }
+}
+
+function expectParseEvalRenderPhases(profile: CapturedProfile): void {
+  expect(profile.label).toBe('prepareRender');
+  expect(profile.totalDurationMs).toBeGreaterThanOrEqual(0);
+
+  const phases = new Map(profile.phases.map(phase => [phase.phase, phase]));
+  for (const phaseName of ['parseString', 'eval', 'render']) {
+    const phase = phases.get(phaseName);
+    expect(phase, `missing ${phaseName} phase`).toBeDefined();
+    expect(phase?.durationMs).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(phase?.durationMs)).toBe(true);
+    expect(phase?.memoryDelta).toEqual(
+      expect.objectContaining({
+        rss: expect.any(Number),
+        heapTotal: expect.any(Number),
+        heapUsed: expect.any(Number),
+        external: expect.any(Number),
+        arrayBuffers: expect.any(Number)
+      })
+    );
+  }
+}
 
 describe('scanner-first CSS/Less e2e probe', () => {
   it('keeps a plain rule and declaration structural-only', async () => {
@@ -145,6 +212,93 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
     expect(entryProbe?.structuralNodesByKind.import).toBe(1);
     expect(entryProbe?.requestsByOwnerKind.import ?? 0).toBe(0);
+  });
+
+  it('reports parse/eval/render phase timings across current and scanner-first paths', async () => {
+    const source = '.a {\n  color: blue;\n}\n.b { width: 1px; }\n';
+    const structuralOnlyPlugin = lessPlugin({ scannerFirstProbe: true });
+    const selectedMaterializationPlugin = lessPlugin({
+      scannerFirstProbe: {
+        materializeIslandKinds: ['declaration-value']
+      }
+    });
+    const structuralFedPlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const cases = [
+      {
+        name: 'current',
+        render: () => new Compiler().renderString(source, { language: 'less' })
+      },
+      {
+        name: 'structural-only',
+        render: () =>
+          new Compiler({
+            compile: { plugins: [structuralOnlyPlugin] }
+          }).renderString(source, { language: 'less' })
+      },
+      {
+        name: 'selected-materialization',
+        render: () =>
+          new Compiler({
+            compile: { plugins: [selectedMaterializationPlugin] }
+          }).renderString(source, { language: 'less' })
+      },
+      {
+        name: 'structural-fed',
+        render: () =>
+          new Compiler({
+            compile: { plugins: [structuralFedPlugin] }
+          }).renderString(source, { language: 'less' })
+      }
+    ];
+
+    const results = new Map<string, { profile: CapturedProfile; result: string }>();
+    for (const testCase of cases) {
+      results.set(testCase.name, await captureProfile(testCase.render));
+    }
+    const baseline = results.get('current')!;
+
+    for (const rendered of [
+      results.get('structural-only')!.result,
+      results.get('selected-materialization')!.result,
+      results.get('structural-fed')!.result
+    ]) {
+      expect(rendered).toBe(baseline.result);
+    }
+    for (const { profile } of results.values()) {
+      expectParseEvalRenderPhases(profile);
+    }
+
+    expect(structuralOnlyPlugin.lastScannerFirstProbe).toMatchObject({
+      requestedIslands: 0,
+      actualParses: 0,
+      promotedBytes: 0,
+      fallbackFullTreeMaterializations: 0
+    });
+    expect(selectedMaterializationPlugin.lastScannerFirstProbe).toMatchObject({
+      requestsByIslandKind: {
+        'declaration-value': 2
+      },
+      requestedIslands: 2,
+      actualParses: 2,
+      fallbackFullTreeMaterializations: 0
+    });
+    expect(
+      selectedMaterializationPlugin.lastScannerFirstProbe?.promotedBytes
+    ).toBeGreaterThan(0);
+    expect(structuralFedPlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      requestsByIslandKind: {
+        selector: 2,
+        'declaration-value': 2
+      },
+      requestedIslands: 4,
+      actualParses: 4,
+      fallbackFullTreeMaterializations: 0
+    });
   });
 
   it('feeds a bounded plain rule through structural parse and materialized islands', async () => {

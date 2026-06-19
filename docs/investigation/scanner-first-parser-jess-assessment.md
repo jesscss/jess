@@ -1499,16 +1499,19 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 - [ ] Map each CSS/Less provider against the current token definitions,
   productions, and parser tests before implementing it. CSS work should use
   `cssTokens.ts` plus CSS productions as compatibility guide rails; Less work
-  should use `lessTokens.ts` plus Less overrides/additions the same way. This
-  does not make the current grammar sacred or require every spec-maximal token
-  edge case to live in the scanner hot path. Classify provider coverage into
-  hot-path structural recognition, deferred island parsing, canonical fallback,
-  and unsupported/recovery behavior before implementing the provider.
-  Expansive Unicode ranges, rarely used recovery behavior, or other high-cost
-  edge cases should be evaluated against real Jess corpus usage, diagnostics
-  quality, language-service usefulness, and fallback/materialization behavior.
-  Any divergence from existing productions must be documented as an intentional
-  structural-stage cost/coverage tradeoff, not accidental grammar drift.
+  should use `lessTokens.ts` plus Less overrides/additions the same way. Treat
+  those files as a compatibility inventory and regression map, not as a sacred
+  implementation template. Some existing tokens may be more spec-complete than
+  useful for the scanner hot path, especially expansive Unicode ranges, obscure
+  escape forms, and recovery branches that rarely appear in real Sass/Less/CSS
+  authoring. Classify each provider behavior into hot-path structural
+  recognition, deferred island parsing, canonical fallback, or
+  unsupported/recovery handling before implementing it. High-cost grammar
+  fidelity should earn its place with evidence from Jess corpora, expected
+  authoring patterns, diagnostic quality, language-service usefulness, or a
+  clear fallback/materialization story. Any divergence from existing productions
+  must be documented as an intentional structural-stage cost/coverage tradeoff,
+  not accidental grammar drift.
 - [x] Add CSS selector island provider in `@jesscss/css-parser`.
 - [x] Add CSS value/prelude island providers in `@jesscss/css-parser`.
 - [x] Add Less selector island provider in `@jesscss/less-parser`.
@@ -1596,9 +1599,13 @@ its claims.
 - [x] Prototype performance guard: report structural-fed runtime source,
   promoted bytes, selected island count, fallback full-tree count,
   cache hits/misses, and output equality for the bounded subset.
+- [x] Focused performance smoke guard: report parse/eval/render phase timings
+  across current parser, structural-only sidecar, selected materialization
+  sidecar, and structural-fed prototype paths while preserving output equality.
 - [ ] Broader performance guard: report full parse/eval/render phase timings
-  across enough CSS/Less fixtures to compare current parser, structural-only,
-  selected materialization, and structural-fed paths.
+  across representative CSS/Less corpus fixtures so the current parser,
+  structural-only, selected materialization, and structural-fed paths can be
+  compared without relying on a single tiny inline fixture.
 - [x] Verification: focused CSS e2e tests pass.
 - [x] Verification: focused Less e2e tests pass.
 - [ ] Verification: existing CSS parser tests pass or any pre-existing failures
