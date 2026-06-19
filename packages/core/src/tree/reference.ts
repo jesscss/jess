@@ -2163,27 +2163,20 @@ function lookupResolvedReference(args: {
 function tryReadInitialSourceStaticRulesLookupHandle(args: {
   referenceNode: Reference;
   lookupType: LookupType;
-  key: ReferenceValue['key'];
+  valueKey: NormalizedLookupKey;
   target: ReferenceValue['target'];
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
-}): {
-  returnVal: ReferenceLookupReturnValue;
-  valueKey: NormalizedLookupKey;
-} | undefined {
+}): RulesLookupHandleReadResult {
   const {
     referenceNode,
     lookupType,
-    key,
+    valueKey,
     target,
     originalFilter,
     context
   } = args;
   if (target !== undefined || referenceNode._rulesLookupHandle === undefined) {
-    return undefined;
-  }
-  const valueKey = getStaticReferenceValueKey(key);
-  if (valueKey === undefined) {
     return undefined;
   }
   const targetRules = context.rulesContext ?? referenceNode.rulesParent;
@@ -2211,13 +2204,7 @@ function tryReadInitialSourceStaticRulesLookupHandle(args: {
     valueKey,
     env
   );
-  if (handleResult === undefined) {
-    return undefined;
-  }
-  return {
-    returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
-    valueKey
-  };
+  return handleResult;
 }
 
 function lookupDirectTarget(
@@ -3370,16 +3357,21 @@ function evaluateReferenceNode(args: {
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
-  const initialHandleLookup = tryReadInitialSourceStaticRulesLookupHandle({
-    referenceNode,
-    lookupType,
-    key,
-    target,
-    originalFilter,
-    context
-  });
+  const initialHandleValueKey = getStaticReferenceValueKey(key);
+  const initialHandleLookup = initialHandleValueKey === undefined
+    ? undefined
+    : tryReadInitialSourceStaticRulesLookupHandle({
+        referenceNode,
+        lookupType,
+        valueKey: initialHandleValueKey,
+        target,
+        originalFilter,
+        context
+      });
   if (initialHandleLookup !== undefined) {
-    const { returnVal, valueKey } = initialHandleLookup;
+    const returnVal = initialHandleLookup === CACHED_RULES_LOOKUP_MISS
+      ? undefined
+      : initialHandleLookup;
     const directRenderValue = directStaticRender === true
       ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
       : undefined;
@@ -3389,7 +3381,7 @@ function evaluateReferenceNode(args: {
     return finalizeReferenceLookupResult(
       referenceNode,
       returnVal,
-      valueKey,
+      initialHandleValueKey,
       lookupType,
       fallbackValue,
       context,

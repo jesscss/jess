@@ -103,6 +103,48 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: callable/selector lookup machinery cut.
+- Verdict: accepted as a Reference/callable machinery reduction, not a speed
+  claim. `tryReadInitialSourceStaticRulesLookupHandle(...)` returns the handle
+  read result directly instead of allocating a `{ returnVal, valueKey }`
+  wrapper. `collectCallableBucketResults(...)` was deleted as a forwarding
+  helper over `appendCallableBucketResults(...)`, and one uncovered-child frame
+  hit path now appends into the existing result array instead of creating and
+  spreading a short array. Selector-list callable collection no longer orders
+  keys for the whole `SelectorList` before traversing each selector item.
+- New traversal: one existing selector-list loop moved earlier so it can avoid
+  the broader `getOrderedSelectorKeys(selectorList)` call. No new recursive
+  search, parent walk, side-map lookup, or array scan was added.
+- Review-flagged allocations: deleted one wrapper object shape, one forwarding
+  helper call layer, and one short result array/spread path. No cache, side
+  map, registry, copied node, or materialized callable surface was added.
+  Review-flagged copy-helper tokens in the current diff are documentation-only
+  evidence in `PERFORMANCE-HANDOFF.md`: `constructCopy`, `Node`, and `inherit`
+  appear in copied CPU-profile function names, and
+  `copyWithReusableLeaves(declValue).eval(context)` identifies the next
+  audited normal-path copy frontier. This pass does not add or expand those
+  paths.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: deleted private
+  `collectCallableBucketResults(...)`; no helper or public API was added.
+- Metadata mutations: none added.
+- Routine error control: none added.
+- Evidence: `pnpm --filter @jesscss/core build` passed; focused
+  `pnpm --filter @jesscss/core test -- --run src/visitor/__tests__/visitor.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts`
+  passed (`486` passed, `14` skipped, `9` deferred markers) after rebuilding
+  CSS/Less parser packages to refresh Vite package resolution. Rebuilds for
+  core, CSS/Less parsers, fns, style-resolver, plugin-less,
+  plugin-less-compat, and `jess` passed. `profile-less-benchmark.mjs`
+  reported `LessParser.parse=71.26ms`, `Reference.evalNode=49.51ms`, and
+  unchanged lookup/render-preview counters. Same-load
+  `pnpm run benchmark:less:v4-v5 -- --runs=60 --warmup=15 --less4=measure`
+  measured Less 4.6.3 median `36.02ms` versus Jess median `135.07ms`; no
+  speed win is claimed.
+- Rejected shapes: did not add selector-key caches, visitor hook rewrites,
+  registry fallback layers, family predicates, bitmasks, side maps, broad
+  caches, materialized AST copies, or deep child copies.
+
 - Latest pass: Reference lookup-strategy cache deletion.
 - Verdict: accepted as a narrow Reference/direct lookup machinery cut, not a
   speed claim. `lookupResolvedReference(...)` already computes the singleton

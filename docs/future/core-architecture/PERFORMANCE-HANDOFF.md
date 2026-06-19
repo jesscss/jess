@@ -220,6 +220,69 @@ mark/readback totals. Direct lookup counters remain diagnostic:
 includes module-load/parser-initialization noise and should be treated as a
 target-selection prompt, not a clean CPU attribution.
 
+2026-06-19 post-reference-strategy-cache refresh: after rebuilding core,
+CSS/Less parsers, fns, style-resolver, plugin-less, and plugin-less-compat,
+`node scripts/profile-less-benchmark.mjs` reported `LessParser.parse`
+`72.45ms`, `Reference.evalNode` `47.89ms`, `Context.getTree` `8.54ms`, and
+the same direct lookup diagnostic counters
+(`declaration.childEntryFamilySkip=9024`,
+`declaration.childEntryMergeFamilySkip=6435`,
+`declaration.cacheMiss=3641`). Render-preview counters remain unchanged:
+`duplicateDeclarationPrerenderedDeclarations=884` and
+`emissionRenderNodeTextPreviewCalls=4095`. Same-load
+`pnpm run benchmark:less:v4-v5 -- --runs=40 --warmup=10 --less4=measure`
+measured Less 4.6.3 median `36.28ms` / trimmed average `38.07ms` versus
+Jess median `130.29ms` / trimmed average `131.80ms`, so Jess remains about
+`2.6x` slower by median. `node scripts/warm-profile-less-benchmark.mjs
+--warmup=8 --profiled-runs=4 --top=40 --label=post-reference-cache-cut`
+wrote
+`profiling/core-architecture/20260619-120425-post-reference-cache-cut/summary.json`;
+the profile is inspector-noisy but repo self-time still points at `isNode`,
+`writeSyntax`, callable collection (`getCallableEntriesForKey`,
+`collectCallableEntriesForKeyFrom`,
+`collectVisibleCallableRulesetPrefixMatchSurface`), `visit`,
+`constructCopy`, `Node`, and `inherit`. The ordinary hotpath harness was
+unstable under the same load (`benchmark.less` median `152.08ms` with
+`signalQuality:"unstable"`), so do not use that run to accept or reject a
+close wall-clock patch.
+
+2026-06-19 copy/materialization audit refresh: remaining copy surfaces are
+ranked by normal-path risk. `define-function.ts` copies `List`/node args in
+`callWithContext(...)` only after `params` metadata exists; keep treating that
+as the documented third-party JavaScript interop boundary unless new evidence
+shows it on the Less hot path. `createRulesLikeReferenceSurface(...)` in
+`reference.ts` is a shallow rules-like reference surface for callable/public
+placement state, not a deep child copy. The highest remaining normal eval copy
+frontier found in this pass is `copyWithReusableLeaves(declValue).eval(context)`
+inside reference declaration-value evaluation (`reference.ts` near the
+non-static declaration result path). Do not delete it blindly; the next cut
+needs a proof that the same non-static declaration value can evaluate through
+carried live binding / placement state without mutating canonical source.
+
+2026-06-19 callable/selector lookup machinery cut: kept the integrated worker
+patch in `reference.ts` and `rules.ts`. `tryReadInitialSourceStaticRulesLookupHandle(...)`
+now returns the handle read result directly instead of allocating a
+`{ returnVal, valueKey }` wrapper; `evaluateReferenceNode(...)` carries the
+already-static key locally. `collectCallableBucketResults(...)` was deleted as
+a forwarding helper over `appendCallableBucketResults(...)`; call sites now use
+the appender directly, including one uncovered-child frame hit path that no
+longer builds a short results array and spreads it into the existing result
+array. `Rules.collectCallableEntriesForKeyFrom(...)` also avoids calling
+`getOrderedSelectorKeys(...)` on an entire `SelectorList` before immediately
+walking each selector item; it performs the existing per-item traversal first
+and falls back to the source selector only when no selector-list item supplied
+keys. Focused integration tests passed:
+`pnpm --filter @jesscss/core test -- --run src/visitor/__tests__/visitor.test.ts src/tree/__tests__/reference.test.ts src/tree/__tests__/mixin.test.ts src/tree/__tests__/rules.test.ts`
+(`486` passed, `14` skipped, `9` deferred markers). Rebuilds for core,
+CSS/Less parsers, fns, style-resolver, plugin-less, plugin-less-compat, and
+`jess` passed. Post-patch `profile-less-benchmark.mjs` reported
+`LessParser.parse=71.26ms`, `Reference.evalNode=49.51ms`, and unchanged direct
+lookup counters; render-preview counters also stayed unchanged. Same-load
+benchmark over `60` runs after `15` warmups with `--less4=measure` measured
+Less 4.6.3 median `36.02ms` / trimmed average `36.20ms` versus Jess median
+`135.07ms` / trimmed average `138.09ms`. This is not a speed win; it is a
+kept object/helper/traversal reduction with neutral/noisy wall-clock evidence.
+
 2026-06-19 callable eval/render closure/sort cut: kept a combined
 machinery-reduction pass in `packages/core/src/tree/rules.ts` and
 `packages/core/src/tree/util/callable-output.ts`. Callable exact/prefix

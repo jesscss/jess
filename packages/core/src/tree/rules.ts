@@ -801,13 +801,6 @@ function mergeDirectChildRulesVisibility(
   return merged;
 }
 
-function collectCallableBucketResults(
-  bucket: CallableLookupEntry[],
-  includeRulesets: boolean
-): MixinEntry[] | undefined {
-  return appendCallableBucketResults(bucket, includeRulesets);
-}
-
 function appendCallableBucketResults(
   bucket: CallableLookupEntry[],
   includeRulesets: boolean,
@@ -1882,10 +1875,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         searchParents: false
       });
       if (frameHit.kind === 'hit') {
-        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
-        if (results) {
-          (frameResults ??= []).push(...results);
-        }
+        frameResults = appendCallableBucketResults(frameHit.bucket, includeRulesets, frameResults);
       } else if (
         frameHit.kind === 'uncovered'
         && (
@@ -2024,6 +2014,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const sourceSelector = isSelectorLikeNode(selector.sourceNode)
         ? selector.sourceNode
         : undefined;
+      if (((selector.nodeType ?? 0) & N.SelectorList) !== 0) {
+        let foundSelectorKeys = false;
+        for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
+          const selectorKeys = getOrderedSelectorKeys(selector.value[selectorIndex]!);
+          foundSelectorKeys ||= selectorKeys.length > 0;
+          this.addDirectCallableSelectorEntries(
+            lookupKey,
+            node,
+            selectorKeys,
+            bucket
+          );
+        }
+        if (foundSelectorKeys || !sourceSelector) {
+          continue;
+        }
+        selector = sourceSelector;
+      }
       let keys = getOrderedSelectorKeys(selector);
       if (keys.length === 0 && sourceSelector) {
         const sourceKeys = getOrderedSelectorKeys(sourceSelector);
@@ -2031,17 +2038,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           selector = sourceSelector;
           keys = sourceKeys;
         }
-      }
-      if (((selector.nodeType ?? 0) & N.SelectorList) !== 0) {
-        for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
-          this.addDirectCallableSelectorEntries(
-            lookupKey,
-            node,
-            getOrderedSelectorKeys(selector.value[selectorIndex]!),
-            bucket
-          );
-        }
-        continue;
       }
       if (keys.length > 0 && ownSelector && ((ownSelector.nodeType ?? 0) & N.Nil) === 0) {
         const parentSource = node.sourceParent?.sourceParent;
@@ -2658,7 +2654,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               owned: true
             };
           }
-          matches = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          matches = appendCallableBucketResults(frameHit.bucket, includeRulesets);
         } else if (frameHit.kind === 'miss') {
           frameMissCovered = true;
         } else if (
@@ -2699,7 +2695,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 matches = remainderMatches;
                 break;
               }
-              matches = collectCallableBucketResults(fallbackHit.bucket, includeRulesets);
+              matches = appendCallableBucketResults(fallbackHit.bucket, includeRulesets);
               break;
             }
             if (
@@ -3328,7 +3324,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               searchParents: false
             });
             if (simpleHit.kind === 'hit') {
-              resolved = collectCallableBucketResults(simpleHit.bucket, includeRulesets);
+              resolved = appendCallableBucketResults(simpleHit.bucket, includeRulesets);
               simpleCallableCovered = true;
             } else if (simpleHit.kind === 'miss') {
               simpleCallableCovered = true;
@@ -3517,7 +3513,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           searchParents: false
         });
         if (firstRemainderHit.kind === 'hit' && keys.length === 2) {
-          nested = collectCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
+          nested = appendCallableBucketResults(firstRemainderHit.bucket, firstRemainderIncludesRulesets);
         } else if (firstRemainderHit.kind === 'miss') {
           if (keys.length === 2 && childFrame.fallbackFrame) {
             let fallbackFrame = childFrame.fallbackFrame;
@@ -3535,7 +3531,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 searchParents: false
               });
               if (fallbackHit.kind === 'hit') {
-                nested = collectCallableBucketResults(fallbackHit.bucket, firstRemainderIncludesRulesets);
+                nested = appendCallableBucketResults(fallbackHit.bucket, firstRemainderIncludesRulesets);
                 break;
               }
               if (fallbackHit.kind === 'uncovered') {
@@ -3629,7 +3625,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
-          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          const results = appendCallableBucketResults(frameHit.bucket, includeRulesets);
           if (results) {
             return results;
           }
@@ -3682,7 +3678,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
             if (retryHit.kind === 'hit') {
-              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
+              const results = appendCallableBucketResults(retryHit.bucket, includeRulesets);
               if (results) {
                 return results;
               }
@@ -3759,7 +3755,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             includeRulesets: false
           });
           if (frameHit.kind === 'hit') {
-            namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
+            namespaceMixins = appendCallableBucketResults(frameHit.bucket, false) ?? UNCOVERED_CALLABLE_MISS;
           } else if (frameHit.kind === 'miss') {
             namespaceMixinMissCovered = true;
           } else if (
