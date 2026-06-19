@@ -103,6 +103,47 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Less parser `value()` runtime OR-allocation cut plus parser
+  queue wrap-up.
+- Verdict: accepted as a parser production machinery cut, not a broad
+  benchmark speed claim. The normal runtime `value(...)` path no longer builds
+  a 19-alt `OR(...)` array with `GATE`/`ALT` closures and a local memoized
+  mixin-reference closure on every call. The Chevrotain-style `OR(...)` path
+  remains only for `RECORDING_PHASE` and rare fallback/error behavior. Parser
+  exploration is now handed off; this worktree's next swath returns to
+  eval/render and Reference/direct-lookup cutting.
+- New traversal: none.
+- Review-flagged allocations: removed normal-path parser alt array/object and
+  closure allocation from `value(...)`. No replacement cache, registry, side
+  map, AST copy, or materialized node tree was added.
+- New node/materialization: none. The direct branches construct the same AST
+  values as the prior production path.
+- Render path: unchanged.
+- Helper/API surface: added two node-local parser helpers only to isolate the
+  cold/recording `OR(...)` fallback and shared token-result finalization. The
+  helpers replace repeated per-call local closures and do not introduce public
+  API.
+- Metadata mutations: none.
+- Routine error control: no hot error-control path added. The old `OR(...)`
+  behavior is retained only as recording/fallback behavior.
+- Allocation changes: deleted the hot per-call 19-alt production object array
+  and local mixin-reference closure from normal `value(...)` parsing.
+- Evidence: full `pnpm --filter @jesscss/less-parser test` passed (`420`
+  passed), `pnpm --filter @jesscss/less-parser build` passed, and
+  `pnpm --filter @jesscss/less-parser bench -- --benchmark` measured median
+  `68.81ms` / avg `70.80ms`. Worker same-worktree A/B measured parser corpus
+  median `71.68ms` before and `54.54ms` after; reversed A/B measured reverted
+  median `72.20ms` and reapplied median `53.83ms`. Local
+  `profile-less-benchmark.mjs` still reports `LessParser.parse` `75.76ms` and
+  `Reference.evalNode` `46.79ms`. Same-load `benchmark.less` comparator over
+  `60` runs after `15` warmups measured Less 4.6.3 median `34.16ms` versus
+  Jess median `124.61ms`, so no end-to-end speed win is claimed.
+- Rejected shapes: direct declaration child-entry cuts for ordinary public
+  variable binding reuse were rejected by a worker because real counters were
+  unchanged; remaining lookup work points at reference-import and
+  visibility-guarded surfaces. Further parser work is delegated outside this
+  local queue per current user direction.
+
 - Latest pass: Reference lookup-result wrapper deletion plus parser/lookup
   worker triage.
 - Verdict: accepted as a narrow normal-path allocation cut, not a speed claim.

@@ -124,6 +124,113 @@ function isSlashListContinuationToken($: P, T: TokenMap): boolean {
   );
 }
 
+function isValueMixinReference($: P, T: TokenMap): boolean {
+  const tt1 = $.LA(1).tokenType;
+  const tt2 = $.LA(2).tokenType;
+  /**
+   * We'll allow a few "bare" mixin references without parens or square
+   * brackets, but not if they'll conflict with other syntax.
+   */
+  return tt1 === T.DotName
+    || tt1 === T.HashName
+    || tt1 === T.InterpolatedSelector
+    || (
+      (
+        tt1 === T.ColorIdentStart
+        || tt1 === T.InterpolatedSelector
+      ) && (
+        tt2 === T.Gt
+        || tt2 === T.DotName
+        || tt2 === T.HashName
+        || tt2 === T.InterpolatedSelector
+        || (
+          $.noSep(1)
+          && (
+            tt2 === T.LParen
+            || tt2 === T.LSquare
+            || tt2 === T.HashName
+            || tt2 === T.DotName
+          )
+        )
+      )
+    );
+}
+
+function valueViaOr($: P, T: TokenMap, ctx: RuleContext): Node | undefined {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  let _isMixinReference = undefined as boolean | undefined;
+  const isMixinReference = () => {
+    if (_isMixinReference === undefined) {
+      _isMixinReference = isValueMixinReference($, T);
+    }
+    return _isMixinReference;
+  };
+  return $.OR([
+    {
+      GATE: () => $.check(T.FunctionStart),
+      ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => $.isType(T.Star) && $.isTypeAt(2, T.LSquare),
+      ALT: () => $.SUBRULE($.selectorCapture, { ARGS: [ctx] })
+    },
+    {
+      GATE: isMixinReference,
+      ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] })
+    },
+    {
+      GATE: () => !isMixinReference(),
+      ALT: () => $.CONSUME(T.Color)
+    },
+    {
+      GATE: () => !isMixinReference(),
+      ALT: () => $.CONSUME2(T.Ident)
+    },
+    { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+    { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
+    { ALT: () => $.CONSUME(T.Dimension) },
+    { ALT: () => $.CONSUME(T.Number) },
+    {
+      GATE: () => ctx.currentFunctionName === 'unit',
+      ALT: () => $.CONSUME(T.Percent)
+    },
+    { ALT: () => $.CONSUME(T.UnicodeRange) },
+    { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+    { ALT: () => $.CONSUME(T.JavaScript) },
+    /** Explicitly not marked as an ident */
+    { ALT: () => $.CONSUME(T.When) },
+    { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
+    {
+      GATE: () => $.looseMode && !!ctx.inner,
+      ALT: () => $.CONSUME(T.Colon)
+    },
+    {
+      /** e.g. alpha(opacity=@var) */
+      GATE: () => $.looseMode && !!ctx.inFunctionArgs,
+      ALT: () => $.CONSUME(T.Eq)
+    },
+    {
+      GATE: () => $.looseMode,
+      ALT: () => $.CONSUME(T.Unknown)
+    },
+    {
+      /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+      GATE: () => $.legacyMode,
+      ALT: () => $.CONSUME(T.LegacyMSFilter)
+    }
+  ]);
+}
+
+function processValueResult($: P, node: Node | IToken | undefined): Node | undefined {
+  if ($.RECORDING_PHASE || node === undefined) {
+    return undefined;
+  }
+  if (!(node instanceof Node)) {
+    return $.processValueToken(node);
+  }
+  return node;
+}
+
 function shouldParseSlashDivision($: P, T: TokenMap, ctx: RuleContext | undefined, left: Node, right: Node): boolean {
   const enabled = slashDivisionEnabled($, ctx);
   const leftLike = isDivisionLikeNode(left);
@@ -1106,107 +1213,57 @@ export function functionCallArgs(this: P, T: TokenMap) {
 export function value(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    if ($.isType(T.Percent)) {
-      // no-op: preserved from original
+    if ($.RECORDING_PHASE) {
+      return valueViaOr($, T, ctx);
     }
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    let _isMixinReference = undefined as boolean | undefined;
-    const isMixinReference = () => {
-      if (_isMixinReference === undefined) {
-        let tt1 = $.LA(1).tokenType;
-        let tt2 = $.LA(2).tokenType;
-        /**
-         * We'll allow a few "bare" mixin references without parens
-         * or square brackets, but not if they'll conflict with
-         * other syntax.
-         */
-        _isMixinReference =
-        tt1 === T.DotName
-        || tt1 === T.HashName
-        || tt1 === T.InterpolatedSelector
-        || (
-          (
-            tt1 === T.ColorIdentStart
-            || tt1 === T.InterpolatedSelector
-          ) && (
-            tt2 === T.Gt
-            || tt2 === T.DotName
-            || tt2 === T.HashName
-            || tt2 === T.InterpolatedSelector
-            || (
-              $.noSep(1)
-              && (
-                tt2 === T.LParen
-                || tt2 === T.LSquare
-                || tt2 === T.HashName
-                || tt2 === T.DotName
-              )
-            )
-          )
-        );
-      }
-      return _isMixinReference;
-    };
-    let node: Node = $.OR([
-      {
-        GATE: () => $.check(T.FunctionStart),
-        ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => $.isType(T.Star) && $.isTypeAt(2, T.LSquare),
-        ALT: () => $.SUBRULE($.selectorCapture, { ARGS: [ctx] })
-      },
-      {
-        GATE: isMixinReference,
-        ALT: () => $.SUBRULE($.mixinReference, { ARGS: [ctx] })
-      },
-      {
-        GATE: () => !isMixinReference(),
-        ALT: () => $.CONSUME(T.Color)
-      },
-      {
-        GATE: () => !isMixinReference(),
-        ALT: () => $.CONSUME2(T.Ident)
-      },
-      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
-      { ALT: () => $.CONSUME(T.DefaultGuardFunc) },
-      { ALT: () => $.CONSUME(T.Dimension) },
-      { ALT: () => $.CONSUME(T.Number) },
-      {
-        GATE: () => ctx.currentFunctionName === 'unit',
-        ALT: () => $.CONSUME(T.Percent)
-      },
-      { ALT: () => $.CONSUME(T.UnicodeRange) },
-      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
-      { ALT: () => $.CONSUME(T.JavaScript) },
+
+    let node: Node | IToken | undefined;
+    if ($.check(T.FunctionStart)) {
+      node = $.SUBRULE($.functionCall, { ARGS: [ctx] });
+    } else if ($.isType(T.Star) && $.isTypeAt(2, T.LSquare)) {
+      node = $.SUBRULE($.selectorCapture, { ARGS: [ctx] });
+    } else if (isValueMixinReference($, T)) {
+      node = $.SUBRULE($.mixinReference, { ARGS: [ctx] });
+    } else if ($.check(T.Color)) {
+      node = $.CONSUME(T.Color);
+    } else if ($.check(T.Ident)) {
+      node = $.CONSUME2(T.Ident);
+    } else if ($.check(T.PropertyReference) || $.check(T.NestedReference) || $.check(T.AtName)) {
+      node = $.SUBRULE($.varReference, { ARGS: [ctx] });
+    } else if ($.check(T.DefaultGuardFunc)) {
+      node = $.CONSUME(T.DefaultGuardFunc);
+    } else if ($.check(T.Dimension)) {
+      node = $.CONSUME(T.Dimension);
+    } else if ($.check(T.Number)) {
+      node = $.CONSUME(T.Number);
+    } else if (ctx.currentFunctionName === 'unit' && $.check(T.Percent)) {
+      node = $.CONSUME(T.Percent);
+    } else if ($.check(T.UnicodeRange)) {
+      node = $.CONSUME(T.UnicodeRange);
+    } else if ($.isType(T.SingleQuoteStart) || $.isType(T.DoubleQuoteStart)) {
+      node = $.SUBRULE($.string, { ARGS: [ctx] });
+    } else if ($.check(T.JavaScript)) {
+      node = $.CONSUME(T.JavaScript);
+    } else if ($.check(T.When)) {
       /** Explicitly not marked as an ident */
-      { ALT: () => $.CONSUME(T.When) },
-      { ALT: () => $.SUBRULE($.squareValue, { ARGS: [ctx] }) },
-      {
-        GATE: () => $.looseMode && !!ctx.inner,
-        ALT: () => $.CONSUME(T.Colon)
-      },
-      {
-        /** e.g. alpha(opacity=@var) */
-        GATE: () => $.looseMode && !!ctx.inFunctionArgs,
-        ALT: () => $.CONSUME(T.Eq)
-      },
-      {
-        GATE: () => $.looseMode,
-        ALT: () => $.CONSUME(T.Unknown)
-      },
-      {
-        /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
-        GATE: () => $.legacyMode,
-        ALT: () => $.CONSUME(T.LegacyMSFilter)
-      }
-    ]);
-    if (!$.RECORDING_PHASE) {
-      if (!(node instanceof Node)) {
-        node = $.processValueToken(node);
-      }
-      return node;
+      node = $.CONSUME(T.When);
+    } else if ($.isType(T.LSquare)) {
+      node = $.SUBRULE($.squareValue, { ARGS: [ctx] });
+    } else if ($.looseMode && !!ctx.inner && $.check(T.Colon)) {
+      node = $.CONSUME(T.Colon);
+    } else if ($.looseMode && !!ctx.inFunctionArgs && $.check(T.Eq)) {
+      /** e.g. alpha(opacity=@var) */
+      node = $.CONSUME(T.Eq);
+    } else if ($.looseMode && $.check(T.Unknown)) {
+      node = $.CONSUME(T.Unknown);
+    } else if ($.legacyMode && $.check(T.LegacyMSFilter)) {
+      /** e.g. progid:DXImageTransform.Microsoft.Blur(pixelradius=2) */
+      node = $.CONSUME(T.LegacyMSFilter);
+    } else {
+      return processValueResult($, valueViaOr($, T, ctx));
     }
+
+    return processValueResult($, node);
   };
 }
 
