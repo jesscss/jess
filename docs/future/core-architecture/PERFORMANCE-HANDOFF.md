@@ -174,6 +174,10 @@ Current target swath:
    conversion closure cut, `feature/scanner-first-parser-docs` for the
    scanner-first design notes, and `feature/chevrotain-cache-investigation`
    for the parser phase profiler.
+   Treat parser work as parked in this eval/render worktree after this
+   wrap-up. Do not keep parser sub-agents running from the performance queue;
+   the next local sub-agents should own Reference/callable/render/copy
+   frontiers unless the user explicitly switches this worktree back to parser.
 4. Keep only a constrained Chevrotain upstream lane, preferably outside this
    eval/render-focused worktree. Old serialized grammar / prerecorded-GAST
    history is not automatically promising: the failure mode is moving analysis
@@ -360,6 +364,21 @@ new benchmark shows cold construction is the target. A valid upstream
 Chevrotain experiment should test branch-light runtime dispatch /
 OR-MANY-OPTION committed closures or strict parser surfaces against Jess's
 Less parser execution.
+
+2026-06-19 parser examination wrap-up: parser investigation is handed off to a
+separate parser-focused agent and should no longer consume this eval/render
+performance worktree's active queue. Useful pushed branches are
+`feature/parser-production-machinery-cut`,
+`feature/parser-tokenizer-cutting`, `feature/scanner-first-parser-docs`, and
+`feature/chevrotain-cache-investigation`. The local
+`feature/parser-rule-ast-audit-20260619` branch has no commits beyond
+`origin/dev` and is not a handoff artifact. Carry forward the current parser
+rule: branch-light production/runtime dispatch experiments are allowed, but
+serialized grammar / prerecorded-GAST revival is not a Jess-side target unless
+fresh measurement proves cold parser construction, rather than warm rule
+execution / AST construction, is the actual bottleneck. Local next work returns
+to Reference/direct lookup, callable collection/search, render materialization,
+and copy/deep-clone removal.
 
 2026-06-19 rejected reference predicate-dispatch experiment: a sub-agent
 prototype replaced per-strategy direct-declaration predicate functions with
