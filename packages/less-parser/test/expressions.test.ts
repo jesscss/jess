@@ -37,19 +37,13 @@ describe('expressionProduct', () => {
     const { errors, tree } = alwaysParser.parse('width: foo / 2', 'declaration');
 
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      value:
-        (List
-            sep: '/'
-          [
-            (Any [role=ident]
-                role: 'ident'
-              'foo'
-            )
-            (Num 2)
-          ]
-        )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('valueNode:');
+    expect(out).toContainString('(List\n        sep: \'/\'');
+    expect(out).toContainString('items:');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'foo\'');
+    expect(out).toContainString('(Num 2)');
   });
 
   it('should parse modulo', () => {

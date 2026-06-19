@@ -1501,17 +1501,21 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
   `cssTokens.ts` plus CSS productions as compatibility guide rails; Less work
   should use `lessTokens.ts` plus Less overrides/additions the same way. Treat
   those files as a compatibility inventory and regression map, not as a sacred
-  implementation template. Some existing tokens may be more spec-complete than
-  useful for the scanner hot path, especially expansive Unicode ranges, obscure
-  escape forms, and recovery branches that rarely appear in real Sass/Less/CSS
-  authoring. Classify each provider behavior into hot-path structural
-  recognition, deferred island parsing, canonical fallback, or
-  unsupported/recovery handling before implementing it. High-cost grammar
-  fidelity should earn its place with evidence from Jess corpora, expected
-  authoring patterns, diagnostic quality, language-service usefulness, or a
-  clear fallback/materialization story. Any divergence from existing productions
-  must be documented as an intentional structural-stage cost/coverage tradeoff,
-  not accidental grammar drift.
+  implementation template. The mapping should answer "what behavior do we need
+  to preserve?" before it answers "which token regex do we copy?".
+- [ ] For each mapped token/provider behavior, choose an explicit scanner-first
+  fidelity tier before implementing it:
+  exact hot-path recognition, cheap common-case structural recognition,
+  deferred island parsing with canonical fallback, diagnostic-only recovery, or
+  intentionally unsupported edge handling. Some existing tokens are more
+  spec-complete than useful for the scanner hot path, especially expansive
+  Unicode ranges, obscure escape forms, and recovery branches that rarely
+  appear in real Sass/Less/CSS authoring. High-cost grammar fidelity should
+  earn its place with evidence from Jess corpora, expected authoring patterns,
+  diagnostic quality, language-service usefulness, or a clear
+  fallback/materialization story. Any divergence from existing productions must
+  be documented as an intentional structural-stage cost/coverage tradeoff, not
+  accidental grammar drift.
 - [x] Add CSS selector island provider in `@jesscss/css-parser`.
 - [x] Add CSS value/prelude island providers in `@jesscss/css-parser`.
 - [x] Add Less selector island provider in `@jesscss/less-parser`.
@@ -1614,7 +1618,9 @@ its claims.
 - [x] Verification: focused Less e2e tests pass.
 - [x] Verification: explicit finite CSS parser unit subset passes and remaining
   CSS parser gates are documented separately from scanner-first work.
-- [ ] Verification: existing Less parser / Less fixture gates pass or any
+- [x] Verification: focused Less parser serializer drift is classified
+  separately from scanner-first behavior.
+- [ ] Verification: existing Less parser / Less fixture gates pass or remaining
   pre-existing failures are documented separately from scanner-first work.
 
 Current broad-parser gate snapshot, 2026-06-19:
@@ -1632,11 +1638,27 @@ Current broad-parser gate snapshot, 2026-06-19:
   `test/ast-serialize.test.ts` run produced no test results within the agent's
   30-second command window and was stopped for separate investigation, so the
   documented green CSS gate here is the explicit file list above.
-- `pnpm --filter @jesscss/less-parser test` did not pass. The run reported
-  71 failed and 239 passed tests across selector, mixin, guard,
-  `serializeTypes(...)`, and expression expectations. Many failures look like
-  existing AST serializer or parser-shape drift, but this has not been proven
-  against `main`.
+- Focused Less parser classification removed stale serializer expectations for
+  `Declaration.valueNode`, list `items`, `CompoundSelector.components`,
+  `Sequence.items`, `Condition.left/right`, and mixin-call `Reference` names.
+  The repaired assertions passed with:
+  `pnpm --filter @jesscss/less-parser test -- --run
+  test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
+  test/guards.test.ts -t
+  "keeps keyword slash values|host pseudo arguments|unknown pseudo arguments
+  from generic sequence|serializes comma-root|serializes
+  semicolon-root|lookup with brackets|namespaced variable lookup|call with
+  parentheses|nested comparison shape"`.
+- The same focused four-file Less parser run without a name filter still does
+  not pass: `pnpm --filter @jesscss/less-parser test -- --run
+  test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
+  test/guards.test.ts` reported 84 passed and 6 failed tests. The remaining
+  failures are not being treated as scanner-first behavior yet: parsed
+  `default()` guards do not set/evaluate the expected default-guard state,
+  ambiguous `default()` guard pairs render instead of rejecting, complex mixin
+  reference paths no longer preserve the expected `rawKey` selector shape, and
+  unknown pseudo selector arguments inject a space after a same-line block
+  comment when serialized.
 - Focused scanner-first gates remain green: `@jesscss/parser` tests,
   CSS/Less island-provider tests, `@jesscss/plugin-less` structural activation
   test, `jess` scanner-first e2e tests, package builds, and package export
