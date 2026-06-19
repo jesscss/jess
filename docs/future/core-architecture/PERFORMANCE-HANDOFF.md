@@ -3402,6 +3402,43 @@ Rejected follow-up scratch-writer source tracking cut:
   blind scratch-writer default flip; if source tracking remains hot, isolate a
   narrower text-only writer path and prove it with wall-clock first.
 
+Rejected follow-up declaration registration and lazy extend cuts:
+
+- refreshed the current source after reverting the scratch-writer prototype and
+  rebuilt the benchmark path before measuring. The refreshed CPU-profiled
+  `benchmark.less --runs=12 --warmup=4` run was noisy (average `300.33ms`,
+  median `286.78ms`, variance `15.36%`) but showed the same dominant target:
+  declaration registration copying. The profile artifact is
+  `profiling/core-architecture/20260618-173627-current-refresh-post-revert-cpu/CPU.20260618.173627.2756.0.001.cpuprofile`;
+- declaration registration source-free assignment input reuse was rejected.
+  The prototype tried applying the existing render-side
+  `canReuseSourceFreeAssignmentInput(...)` guard to registration assignment
+  prep. Focused declaration tests caught both ownership and behavior failures:
+  the reused `Sequence` was reparented to the prepared declaration, and merged
+  declaration output changed from `src: one, two, three;` to
+  `src: one, two, one, three;`. This confirms render-only assignment reuse
+  does not transfer to registration materialization without a different
+  ownership model. The prototype was fully reverted;
+- lazy `collectSelectorSubtreeValues(...)` in `applyExtendsToSelector(...)` was
+  also rejected. The focused extend tests passed (`34` passed), and CPU
+  attribution moved strongly in the intended stack:
+  `collectSelectorSubtreeValues(...)` `23.57ms -> 0.00ms`,
+  `applyExtendsToSelector(...)` `60.68ms -> 31.41ms`, and
+  `processExtends(...)` `79.99ms -> 68.98ms` in
+  `profiling/core-architecture/20260618-173753-lazy-extend-subtree-values-post-cpu/CPU.20260618.173753.20729.0.001.cpuprofile`;
+- real speed evidence did not support keeping the lazy extend patch. A stable
+  first `benchmark.less --runs=24 --warmup=8` run reported average `231.84ms`,
+  median `226.77ms`, variance `6.66%`, but confirmations were noisy/worse:
+  another `24/8` run reported average `262.34ms`, median `237.08ms`, variance
+  `21.80%`, and a `32/10` run reported average `256.84ms`, median `241.94ms`,
+  variance `16.02%`. `pnpm run measure:less:hotpath -- --stable` also worsened
+  or became unstable across the listed fixtures. The patch was fully reverted;
+- conclusion: the remaining copy/registration hotspot is real, but safe wins
+  probably need a deeper registration-state ownership change rather than
+  reusing containers in the existing materialized declaration path. The extend
+  subtree set is CPU-visible, but it does not currently translate into stable
+  wall-clock improvement.
+
 Next architecture theories to test:
 
 1. Promote exact child-surface capability to the `ScopeFrame` once the frame

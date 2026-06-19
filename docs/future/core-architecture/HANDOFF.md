@@ -112,21 +112,22 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected scratch-writer source tracking cut.
-- Verdict: no production code kept. The fresh profile showed
-  `sourceSegmentFor(...)` under scratch header/value rendering, so the
-  prototype disabled source tracking for several text-only scratch
-  `OutputWriter`s. CPU attribution moved, but repeated real wall-clock and
-  stable hotpath sanity were noisy or worse.
+- Latest pass: rejected declaration-registration reuse and lazy extend
+  subtree-value cuts.
+- Verdict: no production code kept. Declaration registration copying remains
+  the largest CPU-profile-selected stack, but reusing source-free assignment
+  containers during registration reparented the source container and changed
+  merge output. Lazy extend subtree-value collection deleted clear CPU samples,
+  but repeated wall-clock/hotpath confirmation was noisy or worse.
 - New traversal: none kept.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
 - Helper/API surface: none added.
 - Metadata mutations: none added.
-- Evidence: source-map/output-writer/declaration/ruleset focused tests and
-  benchmark-path rebuild passed during the prototype. CPU profile moved
-  `sourceSegmentFor(...)` from `27.48ms` to `10.08ms`, but confirmation
-  `benchmark.less` runs were noisy/worse and stable hotpath medians regressed
-  or became noisy. The code was reverted; only `PERFORMANCE-HANDOFF.md` records
-  the rejected experiment.
+- Evidence: declaration assignment tests rejected the registration reuse
+  prototype with both ownership and output failures. Focused extend tests
+  passed for lazy subtree values and CPU profile moved
+  `collectSelectorSubtreeValues(...)` to `0.00ms`, but `benchmark.less`
+  confirmations and stable hotpath sanity did not support keeping it. The code
+  was reverted; only `PERFORMANCE-HANDOFF.md` records the rejected experiments.
