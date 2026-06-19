@@ -24,7 +24,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "bench": "tsx test/bench.ts",
     "bench:save": "tsx test/bench.ts --save",
@@ -38,6 +38,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "known-css-properties": "~0.37.0"
   },

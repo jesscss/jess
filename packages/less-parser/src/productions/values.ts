@@ -36,6 +36,7 @@ import { createInterpolatedReference, getInterpolatedOrString } from '../utils.j
 type P = any;
 type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
 type AltContext = (ctx?: RuleContext) => Alt;
+type ProductionRule = (...args: any[]) => any;
 const OPERATORS = new Set<string>(['+', '-', '*', '/', '%']);
 
 function toOperator(image: string): Operator {
@@ -775,7 +776,7 @@ export function booleanFunction(this: P, T: TokenMap) {
   };
 }
 
-export function varReference(this: P, T: TokenMap) {
+export function varReference(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let node: Node | undefined = $.OR([
@@ -1036,7 +1037,7 @@ export function functionCall(this: P, T: TokenMap) {
   };
 }
 
-export function functionCallArgs(this: P, T: TokenMap) {
+export function functionCallArgs(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -1103,7 +1104,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
   };
 }
 
-export function value(this: P, T: TokenMap) {
+export function value(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     if ($.isType(T.Percent)) {
@@ -1386,7 +1387,7 @@ export function mathValue(this: P, T: TokenMap) {
   };
 }
 
-export function mathProduct(this: P, T: TokenMap) {
+export function mathProduct(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1414,7 +1415,7 @@ export function mathProduct(this: P, T: TokenMap) {
   };
 }
 
-export function mathSum(this: P, T: TokenMap) {
+export function mathSum(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;

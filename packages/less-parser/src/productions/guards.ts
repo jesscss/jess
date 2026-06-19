@@ -30,6 +30,7 @@ import { getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
+type ProductionRule = (...args: any[]) => any;
 
 function isScriptUsePath(path: string): boolean {
   const filePart = path.replace(/[?#].*$/u, '');
@@ -195,7 +196,7 @@ export function guardDefault(this: P, T: TokenMap) {
  *  of evaluation order ambiguity.
  *  However, Less allows it.
  */
-export function guardAnd(this: P, T: TokenMap) {
+export function guardAnd(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let left: Node;
@@ -451,7 +452,7 @@ export function layerName(this: P, T: TokenMap) {
  * CSS: Ident | String
  * Less: valueReference | Ident | String
  */
-export function keyframesName(this: P, T: TokenMap) {
+export function keyframesName(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
@@ -474,7 +475,7 @@ export function keyframesName(this: P, T: TokenMap) {
  * One of the rare rules that returns a token, because
  * other rules will transform it differently.
  */
-export function mixinName(this: P, T: TokenMap) {
+export function mixinName(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /** e.g. .mixin, #mixin */
@@ -584,7 +585,7 @@ export function mixinReference(this: P, T: TokenMap) {
   };
 }
 
-export function mixinArgs(this: P, T: TokenMap) {
+export function mixinArgs(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let args: List | undefined;
@@ -724,7 +725,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
  * This rule is recursive to allow chevrotain-allstar (hopefully) to lookahead
  * and find semi-colon separators vs. commas.
  */
-export function mixinArgList(this: P, T: TokenMap) {
+export function mixinArgList(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();

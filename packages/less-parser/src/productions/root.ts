@@ -67,6 +67,7 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
+type ProductionRule = (...args: any[]) => any;
 
 // ── Save references to CSS production factories ────────────────────────
 const cssMain = cssProductions.main;
@@ -377,7 +378,7 @@ function groupExtendsByTargetAndFlag(
 // ── Exported production rules ─────────────────────────────────────────
 
 /** Charset moved within `main` (explained in that rule) */
-export function stylesheet(this: P, T: TokenMap) {
+export function stylesheet(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (options: Record<string, any> = {}) => {
     let context: TreeContext;
@@ -835,7 +836,7 @@ export function lessMediaQueryFromReference(this: P, T: TokenMap) {
   };
 }
 
-export function lessMediaQueryTail(this: P, T: TokenMap) {
+export function lessMediaQueryTail(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1061,7 +1062,7 @@ export function mediaFeature(this: P, T: TokenMap) {
   ]);
 }
 
-export function mfValue(this: P, T: TokenMap) {
+export function mfValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
@@ -1237,7 +1238,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
   };
 }
 
-export function qualifiedRule(this: P, T: TokenMap) {
+export function qualifiedRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}, altContext?: AltContext) => {
     let selectorAlt = altContext ?? ((ctx: RuleContext) => [

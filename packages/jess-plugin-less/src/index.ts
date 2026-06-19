@@ -16,10 +16,55 @@ import {
 } from '@jesscss/core';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
-import { Parser } from '@jesscss/less-parser';
+import {
+  Parser,
+  lessIslandParsePlan,
+  lessParserConfigKey,
+  lessProfile,
+  parseLessStructure,
+  registerLessIslandProviders
+} from '@jesscss/less-parser';
+import {
+  IslandParsePlan,
+  IslandParserRegistry,
+  type LanguageActivation,
+  type ParseStructureOptions,
+  type StructuralDocument
+} from '@jesscss/parser';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
+
+export type ScannerFirstProbeResult = {
+  filePath: string;
+  sourceBytes: number;
+  structuralScanMs: number;
+  materializationMs: number;
+  totalProbeMs: number;
+  structuralDiagnostics: number;
+  islands: number;
+  requestedIslands: number;
+  executedIslands: number;
+  islandDiagnostics: number;
+  actualParses: number;
+  promotedBytes: number;
+  cacheHits: number;
+  cacheMisses: number;
+  fallbackFullTreeMaterializations: number;
+  requestsByIslandKind: Record<string, number>;
+  requestsByOwnerKind: Record<string, number>;
+  availableByIslandKind: Record<string, number>;
+  availableByOwnerKind: Record<string, number>;
+  structuralNodesByKind: Record<string, number>;
+};
+
+export type ScannerFirstProbeOptions = {
+  materializeIslandKinds?: readonly string[] | 'all';
+};
+
+export type LessPluginOptions = LessOptions & {
+  scannerFirstProbe?: boolean | ScannerFirstProbeOptions;
+};
 
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
@@ -31,8 +76,10 @@ export class LessPlugin extends AbstractPlugin {
   leakyRules: boolean;
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
+  scannerFirstProbes: ScannerFirstProbeResult[] = [];
+  lastScannerFirstProbe?: ScannerFirstProbeResult;
 
-  constructor(public opts: LessOptions = {}) {
+  constructor(public opts: LessPluginOptions = {}) {
     super();
 
     // Handle deprecated math option -> mathMode conversion
@@ -75,6 +122,135 @@ export class LessPlugin extends AbstractPlugin {
       mathMode: this.mathMode,
       leakyRules: this.leakyRules
     });
+  }
+
+  /**
+   * Describes the structural parser capabilities owned by this plugin.
+   *
+   * The plugin, not `@jesscss/parser`, binds Less syntax to `.less` files and
+   * wires the Less parser instance into island providers. `safeParse` remains
+   * the compiler entrypoint; this capability is for staged structural consumers.
+   */
+  structuralActivation(): LanguageActivation {
+    return {
+      name: this.name,
+      profile: lessProfile,
+      supportedExtensions: this.supportedExtensions,
+      configureIslandProviders: registry => {
+        registerLessIslandProviders(registry, {
+          mathMode: this.mathMode,
+          leakyRules: this.leakyRules
+        }, this.parser);
+      }
+    };
+  }
+
+  /**
+   * Runs the shared structural parser with Less profile metadata and file-path
+   * preserving source text. This returns structural nodes and raw islands only;
+   * it does not build canonical Less/Jess compiler nodes.
+   */
+  structureParse(filePath: string, source: string, options?: ParseStructureOptions): StructuralDocument {
+    return parseLessStructure(filePath, source, options);
+  }
+
+  /**
+   * Creates a demand-driven island parse plan for Less source.
+   *
+   * Providers reuse this plugin's parser instance and parser options so JIT
+   * materialization observes the same option-sensitive shape as `safeParse`.
+   */
+  islandParsePlan(filePath: string, source: string, registry = new IslandParserRegistry()): IslandParsePlan {
+    return lessIslandParsePlan(filePath, source, {
+      mathMode: this.mathMode,
+      leakyRules: this.leakyRules
+    }, registry, this.parser);
+  }
+
+  /**
+   * Runs the scanner-first path as an e2e probe before canonical parsing.
+   *
+   * This hidden/test-only gate proves CSS/Less inputs can be structurally
+   * scanned and selectively materialized while the current parser still owns
+   * the runtime AST used by eval/render. It records negative evidence too:
+   * available islands and requested islands are counted separately so tests can
+   * assert that structural-only syntax stayed structural-only.
+   */
+  runScannerFirstProbe(
+    filePath: string,
+    source: string,
+    options: ScannerFirstProbeOptions = {}
+  ): ScannerFirstProbeResult {
+    const startedAt = nowMs();
+    const configKey = lessParserConfigKey({
+      mathMode: this.mathMode,
+      leakyRules: this.leakyRules
+    });
+    const structuralStartedAt = nowMs();
+    const plan = this.islandParsePlan(filePath, source);
+    const structuralEndedAt = nowMs();
+    const availableByIslandKind: Record<string, number> = {};
+    const availableByOwnerKind: Record<string, number> = {};
+    const requestsByIslandKind: Record<string, number> = {};
+    const requestsByOwnerKind: Record<string, number> = {};
+    const structuralNodesByKind: Record<string, number> = {};
+    let requestedIslands = 0;
+    let executedIslands = 0;
+    let islandDiagnostics = 0;
+    let materializationMs = 0;
+
+    collectStructuralNodeKinds(plan.document.root, structuralNodesByKind);
+
+    for (const island of plan.document.islands()) {
+      incrementCounter(availableByIslandKind, island.islandKind);
+      incrementCounter(availableByOwnerKind, island.owner.kind);
+
+      if (!shouldMaterializeIsland(island.islandKind, options)) {
+        continue;
+      }
+
+      const targetShape = lessTargetShapeForIsland(island.islandKind);
+      if (!targetShape) {
+        continue;
+      }
+
+      requestedIslands++;
+      incrementCounter(requestsByIslandKind, island.islandKind);
+      incrementCounter(requestsByOwnerKind, island.owner.kind);
+      const id = plan.requestIsland(island, targetShape, configKey);
+      const materializationStartedAt = nowMs();
+      const record = plan.execute(id);
+      materializationMs += nowMs() - materializationStartedAt;
+      executedIslands++;
+      islandDiagnostics += record.diagnostics.length;
+    }
+
+    const endedAt = nowMs();
+    const result: ScannerFirstProbeResult = {
+      filePath,
+      sourceBytes: source.length,
+      structuralScanMs: structuralEndedAt - structuralStartedAt,
+      materializationMs,
+      totalProbeMs: endedAt - startedAt,
+      structuralDiagnostics: plan.document.diagnostics.length,
+      islands: plan.document.islands().length,
+      requestedIslands,
+      executedIslands,
+      islandDiagnostics,
+      actualParses: plan.counters.actualParses,
+      promotedBytes: plan.counters.promotedBytes,
+      cacheHits: plan.counters.cacheHits,
+      cacheMisses: plan.counters.cacheMisses,
+      fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
+      requestsByIslandKind,
+      requestsByOwnerKind,
+      availableByIslandKind,
+      availableByOwnerKind,
+      structuralNodesByKind
+    };
+    this.lastScannerFirstProbe = result;
+    this.scannerFirstProbes.push(result);
+    return result;
   }
 
   private _registerFunctions(tree: Rules) {
@@ -159,7 +335,10 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   safeParse(filePath: string, source: string, parseOptions?: { compilerOptions?: Record<string, any> }): ISafeParseResult {
-    void parseOptions;
+    const scannerFirstProbe = getScannerFirstProbeOptions(
+      this.opts.scannerFirstProbe,
+      parseOptions?.compilerOptions?.scannerFirstProbe
+    );
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
@@ -182,6 +361,9 @@ export class LessPlugin extends AbstractPlugin {
     let tree: Rules | undefined;
 
     try {
+      if (scannerFirstProbe) {
+        this.runScannerFirstProbe(filePath, source, scannerFirstProbe);
+      }
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
       tree = parseResult.tree;
 
@@ -283,8 +465,75 @@ export class LessPlugin extends AbstractPlugin {
 
 export type { LessOptions } from 'styles-config';
 
-const lessPlugin = ((opts?: LessOptions) => {
+const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;
 
 export default lessPlugin;
+
+function lessTargetShapeForIsland(
+  islandKind: string
+): 'less-media-prelude' | 'less-mixin' | 'less-selector' | 'less-value' | undefined {
+  switch (islandKind) {
+    case 'selector':
+    case 'extend-candidate':
+      return 'less-selector';
+    case 'declaration-value':
+    case 'variable-reference':
+      return 'less-value';
+    case 'mixin-definition':
+    case 'mixin-call':
+      return 'less-mixin';
+    case 'at-rule-prelude':
+      return 'less-media-prelude';
+    default:
+      return undefined;
+  }
+}
+
+function incrementCounter(counter: Record<string, number>, key: string): void {
+  counter[key] = (counter[key] ?? 0) + 1;
+}
+
+function nowMs(): number {
+  return Number(process.hrtime.bigint()) / 1_000_000;
+}
+
+function collectStructuralNodeKinds(
+  node: { kind: string; children?: () => Iterable<{ kind: string }> } | { kind: string; children?: Array<any> },
+  counter: Record<string, number>
+): void {
+  incrementCounter(counter, node.kind);
+  const children = typeof node.children === 'function'
+    ? [...node.children()]
+    : Array.isArray(node.children)
+      ? node.children
+      : [];
+  for (const child of children) {
+    collectStructuralNodeKinds(child, counter);
+  }
+}
+
+function getScannerFirstProbeOptions(
+  pluginOption: boolean | ScannerFirstProbeOptions | undefined,
+  parseOption: unknown
+): ScannerFirstProbeOptions | undefined {
+  const option = parseOption ?? pluginOption;
+  if (option === true) {
+    return {};
+  }
+  if (option && typeof option === 'object') {
+    return option as ScannerFirstProbeOptions;
+  }
+  return undefined;
+}
+
+function shouldMaterializeIsland(
+  islandKind: string,
+  options: ScannerFirstProbeOptions
+): boolean {
+  if (options.materializeIslandKinds === 'all') {
+    return true;
+  }
+  return options.materializeIslandKinds?.includes(islandKind) ?? false;
+}

@@ -50,6 +50,7 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
+type ProductionRule = (...args: any[]) => any;
 const COMBINATORS = new Set<string>([' ', '>', '+', '~', '|', '||']);
 
 function toCombinator(image: string): Combinators {
@@ -503,7 +504,7 @@ export function selectorList(this: P, T: TokenMap) {
   };
 }
 
-export function compoundSelector(this: P, T: TokenMap) {
+export function compoundSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
@@ -546,7 +547,7 @@ export function compoundSelector(this: P, T: TokenMap) {
 /**
  * Extended with :extend
  */
-export function complexSelector(this: P, T: TokenMap) {
+export function complexSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -728,7 +729,7 @@ export function extend(this: P, T: TokenMap) {
   };
 }
 
-export function simpleSelector(this: P, T: TokenMap) {
+export function simpleSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let selectorAlt: Alt = [
@@ -1215,7 +1216,7 @@ export function selectorCapture(this: P, T: TokenMap) {
   };
 }
 
-export function valueSequence(this: P, _T: TokenMap) {
+export function valueSequence(this: P, _T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;

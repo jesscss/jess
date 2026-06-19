@@ -480,7 +480,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   };
 }
 
-export function compoundSelector(this: C, T: TokenMap) {
+export function compoundSelector(this: C, T: TokenMap): SelectorRule {
   const $ = this;
   /**
       A sequence of simple selectors that are not separated by

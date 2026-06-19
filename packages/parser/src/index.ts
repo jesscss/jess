@@ -30,3 +30,107 @@ export {
   type LocationInfoOrEmpty,
   type OptionalLocation
 } from './types.js';
+
+export {
+  LineMap,
+  SourceText,
+  delimitedSpan,
+  sourceSpan,
+  type DelimitedSpan,
+  type LineColumn,
+  type SourceSpan,
+  type SourceTextOptions,
+  type TriviaKind,
+  type TriviaRun
+} from './source/index.js';
+
+export {
+  ScannerCursor,
+  createParserDiagnostic,
+  recoverToNextBoundary,
+  renderParserDiagnostic,
+  scanBalancedDelimited,
+  scanBlockComment,
+  scanInterpolationShell,
+  scanLineComment,
+  scanNewline,
+  scanString,
+  scanTriviaInto,
+  type CommentScanResult,
+  type DelimitedScanResult,
+  type DiagnosticSink,
+  type InterpolationShellScanResult,
+  type ParserDiagnostic,
+  type ParserDiagnosticInput,
+  type ParserDiagnosticSeverity,
+  type RecoveryBoundary,
+  type RecoveryResult,
+  type RenderedParserDiagnostic,
+  type ScanTriviaOptions,
+  type StringScanResult
+} from './scanner/index.js';
+
+export {
+  createLanguageProfile,
+  normalizeAtRuleName,
+  pushIfMissing,
+  rangeText,
+  type AtRuleKind,
+  type DeclarationNameKind,
+  type IslandClassificationContext,
+  type IslandKind,
+  type LanguageName,
+  type LanguageProfile,
+  type ProfileConfig,
+  type RuleHeaderKind,
+  type StatementStarter,
+  type StatementStarterKind
+} from './profiles/index.js';
+
+export {
+  StructuralDocument,
+  parseStructure,
+  type ChangedRange,
+  type DocumentSymbol,
+  type ErrorNode,
+  type FoldingRange,
+  type ParseStructureInput,
+  type ParseStructureOptions,
+  type RawIslandNode,
+  type StructuralContainerNode,
+  type StructuralDocumentData,
+  type StructuralNode,
+  type StructuralNodeKind,
+  type StructuralStatementNode
+} from './structure/index.js';
+
+export {
+  IslandParsePlan,
+  IslandParserRegistry,
+  LanguageActivationRegistry,
+  SemanticIndexBuilder,
+  normalizeExtension,
+  providerKey,
+  providerKeyString,
+  requestCacheKey,
+  stableConfigKey,
+  type IslandExecutionContext,
+  type IslandExecutionRecord,
+  type IslandParseCounters,
+  type IslandParseRequest,
+  type IslandParseRequestId,
+  type IslandParseResult,
+  type IslandParserProvider,
+  type IslandProviderKey,
+  type IslandTargetShape,
+  type IndexedExtendCandidate,
+  type IndexedImport,
+  type IndexedMixin,
+  type IndexedReference,
+  type IndexedVariable,
+  type LanguageActivation,
+  type ParserConfigKey,
+  type SemanticIndexCounters,
+  type VisitorMaterializationRule,
+  type VisitorShape
+} from './services/index.js';
