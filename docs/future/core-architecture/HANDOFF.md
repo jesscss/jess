@@ -112,24 +112,34 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the no-extend extend guard; rejected selector-bit
-  candidate pruning for extend processing.
-- Verdict: production code kept only for no-extend input. `Rules._finishEval`
-  skips `processExtends(...)` when `context.extends.length === 0`, and
-  `processExtends(...)` has the same direct-call guard. Selector-bit root
-  aggregate/bucket candidate pruning was reverted because complex composed
-  selector cases can hang or miss serialized targets.
-- New traversal: none kept. The kept guard removes the previous unconditional
-  global ruleset snapshot/walk for no-extend input.
+- Latest pass: kept coarse extend root-bit pruning for roots that share no
+  selector bits with a visible extend target.
+- Verdict: production code keeps only the safe root-level negative. It does not
+  use selector-level buckets, required-key containment, or composed-selector
+  assumptions; extended selector outputs update the root aggregate for chaining.
+- New traversal: accepted one root prepass over `rulesetsByRoot` plus one
+  scoped instruction loop per root because the old path already performs the
+  per-root/per-ruleset/per-instruction classify/apply work. The new loops are
+  only justified by measured lower benchmark time and lower
+  `applyExtendsToSelector(...)` self-time; remove or reshape them if a future
+  profile shows the aggregate cost overtaking the skipped apply work.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: none kept.
-- Metadata mutations: none added.
-- Evidence: focused extend/bitset tests passed before the rejected candidate
-  prototype was reverted, but it failed serialized/combinator extend tests.
-  A direct complex composed-selector reproduction still hangs after reverting
-  the prototype, so that hang is tracked as separate existing extend debt. The
-  selector-bit candidate path is recorded as rejected in
-  `PERFORMANCE-HANDOFF.md`. The kept no-extend guard is behavior-preserving
-  and backed by code-path evidence; no speed claim is made for the guard alone.
+- Helper/API surface: private helpers only. No public API or compatibility shim
+  was added.
+- Metadata mutations: extend assignment now keeps `ruleset.value.selector`
+  aligned with `ruleset.selector`, matching direct value-shape readers.
+- Side maps/arrays/copies: accepted one transient `selectorKeySetByRoot` map,
+  one per-root `visibleExtends` array, and `BitSet` clone/or operations because
+  they are cleared at `processExtends(...)` exit and reduce measured real
+  benchmark time. This is not a blanket approval for selector-level bucket
+  registries; the rejected per-selector candidate pruning remains rejected.
+- Evidence: external canonical Less `benchmark.less` improved from the
+  guard-only refresh `avg 235.00ms` / `median 222.37ms` to `avg 224.17ms` /
+  `median 221.04ms`, then `avg 216.93ms` / `median 212.81ms`; after loop-shape
+  cleanup the rerun was `avg 221.06ms` / `median 218.47ms`. Profiled
+  `applyExtendsToSelector(...)` self-time fell from about `42.46ms` to
+  `26.81ms`; `processExtends(...)` self-time was flat. Focused extend tests
+  pass except the deep `.l -> ... -> .t` chaining test, which was confirmed
+  failing on branch baseline before this patch.

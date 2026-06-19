@@ -116,6 +116,26 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-18 extend root-bit pruning pass: a safe coarse root-level selector-bit
+guard now skips extend instructions for roots that share no selector bits with
+the target. This is intentionally weaker than the rejected selector-level
+candidate pruning: it does not require full `requiredKeySet` containment, does
+not assume composed combinator bits are present in the root aggregate, and adds
+extended selectors back into the root aggregate when selectors mutate. It also
+keeps `Ruleset.selector` and `Ruleset.value.selector` coherent after extend
+assignment because direct tests and older value-shape readers observe the
+value slot. Evidence on canonical external Less `benchmark.less`
+(`--runs=24 --warmup=8 --math=parens-division`) improved from the guard-only
+refresh `avg 235.00ms` / `median 222.37ms` to `avg 224.17ms` /
+`median 221.04ms`, then `avg 216.93ms` / `median 212.81ms`; after loop-shape
+cleanup the rerun was `avg 221.06ms` / `median 218.47ms`. The profiled run
+improved from `avg 236.43ms` / `median 229.45ms` to `avg 230.89ms` /
+`median 227.83ms`; CPU self-time showed `applyExtendsToSelector(...)`
+down from about `42.46ms` to `26.81ms`, while `processExtends(...)` self-time
+stayed essentially flat (`64.45ms` to `64.07ms`). Focused extend tests passed
+except `extend-rules.test.ts` deep `.l -> ... -> .t` chaining, which was
+confirmed failing on branch baseline before this patch.
+
 The previous binding/lookup target was `findWithinScopeSurface(...)` and the
 callers that still make declaration lookup branch through strategy objects,
 child visibility gates, and assignment occurrence fallback.

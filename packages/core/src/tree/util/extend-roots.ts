@@ -15,6 +15,7 @@ import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
+import { isDisjoint, type BitSet } from './bitset.js';
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -128,6 +129,7 @@ function getLocalSelector(ruleset: Ruleset): Selector | undefined {
 function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
   ruleset.adopt(selector);
   ruleset.selector = selector;
+  ruleset.value.selector = selector;
   ruleset.invalidateSelectorValueCache(selector);
 }
 
@@ -505,6 +507,16 @@ export class ExtendRootRegistry {
 }
 
 const rulesetsByRoot = new Map<Rules, Set<Ruleset>>();
+const selectorKeySetByRoot = new Map<Rules, BitSet<string>>();
+
+function addRootSelectorKeys(root: Rules, selector: Selector | undefined): void {
+  if (!selector) {
+    return;
+  }
+  const keySet = selector.keySet;
+  const existing = selectorKeySetByRoot.get(root);
+  selectorKeySetByRoot.set(root, existing ? existing.or(keySet) : keySet.clone());
+}
 
 export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   if (!root || !ruleset) {
@@ -546,6 +558,22 @@ function isInstructionVisibleForRoot(
     ? getCachedVisibleRoots(instruction.extendRoot)
     : context.extendRoots.getVisibleRoots(instruction.extendRoot);
   return visibleRoots.has(rootRules);
+}
+
+function addSelectorKeysToBitSet(keySet: BitSet<string> | undefined, selector: Selector): BitSet<string> {
+  return keySet ? keySet.or(selector.keySet) : selector.keySet.clone();
+}
+
+function rootMayContainExtendTarget(instruction: RootExtendInstruction, rootKeySet: BitSet<string> | undefined): boolean {
+  if (!rootKeySet || instruction.target.keySetLibrary !== rootKeySet._library) {
+    return true;
+  }
+  const targetKeys = instruction.target.keySet;
+  const library = targetKeys._library;
+  if (!library || targetKeys.equals(library.getBitset())) {
+    return true;
+  }
+  return !isDisjoint(targetKeys, rootKeySet);
 }
 
 export function processExtends(context: Context): void {
@@ -622,12 +650,35 @@ export function processExtends(context: Context): void {
     };
 
     for (const [rootRules, rulesetSet] of rulesetsByRoot) {
+      for (const ruleset of rulesetSet) {
+        const selector = selectorOrUndefined(ruleset.selector);
+        if (selector) {
+          selector.keySetLibrary ??= context.selectorBits;
+          addRootSelectorKeys(rootRules, selector);
+        }
+      }
+    }
+
+    for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       if (!rootRules) {
         continue;
       }
-      const visibleExtends = instructions.filter(instruction =>
-        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
-      );
+      let rootKeySet = selectorKeySetByRoot.get(rootRules);
+      const visibleExtends: RootExtendInstruction[] = [];
+      for (const instruction of instructions) {
+        if (isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)) {
+          rootKeySet = addSelectorKeysToBitSet(rootKeySet, instruction.extendWith);
+          visibleExtends.push(instruction);
+        }
+      }
+      let visibleCount = 0;
+      for (let i = 0; i < visibleExtends.length; i++) {
+        const instruction = visibleExtends[i]!;
+        if (rootMayContainExtendTarget(instruction, rootKeySet)) {
+          visibleExtends[visibleCount++] = instruction;
+        }
+      }
+      visibleExtends.length = visibleCount;
       if (!visibleExtends.length) {
         continue;
       }
@@ -816,6 +867,7 @@ export function processExtends(context: Context): void {
             throw new TypeError('Expected crossing selector output');
           }
           assignLocalSelector(ruleset, newSelector);
+          addRootSelectorKeys(rootRules, newSelector);
           ruleset._composedSelector = newSelector;
           ruleset.hoistToRoot = true;
           newSelector.hoistToRoot = true;
@@ -837,6 +889,7 @@ export function processExtends(context: Context): void {
           const fullAfter = fullNewSelector.valueOf();
           if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
             assignLocalSelector(ruleset, ownNewSelector);
+            addRootSelectorKeys(rootRules, ownNewSelector);
             setOwnSelectorOption(ruleset, ownNewSelector);
             if (ownNewSelector.hoistToRoot) {
               ruleset.hoistToRoot = true;
@@ -875,6 +928,7 @@ export function processExtends(context: Context): void {
               ) {
                 const derivedOwn = copySelectorForExtend(last.arg);
                 assignLocalSelector(ruleset, derivedOwn);
+                addRootSelectorKeys(rootRules, derivedOwn);
                 setOwnSelectorOption(ruleset, derivedOwn);
                 continue;
               }
@@ -891,6 +945,7 @@ export function processExtends(context: Context): void {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
                 assignLocalSelector(ruleset, ownAfterOwnOnly);
+                addRootSelectorKeys(rootRules, ownAfterOwnOnly);
                 setOwnSelectorOption(ruleset, ownAfterOwnOnly);
                 continue;
               }
@@ -908,6 +963,7 @@ export function processExtends(context: Context): void {
                 if (newSel.valueOf() !== selector.valueOf()) {
                   newSel.hoistToRoot = true;
                   assignLocalSelector(ruleset, newSel);
+                  addRootSelectorKeys(rootRules, newSel);
                   ruleset.hoistToRoot = true;
                 }
                 continue;
@@ -918,11 +974,13 @@ export function processExtends(context: Context): void {
                   [...partialOnly, ...nonPartialOwnOnly]
                 );
                 assignLocalSelector(ruleset, ownAfterBoth);
+                addRootSelectorKeys(rootRules, ownAfterBoth);
                 setOwnSelectorOption(ruleset, ownAfterBoth);
                 continue;
               }
               if (hasParentMatchedOwnOnlyNonPartial) {
                 assignLocalSelector(ruleset, ownAfterPartial);
+                addRootSelectorKeys(rootRules, ownAfterPartial);
                 setOwnSelectorOption(ruleset, ownAfterPartial);
                 continue;
               }
@@ -933,6 +991,7 @@ export function processExtends(context: Context): void {
               );
               if (shouldDeferToParentForNonPartial) {
                 assignLocalSelector(ruleset, ownAfterPartial);
+                addRootSelectorKeys(rootRules, ownAfterPartial);
                 setOwnSelectorOption(ruleset, ownAfterPartial);
                 continue;
               }
@@ -962,6 +1021,7 @@ export function processExtends(context: Context): void {
             }
           }
           assignLocalSelector(ruleset, newSelector);
+          addRootSelectorKeys(rootRules, newSelector);
           ruleset._composedSelector = newSelector;
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
@@ -1020,5 +1080,6 @@ export function processExtends(context: Context): void {
     }
   } finally {
     rulesetsByRoot.clear();
+    selectorKeySetByRoot.clear();
   }
 }
