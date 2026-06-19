@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, type Node } from './node.js';
+import { defineType, F_NON_STATIC, type LocationInfo, type Node } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
@@ -7,7 +7,6 @@ import { quoted } from './quoted.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -34,6 +33,14 @@ function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration 
   return isNode(found, N.VarDeclaration) ? found : undefined;
 }
 
+function rawAttributeInterpolationKey(value: Node | undefined): string | undefined {
+  if (!(value instanceof Any) || typeof value.value !== 'string') {
+    return undefined;
+  }
+  const match = value.value.trim().match(/^@\{([^}]+)\}$/);
+  return match?.[1];
+}
+
 /**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
@@ -47,23 +54,23 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   readonly attributeValue: Node | undefined;
   readonly mod: string | undefined;
 
+  private getAttributeLookupRules(context: Context): Rules | undefined {
+    return this.rulesParent ?? context.rulesContext;
+  }
+
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
     const value = this.attributeValue;
-    if (value instanceof Any && typeof value.value === 'string') {
-      const raw = value.value.trim();
-      const m = raw.match(/^@\{([^}]+)\}$/);
-      if (m) {
-        const key = m[1]!;
-        const rules = this.rulesParent;
-        if (rules) {
-          const decl = findAttributeVarDeclaration(rules, key);
-          if (decl) {
-            const out = decl.valueNode.resolve(context);
-            if (isThenable(out)) {
-              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
-            }
-            return quoted(String((out as Node).valueOf()));
+    const key = rawAttributeInterpolationKey(value);
+    if (key !== undefined) {
+      const rules = this.getAttributeLookupRules(context);
+      if (rules) {
+        const decl = findAttributeVarDeclaration(rules, key);
+        if (decl) {
+          const out = decl.valueNode.resolve(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
           }
+          return quoted(String((out as Node).valueOf()));
         }
       }
     }
@@ -133,21 +140,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     // Handle Less interpolation that the parser may have left as a raw token in selectors:
     //   [data=@{attr-data}]
     // In Less semantics this should resolve to the variable value and be serialized quoted.
-    if (value instanceof Any && typeof value.value === 'string') {
-      const raw = value.value.trim();
-      const m = raw.match(/^@\{([^}]+)\}$/);
-      if (m) {
-        const key = m[1]!;
-        const rules = this.rulesParent;
-        if (rules) {
-          const decl = findAttributeVarDeclaration(rules, key);
-          if (decl) {
-            const out = decl.valueNode.eval(context);
-            if (isThenable(out)) {
-              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
-            }
-            return quoted(String((out as Node).valueOf()));
+    const key = rawAttributeInterpolationKey(value);
+    if (key !== undefined) {
+      const rules = this.getAttributeLookupRules(context);
+      if (rules) {
+        const decl = findAttributeVarDeclaration(rules, key);
+        if (decl) {
+          const out = decl.valueNode.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
           }
+          return quoted(String((out as Node).valueOf()));
         }
       }
     }
@@ -160,21 +163,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     resolvedName: string | Node,
     resolvedValue: Node | undefined
   ): AttributeSelector {
-    const ownedName = typeof resolvedName === 'string'
-      ? resolvedName
-      : resolvedName === currentName
-        ? canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName)
-        : canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName);
-    const ownedValue = resolvedValue
-      ? resolvedValue === currentValue
-        ? canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
-        : canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
-      : undefined;
     const node = new AttributeSelector(
       {
-        name: ownedName,
+        name: resolvedName,
         op: this.op,
-        value: ownedValue,
+        value: resolvedValue,
         mod: this.mod
       },
       this._options,
@@ -277,6 +270,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     this.attributeValue = value.value;
     this.mod = value.mod;
     this._treeContext = treeContext;
+    if (rawAttributeInterpolationKey(this.attributeValue) !== undefined) {
+      this.addFlag(F_NON_STATIC);
+    }
   }
 }
 

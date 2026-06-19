@@ -3963,12 +3963,12 @@ function applyExtensionAtPath(
         && item
         && isNode(item, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
-        && isNode(current.parent, N.PseudoSelector)
-        && current.parent.name === ':is'
-        && isNode(current.parent.parent, N.CompoundSelector)
+        && isNode(current.sourceParent, N.PseudoSelector)
+        && current.sourceParent.name === ':is'
+        && isNode(current.sourceParent.sourceParent, N.CompoundSelector)
       ) {
-        const parentCompound = current.parent.parent;
-        const pseudoIndex = parentCompound.components.findIndex(n => n === current.parent);
+        const parentCompound = current.sourceParent.sourceParent;
+        const pseudoIndex = parentCompound.components.findIndex(n => n === current.sourceParent);
         const trailing = pseudoIndex >= 0 ? parentCompound.components.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.

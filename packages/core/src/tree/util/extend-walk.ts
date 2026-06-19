@@ -163,7 +163,13 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
     return areComplexEquivalent(node as ComplexSelector, find as ComplexSelector);
   }
   if (isNode(node, N.ComplexSelector) && !isNode(find, N.ComplexSelector)) {
-    return false;
+    if (node.components.length !== 1) {
+      return false;
+    }
+    const only = node.components[0];
+    return !!only && !isNode(only, N.Combinator) && isSelectorNode(only)
+      ? isWholeNodeMatch(only, spec)
+      : false;
   }
   if (isNode(node, N.CompoundSelector) && isNode(find, N.CompoundSelector)) {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);

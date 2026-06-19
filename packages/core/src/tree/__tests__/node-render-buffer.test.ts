@@ -361,7 +361,7 @@ describe('renderNodeToBuffer', () => {
       }
     ];
 
-    expect(cases).toHaveLength(19);
+    expect(cases).toHaveLength(20);
 
     for (const item of cases) {
       item.setup?.(context);

@@ -18,7 +18,7 @@ describe('callable outer rules helper', () => {
       candidateIndex: 7
     });
 
-    expect(first.parent).toBe(parent);
+    expect(first.sourceParent).toBe(parent);
     expect(first.index).toBe(7);
     expect(first.scopeFrame).toBe(scopeFrame);
 

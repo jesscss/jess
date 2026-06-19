@@ -38,16 +38,17 @@ describe('expressionProduct', () => {
 
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      value:
+      valueNode:
         (List
             sep: '/'
-          [
+          items:
+            [
             (Any [role=ident]
                 role: 'ident'
               'foo'
             )
             (Num 2)
-          ]
+            ]
         )
       `);
   });

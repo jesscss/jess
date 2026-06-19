@@ -36,6 +36,17 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
   return str.includes(',');
 }
 
+function scopeFrameHasCurrentBinding(context: Context, name: string): boolean {
+  let frame = context.rulesContext?._scopeFrame;
+  while (frame) {
+    if (frame.currentBindingsByName.has(name)) {
+      return true;
+    }
+    frame = frame.parent ?? frame.fallbackFrame;
+  }
+  return false;
+}
+
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
     const value = replacement.value;
@@ -491,6 +502,34 @@ export class Interpolated<
   }
 
   private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve'): MaybePromise<Node> {
+    if (
+      mode === 'eval'
+      && this.role === 'ident'
+      && node.type === 'Reference'
+      && context.root
+      && context.rulesContext
+      && context.rulesContext !== context.root
+      && !context.rulesContext.sourceParent?.sourceParent
+      && !context.rulesContext.sourceNode?.sourceParent?.sourceParent
+      && !scopeFrameHasCurrentBinding(context, String((node as unknown as { key?: unknown }).key))
+    ) {
+      const previousRulesContext = context.rulesContext;
+      context.rulesContext = context.root;
+      let evaluated: MaybePromise<Node>;
+      try {
+        evaluated = mode === 'eval' ? node.eval(context) : node.resolve(context);
+      } catch (error) {
+        context.rulesContext = previousRulesContext;
+        throw error;
+      }
+      if (isThenable(evaluated)) {
+        return Promise.resolve(evaluated).finally(() => {
+          context.rulesContext = previousRulesContext;
+        });
+      }
+      context.rulesContext = previousRulesContext;
+      return evaluated;
+    }
     return mode === 'eval' ? node.eval(context) : node.resolve(context);
   }
 

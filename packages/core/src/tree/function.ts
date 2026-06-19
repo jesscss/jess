@@ -101,7 +101,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
       mixinEntries: [
         callableRulesEntry(
           { rules: this.body, params: this.params },
-          this.parent,
+          this.sourceParent,
           this.index
         )
       ],

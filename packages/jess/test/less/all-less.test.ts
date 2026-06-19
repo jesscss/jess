@@ -51,6 +51,27 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
+const lessSimplePlugin = {
+  install(less: any) {
+    less.functions.functionRegistry.addMultiple({
+      'pi-anon'() {
+        return Math.PI;
+      },
+      pi() {
+        return less.dimension(Math.PI);
+      }
+    });
+  }
+};
+
+const lessCompatHarnessPlugin = lessCompatPlugin({
+  plugins: [lessHarnessFunctionsPlugin],
+  pluginRegistry: {
+    '../../plugin/plugin-simple': lessSimplePlugin,
+    'plugin-simple': lessSimplePlugin
+  }
+});
+
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
@@ -59,9 +80,7 @@ const baseCompiler = new Compiler({
   compile: {
     plugins: [
       lessPlugin(),
-      lessCompatPlugin({
-        plugins: [lessHarnessFunctionsPlugin]
-      })
+      lessCompatHarnessPlugin
     ]
   }
 });
@@ -134,7 +153,7 @@ describe('Can render Less files to CSS', () => {
                 ...restCompileConfig,
                 plugins: [
                   ...(baseCompiler.opts.compile?.plugins || []),
-                  ...testCasePlugins
+                  ...testCasePlugins.filter((plugin: any) => plugin?.name !== 'less-compat')
                 ]
               },
               output: {

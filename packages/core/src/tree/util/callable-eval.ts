@@ -30,7 +30,7 @@ export async function evaluateCallableCollection({
   args
 }: EvaluateCallableCollectionOptions): Promise<Rules> {
   const caller = context.caller;
-  const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? context.rulesContext;
+  const argEvalRulesContext = context.rulesContext ?? caller?.rulesParent ?? caller?.sourceRulesParent;
   const nodeArgs = await evaluateCallableArgs({
     context,
     rulesContext: argEvalRulesContext,

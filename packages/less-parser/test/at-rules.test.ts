@@ -79,14 +79,15 @@ describe('mediaInParens', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (AtRule
           nestable: true
-        name: 
+        name:
           (Any [role=atkeyword]
               role: 'atkeyword'
             '@media'
           )
-        prelude: 
+        prelude:
           (List
-            [
+            items:
+              [
               (Reference [role=ident]
                   type: 'index'
                   role: 'ident'
@@ -102,12 +103,12 @@ describe('mediaInParens', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (AtRule
           nestable: true
-        name: 
+        name:
           (Any [role=atkeyword]
               role: 'atkeyword'
             '@media'
           )
-        prelude: 
+        prelude:
           (Expression
             node:
               (Reference
@@ -116,11 +117,15 @@ describe('mediaInParens', () => {
                   (Call
                     name:
                       (Reference [role=name]
-                        type: 'mixin-ruleset'
+                        type: 'mixin'
                         role: 'name'
-                      key:
-                        ['#ns', '.breakpoint']
-                      rawKey: '#ns > .breakpoint'
+                        target:
+                          (Reference [role=name]
+                              type: 'mixin-ruleset'
+                              role: 'name'
+                            key: '#ns'
+                          )
+                        key: '.breakpoint'
                     )
       `);
   });

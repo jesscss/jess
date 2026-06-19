@@ -599,10 +599,9 @@ export class Color extends Node<ColorData, ColorOptions> {
 	    let newAlpha = this._alpha;
 
 	    if (isNode(b, N.Dimension)) {
-	      const { number: bVal, unit: bUnit } = b;
+      const { number: bVal, unit: bUnit } = b;
       const unitMode = context?.opts?.unitMode ?? 'preserve';
-      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
-      if (bUnit && isStrictLikeMode) {
+      if (bUnit && unitMode === 'strict') {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
       // Apply operation to each RGB component with the number

@@ -666,6 +666,21 @@ export function declaration(this: P, T: TokenMap) {
         }
         if (!$.RECORDING_PHASE) {
           const location = $.endRule();
+          const valueStart = nodes![0]?.location?.[0];
+          const leadingValueText = $.sourceSlice(
+            (rawAssign.endOffset ?? rawAssign.startOffset) + 1,
+            valueStart
+          );
+          if (leadingValueText) {
+            nodes!.unshift(new Any(leadingValueText, undefined, [
+              rawAssign.endOffset! + 1,
+              rawAssign.endLine!,
+              rawAssign.endColumn! + 1,
+              valueStart! - 1,
+              nodes![0]!.location[1]!,
+              nodes![0]!.location[2]! - 1
+            ], $.context));
+          }
           let nameNode: Node;
           const nameValue = name.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
@@ -1223,7 +1238,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       const hasDefault = Boolean(ctx.hasDefault);
       let node = new Ruleset(
         { selector, rules, guard },
-        guard ? { hasDefault } : undefined,
+        guard && hasDefault ? { hasDefault: true } : undefined,
         undefined,
         $.context
       );
@@ -1505,7 +1520,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
                     { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
-                    guard ? { hasDefault } : undefined,
+                    guard && hasDefault ? { hasDefault: true } : undefined,
                     $.endRule(),
                     $.context
                   );

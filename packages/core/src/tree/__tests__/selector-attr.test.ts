@@ -163,7 +163,7 @@ describe('Attribute Selector', () => {
     const resolved = await attrNode.resolve(context);
 
     expect(resolved.render(context)).toBe('[data=foo]');
-    expect(sourceValue?.parent).toBe(attrNode);
+    expect(sourceValue?.sourceParent).toBe(attrNode);
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 

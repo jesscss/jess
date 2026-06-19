@@ -220,7 +220,7 @@ describe('Complex selector', () => {
         const resolved = await selector.resolve(context);
 
         expect(resolved.toTrimmedString()).toBe('.resolved > .other');
-        expect(first.parent).toBe(selector);
+        expect(first.sourceParent).toBe(selector);
       } finally {
         Reflect.construct = originalConstruct;
       }
@@ -253,9 +253,9 @@ describe('Complex selector', () => {
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
-      expect(sourceCompound.parent).toBe(selector);
-      expect(sourceCombinator.parent).toBe(selector);
-      expect(sourceChild.parent).toBe(selector);
+      expect(sourceCompound.sourceParent).toBe(selector);
+      expect(sourceCombinator.sourceParent).toBe(selector);
+      expect(sourceChild.sourceParent).toBe(selector);
       expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
     });
 
@@ -265,13 +265,13 @@ describe('Complex selector', () => {
         el('.keep')
       ]);
       const sourceChild = selector.components[1]!;
-      const sourceParent = sourceChild.parent;
+      const sourceParent = sourceChild.sourceParent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);
 
       expect(resolved.toTrimmedString()).toBe('.keep');
       expect(resolved).not.toBe(sourceChild);
-      expect(sourceChild.parent).toBe(sourceParent);
+      expect(sourceChild.sourceParent).toBe(sourceParent);
       expect(sourceChild.location).toBe(sourceLocation);
       expect(selector.toTrimmedString()).toBe('&.keep');
     });

@@ -3,12 +3,15 @@ import type { Context } from '../../context.js';
 import { F_MAY_ASYNC, type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { Bool } from '../bool.js';
+import { Condition } from '../condition.js';
 import type { List } from '../list.js';
 import type { Rules } from '../rules.js';
 import { getMixinEntryRules, type MixinEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { withRulesContext } from './context.js';
+import { wireCallableScopeFrames } from './callable-scope-frame.js';
 
 export type CallableSpecialCaseResult = {
   handled: boolean;
@@ -50,7 +53,36 @@ export async function evaluateCallableSpecialCaseCandidate({
 
     const sourceRules = getRootSourceRules(candidate.rules);
     let rules = createOwnedRules(sourceRules);
-    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
+    const parentFrame = isNode(callSiteRules, N.Rules)
+      ? callSiteRules.getScopeFrame()
+      : undefined;
+    const definitionFrame = candidate.rules._scopeFrame
+      ?? (
+        isNode(candidate.sourceParent, N.Rules)
+          ? candidate.sourceParent.getScopeFrame()
+          : undefined
+      );
+    wireCallableScopeFrames({
+      rules,
+      lexicalScopeFrame: definitionFrame ?? parentFrame,
+      fallbackScopeFrame: context.leakyRules === true ? parentFrame : undefined,
+      parentFrame,
+      leakyRules: context.leakyRules === true
+    });
+    if (rulesetGuard) {
+      const guardPasses = await withRulesContext(context, rules, async () => {
+        context.isDefault = false;
+        if (rulesetGuard instanceof Condition) {
+          return await rulesetGuard.evaluateBoolean(context);
+        }
+        const resolvedGuard = await rulesetGuard.eval(context);
+        return resolvedGuard instanceof Bool && resolvedGuard.value === true;
+      });
+      if (!guardPasses) {
+        return { handled: true };
+      }
+    }
+
     let needsCallerPlacementDuringEval = false;
     for (let i = 0; i < sourceRules.rules.length; i++) {
       if (isNode(sourceRules.rules[i], N.Ruleset | N.AtRule)) {
@@ -61,11 +93,7 @@ export async function evaluateCallableSpecialCaseCandidate({
     if (!needsCallerPlacementDuringEval) {
       rules.addFlag(F_MAY_ASYNC);
     }
-    if (needsCallerPlacementDuringEval) {
-      callParent.adopt(rules);
-    }
     rules = await withRulesContext(context, rules, () => rules.eval(context));
-    callParent.adopt(rules);
     rules.index = candidate.index;
     attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {
       rulesetPlacement: true
@@ -84,12 +112,27 @@ export async function evaluateCallableSpecialCaseCandidate({
       throw new TypeError('Callable special-case setup requires a parent or call-site rules');
     }
 
-    candidateParent.adopt(unlocked);
+    const candidateRules = getMixinEntryRules(candidate);
+    const lexicalScopeFrame = candidateRules._scopeFrame
+      ?? (
+        isNode(candidate.parent, N.Rules)
+          ? candidate.parent.getScopeFrame()
+          : undefined
+      );
+    wireCallableScopeFrames({
+      rules: unlocked,
+      lexicalScopeFrame,
+      fallbackScopeFrame: context.leakyRules === true ? parentFrame : undefined,
+      parentFrame,
+      liveSlots: new Map(),
+      leakyRules: context.leakyRules === true
+    });
     attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
       fallbackFrame: context.leakyRules === true ? parentFrame : undefined
     });
     unlocked.index = candidate.index;
-    const evaledUnlocked = unlocked.eval(context);
+    const evalContextRules = isNode(candidateParent, N.Rules) ? candidateParent : unlocked;
+    const evaledUnlocked = withRulesContext(context, evalContextRules, () => unlocked.eval(context));
     unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
     return { handled: true, output: unlocked };
   }

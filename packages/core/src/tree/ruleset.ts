@@ -1012,21 +1012,26 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     for (const part of complex.components) {
       if (isNode(part, N.PseudoSelector)) {
         const { arg } = part;
-        if (!(part.generated === true && part.name === ':is' && isNode(arg, N.SelectorList))) {
+        if (!(part.generated === true && part.name === ':is' && arg && isNode(arg, N.Selector))) {
           slots.push([{ parts: [part], hasAdded: false }]);
           continue;
         }
         const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
-        for (const item of arg.selectors) {
-          if (item.hasFlag(F_EXTEND_TARGET)) {
-            continue;
+        const selectors = isNode(arg, N.SelectorList) ? arg.selectors : [arg];
+        for (const item of selectors) {
+          const next = Ruleset.expandGeneratedIsForReferenceCompose(item) ?? item;
+          const items = isNode(next, N.SelectorList) ? next.selectors : [next];
+          for (const expandedItem of items) {
+            if (expandedItem.hasFlag(F_EXTEND_TARGET)) {
+              continue;
+            }
+            alternatives.push({
+              parts: isNode(expandedItem, N.ComplexSelector)
+                ? [...expandedItem.components]
+                : [Ruleset._toComplexComponent(expandedItem)],
+              hasAdded: item.hasFlag(F_EXTENDED) || expandedItem.hasFlag(F_EXTENDED) || next !== item || selectors.length === 1
+            });
           }
-          alternatives.push({
-            parts: isNode(item, N.ComplexSelector)
-              ? [...item.components]
-              : [Ruleset._toComplexComponent(item)],
-            hasAdded: item.hasFlag(F_EXTENDED)
-          });
         }
         if (alternatives.length === 0) {
           slots.push([{ parts: [part], hasAdded: false }]);
@@ -1118,10 +1123,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       : rawParentComposed;
     const structuralParent = (
       this.hoistToRoot === true
-      && this.parent?.parent
-      && isNode(this.parent.parent, N.Ruleset)
+      && this.sourceParent?.sourceParent
+      && isNode(this.sourceParent.sourceParent, N.Ruleset)
     )
-      ? this.parent.parent.selector
+      ? this.sourceParent.sourceParent.selector
       : null;
     const composeParent = parentComposed ?? (
       structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
@@ -1247,16 +1252,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (idt) {
       w.add(idt);
     }
+    const selectorMark = w.position();
     if (!this.writeHeaderSelector(options, withoutComments === true)) {
       w.restore(position);
       return false;
+    }
+    if (idt) {
+      w.trimHorizontalStartSince(selectorMark);
     }
     w.add(' {\n');
     return true;
   }
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    const header = this.renderHeaderSelectorString(options, withoutComments === true) + ' {';
+    const header = this.renderHeaderSelectorString(options, withoutComments === true).replace(/^[ \t]+/u, '') + ' {';
     const idt = indent(options.depth);
     return (/^\s*\/\*/u.test(header)
       ? normalizeLeadingBlockTrivia(header, idt)
@@ -1448,7 +1457,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
     // Store frames snapshot for collapseNesting serialization
-    if (collapseNesting) {
+    if (collapseNesting && context.sourceBackedCallableEvalDepth === 0) {
       this.frames = [...context.frames];
     }
 
@@ -1468,7 +1477,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       this.rules = evaluatedRules;
       const rules = this.rules;
 
-      if (!rules.hasVisibleRules()) {
+      if (context.sourceBackedCallableEvalDepth === 0 && !rules.hasVisibleRules()) {
         this.removeFlag(F_VISIBLE);
       }
       return this;
@@ -1480,6 +1489,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       let { selector } = this;
 
+      const evalBodyWithSelector = (resolvedSelector: Ruleset['selector']): MaybePromise<Ruleset | Rules | Nil> => {
+        selector = resolvedSelector;
       if (selector instanceof Nil) {
         // If selector evaluates to Nil, return the rules body directly instead of the ruleset.
         this.adopt(selector);
@@ -1500,7 +1511,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       this.adopt(selector);
       this.selector = selector;
       this.invalidateSelectorValueCache(selector);
-      if (context.opts.collapseNesting) {
+      if (context.opts.collapseNesting && context.sourceBackedCallableEvalDepth === 0) {
         this.hoistToRoot = true;
       }
       pushedRulesetFrameCount = context.rulesetFrames.length;
@@ -1524,6 +1535,17 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
             }
           )
         : finishEvaluatedRules(evaluatedRules);
+      };
+      const selectorResult = (
+        context.sourceBackedCallableEvalDepth > 0
+        && !(selector instanceof Nil)
+        && !selector.hasFlag(F_STATIC)
+      )
+        ? selector.resolve(context)
+        : selector;
+      return isThenable(selectorResult)
+        ? selectorResult.then(resolved => evalBodyWithSelector(resolved as Ruleset['selector']))
+        : evalBodyWithSelector(selectorResult as Ruleset['selector']);
     };
     let { guard } = this;
     // Guard was already set to Nil (failed in a previous eval)

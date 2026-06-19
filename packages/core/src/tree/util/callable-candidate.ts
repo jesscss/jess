@@ -21,7 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasFailedGuardAncestor(node: Node): boolean {
-  let current = node.parent;
+  let current = node.sourceParent;
   while (current) {
     if (isNode(current, N.Ruleset)) {
       const guardNode = current.guard;
@@ -29,7 +29,7 @@ function hasFailedGuardAncestor(node: Node): boolean {
         return true;
       }
     }
-    current = current.parent;
+    current = current.sourceParent;
   }
   return false;
 }

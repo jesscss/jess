@@ -295,7 +295,7 @@ describe('Selector list', () => {
       const resolved = await selector.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('.resolved,\n.other');
-      expect(first.parent).toBe(selector);
+      expect(first.sourceParent).toBe(selector);
     } finally {
       Reflect.construct = originalConstruct;
     }
@@ -327,8 +327,8 @@ describe('Selector list', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo],\n.bar');
-    expect(sourceFirst.parent).toBe(selector);
-    expect(sourceSecond.parent).toBe(selector);
+    expect(sourceFirst.sourceParent).toBe(selector);
+    expect(sourceSecond.sourceParent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
   });
 
@@ -342,7 +342,7 @@ describe('Selector list', () => {
 
     expect(resolved.toTrimmedString()).toBe(':is(.source .child)');
     expect(resolvedArg).not.toBe(sourceChild);
-    expect(sourceChild.parent).toBe(inner);
-    expect(inner.parent).toBe(selector);
+    expect(sourceChild.sourceParent).toBe(inner);
+    expect(inner.sourceParent).toBe(selector);
   });
 });

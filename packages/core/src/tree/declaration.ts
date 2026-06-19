@@ -36,6 +36,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function markTriviaInRangeEmitted(
+  owner: Node,
+  node: Node,
+  options: ReturnType<typeof getPrintOptions>
+): void {
+  const trivia = options.trivia
+    ?? node.sourceRoot?._treeContext?.opts?.trivia
+    ?? owner.sourceRoot?._treeContext?.opts?.trivia;
+  const start = node.location[0];
+  const end = node.location[3];
+  if (!trivia || start === undefined || end === undefined) {
+    return;
+  }
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  for (const direction of ['before', 'after'] as const) {
+    for (const [offset, tokens] of trivia.entries(direction)) {
+      if (offset >= start && offset <= end + 1) {
+        emittedTrivia.add(tokens);
+      }
+    }
+  }
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -57,6 +80,8 @@ export type DeclarationOptions = {
   assign?: AssignmentType;
   /** Tracks that this declaration was created via assignment normalization (e.g. +:, +_:). */
   normalizedFromAssign?: AssignmentType;
+  /** Original assignment increment carried for post-eval merge coalescing. */
+  normalizedAssignmentInput?: Node;
   semi?: boolean;
   /**
    * This doesn't prevent shadowing; it prevents declarations like:
@@ -224,6 +249,7 @@ type DeclarationRegistrationState = {
   value: Node;
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
+  normalizedAssignmentInput?: Node;
   renderOnly?: boolean;
   renderAssignment?: {
     items: Node[];
@@ -234,6 +260,7 @@ type DeclarationRegistrationState = {
 
 type DeclarationRegistrationOptions = {
   reuseCanonical?: boolean;
+  preserveSourceState?: boolean;
 };
 
 type DeclarationRenderValue = Node | Nil | Node[] | CustomInterpolatedRenderValue;
@@ -668,6 +695,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
       const customValueText = nodeValueText(value);
+      if (customValueText !== undefined) {
+        markTriviaInRangeEmitted(this, value, options);
+      }
       const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
       if (
         renderState?.customInterpolatedValue?.source !== value
@@ -815,6 +845,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.isBareParameterVar()) {
+      return isRenderBuffer(bufferOrOptions)
+        ? Node.prototype.render.call(this, context, bufferOrOptions, options)
+        : Node.prototype.render.call(this, context, bufferOrOptions);
+    }
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
       return isThenable(state)
@@ -905,10 +940,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    if (this.isBareParameterVar()) {
+      return this;
+    }
     const state = this.evalPreparedState(context);
     return isThenable(state)
       ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
       : (state as DeclarationEvalState).output;
+  }
+
+  private isBareParameterVar(): boolean {
+    return isNode(this, N.VarDeclaration)
+      && this.options?.paramVar === true
+      && this.valueNode instanceof Nil;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
@@ -1147,7 +1191,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    const node = this.prepareRegistration(context);
+    const node = this.prepareRegistration(context, {
+      reuseCanonical: true,
+      preserveSourceState: true
+    });
     return isThenable(node)
       ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
       : (node as this).evalValueState(context);
@@ -1276,7 +1323,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 && source !== (outputNode?.sourceNode ?? outputNode)
                 && source !== (this.sourceNode ?? this)
                 && !sameConcreteLocation(n.location, outputNode?.location)
-                && !sameConcreteLocation(n.location, this.location);
+              && !sameConcreteLocation(n.location, this.location);
             },
             requiredDeclarationAssignments: [
               AssignmentType.MergeList,
@@ -1285,6 +1332,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+_:'
             ]
           }, undefined, this.sourceRoot?._treeContext);
+          this.adopt(ref);
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
             excludedDeclarations[1] = node;
@@ -1301,11 +1349,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               sep: isMergeListAssign ? ',' : ' '
             };
             state.normalizedFromAssign = normalizedAssign;
+            state.normalizedAssignmentInput = inputValue;
           } else {
             value = isMergeListAssign
               ? new List([ref, inputValue])
               : spaced([ref, inputValue]);
             setValue(value);
+            state.normalizedAssignmentInput = inputValue;
           }
           break;
         }
@@ -1330,6 +1380,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && !sameConcreteLocation(n.location, this.location);
               }
             }, undefined, this.sourceRoot?._treeContext);
+            this.adopt(ref);
             state.bindOutput = (node: Declaration) => {
               outputNode = node;
               excludedDeclarations[1] = node;
@@ -1340,8 +1391,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 sep: ','
               };
               state.normalizedFromAssign = normalizedAssign;
+              state.normalizedAssignmentInput = inputValue;
             } else {
               setValue(new List([ref, inputValue]));
+              state.normalizedAssignmentInput = inputValue;
             }
           } else {
             setValue(
@@ -1380,6 +1433,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       || state.bindOutput !== undefined
     );
     if (options.reuseCanonical === true && !changed) {
+      if (options.preserveSourceState === true) {
+        return this;
+      }
       this.registrationPrepared = true;
       return this;
     }
@@ -1392,6 +1448,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     });
     if (state.normalizedFromAssign) {
       node.options.normalizedFromAssign = state.normalizedFromAssign;
+    }
+    if (state.normalizedAssignmentInput) {
+      node.options.normalizedAssignmentInput = state.normalizedAssignmentInput;
     }
     state.bindOutput?.(node);
     node.registrationPrepared = true;
@@ -1518,7 +1577,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    const state = this.evalValueState(context);
+    const state = this.name instanceof Interpolated && !this.name.hasFlag(F_STATIC)
+      ? this.evalPreparedValueState(context)
+      : this.evalValueState(context);
     return isThenable(state)
       ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
       : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);

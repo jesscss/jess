@@ -482,7 +482,7 @@ function addRootSelectorKeys(root: Rules, selector: Selector | undefined): void 
   }
   const keySet = selector.keySet;
   const existing = selectorKeySetByRoot.get(root);
-  selectorKeySetByRoot.set(root, existing ? existing.or(keySet) : keySet.clone());
+  selectorKeySetByRoot.set(root, existing ? existing.or(keySet) : keySet);
 }
 
 function registerRootRulesetSelector(root: Rules, ruleset: Ruleset, selectorBits?: Selector['keySetLibrary']): void {
@@ -700,7 +700,7 @@ export function processExtends(context: Context): void {
           } else if (hasOpaqueVisibleTarget === false) {
             visibleTargetKeySet = visibleTargetKeySet
               ? visibleTargetKeySet.or(instruction.targetKeySet)
-              : instruction.targetKeySet.clone();
+              : instruction.targetKeySet;
           }
           visibleExtends.push(instruction);
         }
@@ -718,7 +718,7 @@ export function processExtends(context: Context): void {
         const instruction = visibleExtends[i]!;
         visibleExtendWithKeySet = visibleExtendWithKeySet
           ? visibleExtendWithKeySet.or(instruction.extendWithKeySet)
-          : instruction.extendWithKeySet.clone();
+          : instruction.extendWithKeySet;
       }
       if (visibleExtendWithKeySet) {
         rootKeySet = rootKeySet ? rootKeySet.or(visibleExtendWithKeySet) : visibleExtendWithKeySet;

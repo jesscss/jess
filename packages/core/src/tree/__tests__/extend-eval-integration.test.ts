@@ -292,8 +292,8 @@ describe('extend integration (eval -> toString)', () => {
           background: red;
         }
       `);
-      expect(parentA.parent?.valueOf()).toBe('.parent-a');
-      expect(parentB.parent?.valueOf()).toBe('.parent-b');
+      expect(parentA.sourceParent?.valueOf()).toBe('.parent-a');
+      expect(parentB.sourceParent?.valueOf()).toBe('.parent-b');
     } finally {
       parentA.clone = originalAClone;
       parentB.clone = originalBClone;
@@ -359,8 +359,8 @@ describe('extend integration (eval -> toString)', () => {
           background: red;
         }
       `);
-      expect(parentA.parent?.valueOf()).toBe('.parent-a');
-      expect(parentB.parent?.valueOf()).toBe('.parent-b');
+      expect(parentA.sourceParent?.valueOf()).toBe('.parent-a');
+      expect(parentB.sourceParent?.valueOf()).toBe('.parent-b');
     } finally {
       Ampersand.prototype.eval = originalAmpersandEval;
       parentA.clone = originalAClone;

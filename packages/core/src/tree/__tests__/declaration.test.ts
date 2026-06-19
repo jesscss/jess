@@ -278,8 +278,8 @@ describe('Declaration', () => {
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
       expect(sourcePartCopies).toBe(0);
-      expect(sourceName.parent).toBe(node);
-      expect(sourceValue.parent).toBe(node);
+      expect(sourceName.sourceParent).toBe(node);
+      expect(sourceValue.sourceParent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       sourceName.copy = originalNameCopy;
@@ -328,7 +328,7 @@ describe('Declaration', () => {
       try {
         expect(await Promise.resolve(sourceDeclaration.render(context))).toBe(expected);
         expect(scalarCopies).toBe(0);
-        expect(value.parent).toBe(sourceDeclaration);
+        expect(value.sourceParent).toBe(sourceDeclaration);
         expect(sourceDeclaration.registrationPrepared).toBe(false);
       } finally {
         Any.prototype.copy = originalCopy;
@@ -395,7 +395,7 @@ describe('Declaration', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red');
-    expect(sourceValue.parent).toBe(node);
+    expect(sourceValue.sourceParent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -430,8 +430,8 @@ describe('Declaration', () => {
     expect(output.toTrimmedString()).toBe('color: red');
     expect(output).not.toBe(node);
     expect(deriveCalls).toBe(0);
-    expect(sourceName.parent).toBe(node);
-    expect(sourceValue.parent).toBe(node);
+    expect(sourceName.sourceParent).toBe(node);
+    expect(sourceValue.sourceParent).toBe(node);
   });
 
   it('normalizes assignment registration without preparing value subtrees', async () => {
@@ -511,8 +511,8 @@ describe('Declaration', () => {
 
       expect(resolved.toTrimmedString()).toBe('border-color: red');
       expect(clonedNameLeaves).toBe(0);
-      expect(sourceName.parent).toBe(node);
-      expect(sourceNameLeaf.parent).toBe(sourceName);
+      expect(sourceName.sourceParent).toBe(node);
+      expect(sourceNameLeaf.sourceParent).toBe(sourceName);
     } finally {
       Node.prototype.clone = originalClone;
     }
@@ -845,7 +845,7 @@ describe('Declaration', () => {
 
       expect(evald.toTrimmedString()).toBe('color: red !important');
       expect(clonedImportantFlags).toBe(0);
-      expect(important.parent).toBe(node);
+      expect(important.sourceParent).toBe(node);
     } finally {
       Any.prototype.clone = originalClone;
     }
@@ -1072,7 +1072,7 @@ describe('Declaration', () => {
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.valueNode.sourceParent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1138,7 +1138,7 @@ describe('Declaration', () => {
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.valueNode.sourceParent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
@@ -1259,28 +1259,26 @@ describe('Declaration', () => {
   });
 
   it('resolves merged declaration lookups from a nested child ruleset in source order', async () => {
-    const node = rules([
-      rules([
-        decl({
-          name: any('background-color'),
-          value: any('red')
-        }, { assign: '+:' }),
-        decl({
-          name: any('background-color'),
-          value: any('foo')
-        }, { assign: '+:' }),
-        rules([
-          decl({
-            name: any('background'),
-            value: ref({ key: 'background-color' }, { type: 'declaration' })
-          })
-        ])
-      ])
+    const child = rules([
+      decl({
+        name: any('background'),
+        value: ref({ key: 'background-color' }, { type: 'declaration' })
+      })
     ]);
-
-    const parent = node.value[0]!;
-    const child = parent.value[2]!;
-    child.parent = parent;
+    const parent = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' }),
+      child
+    ]);
+    const node = rules([
+      parent
+    ]);
 
     expect(await renderNodeToString(node, context)).toBeString(`
       background-color: red, foo;
@@ -1495,7 +1493,7 @@ describe('Declaration', () => {
         value: sourceValue
       }, { assign: AssignmentType.Add })
     ]);
-    const sourceParent = sourceValue.parent;
+    const sourceParent = sourceValue.sourceParent;
     const originalCopy = List.prototype.copy;
     let sourceListCopies = 0;
     List.prototype.copy = function copyForCounting(
@@ -1514,7 +1512,7 @@ describe('Declaration', () => {
         src: red, blue, green;
       `);
       expect(sourceListCopies).toBe(0);
-      expect(sourceValue.parent).toBe(sourceParent);
+      expect(sourceValue.sourceParent).toBe(sourceParent);
     } finally {
       List.prototype.copy = originalCopy;
     }
@@ -1532,7 +1530,7 @@ describe('Declaration', () => {
         value: sourceValue
       }, { assign: AssignmentType.MergeSequence })
     ]);
-    const sourceParent = sourceValue.parent;
+    const sourceParent = sourceValue.sourceParent;
     const originalCopy = Sequence.prototype.copy;
     let sourceSequenceCopies = 0;
     Sequence.prototype.copy = function copyForCounting(
@@ -1550,7 +1548,7 @@ describe('Declaration', () => {
         src: red blue green;
       `);
       expect(sourceSequenceCopies).toBe(0);
-      expect(sourceValue.parent).toBe(sourceParent);
+      expect(sourceValue.sourceParent).toBe(sourceParent);
     } finally {
       Sequence.prototype.copy = originalCopy;
     }
@@ -1693,6 +1691,55 @@ describe('Declaration', () => {
                     name: any('padding'),
                     value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
                   }, { assign: AssignmentType.MergeSequence })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context)).toBeString(`
+      aside {
+        @starting-style {
+          padding: 10px 20px 30px 40px;
+        }
+      }
+    `);
+  });
+
+  it('coalesces raw Less sequence assignments emitted through tuple-pattern loop output', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('aside'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              forNode({
+                pattern: {
+                  kind: 'tuple',
+                  values: [
+                    new VarDeclaration({ name: any('value', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('key', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('index', { role: 'property' }), value: any('_') })
+                  ]
+                },
+                iterable: {
+                  kind: 'node',
+                  value: new List([
+                    num(1),
+                    num(2),
+                    num(3),
+                    num(4)
+                  ])
+                },
+                rules: rules([
+                  decl({
+                    name: any('padding'),
+                    value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
+                  }, { assign: '+_:' as AssignmentType })
                 ])
               })
             ])

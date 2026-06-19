@@ -1,5 +1,6 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
+import type { Rules } from '../rules.js';
 import { N } from '../node-type.js';
 import { cast } from './cast.js';
 import { withRulesContext } from './context.js';
@@ -27,6 +28,18 @@ export async function evaluateCallableArgs({
           evaluatedArgs.push(arg);
           continue;
         }
+        if (isNode(arg, N.Rules)) {
+          const definitionFrame = isRulesNode(rulesContext)
+            ? rulesContext.getScopeFrame(undefined, false)
+            : undefined;
+          arg.scopeFrame = arg.getScopeFrame(definitionFrame, false);
+          evaluatedArgs.push(arg);
+          continue;
+        }
+        if (isNode(arg, N.Collection)) {
+          evaluatedArgs.push(arg);
+          continue;
+        }
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
           const restValue = evald.value;
@@ -50,4 +63,8 @@ export async function evaluateCallableArgs({
     }
     return evaluatedArgs;
   });
+}
+
+function isRulesNode(node: Context['rulesContext']): node is Rules {
+  return isNode(node, N.Rules);
 }

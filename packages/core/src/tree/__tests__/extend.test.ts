@@ -173,8 +173,8 @@ describe('Extend render', () => {
       await root.eval(context);
 
       expect(sourceLeafClones).toBe(0);
-      expect(parentItems.map(item => item.parent)).toEqual(parentItems.map(() => parentSelector));
-      expect(childParts.map(part => part.parent)).toEqual(childParts.map(() => childSelector));
+      expect(parentItems.map(item => item.sourceParent)).toEqual(parentItems.map(() => parentSelector));
+      expect(childParts.map(part => part.sourceParent)).toEqual(childParts.map(() => childSelector));
 
       const registeredSelector = context.extends[0]?.[1];
       expect(registeredSelector).toBeDefined();

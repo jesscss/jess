@@ -41,9 +41,7 @@ const allowedOrdinaryClonePatterns = [
   }
 ];
 const expectedRemaining = new Set();
-const expectedLoopEvalSurfaceCopies = new Set([
-  'packages/core/src/tree/control.ts'
-]);
+const expectedLoopEvalSurfaceCopies = new Set();
 
 function getScanRoots() {
   if (!fs.existsSync(packagesDir)) {

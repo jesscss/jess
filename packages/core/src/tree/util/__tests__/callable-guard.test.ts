@@ -68,7 +68,7 @@ describe('callable guard helpers', () => {
     });
 
     expect(result.usesPreboundCallerGuardOuterRules).toBe(true);
-    expect(result.outerRules?.parent).toBe(callerRules);
+    expect(result.outerRules?.sourceParent).toBe(callerRules);
     expect(result.outerRules?.scopeFrame).toBe(parentFrame);
     expect(result.outerRules?.index).toBe(7);
   });
@@ -100,7 +100,7 @@ describe('callable guard helpers', () => {
       createOuterRules: createCallableOuterRules
     });
 
-    expect(created?.parent).toBe(parent);
+    expect(created?.sourceParent).toBe(parent);
     expect(created?.index).toBe(3);
     expect(skipped).toBeUndefined();
   });

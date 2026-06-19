@@ -453,7 +453,7 @@ describe('Paren', () => {
 
     expect(resolved.render(context)).toBe('(one, foo)');
     expect(parenNode.toTrimmedString()).toBe('(one, $value)');
-    expect(sourceValue?.parent).toBe(parenNode);
+    expect(sourceValue?.sourceParent).toBe(parenNode);
   });
 
   it('normalizes escaped semicolon lists to commas on eval', async () => {

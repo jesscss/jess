@@ -53,13 +53,13 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    const out = this.valueOf();
+    const out = this.value;
     options?.writer?.add(out, this);
     return out;
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
-    options.writer.add(this.valueOf(), this);
+    options.writer.add(this.value, this);
   }
 
   /** @todo - move to visitors */

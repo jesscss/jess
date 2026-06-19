@@ -120,6 +120,7 @@ export type DirectDeclarationOccurrence = {
   readonly ownerLookupVersion: number | undefined;
   readonly index: number | undefined;
   readonly slot: number | undefined;
+  readonly traversalIndex: number | undefined;
 };
 
 type DeclarationMatchState = {
@@ -145,7 +146,7 @@ function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
 }
 
 function isRulesetBodyScope(rules: Rules): boolean {
-  return isNode(rules.parent, N.Ruleset) || isNode(rules.sourceNode, N.Ruleset);
+  return isNode(rules.sourceParent, N.Ruleset) || isNode(rules.sourceNode, N.Ruleset);
 }
 
 function getDeclarationVisibility(
@@ -203,6 +204,23 @@ function getDirectDeclarationBucket(
   const buckets = scope.directDeclarationsByName ??= new Map<string, Declaration[] | null>();
   const cached = buckets.get(key);
   if (cached) {
+    for (let i = 0; i < cached.length; i++) {
+      const node = cached[i]!;
+      if (!scope.rules.includes(node)) {
+        buckets.delete(key);
+        scope.directDeclarationLookupCache = undefined;
+        break;
+      }
+    }
+    const current = buckets.get(key);
+    if (current) {
+      return current;
+    }
+    if (buckets.has(key)) {
+      return undefined;
+    }
+  }
+  if (cached && buckets.get(key) === cached) {
     return cached;
   }
   if (buckets.has(key)) {
@@ -242,15 +260,40 @@ function chooseTraversalMatch(
   if (!current) {
     return next;
   }
+  if (current.node === next.node && current.ownerRules !== next.ownerRules) {
+    const currentIsSourceOwner = current.ownerRules === current.node.sourceParent;
+    const nextIsSourceOwner = next.ownerRules === next.node.sourceParent;
+    if (currentIsSourceOwner && !nextIsSourceOwner && next.ownerRules) {
+      return next;
+    }
+    if (!currentIsSourceOwner && nextIsSourceOwner) {
+      return current;
+    }
+    if (
+      next.ownerRules?.options.sourceBackedCallableSurface === true
+      && current.ownerRules?.options.sourceBackedCallableSurface !== true
+    ) {
+      return next;
+    }
+  }
   if (
-    current.node.parent === next.node.parent
+    current.ownerRules === next.ownerRules
     && typeof current.index === 'number'
     && typeof next.index === 'number'
   ) {
     return current.index < next.index ? next : current;
   }
+  const hasTraversalIndex = current.traversalIndex !== undefined || next.traversalIndex !== undefined;
+  const currentTraversalIndex = hasTraversalIndex ? current.traversalIndex ?? current.index : undefined;
+  const nextTraversalIndex = hasTraversalIndex ? next.traversalIndex ?? next.index : undefined;
   if (
-    current.node.parent === next.node.parent
+    typeof currentTraversalIndex === 'number'
+    && typeof nextTraversalIndex === 'number'
+  ) {
+    return currentTraversalIndex < nextTraversalIndex ? next : current;
+  }
+  if (
+    current.ownerRules === next.ownerRules
     && typeof current.slot === 'number'
     && typeof next.slot === 'number'
   ) {
@@ -261,9 +304,11 @@ function chooseTraversalMatch(
 
 function createDeclarationOccurrence(
   node: Declaration,
-  slot?: number
+  ownerRules?: Rules,
+  slot?: number,
+  traversalIndex?: number
 ): DirectDeclarationOccurrence {
-  const ownerRules = isNode(node.parent, N.Rules) ? node.parent : undefined;
+  ownerRules ??= isNode(node.sourceParent, N.Rules) ? node.sourceParent : undefined;
   const key = String(node.name.valueOf());
   return {
     kind: 'direct-declaration-occurrence',
@@ -271,7 +316,8 @@ function createDeclarationOccurrence(
     ownerRules,
     ownerLookupVersion: ownerRules?.getDeclarationLookupVersion(key),
     index: node.index,
-    slot
+    slot,
+    traversalIndex
   };
 }
 
@@ -279,7 +325,7 @@ export function isDirectDeclarationOccurrenceCurrent(
   occurrence: DirectDeclarationOccurrence
 ): boolean {
   return (
-    occurrence.node.parent === occurrence.ownerRules
+    occurrence.ownerRules?.rules.includes(occurrence.node)
     && occurrence.ownerRules?.getDeclarationLookupVersion(String(occurrence.node.name.valueOf())) === occurrence.ownerLookupVersion
     && occurrence.node.index === occurrence.index
   );
@@ -337,10 +383,10 @@ function getDeclarationParentSearchStep(
   let cursor: Node | undefined = rules;
   do {
     let containingNode: Node | undefined = cursor;
-    while (containingNode?.parent && !isNode(containingNode.parent, N.Rules)) {
-      containingNode = containingNode.parent;
+    while (containingNode?.sourceParent && !isNode(containingNode.sourceParent, N.Rules)) {
+      containingNode = containingNode.sourceParent;
     }
-    cursor = cursor.parent;
+    cursor = cursor.sourceParent;
     if (isNode(cursor, N.Rules) && isNonClassicImportBoundary(cursor)) {
       return { rules: undefined, start };
     }
@@ -360,7 +406,7 @@ function getContainingNodeStart(node: Node | undefined): number | undefined {
     if (cursor.index !== undefined) {
       return cursor.index;
     }
-    const parent = cursor.parent;
+    const parent = cursor.sourceParent;
     if (isNode(parent, N.Rules)) {
       const index = parent.rules.indexOf(cursor);
       return index === -1 ? undefined : index;
@@ -471,7 +517,8 @@ function findLocalDeclaration(
     'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
   >,
   start: number | undefined,
-  skipVarDeclarations = false
+  skipVarDeclarations = false,
+  traversalIndex?: number
 ): DirectDeclarationOccurrence | undefined {
   const bucket = getDirectDeclarationBucket(scope, key);
   if (!bucket?.length) {
@@ -483,7 +530,7 @@ function findLocalDeclaration(
       continue;
     }
     if (passesDeclarationFilter(node, key, strategy, options, start)) {
-      return createDeclarationOccurrence(node, i);
+      return createDeclarationOccurrence(node, scope, i, traversalIndex);
     }
   }
   return undefined;
@@ -515,7 +562,7 @@ function findScopeBindingDeclaration(
       continue;
     }
     if (!filter || filter(sourceNode)) {
-      return createDeclarationOccurrence(sourceNode);
+      return createDeclarationOccurrence(sourceNode, scope);
     }
   }
   return undefined;
@@ -530,6 +577,7 @@ function findWithinScopeSurface(
   childStart: number | undefined,
   local: boolean,
   readonly: boolean,
+  traversalIndex?: number,
   firstVisitedRules?: Rules,
   secondVisitedRules?: Rules,
   visited?: Set<Rules>
@@ -573,7 +621,7 @@ function findWithinScopeSurface(
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
-      const liveOccurrence = createDeclarationOccurrence(liveSource);
+      const liveOccurrence = createDeclarationOccurrence(liveSource, scope);
       countDirectLookup?.('declaration.liveBindingHit');
       state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
@@ -604,7 +652,8 @@ function findWithinScopeSurface(
       strategy,
       options,
       start,
-      Boolean(localMatch && strategy.skipVarsAfterBindingHit)
+      Boolean(localMatch && strategy.skipVarsAfterBindingHit),
+      traversalIndex
     );
     localMatch = chooseTraversalMatch(localMatch, treeMatch);
   }
@@ -638,6 +687,7 @@ function findWithinScopeSurface(
       undefined,
       local,
       state.readonly,
+      undefined,
       firstVisitedRules,
       secondVisitedRules,
       visited
@@ -715,6 +765,7 @@ function findWithinScopeSurface(
     }
 
     countDirectLookup?.('declaration.childEntryEntered');
+    const childTraversalIndex = traversalIndex ?? getContainingNodeStart(entry.node);
     const childState = findWithinScopeSurface(
       entry.node,
       key,
@@ -724,6 +775,7 @@ function findWithinScopeSurface(
       undefined,
       local || Boolean(entry.node.options.local),
       state.readonly || Boolean(entry.readonly),
+      childTraversalIndex,
       firstVisitedRules,
       secondVisitedRules,
       visited
@@ -786,7 +838,8 @@ function findDeclarationLookupWithStrategy(
       currentStart,
       currentChildStart,
       Boolean(lookupOptions.local),
-      readonly
+      readonly,
+      undefined
     );
     readonly ||= state.readonly;
     publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);

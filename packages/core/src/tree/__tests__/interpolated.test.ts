@@ -272,7 +272,7 @@ describe('Interpolated', () => {
     const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-one, world');
-    expect(interpolatedNode.replacements[0]?.parent).toBe(interpolatedNode);
+    expect(interpolatedNode.replacements[0]?.sourceParent).toBe(interpolatedNode);
     expect(interpolatedNode.toTrimmedString()).toBe('hello-one, $name');
   });
 
@@ -307,7 +307,7 @@ describe('Interpolated', () => {
 
       expect(resolved.toTrimmedString()).toBe('hello-one, world');
       expect(clonedLists).toBe(0);
-      expect(replacement.parent).toBe(interpolatedNode);
+      expect(replacement.sourceParent).toBe(interpolatedNode);
     } finally {
       List.prototype.clone = originalClone;
     }

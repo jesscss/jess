@@ -86,6 +86,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   /** Single file-context trivia set with before/after lookup indexes. */
   triviaMap: TriviaMap = createTriviaMap();
   originalInput: IToken[] = [];
+  sourceText = '';
 
   locationStack: LocationInfo[] = [];
 
@@ -182,6 +183,13 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   get trivia(): IParseResult['trivia'] {
     return this.triviaMap;
+  }
+
+  sourceSlice(startOffset: number | undefined, endOffset: number | undefined): string {
+    if (startOffset === undefined || endOffset === undefined || endOffset <= startOffset) {
+      return '';
+    }
+    return this.sourceText.slice(startOffset, endOffset);
   }
 
   // ── Domain helpers ─────────────────────────────────────────────────

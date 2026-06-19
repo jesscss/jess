@@ -118,8 +118,8 @@ describe('ExtendLocation API Tests', () => {
 
       const extended = applyExtensionAtLocation(selector, result.locations[0]!, extendWith);
       expect(extended.valueOf()).toBe(':where(.a,.b)');
-      expect(sourceArg.parent).toBe(selector);
-      expect(extendWith.parent).toBeUndefined();
+      expect(sourceArg.sourceParent).toBe(selector);
+      expect(extendWith.sourceParent).toBeUndefined();
     });
 
     it('should apply extension in selector list within pseudo-selector', () => {
@@ -142,8 +142,8 @@ describe('ExtendLocation API Tests', () => {
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
       expect(selector.arg).toBe(sourceList);
-      expect(sourceItems.map(item => item.parent)).toEqual(sourceItems.map(() => sourceList));
-      expect(extendWith.parent).toBeUndefined();
+      expect(sourceItems.map(item => item.sourceParent)).toEqual(sourceItems.map(() => sourceList));
+      expect(extendWith.sourceParent).toBeUndefined();
     });
 
     it('should apply extension in compound selector', () => {

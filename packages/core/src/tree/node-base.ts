@@ -100,8 +100,16 @@ function mustBeNode(value: unknown): Node {
   throw new TypeError('Expected node result.');
 }
 
-function setParent(node: Node, parent: Node | undefined): void {
-  node.parent = parent;
+function setSourceParent(node: Node, sourceParent: Node | undefined): void {
+  // Source ancestry is canonical ownership. Runtime placement must not call
+  // through this helper to move an already-owned node into a wrapper.
+  if (node.sourceParent === sourceParent) {
+    return;
+  }
+  if (node.sourceParent !== undefined) {
+    return;
+  }
+  node.sourceParent = sourceParent;
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
@@ -115,7 +123,7 @@ function sourceRootOf(node: Node): Rules | undefined {
   if (node._sourceRoot) {
     return node._sourceRoot;
   }
-  let current = node.parent;
+  let current = node.sourceParent;
   while (current) {
     if (isRulesNode(current)) {
       node._sourceRoot = current;
@@ -125,7 +133,7 @@ function sourceRootOf(node: Node): Rules | undefined {
       node._sourceRoot = current._sourceRoot;
       return current._sourceRoot;
     }
-    current = current.parent;
+    current = current.sourceParent;
   }
   return undefined;
 }
@@ -302,7 +310,7 @@ export abstract class Node<
    */
   declare nodeType: number;
 
-  /** Will be copied during inherit */
+  /** Replacement-visible flags. `inherit()` may transfer a narrow subset only. */
   state = F_DEFAULT;
 
   /** Runtime tracking: has this node completed registration identity prep? */
@@ -348,11 +356,10 @@ export abstract class Node<
   }
 
   /**
-   * Track the original source when cloned / copied,
-   * rather than keeping the entire tree
-   * Note: This property is defined in constructor as non-enumerable
+   * Track the original source when cloned / copied, rather than keeping the
+   * entire tree.
    */
-  declare sourceNode: Node;
+  sourceNode: Node = this;
 
   /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
@@ -380,11 +387,15 @@ export abstract class Node<
   frozen = false;
 
   /**
-   * The parent node of this node. Usually, this
-   * shouldn't be set directly. Instead, a parent should use
-   * parent.adopt(thisNode);
+   * The canonical source parent of this node. Runtime placement, callable
+   * output ownership, render indentation, and scope/frame relationships must
+   * not be represented by mutating this pointer.
+   *
+   * Usually, this should only be assigned once during canonical construction or
+   * adoption. Cold materialization boundaries may stamp ancestry onto the new
+   * nodes they create, but must not rewrite an established source parent.
    */
-  declare parent: Node | undefined;
+  sourceParent: Node | undefined = undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -454,9 +465,9 @@ export abstract class Node<
   }
 
   adopt(node: Node) {
-    /** The only place we should do this */
+    /** Canonical source-tree ownership setter. Do not use for runtime placement. */
     if (!node.frozen) {
-      setParent(node, this);
+      setSourceParent(node, this);
     }
     this.addFlag(F_HAS_NODE_CHILD);
     const sourceRoot = sourceRootOf(this);
@@ -506,21 +517,6 @@ export abstract class Node<
     options?: O,
     location?: NodeLocation
   ) {
-    // Make some props non-enumerable to avoid JSON serialization issues
-    Object.defineProperties(this, {
-      sourceNode: {
-        value: this,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      parent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      }
-    });
     this.value = this._processNodes(value);
     this._location = location;
     this._options = options;
@@ -553,9 +549,9 @@ export abstract class Node<
   }
 
   get rulesParent(): Rules | undefined {
-    let possibleRules: Node | undefined = this.parent;
+    let possibleRules: Node | undefined = this.sourceParent;
     while (possibleRules && possibleRules.type !== 'Rules') {
-      possibleRules = possibleRules.parent;
+      possibleRules = possibleRules.sourceParent;
     }
     return isRulesNode(possibleRules) ? possibleRules : undefined;
   }
@@ -1128,17 +1124,15 @@ export abstract class Node<
   }
 
   /**
-   * This is used when a Node will replace another node.
+   * Copy replacement metadata only.
+   *
+   * This must not establish ownership, placement, or source ancestry. New hot
+   * path calls should be treated as debt: prefer construction-time metadata,
+   * explicit placement state, or a narrower metadata transfer.
    */
   inherit(node: Node) {
-    /**
-     * Frozen nodes inherit the parent only if they don't have a parent yet.
-     */
-    if (!this.frozen) {
-      setParent(this, node.parent);
-    } else {
-      setParent(this, this.parent ?? node.parent);
-    }
+    // Source ancestry is canonical structure, not replacement metadata.
+    // Callers that create a real child must use explicit adoption.
     this._location = node.location;
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {

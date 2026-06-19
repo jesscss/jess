@@ -19,7 +19,10 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
-import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
+import {
+  isHiddenMixinOutputChild,
+  keepsDuplicateMixinOutputDeclaration
+} from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
@@ -147,12 +150,12 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
-  let current: Node | undefined = node.parent;
+  let current: Node | undefined = node.sourceParent;
   while (current) {
     if (current === frame) {
       return true;
     }
-    current = current.parent;
+    current = current.sourceParent;
   }
   return false;
 }
@@ -220,6 +223,9 @@ export function flattenVisibleRulesForRender(
     forceLeadingLeaves: boolean = false
   ) => {
     for (const child of current.rules) {
+      if (isHiddenMixinOutputChild(current, child)) {
+        continue;
+      }
       const isEvaluatedDefinitionNode = current.evaluated && isNode(child, N.Mixin | N.VarDeclaration);
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
@@ -518,7 +524,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (predicate(current)) {
           return true;
         }
-        queue.push(current.sourceNode, current.parent);
+        queue.push(current.sourceNode, current.sourceParent);
       }
       return false;
     };
@@ -751,9 +757,22 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           leafFrames = [...inFrames, hoistedParent.frame];
         }
         if (isNode(nn, N.Rules)) {
-          const hasRenderableChild = nn.rules.some(child =>
-            child.visible || child.fullRender || hasPrintableTrivia(child, options)
-          );
+          const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+          const childReferenceMode = inReferenceMode || ownReferenceMode;
+          const enteringChildReferenceMode = !inReferenceMode && ownReferenceMode;
+          const childReferenceRenderEnabled = childReferenceMode
+            ? (enteringChildReferenceMode ? false : renderEnabled)
+            : true;
+          const hasRenderableChild = nn.rules.some(child => {
+            if (hasPrintableTrivia(child, options)) {
+              return true;
+            }
+            if (childReferenceMode && !childReferenceRenderEnabled) {
+              return isNode(child, N.Ruleset)
+                && (child.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(child.selector));
+            }
+            return child.visible || child.fullRender;
+          });
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
             continue;
           }

@@ -61,11 +61,15 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
-export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+export function createVarDeclarationBindingEntry(
+  decl: VarDeclaration,
+  rulesContext?: object
+): BindingEntry {
   return {
     cell: {
       value: decl.valueNode,
       sourceNode: decl,
+      rulesContext,
       readonly: decl.options?.readonly
     },
     sourceNode: decl
@@ -436,7 +440,6 @@ export function lookupScopeFrameVariable(
   let fallbackFrame = frame?.fallbackFrame;
   while (true) {
     while (f) {
-      let currentCellRejectedByGuard = false;
       if (start === undefined) {
         const currentCell = f.currentBindingsByName.get(name);
         if (
@@ -454,8 +457,6 @@ export function lookupScopeFrameVariable(
               readonly: currentCell.readonly
             };
           }
-          currentCellRejectedByGuard = sourceNode !== undefined
-            && options?.blockedSource?.(sourceNode) === true;
         } else if (
           currentCell
           && options?.includeDeclarations !== false
@@ -474,7 +475,6 @@ export function lookupScopeFrameVariable(
               readonly: currentCell.readonly
             };
           }
-          currentCellRejectedByGuard = true;
         }
       }
 
@@ -522,7 +522,6 @@ export function lookupScopeFrameVariable(
       }
 
       const bucket = options?.includeDeclarations === false
-        || currentCellRejectedByGuard
         ? undefined
         : f.declarationBucketsByName.get(name);
       if (bucket?.length) {
@@ -532,6 +531,9 @@ export function lookupScopeFrameVariable(
             start !== undefined
             && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
           ) {
+            continue;
+          }
+          if (options?.blockedSource?.(entry.sourceNode)) {
             continue;
           }
           if (!options?.filter || options.filter(entry.sourceNode)) {

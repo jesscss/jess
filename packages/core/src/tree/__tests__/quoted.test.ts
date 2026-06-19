@@ -50,7 +50,7 @@ describe('quoted', () => {
     const rule = quoted(value);
 
     expect(rule.value).toBe(value);
-    expect(value.parent).toBe(rule);
+    expect(value.sourceParent).toBe(rule);
     expect(rule.constructor.childKeys).toEqual(['value']);
   });
 
@@ -204,7 +204,7 @@ describe('quoted', () => {
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.render(context)).toBe('"say-one, hello"');
-    expect(sourceValue.parent).toBe(quotedNode);
+    expect(sourceValue.sourceParent).toBe(quotedNode);
     expect(quotedNode.toTrimmedString()).toBe('"say-one, $message"');
   });
 });

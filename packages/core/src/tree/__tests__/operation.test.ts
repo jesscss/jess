@@ -272,8 +272,8 @@ describe('Operation', () => {
 
     expect(resolved.render(context)).toBe('one, foo, two');
     expect(operationNode.toTrimmedString()).toBe('one, $item + two');
-    expect(leftOperand.parent).toBe(operationNode);
-    expect(rightOperand.parent).toBe(operationNode);
+    expect(leftOperand.sourceParent).toBe(operationNode);
+    expect(rightOperand.sourceParent).toBe(operationNode);
   });
 
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
@@ -307,8 +307,8 @@ describe('Operation', () => {
     expect(resolveContext.printState.writer).toBeUndefined();
     expect(resolved.type).toBe('Operation');
     expect(resolved.toTrimmedString()).toBe('10px / 2 * 2');
-    expect(leftOperand.parent).toBe(resolvedOperation);
-    expect(rightOperand.parent).toBe(resolvedOperation);
+    expect(leftOperand.sourceParent).toBe(resolvedOperation);
+    expect(rightOperand.sourceParent).toBe(resolvedOperation);
   });
 
   it('owns unchanged source operands when materializing preserved operations', async () => {
@@ -335,9 +335,9 @@ describe('Operation', () => {
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
     expect(resolved.value[0]).not.toBe(leftOperand);
     expect(resolved.value[0]?.toTrimmedString()).toBe('2em');
-    expect(leftOperand.parent).toBe(operationNode);
-    expect(operationNode.parent).toBeUndefined();
-    expect(evald.parent).toBeUndefined();
+    expect(leftOperand.sourceParent).toBe(operationNode);
+    expect(operationNode.sourceParent).toBeUndefined();
+    expect(evald.sourceParent).toBeUndefined();
   });
 
   it('owns unchanged source operands when materializing calc fallback operations', async () => {
@@ -379,8 +379,8 @@ describe('Operation', () => {
     expect(calcArg.evaluated).toBe(true);
     expect(calcArg.value[0].evaluated).toBe(false);
     expect(calcArg.value[2].evaluated).toBe(false);
-    expect(leftOperand.parent).toBe(operationNode);
-    expect(rightOperand.parent).toBe(operationNode);
+    expect(leftOperand.sourceParent).toBe(operationNode);
+    expect(rightOperand.sourceParent).toBe(operationNode);
     expect(operationNode.evaluated).toBe(false);
   });
 

@@ -15,8 +15,6 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
-import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
-import { Comment } from './comment.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -99,6 +97,25 @@ function variableNameKey(node: Node): string {
     : String(name.valueOf?.() ?? '');
 }
 
+function wireImportPlacementChildScopeFrames(rules: Rules, parentFrame: Rules['scopeFrame']): void {
+  for (let i = 0; i < rules.rules.length; i++) {
+    const child = rules.rules[i]!;
+    const childRules = isNode(child, N.Rules)
+      ? child
+      : isNode(child, N.Ruleset)
+        ? child.rules
+        : undefined;
+    if (!childRules) {
+      continue;
+    }
+    const childFrame = childRules._scopeFrame ?? childRules.getScopeFrame(parentFrame, false);
+    if (!childFrame.parent) {
+      childFrame.parent = parentFrame;
+    }
+    wireImportPlacementChildScopeFrames(childRules, childFrame);
+  }
+}
+
 function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
   if (isNode(value, N.Ruleset)) {
     cb(value as Ruleset);
@@ -118,69 +135,6 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
       visitDescendantRulesets(value[key], cb);
     }
   }
-}
-
-function copyImportPlacementValue(value: unknown): unknown {
-  if (value instanceof Node) {
-    return copyImportPlacementNode(value);
-  }
-  if (Array.isArray(value)) {
-    const out = new Array<unknown>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      out[i] = copyImportPlacementValue(value[i]);
-    }
-    return out;
-  }
-  if (isObject(value)) {
-    const out: Record<string, unknown> = {};
-    for (const key in value) {
-      out[key] = copyImportPlacementValue(value[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-function constructImportPlacementNode(node: Node, value: unknown): Node {
-  const copy = Reflect.construct(
-    node.constructor,
-    [
-      value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
-    ]
-  );
-  if (!(copy instanceof Node)) {
-    throw new TypeError('Expected import placement copy to remain a node');
-  }
-  return copy.inherit(node);
-}
-
-function copyImportPlacementAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const derived = node.derive();
-  return derived instanceof Node ? derived : undefined;
-}
-
-function copyImportPlacementNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return new Comment(
-      node.value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  const derivedAmpersand = copyImportPlacementAmpersand(node);
-  if (derivedAmpersand) {
-    return derivedAmpersand;
-  }
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
-  }
-  return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
 }
 
 function getInlineSourceLocation(source: string): NodeLocation {
@@ -548,10 +502,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   readonly withNode: StyleImportValue['with']['node'] | undefined;
 
   private getImportAnchorRules(context: Context): Rules {
-    return isNode(context.rulesContext, N.Rules)
-      ? context.rulesContext
-      : isNode(this.parent, N.Rules)
-        ? this.parent
+    return isNode(this.sourceParent, N.Rules)
+        ? this.sourceParent
+      : isNode(context.rulesContext, N.Rules)
+        ? context.rulesContext
         : context.root;
   }
 
@@ -568,6 +522,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options?: {
       preserveSourceNode?: boolean;
       resetScopeFrame?: boolean;
+      adoptChildren?: boolean;
     }
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
@@ -575,7 +530,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules._treeContext)
       : anchorRules.derive();
     if (childNodes !== undefined) {
-      wrapped.parent = anchorRules.parent;
       wrapped.index = anchorRules.index;
     }
     if (options?.resetScopeFrame) {
@@ -586,7 +540,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     if (childNodes) {
       for (const childNode of childNodes) {
-        wrapped.adopt(childNode);
+        if (options?.adoptChildren !== false) {
+          wrapped.adopt(childNode);
+        }
         wrapped.rules.push(childNode);
       }
     }
@@ -612,9 +568,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
-      const child = copyImportPlacementNode(source);
-      children[index] = child;
-      childSegments[index] = createPlacementChildSegment(source, child, index);
+      children[index] = source;
+      childSegments[index] = createPlacementChildSegment(source, source, index);
     }
     return {
       source: sourceRules,
@@ -624,7 +579,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private materializeImportPlacementState(state: ImportPlacementState): Rules {
-    const placement = this.deriveRulesSurface(state.source, state.children);
+    const placement = this.deriveRulesSurface(state.source, state.children, { adoptChildren: false });
+    placement.options.sourceBackedImportPlacement = true;
     importPlacementStates.set(placement, state);
     return placement;
   }
@@ -735,7 +691,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private createConfiguredResultSurface(
     sourceRules: Rules,
     importedRules: Rules,
-    additiveNodes: Node[]
+    additiveNodes: Node[],
+    configuredVariableNodes: Node[]
   ): Rules {
     const additiveVariableNodes: Node[] = [];
     const additiveNonVariableNodes: Node[] = [];
@@ -748,8 +705,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       }
     }
     this.clearConfiguredImportBoundary(importedRules);
+    this.attachConfiguredVarBindings(importedRules, configuredVariableNodes);
+    wireImportPlacementChildScopeFrames(importedRules, importedRules.getScopeFrame(undefined, false));
     if (additiveNonVariableNodes.length === 0) {
-      this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
       return importedRules;
     }
 
@@ -758,7 +716,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       finalRules.adopt(newNode);
       finalRules.rules.push(newNode);
     }
-    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    this.attachConfiguredVarBindings(finalRules, configuredVariableNodes);
+    wireImportPlacementChildScopeFrames(finalRules, finalRules.getScopeFrame(undefined, false));
     finalRules.adopt(importedRules);
     finalRules.rules.push(importedRules);
     return finalRules;
@@ -775,8 +734,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       sourceRules,
       replacementsByIndex.size > 0 ? replacementsByIndex : undefined
     );
+    const configuredVariableNodes = [...newVariables];
+    if (replacementsByIndex.size > 0) {
+      for (const node of replacementsByIndex.values()) {
+        if (isNode(node, N.VarDeclaration)) {
+          configuredVariableNodes.push(node);
+        }
+      }
+    }
 
-    return this.createConfiguredResultSurface(sourceRules, importedRules, newVariables);
+    return this.createConfiguredResultSurface(sourceRules, importedRules, newVariables, configuredVariableNodes);
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
@@ -973,7 +940,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const readonly = importOptions!.readonly ?? (type === 'compose' ? true : false);
     const canReuseEvaluatedRules = !isProtected && !isReferenceMode && !isLocal && !isForward && !readonly;
     if (canReuseEvaluatedRules) {
-      this.adopt(evaluatedRules);
       return evaluatedRules;
     }
     // Derive an import-owned Rules wrapper. The children are shared with the
@@ -1003,7 +969,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isForward) {
       out.removeFlag(F_VISIBLE);
     }
-    this.adopt(out);
     return out;
   }
 
@@ -1216,6 +1181,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
 
             try {
+              let importParentFrame: Rules['scopeFrame'] | undefined;
+              if (type === 'import') {
+                importParentFrame = this.getImportAnchorRules(context).getScopeFrame();
+                const rulesFrame = rules._scopeFrame ?? rules.getScopeFrame(importParentFrame);
+                if (!rulesFrame.parent) {
+                  rulesFrame.parent = importParentFrame;
+                }
+                wireImportPlacementChildScopeFrames(rules, rulesFrame);
+              }
               // Prepare registration first so any owned registration wrapper
               // keeps source identity from the import placement.
               const preparedRules = await rules.prepareRegistration(context);
@@ -1223,9 +1197,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                 throwInvalidImportedRulesRegistrationPrep();
               }
               rules = preparedRules;
-              if (type === 'import') {
-                /** Needed at evaluation time for older import type */
-                node.adopt(rules);
+              if (importParentFrame) {
+                const preparedFrame = rules._scopeFrame ?? rules.getScopeFrame(importParentFrame);
+                if (!preparedFrame.parent) {
+                  preparedFrame.parent = importParentFrame;
+                }
+                wireImportPlacementChildScopeFrames(rules, preparedFrame);
               }
               rules = await rules.eval(context);
             } finally {

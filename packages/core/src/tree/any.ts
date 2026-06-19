@@ -109,7 +109,7 @@ export class Any<
       return Number(text) === otherNumber ? 0 : undefined;
     }
     const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-    return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
+    return normalize(this.value) === normalize(other.toTrimmedString()) ? 0 : undefined;
   }
 }
 

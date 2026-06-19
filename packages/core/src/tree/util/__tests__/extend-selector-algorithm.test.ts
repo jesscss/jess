@@ -1,5 +1,5 @@
 import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
-import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
+import { applyExtendsToSelector, extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { getImplicitSelector } from '../selector-utils.js';
@@ -62,6 +62,24 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Full match extend examples', () => {
+    it('chains exact extends across selector-list output', () => {
+      const selector = sellist([sel([el('.a')])]);
+      const first = {
+        target: el('.a'),
+        extendWith: sel([el('.b')]),
+        partial: false
+      };
+      const second = {
+        target: el('.b'),
+        extendWith: sel([el('.c')]),
+        partial: false
+      };
+
+      const result = applyExtendsToSelector(selector, [first], [first, second]);
+
+      expect(result.valueOf()).toBe('.a,.b,.c');
+    });
+
     it('derives selector-list extend output without cloning the matched source item', () => {
       const target = sellist([el('.a'), el('.b')]);
       const sourceItem = target.value[0]!;
@@ -162,7 +180,7 @@ describe('Extend Selector Tests', () => {
 
         expect(copyCalls).toBe(0);
         expect(result.valueOf()).toBe(':is(.a,.c) :is(.b,.d)');
-        expect(templateCombinator.parent?.valueOf()).toBe('.a .b');
+        expect(templateCombinator.sourceParent?.valueOf()).toBe('.a .b');
       } finally {
         templateCombinator.copy = originalCopy;
       }
@@ -266,8 +284,8 @@ describe('Extend Selector Tests', () => {
 
       expect(result.valueOf()).toBe(':is(.a,.c)');
       expect(selector.arg).toBe(arg);
-      expect(arg.parent).toBe(selector);
-      expect(extendWith.parent).toBeUndefined();
+      expect(arg.sourceParent).toBe(selector);
+      expect(extendWith.sourceParent).toBeUndefined();
     });
 
     it('should extend compound :is() selector with compound target - example 5', () => {
@@ -334,7 +352,7 @@ describe('Extend Selector Tests', () => {
 
         expect(copyCalls).toBe(0);
         expect(result.valueOf()).toBe('.target:is(.class,.visible)');
-        expect(matched.parent).toBe(selector);
+        expect(matched.sourceParent).toBe(selector);
       } finally {
         matched.copy = originalCopy;
       }
@@ -1110,8 +1128,8 @@ describe('Extend Selector Tests', () => {
       expect(cloneCalls).toBe(0);
       expect(result).not.toBe(target);
       expect(result.valueOf()).toBe('.outer .replace,.outer .c');
-      expect(target.value[0]!.parent).toBe(target);
-      expect(target.value[1]!.parent).toBe(target);
+      expect(target.value[0]!.sourceParent).toBe(target);
+      expect(target.value[1]!.sourceParent).toBe(target);
     });
 
     it('extend find that matches only own part (within boundary): ampersand not flattened', () => {

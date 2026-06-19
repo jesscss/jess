@@ -332,6 +332,13 @@ export class Context {
   frames: (Ruleset | AtRule)[] = [];
 
   /**
+   * Source-backed callable surfaces evaluate canonical children with
+   * call-local live bindings. Per-call render placement must stay on the
+   * wrapper/placement state, not on those canonical child nodes.
+   */
+  sourceBackedCallableEvalDepth = 0;
+
+  /**
    * We push a boolean to this array when entering a calc() call
    * and pop it when leaving. This helps us determine if operations
    * should be performed or not.

@@ -41,7 +41,8 @@ describe('callable candidate state helper', () => {
     expect(state.sourceRules).toBe(candidate.rules);
     expect(state.rules).not.toBe(candidate.rules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('public');
-    expect(state.rules.parent).toBe(candidate.parent);
+    expect(state.candidateParent).toBe(candidate.sourceParent);
+    expect(state.rules.sourceParent).toBeUndefined();
     expect(state.paramBindings).toHaveLength(1);
     expect(state.signatureKey).toBeDefined();
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
@@ -71,7 +72,7 @@ describe('callable candidate state helper', () => {
     expect(state.sourceRules).toBe(sourceRules);
     expect(state.rules).not.toBe(sourceRules);
     expect(state.rules.rules[0]).toBe(sourceDecl);
-    expect(sourceDecl.parent).toBe(sourceRules);
+    expect(sourceDecl.sourceParent).toBe(sourceRules);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('private');
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
     expect(state.fallbackScopeFrame).toBeUndefined();
@@ -96,7 +97,7 @@ describe('callable candidate state helper', () => {
 
     expect(candidate.parent).toBeUndefined();
     expect(state.candidateParent).toBe(callSiteRules);
-    expect(state.rules.parent).toBe(callSiteRules);
+    expect(state.rules.sourceParent).toBeUndefined();
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
     expect(state.definitionFrame).toBeUndefined();
   });

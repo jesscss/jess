@@ -133,7 +133,7 @@ describe('callable special-case helper', () => {
 
     expect(candidate.parent).toBeUndefined();
     expect(result.handled).toBe(true);
-    expect(result.output?.parent).toBe(callerRules);
+    expect(result.output?.sourceParent).toBeUndefined();
     expect(result.output?.toString()).toContain('color: red;');
   });
 

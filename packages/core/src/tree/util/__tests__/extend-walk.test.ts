@@ -69,7 +69,7 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe('.a,.b,.c');
     expect(target.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(target);
+    expect(unchanged.sourceParent).toBe(target);
   });
 
   it('inside CompoundSelector → does NOT extend (full mode rejects component matches)', () => {
@@ -119,7 +119,7 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     expect(arg.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(arg);
+    expect(unchanged.sourceParent).toBe(arg);
   });
 });
 

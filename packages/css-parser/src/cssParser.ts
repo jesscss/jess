@@ -44,6 +44,7 @@ export class CssParser {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
     parser.context.opts.trivia = undefined;
+    parser.sourceText = text;
     parser.input = lexerResult.tokens;
     const ruleFn = parser[rule];
     if (typeof ruleFn !== 'function') {

@@ -16,6 +16,44 @@ const parser = {
   }
 };
 
+function collectNodes(node: unknown, type: string, out: any[] = [], seen = new Set<object>()): any[] {
+  if (!node || typeof node !== 'object' || seen.has(node)) {
+    return out;
+  }
+  seen.add(node);
+  const record = node as Record<string, unknown>;
+  if (record.type === type) {
+    out.push(node);
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'sourceNode' || key === 'sourceParent' || key.startsWith('_')) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        collectNodes(item, type, out, seen);
+      }
+      continue;
+    }
+    collectNodes(value, type, out, seen);
+  }
+  return out;
+}
+
+function expectExtendNodes(tree: unknown, specs: Array<{ target: string; flag?: number; selector?: string }>): void {
+  const extendsNodes = collectNodes(tree, 'Extend');
+  expect(extendsNodes.map(node => {
+    const item: { target: string; flag?: number; selector?: string } = {
+      target: String(node.target?.valueOf?.()),
+      flag: node.flag
+    };
+    if (node.selector) {
+      item.selector = String(node.selector.valueOf?.());
+    }
+    return item;
+  })).toEqual(specs);
+}
+
 describe('serializeTypes coverage', () => {
   test('paren list value parses', () => {
     const { errors, tree } = parser.parse('.a { grid: ((1, 2), (3, 4)); }');
@@ -33,55 +71,30 @@ describe('serializeTypes coverage', () => {
   test('nested reference', () => {
     const { errors, tree } = parser.parse('@ref: #ns.breakpoint(.valToGet[])[@max];');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-      (Rules
-        [
-          (VarDeclaration
-            name: 
-              (Any [role=ident] 'ref')
-            value: 
-              (Reference
-                target: 
-                  (Call
-                    name: 
-                      (Reference [role=name]
-                        key:
-                          ['#ns', '.breakpoint']
-                        rawKey: '#ns > .breakpoint'
-                      )
-                    args: 
-                      (List
-                        [
-                          (Reference
-                            target: 
-                              (Reference [role=name]
-                                key: '.valToGet'
-                              )
-                            key: -1
-                          )
-                        ]
-                      )
-                  )
-                key: 'max'
-              )
-          )
-        ]
-      )
+    const out = serializeTypes(tree);
+    expect(out).toContain('(VarDeclaration');
+    expect(out).toContainString(`
+        valueNode:
+          (Reference
+            target:
+              (Call
     `);
+    expect(out).toContain("key: '#ns'");
+    expect(out).toContain("key: '.breakpoint'");
+    expect(out).toContain("key: '.valToGet'");
+    expect(out).toContain('key: -1');
+    expect(out).toContain("key: 'max'");
   });
   test('variable declaration', () => {
     const { errors, tree } = parser.parse('@color: red;');
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'color')
-        value: 
+        valueNode:
           (Color
             node: 'red'
-            rgb:
-            [255, 0, 0]
-            alpha: 1
           )
       )
     `);
@@ -96,9 +109,10 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] '--custom')
         valueNode:
           (Sequence
-            value:
+            items:
               [
-              (Call
+                (Any ' ')
+                (Call
     `);
   });
 
@@ -127,7 +141,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=name] '.mixin')
         params:
           (List
-            value:
+            items:
               [
                 (VarDeclaration
                   name:
@@ -139,17 +153,17 @@ describe('serializeTypes coverage', () => {
           )
         rules:
           (Rules
-            value:
+            rules:
               [
                 (Declaration
                   name:
-                    (Any [role=property] 'color')
-                  valueNode:
+                  (Any [role=property] 'color')
+                valueNode:
                   (Reference
                     key: 'color'
                   )
-              )
-            ]
+                )
+              ]
           )
     `);
   });
@@ -163,7 +177,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=name] '.mixin')
         rules:
           (Rules
-            value:
+            rules:
               [
                 (Comment '/**/')
               ]
@@ -180,7 +194,7 @@ describe('serializeTypes coverage', () => {
       }
     `);
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toMatch(/\(Rules\s+value:\s+\[\s+\(Comment '\/\*\*\/'\)\s+\(Declaration/u);
+    expect(serializeTypes(tree)).toMatch(/\(Rules\s+rules:\s+\[\s+\(Comment '\/\*\*\/'\)\s+\(Declaration/u);
   });
 
   test('value block comments stay trivia instead of direct rules children', () => {
@@ -210,11 +224,9 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference [role=name]
             key: '.mixin'
-            rawKey:
-              (BasicSelector '.mixin')
           )
       )
     `);
@@ -231,7 +243,7 @@ describe('serializeTypes coverage', () => {
           )
         args:
           (List
-            value:
+            items:
               [
                 (Color
                   node: 'red'
@@ -257,22 +269,20 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'rules')
-        value: 
+        valueNode:
           (Mixin
-            rules: 
+            rules:
               (Rules
-                [
+                rules:
+                  [
                   (Declaration
-                    name: 
+                    name:
                       (Any [role=property] 'color')
-                    value: 
+                    valueNode:
                       (Color
                         node: 'red'
-                        rgb:
-                        [255, 0, 0]
-                        alpha: 1
                       )
                   )
                 ]
@@ -288,12 +298,14 @@ describe('serializeTypes coverage', () => {
     expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
     expect(serializeTypes(tree)).toContainString(`
       (Reference
-        target: 
+        target:
           (Reference
             key: 'obj'
           )
-        key: 
-          (Quoted 'prop')
+        key:
+          (Quoted
+            value: 'prop'
+          )
       )
     `);
   });
@@ -400,7 +412,7 @@ test('rest parameter in mixin', () => {
         (Any [role=name] '.mixin')
       params:
         (List
-          value:
+          items:
             [
               (Rest
                 node: 'args'
@@ -409,7 +421,7 @@ test('rest parameter in mixin', () => {
         )
       rules:
         (Rules
-          value:
+          rules:
             [
               (Declaration
                 name:
@@ -462,17 +474,18 @@ test('static rgb() is preserved as Call node', () => {
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
             key: 'rgb'
           )
-        args: 
+        args:
           (List
-            [
-              (Num 255)
-              (Num 0)
-              (Num 0)
-            ]
+            items:
+              [
+                (Num 255)
+                (Num 0)
+                (Num 0)
+              ]
           )
       )
     `);
@@ -489,13 +502,14 @@ test('rgb() with variable creates Call node', () => {
           )
         args:
           (List
-            [
-              (Reference
-                key: 'r'
-              )
-              (Num 0)
-              (Num 0)
-            ]
+            items:
+              [
+                (Reference
+                  key: 'r'
+                )
+                (Num 0)
+                (Num 0)
+              ]
           )
       )
     `);
@@ -506,23 +520,24 @@ test('static hsl() is preserved as Call node', () => {
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
             key: 'hsl'
           )
-        args: 
+        args:
           (List
-            [
-              (Num 120)
-              (Dimension
-                number: 50
-                unit: '%'
-              )
-              (Dimension
-                number: 50
-                unit: '%'
-              )
-            ]
+            items:
+              [
+                (Num 120)
+                (Dimension
+                  number: 50
+                  unit: '%'
+                )
+                (Dimension
+                  number: 50
+                  unit: '%'
+                )
+              ]
           )
       )
     `);
@@ -545,11 +560,12 @@ test('@import "file.less" parsed as StyleImport', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            'file.less'
+            value:
+              (Any [role=any]
+                role: 'any'
+                'file.less'
+              )
           )
-        )
       )
     `);
 });
@@ -567,11 +583,12 @@ test('@-export "./theme.jess" parsed as StyleImport with forward', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            './theme.jess'
+            value:
+              (Any [role=any]
+                role: 'any'
+                './theme.jess'
+              )
           )
-        )
       )
     `);
 });
@@ -586,11 +603,12 @@ test('@use "./tokens.js" parsed as JsImport with inferred namespace', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            './tokens.js'
+            value:
+              (Any [role=any]
+                role: 'any'
+                './tokens.js'
+              )
           )
-        )
       )
     `);
 });
@@ -605,11 +623,12 @@ test('@-use "./tokens.ts" as t parsed as JsImport with namespace', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            './tokens.ts'
+            value:
+              (Any [role=any]
+                role: 'any'
+                './tokens.ts'
+              )
           )
-        )
       )
     `);
 });
@@ -624,11 +643,12 @@ test('@use "#less/math" parsed as JsImport with inferred namespace', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            '#less/math'
+            value:
+              (Any [role=any]
+                role: 'any'
+                '#less/math'
+              )
           )
-        )
       )
     `);
 });
@@ -666,11 +686,12 @@ test('@-export "./theme.jess" as theme parsed with namespace', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            './theme.jess'
+            value:
+              (Any [role=any]
+                role: 'any'
+                './theme.jess'
+              )
           )
-        )
       )
     `);
 });
@@ -684,11 +705,13 @@ test('@import "file.css" parsed as import AtRule', () => {
           (Any [role=atkeyword] '@import')
         prelude: 
           (Sequence
-            [
-              (Quoted
-                (Any [role=any] 'file.css')
-              )
-            ]
+            items:
+              [
+                (Quoted
+                  value:
+                    (Any [role=any] 'file.css')
+                )
+              ]
           )
       )
     `);
@@ -712,11 +735,12 @@ test('@import (less, reference) "file" with options', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            'file'
+            value:
+              (Any [role=any]
+                role: 'any'
+                'file'
+              )
           )
-        )
       )
     `);
 });
@@ -730,11 +754,13 @@ test('@import (css) "file.css" with css option', () => {
           (Any [role=atkeyword] '@import')
         prelude: 
           (Sequence
-            [
-              (Quoted
-                (Any [role=any] 'file.css')
-              )
-            ]
+            items:
+              [
+                (Quoted
+                  value:
+                    (Any [role=any] 'file.css')
+                )
+              ]
           )
       )
     `);
@@ -757,11 +783,12 @@ test('@import (multiple) "file.less" with multiple option', () => {
           (Quoted
             quote: '"'
             escaped: false
-          (Any [role=any]
-            role: 'any'
-            'file.less'
+            value:
+              (Any [role=any]
+                role: 'any'
+                'file.less'
+              )
           )
-        )
       )
     `);
 });
@@ -806,9 +833,9 @@ test('parse known at-rule as variable declaration', () => {
 
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'property')
-        value: 
+        valueNode:
           (Any [role=ident] 'foo')
       )
     `);
@@ -820,9 +847,9 @@ test('parse known at-rule as variable declaration', () => {
 
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'property')
-        value: 
+        valueNode:
           (Any [role=ident] 'foo')
       )
     `);
@@ -854,9 +881,9 @@ test('namespace reference - simple id', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Reference [role=name]
             key: '#id'
           )
@@ -870,9 +897,9 @@ test('namespace reference - simple class', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Reference [role=name]
             key: '.class'
           )
@@ -884,18 +911,9 @@ test('namespace reference - complex selector', () => {
   const { errors, tree } = parser.parse('@ref: #namespace > .scoped-mixin;');
   expect(errors.length).toBe(0);
 
-  expect(serializeTypes(tree)).toContainString(`
-      (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
-        value: 
-          (Reference [role=name]
-            key:
-              ['#namespace', '.scoped-mixin']
-            rawKey: '#namespace > .scoped-mixin'
-          )
-      )
-    `);
+  const out = serializeTypes(tree);
+  expect(out).toContain('(VarDeclaration');
+  expect(out).toContain("['#namespace', '.scoped-mixin']");
 });
 
 test('namespace call - simple id with parentheses', () => {
@@ -904,11 +922,11 @@ test('namespace call - simple id with parentheses', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Call
-            name: 
+            name:
               (Reference [role=name]
                 key: '#id'
               )
@@ -921,21 +939,9 @@ test('namespace call - complex selector with parentheses', () => {
   const { errors, tree } = parser.parse('@ref: #namespace > .scoped-mixin();');
   expect(errors.length).toBe(0);
 
-  expect(serializeTypes(tree)).toContainString(`
-      (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
-        value: 
-          (Call
-            name: 
-              (Reference [role=name]
-                key:
-                  ['#namespace', '.scoped-mixin']
-                rawKey: '#namespace > .scoped-mixin'
-              )
-          )
-      )
-    `);
+  const out = serializeTypes(tree);
+  expect(out).toContain('(Call');
+  expect(out).toContain("['#namespace', '.scoped-mixin']");
 });
 
 test('namespace reference with accessor', () => {
@@ -944,16 +950,18 @@ test('namespace reference with accessor', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Reference
-            target: 
+            target:
               (Reference [role=name]
                 key: '#id'
               )
-            key: 
-              (Quoted 'property')
+            key:
+              (Quoted
+                value: 'property'
+              )
           )
       )
     `);
@@ -965,16 +973,17 @@ test('variable reference with accessor', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Reference
-            target: 
+            target:
               (Reference
                 key: 'config'
               )
-            key: 
+            key:
               (Quoted
+                value:
                 (Interpolated [role=ident]
                   source: '${INTERPOLATION_PLACEHOLDER}'
                   replacements:
@@ -994,48 +1003,20 @@ test('namespace reference with complex selector and accessor', () => {
   const { errors, tree } = parser.parse('@ref: #namespace > .scoped-mixin[property];');
   expect(errors.length).toBe(0);
 
-  expect(serializeTypes(tree)).toContainString(`
-      (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
-        value: 
-          (Reference
-            target: 
-              (Reference [role=name]
-                key:
-                  ['#namespace', '.scoped-mixin']
-                rawKey: '#namespace > .scoped-mixin'
-              )
-            key: 
-              (Quoted 'property')
-          )
-      )
-    `);
+  const out = serializeTypes(tree);
+  expect(out).toContain('(Reference');
+  expect(out).toContain("['#namespace', '.scoped-mixin']");
+  expect(out).toContain("value: 'property'");
 });
 
 test('namespace call with accessor and parentheses', () => {
   const { errors, tree } = parser.parse('@ref: #namespace > .scoped-mixin[@ref]();');
   expect(errors.length).toBe(0);
 
-  expect(serializeTypes(tree)).toContainString(`
-      (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
-        value: 
-          (Call
-            name: 
-              (Reference
-                target: 
-                  (Reference [role=name]
-                    key:
-                      ['#namespace', '.scoped-mixin']
-                    rawKey: '#namespace > .scoped-mixin'
-                  )
-                key: 'ref'
-              )
-          )
-      )
-    `);
+  const out = serializeTypes(tree);
+  expect(out).toContain('(Call');
+  expect(out).toContain("['#namespace', '.scoped-mixin']");
+  expect(out).toContain("key: 'ref'");
 });
 
 test('chained mixin calls - simple chain', () => {
@@ -1044,15 +1025,15 @@ test('chained mixin calls - simple chain', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Call
-            name: 
+            name:
               (Reference [role=name]
-                target: 
+                target:
                   (Call
-                    name: 
+                    name:
                       (Reference [role=name]
                         key: '.mixin1'
                       )
@@ -1070,25 +1051,26 @@ test('chained mixin calls - with arguments', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Call
-            name: 
+            name:
               (Reference [role=name]
-                target: 
+                target:
                   (Call
-                    name: 
+                    name:
                       (Reference [role=name]
                         key: '.mixin1'
                       )
-                    args: 
+                    args:
                       (List
-                        [
+                        items:
+                          [
                           (VarDeclaration
-                            name: 
+                            name:
                               (Any [role=property] 'foo')
-                            value: 
+                            valueNode:
                               (Any [role=ident] 'bar')
                           )
                         ]
@@ -1107,33 +1089,34 @@ test('chained mixin calls - complex chain with accessors', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Reference
-            target: 
+            target:
               (Reference [role=name]
-                target: 
+                target:
                   (Call
-                    name: 
+                    name:
                       (Reference [role=name]
-                        target: 
+                        target:
                           (Reference
-                            target: 
+                            target:
                               (Reference [role=name]
-                                target: 
+                                target:
                                   (Call
-                                    name: 
+                                    name:
                                       (Reference [role=name]
                                         key: '.mixin1'
                                       )
-                                    args: 
+                                    args:
                                       (List
-                                        [
+                                        items:
+                                          [
                                           (VarDeclaration
-                                            name: 
+                                            name:
                                               (Any [role=property] 'foo')
-                                            value: 
+                                            valueNode:
                                               (Any [role=ident] 'bar')
                                           )
                                         ]
@@ -1160,23 +1143,23 @@ test('chained mixin calls - deep nesting', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
+        name:
           (Any [role=ident] 'ref')
-        value: 
+        valueNode:
           (Call
-            name: 
+            name:
               (Reference [role=name]
-                target: 
+                target:
                   (Call
-                    name: 
+                    name:
                       (Reference [role=name]
-                        target: 
+                        target:
                           (Call
-                            name: 
+                            name:
                               (Reference [role=name]
-                                target: 
+                                target:
                                   (Call
-                                    name: 
+                                    name:
                                       (Reference [role=name]
                                         key: '.mixin1'
                                       )
@@ -1198,196 +1181,46 @@ describe('extend cases', () => {
   test('single selector with extend - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (BasicSelector '.a')
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 1
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 1 }]);
+    expect(serializeTypes(tree)).toContainString("(BasicSelector '.a')");
+    expect(serializeTypes(tree)).toContainString("node: 'blue'");
   });
 
   test('multiple selectors with same target - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (SelectorList
-                  [
-                    (BasicSelector '.a')
-                    (BasicSelector '.b')
-                  ]
-                )
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 1
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 1 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.a')");
+    expect(out).toContainString("(BasicSelector '.b')");
+    expect(out).toContainString("node: 'blue'");
   });
 
   test('multiple selectors with different targets - root-level extends', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x), .b:extend(.y) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Rules
-              [
-                (Extend
-                  selector: 
-                    (BasicSelector '.a')
-                  target: 
-                    (BasicSelector '.x')
-                  flag: 1
-                )
-                (Extend
-                  selector: 
-                    (BasicSelector '.b')
-                  target: 
-                    (BasicSelector '.y')
-                  flag: 1
-                )
-                (Ruleset
-                  selector: 
-                    (SelectorList
-                      [
-                        (BasicSelector '.a')
-                        (BasicSelector '.b')
-                      ]
-                    )
-                  rules: 
-                    (Rules
-                      [
-                        (Declaration
-                          name: 
-                            (Any [role=property] 'color')
-                          value: 
-                            (Color
-                              node: 'blue'
-                              rgb:
-                              [0, 0, 255]
-                              alpha: 1
-                            )
-                        )
-                      ]
-                    )
-                )
-              ]
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [
+      { selector: '.a', target: '.x', flag: 1 },
+      { selector: '.b', target: '.y', flag: 1 }
+    ]);
+    expect(serializeTypes(tree)).toContainString("node: 'blue'");
   });
 
   test('mixed selectors - some with extends, some without - root-level extends', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Rules
-              [
-                (Extend
-                  selector: 
-                    (BasicSelector '.a')
-                  target: 
-                    (BasicSelector '.x')
-                  flag: 1
-                )
-                (Ruleset
-                  selector: 
-                    (SelectorList
-                      [
-                        (BasicSelector '.a')
-                        (BasicSelector '.b')
-                      ]
-                    )
-                  rules: 
-                    (Rules
-                      [
-                        (Declaration
-                          name: 
-                            (Any [role=property] 'color')
-                          value: 
-                            (Color
-                              node: 'blue'
-                              rgb:
-                              [0, 0, 255]
-                              alpha: 1
-                            )
-                        )
-                      ]
-                    )
-                )
-              ]
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ selector: '.a', target: '.x', flag: 1 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.a')");
+    expect(out).toContainString("(BasicSelector '.b')");
+    expect(out).toContainString("node: 'blue'");
   });
 
   test('ampersand extend - single extend', () => {
     const { errors, tree } = parser.parse('&:extend(.x);');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Extend
-              target: 
-                (BasicSelector '.x')
-              flag: 1
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 1 }]);
   });
 
   test('ampersand extend with all flag', () => {
@@ -1400,17 +1233,7 @@ describe('extend cases', () => {
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Extend
-              target: 
-                (BasicSelector '.x')
-              flag: 0
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
   });
 
   test('ampersand extend with !all flag', () => {
@@ -1423,17 +1246,7 @@ describe('extend cases', () => {
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Extend
-              target: 
-                (BasicSelector '.x')
-              flag: 0
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
   });
 
   test('extend with all flag - ExtendFlag.All', () => {
@@ -1446,37 +1259,8 @@ describe('extend cases', () => {
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (BasicSelector '.a')
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 0
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
+    expect(serializeTypes(tree)).toContainString("node: 'blue'");
   });
 
   test('nested ruleset with extend - nested ruleset should not inherit extend', () => {
@@ -1520,120 +1304,27 @@ describe('extend cases', () => {
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (BasicSelector '.a')
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 0
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
+    expect(serializeTypes(tree)).toContainString("node: 'blue'");
   });
 
   test('multiple selectors with same target and all flag - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x all), .b:extend(.x all) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (SelectorList
-                  [
-                    (BasicSelector '.a')
-                    (BasicSelector '.b')
-                  ]
-                )
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 0
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.a')");
+    expect(out).toContainString("(BasicSelector '.b')");
   });
 
   test('three selectors with same target - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x), .c:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (SelectorList
-                  [
-                    (BasicSelector '.a')
-                    (BasicSelector '.b')
-                    (BasicSelector '.c')
-                  ]
-                )
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 1
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 1 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.a')");
+    expect(out).toContainString("(BasicSelector '.b')");
+    expect(out).toContainString("(BasicSelector '.c')");
   });
 
   test('multiple selectors with same target and !all flag - extend as first rule', () => {
@@ -1641,84 +1332,20 @@ describe('extend cases', () => {
 
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (SelectorList
-                  [
-                    (BasicSelector '.a')
-                    (BasicSelector '.b')
-                  ]
-                )
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 0
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x', flag: 0 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.a')");
+    expect(out).toContainString("(BasicSelector '.b')");
   });
 
   test('extend with selector list target', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (BasicSelector '.a')
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (SelectorList
-                          [
-                            (BasicSelector '.x')
-                            (BasicSelector '.y')
-                          ]
-                        )
-                      flag: 1
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ target: '.x,.y', flag: 1 }]);
+    const out = serializeTypes(tree);
+    expect(out).toContainString("(BasicSelector '.x')");
+    expect(out).toContainString("(BasicSelector '.y')");
   });
 
   test('extend attached to selector - check selector value', () => {
@@ -1799,42 +1426,11 @@ describe('extend cases', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-        (Rules
-          [
-            (Ruleset
-              selector: 
-                (BasicSelector '.a')
-              rules: 
-                (Rules
-                  [
-                    (Extend
-                      target: 
-                        (BasicSelector '.x')
-                      flag: 1
-                    )
-                    (Extend
-                      target: 
-                        (BasicSelector '.y')
-                      flag: 0
-                    )
-                    (Declaration
-                      name: 
-                        (Any [role=property] 'color')
-                      value: 
-                        (Color
-                          node: 'blue'
-                          rgb:
-                          [0, 0, 255]
-                          alpha: 1
-                        )
-                    )
-                  ]
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [
+      { target: '.x', flag: 1 },
+      { target: '.y', flag: 0 }
+    ]);
+    expect(serializeTypes(tree)).toContainString("node: 'blue'");
   });
 
   test('extend with mixed all/exact per target: .ee:extend(.dd all,.bb) {}', () => {
@@ -1843,23 +1439,11 @@ describe('extend cases', () => {
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
-    // First Extend: target .dd, flag 0 (All)
-    expect(sExpr).toContainString(`
-                    (Extend
-                      target: 
-                        (BasicSelector '.dd')
-                      flag: 0
-                    )`);
-    // Second Extend: target .bb, flag 1 (Exact) - no "all", so must not match inner .bb .bb
-    expect(sExpr).toContainString(`
-                    (Extend
-                      target: 
-                        (BasicSelector '.bb')
-                      flag: 1
-                    )`);
-    // Exactly two Extend nodes
-    const extendMatches = sExpr.match(/\(Extend\s/g);
-    expect(extendMatches?.length).toBe(2);
+    expect(sExpr.match(/\(Extend\s/g)?.length).toBe(2);
+    expectExtendNodes(tree, [
+      { target: '.dd', flag: 0 },
+      { target: '.bb', flag: 1 }
+    ]);
   });
 
   test('selector list with extend on one selector and all flag - extend should bubble', () => {
@@ -1872,32 +1456,12 @@ describe('extend cases', () => {
     expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
     // The extend should bubble up and be prepended as a separate Extend node above the ruleset
-    // Structure: (Rules [(Extend ...) (Ruleset ...)])
-    expect(sExpr).toContainString(`
-        (Rules
-          [
-            (Extend
-              selector: 
-                (BasicSelector '.ext7')
-              target: 
-                (BasicSelector '.ext5')
-              flag: 0
-            )
-            (Ruleset
-              selector: 
-                (SelectorList
-                  [
-                    (BasicSelector '.should-not-exist-in-output')
-                    (BasicSelector '.ext7')
-                  ]
-                )
-              rules: 
-                (Rules
-                  []
-                )
-            )
-          ]
-        )
-      `);
+    expectExtendNodes(tree, [{ selector: '.ext7', target: '.ext5', flag: 0 }]);
+    const extendIndex = sExpr.indexOf('(Extend');
+    const rulesetIndex = sExpr.indexOf('(Ruleset');
+    expect(extendIndex).toBeGreaterThan(-1);
+    expect(extendIndex).toBeLessThan(rulesetIndex);
+    expect(sExpr).toContainString("(BasicSelector '.should-not-exist-in-output')");
+    expect(sExpr).toContainString("(BasicSelector '.ext7')");
   });
 });

@@ -1,6 +1,8 @@
 import type { Node } from '../node.js';
 import type { Rules, RulesOptions } from '../rules.js';
-import type { BindingCell } from '../scope-frame.js';
+import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
+import { N } from '../node-type.js';
+import { isNode } from './is-node.js';
 import { createPlacementChildSegment, type PlacementChildSegment, type PlacementRecord } from './placement-state.js';
 
 export type LookupVisibility = keyof NonNullable<RulesOptions['rulesVisibility']>;
@@ -49,6 +51,7 @@ export type MixinOutputSlot = {
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   placementChildren: readonly Node[];
+  hiddenOutputSources?: WeakSet<Node>;
   scopeFrame: Rules['scopeFrame'];
   rulesVisibility?: RulesOptions['rulesVisibility'];
   referenceMode: RulesOptions['referenceMode'];
@@ -78,6 +81,29 @@ function createRulesetMixinPlacementRecord(
     childSegments,
     sourceIndexByOutput
   };
+}
+
+function wireMixinOutputChildScopeFrames(rules: Rules, parentFrame: ScopeFrame): void {
+  for (let i = 0; i < rules.rules.length; i++) {
+    const child = rules.rules[i]!;
+    const childRules = isNode(child, N.Rules)
+      ? child
+      : isNode(child, N.Ruleset)
+        ? child.rules
+        : undefined;
+    if (!childRules) {
+      continue;
+    }
+    childRules.scopeFrame = buildScopeFrame(
+      undefined,
+      childRules,
+      parentFrame,
+      undefined,
+      undefined,
+      true
+    );
+    wireMixinOutputChildScopeFrames(childRules, childRules.scopeFrame);
+  }
 }
 
 function createSourceIndexByOutput(
@@ -122,6 +148,22 @@ export function getMixinOutputSourceChild(
   outputChild: Node
 ): Node | undefined {
   return outputRules.options.mixinOutputSlot?.sourceByOutput.get(outputChild);
+}
+
+export function isHiddenMixinOutputChild(
+  outputRules: Rules,
+  outputChild: Node
+): boolean {
+  const slot = outputRules.options.mixinOutputSlot;
+  const hiddenOutputSources = slot?.hiddenOutputSources;
+  if (!hiddenOutputSources) {
+    return false;
+  }
+  if (hiddenOutputSources.has(outputChild)) {
+    return true;
+  }
+  const sourceChild = slot.sourceByOutput.get(outputChild);
+  return Boolean(sourceChild && hiddenOutputSources.has(sourceChild));
 }
 
 export function getMixinOutputChildForSource(
@@ -321,7 +363,7 @@ export function isFromRestrictedMixinOutput(node: unknown): boolean {
     if (current.type === 'Rules' && current.options?.mixinOutputSlot?.ambientLookup === false) {
       return true;
     }
-    queue.push(current.sourceNode, current.parent);
+    queue.push(current.sourceNode, current.sourceParent);
   }
   return false;
 }
@@ -395,6 +437,7 @@ export function attachMixinOutputSlot(
   }
 ): MixinOutputSlot {
   const existingRulesetPlacement = outputRules.options.mixinOutputSlot?.rulesetPlacement;
+  const existingHiddenOutputSources = outputRules.options.mixinOutputSlot?.hiddenOutputSources;
   const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
   const sourceIndexByOutput = createSourceIndexByOutput(childSegments);
   const sourceByOutput = new Map<Node, Node>();
@@ -418,6 +461,7 @@ export function attachMixinOutputSlot(
     outputBySource,
     sourceIndexByOutput,
     placementChildren,
+    ...(existingHiddenOutputSources ? { hiddenOutputSources: existingHiddenOutputSources } : {}),
     scopeFrame: outputRules.getScopeFrame(),
     ...(outputRules.options.rulesVisibility ? { rulesVisibility: outputRules.options.rulesVisibility } : {}),
     referenceMode: false,
@@ -434,5 +478,8 @@ export function attachMixinOutputSlot(
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.referenceMode = slot.referenceMode;
   assignMixinOutputFallbackFrame(outputRules, slot.fallbackFrame);
+  if (slot.scopeFrame.hasLiveBindings) {
+    wireMixinOutputChildScopeFrames(outputRules, slot.scopeFrame);
+  }
   return slot;
 }

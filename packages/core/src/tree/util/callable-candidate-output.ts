@@ -29,10 +29,18 @@ export async function evaluateCallableCandidateOutput({
     return undefined;
   }
 
+  const callableFrame = rules._scopeFrame;
   try {
-    candidateParent.adopt(rules);
     const newRules = await rules.eval(context);
-    candidateParent.adopt(newRules);
+    if (
+      callableFrame?.hasLiveBindings
+      && (
+        !newRules._scopeFrame
+        || !newRules._scopeFrame.hasLiveBindings
+      )
+    ) {
+      newRules.scopeFrame = callableFrame;
+    }
     newRules.index = candidateIndex;
     attachMixinOutputSlot(newRules, sourceRules, restrictMixinOutputLookup);
     return newRules;

@@ -26,6 +26,7 @@ import { Condition } from './condition.js';
 import { Operation } from './operation.js';
 import { QueryCondition } from './query-condition.js';
 import { Negative } from './negative.js';
+import { serializeDimensionSyntax } from './dimension.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -36,6 +37,22 @@ function stringifyValueOf(value: unknown): string {
 
 function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
+}
+
+function getOptionalFallbackCallName(name: unknown, fallbackValue: unknown): string {
+  return isNode(name, N.Reference) && name.options.fallbackValue === true
+    ? String(name.key)
+    : stringifyValueOf(fallbackValue);
+}
+
+function isInternalFunctionFallbackName(name: unknown): boolean {
+  return isNode(name, N.Reference)
+    && name.options.type === 'function'
+    && name.options.fallbackValue === true;
+}
+
+function shouldPrintSilentFailMarker(name: unknown, options?: CallOptions): boolean {
+  return options?.silentFail === true && !isInternalFunctionFallbackName(name);
 }
 
 function createImportantFlag(): Any<'flag'> {
@@ -221,6 +238,8 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
 
 function getKnownRenderedCallText(node: Node): string | undefined {
   switch (node.type) {
+    case 'Reference':
+      return isInternalFunctionFallbackName(node) ? String((node as Reference).key) : undefined;
     case 'Any':
     case 'Keyword':
     case 'Anonymous':
@@ -229,10 +248,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       return node.value ? 'true' : 'false';
     case 'Dimension':
       return typeof node.number === 'number'
-        ? `${node.number}${node.unit ?? ''}`
+        ? serializeDimensionSyntax(node.number, node.unit)
         : undefined;
     case 'Num':
-      return typeof node.number === 'number' ? `${node.number}` : undefined;
+      return typeof node.number === 'number' ? serializeDimensionSyntax(node.number) : undefined;
     case 'Color':
       return typeof node.node === 'string' ? node.node : undefined;
     case 'List': {
@@ -347,6 +366,8 @@ function getKnownRenderedCallText(node: Node): string | undefined {
 
 function getKnownSourceCallText(node: Node): string | undefined {
   switch (node.type) {
+    case 'Reference':
+      return isInternalFunctionFallbackName(node) ? String((node as Reference).key) : undefined;
     case 'Any':
     case 'Keyword':
     case 'Anonymous':
@@ -509,7 +530,7 @@ export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index:
   if (!diagnosticSource) {
     return undefined;
   }
-  return `argument ${diagnosticSource.index + 1} from ${diagnosticSource.source.valueOf()}`;
+  return `argument ${diagnosticSource.index + 1} from ${diagnosticSource.sourceArg.valueOf()}`;
 }
 
 /**
@@ -591,9 +612,7 @@ export class Call extends Node<CallValue, CallOptions> {
     name: Node | string | unknown,
     fallbackValue: unknown
   ): Promise<Node> {
-    const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-      ? String(name.key)
-      : stringifyValueOf(fallbackValue);
+    const fallbackName = getOptionalFallbackCallName(name, fallbackValue);
     const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
       args: state.args,
       ...(state.contentNode && { contentNode: state.contentNode })
@@ -834,9 +853,7 @@ export class Call extends Node<CallValue, CallOptions> {
             if (unitMode === 'strict') {
               throw error;
             }
-            const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
-              ? String(this.name.key)
-              : stringifyValueOf(fn);
+            const fallbackName = getOptionalFallbackCallName(this.name, fn);
             if (renderFailureWith) {
               return this.renderFinalizedCallSyntax(fallbackName, state, context, renderFailureWith);
             }
@@ -961,10 +978,14 @@ export class Call extends Node<CallValue, CallOptions> {
       if (next > last) {
         return;
       }
+      const beforeTrivia = w.position();
       emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
+      const triviaText = textState?.text === undefined
+        ? ''
+        : getWriterTextSincePosition(w, beforeTrivia);
       w.add(', ');
       if (textState?.text !== undefined) {
-        textState.text += ', ';
+        textState.text += `${triviaText}, `;
       }
     };
     const finishArg = (arg: Node, argText: string, next: number): void => {
@@ -1101,7 +1122,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const w = printOptions.writer!;
     const { name, contentNode } = callNode.value;
     if (!callNode.args && !contentNode && typeof name === 'string') {
-      const out = `${name}${callNode.options?.silentFail ? '?' : ''}()${callNode.options?.markImportant ? ' !important' : ''}`;
+      const out = `${name}${shouldPrintSilentFailMarker(name, callNode.options) ? '?' : ''}()${callNode.options?.markImportant ? ' !important' : ''}`;
       w.add(out, callNode);
       return out;
     }
@@ -1118,7 +1139,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const nameText = writeCallNodeTextToActiveWriter(name, printOptions);
       textState.text = nameText;
     }
-    if (callNode.options?.silentFail) {
+    if (shouldPrintSilentFailMarker(name, callNode.options)) {
       w.add('?');
       if (textState.text !== undefined) {
         textState.text += '?';
@@ -1397,9 +1418,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 ) {
                   throw error;
                 }
-                const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
-                  ? String(this.name.key)
-                  : stringifyValueOf(fn);
+                const fallbackName = getOptionalFallbackCallName(this.name, fn);
                 return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
               }
               return this.finalizeCallResult(context, result, {
@@ -1420,13 +1439,11 @@ export class Call extends Node<CallValue, CallOptions> {
           const output = await evaluatedName.evalCall(context, argNodes);
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
+          let rulesLikeVariableSourceParent: Node | undefined;
           if (state.preservesRulesLikeVariableTarget) {
-            const sourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
-              ? evaluatedName.sourceNode.parent
+            rulesLikeVariableSourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
+              ? evaluatedName.sourceNode.sourceParent
               : undefined;
-            if (sourceParent) {
-              evaluatedName.parent = sourceParent;
-            }
           }
           if (state.args && state.args.items.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
@@ -1437,7 +1454,7 @@ export class Call extends Node<CallValue, CallOptions> {
               mixinEntries: [
                 callableRulesEntry(
                   { rules: evaluatedName },
-                  evaluatedName.parent,
+                  rulesLikeVariableSourceParent ?? evaluatedName.sourceParent,
                   evaluatedName.index
                 )
               ],
@@ -1466,7 +1483,7 @@ export class Call extends Node<CallValue, CallOptions> {
               });
             } catch (error) {
               if (error instanceof ReferenceError && error.message.includes('No matching mixins')) {
-                if (this.parent?.type === 'SelectorCapture') {
+                if (this.sourceParent?.type === 'SelectorCapture') {
                   return this.markCallOutput(new Any(stringifyValueOf(collection), { role: 'ident' }), false);
                 }
                 if (isNode(name, N.Reference)) {
@@ -1537,7 +1554,7 @@ export class Call extends Node<CallValue, CallOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     if ((!this.args || this.args.items.length === 0) && !this.contentNode && typeof this.name === 'string') {
-      const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
+      const out = `${this.name}${shouldPrintSilentFailMarker(this.name, this._options) ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
     }
@@ -1546,7 +1563,7 @@ export class Call extends Node<CallValue, CallOptions> {
         ? this.name
         : getKnownSourceCallText(this.name);
       if (nameText !== undefined) {
-        let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
+        let out = `${nameText}${shouldPrintSilentFailMarker(this.name, this._options) ? '?' : ''}(`;
         if (this.args?.items.length) {
           const sep = this.args.options?.sep ?? ',';
           const joiner = sep === '/' ? ' / ' : `${sep} `;
@@ -1589,9 +1606,9 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    const silentFail = this._options?.silentFail;
     const w = options.writer;
     const { name, contentNode, args } = this;
+    const silentFail = shouldPrintSilentFailMarker(name, this._options);
     const directSource = !options.trivia;
     const nameText = typeof name === 'string'
       ? name
@@ -1788,13 +1805,11 @@ export class Call extends Node<CallValue, CallOptions> {
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
+      let rulesLikeVariableSourceParent: Node | undefined;
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in n && isNode(n.sourceNode)
-          ? n.sourceNode.parent
+        rulesLikeVariableSourceParent = 'sourceNode' in n && isNode(n.sourceNode)
+          ? n.sourceNode.sourceParent
           : undefined;
-        if (sourceParent) {
-          n.parent = sourceParent;
-        }
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
@@ -1807,13 +1822,14 @@ export class Call extends Node<CallValue, CallOptions> {
           mixinEntries: [
             callableRulesEntry(
               { rules: n },
-              n.parent,
+              rulesLikeVariableSourceParent ?? n.sourceParent,
               n.index
             )
           ],
           args: args?.value ?? []
         });
         return this.finalizeCallResult(context, result, {
+          ownOutput: false,
           markImportant
         });
       });
@@ -1824,11 +1840,12 @@ export class Call extends Node<CallValue, CallOptions> {
         try {
           const result = await n.evalCall(context, args);
           return this.finalizeCallResult(context, result, {
+            ownOutput: false,
             markImportant
           });
         } catch (e) {
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-            if (this.parent?.type === 'SelectorCapture') {
+            if (this.sourceParent?.type === 'SelectorCapture') {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
@@ -1873,7 +1890,7 @@ export class Call extends Node<CallValue, CallOptions> {
           const unitMode = context?.opts?.unitMode ?? 'loose';
           const shouldRethrowForMode = unitMode === 'strict';
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-            if (this.parent?.type === 'SelectorCapture') {
+            if (this.sourceParent?.type === 'SelectorCapture') {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
             }
             if (isNode(name, N.Reference)) {
@@ -1910,7 +1927,8 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
       if (this._options?.silentFail && typeof this.name !== 'string') {
-        const rendered = await state.source.renderFinalizedCallSyntax(finalizedName, state, context, prepareRenderPrintState(context), {
+        const fallbackName = getOptionalFallbackCallName(this.name, finalizedName);
+        const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
           args: evaluatedArgs,
           ...(state.contentNode && { contentNode: state.contentNode })
         });

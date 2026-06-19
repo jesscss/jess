@@ -50,6 +50,201 @@ Complete every item in this queue before committing the next binding/lookup
 pass unless a semantic blocker, rejected approach, or unsafe test failure
 forces a focused stop.
 
+### Current Source-Parent / Placement Queue
+
+These items supersede the completed history below for the next pass. Keep
+`sourceParent` as canonical ancestry only; do not reintroduce `.parent` aliases
+or source-parent placement writes to make tests pass.
+
+1. [x] Finish live-parameter callable scope frames without source-parent
+placement. Proof: the focused `keeps nested callable buckets visible on live
+parameter scope frames` test resolves `value` through explicit live/fallback
+frame state. Latest evidence: focused test passed after param-var scope checks
+honored live scope-frame cells instead of relying on source-parent ancestry.
+2. [x] Replace nested mixin-ruleset namespace placement reads with explicit
+frame/selector placement state. Proof: local ampersand descendant key lookup
+resolves without assigning runtime wrapper `sourceParent`. Latest evidence:
+the local ampersand descendant key lookup, callable namespace-union parser
+fixture, and reference-import no-broad-crawl namespace proof tests pass after
+ruleset namespace recursion became offset-aware and frame-covered prefix hits
+stopped falling through to broad root scans.
+3. [x] Repair interpolated sibling/collapsed ruleset lookup after `inherit()`
+stopped copying source ancestry. Proof: the `a1` interpolated mixin-ruleset
+case passes via explicit lexical/placement state. Latest evidence: direct
+declaration lookup now prefers a runtime/source-backed owner over a stale
+source-owner occurrence for the same declaration node, so `@gender: @gender_`
+evaluates under the callable live parameter frame without rewriting
+`sourceParent`.
+4. [x] Rework compound-prefix callable ruleset precedence so direct frame
+facts, not inherited parent chains, decide red-vs-cyan ordering. Proof: both
+compound-prefix reference tests return the red branch. Latest evidence: the
+compound-prefix precedence tests and the namespace-union proof pass together;
+the direct compound ruleset result remains in the callable union and wins by
+specificity/order without deleting namespace union behavior.
+5. [x] Fix real Less merge-chain property refs after source-parent cleanup.
+Proof: merge-chain output order matches expected CSS and public declaration
+bridge spies stay zero. Latest evidence: focused direct/property and parser-
+backed merge-chain tests pass, and the broad callable/reference/call swath is
+green (`19` passed). Scope-frame recursive variable lookup now skips only the
+blocked current declaration and scans older bucket entries; same-scope merge
+coalescing only rewrites actual merge containers so static merge handles keep
+raw latest-declaration values.
+6. [ ] Audit remaining `sourceParent =` writes outside canonical
+   construction/adoption. `sourceParent` is write-once source ancestry, not
+   placement: setting it on a newly adopted canonical child is allowed, and a
+   cold materialization boundary may stamp it once on new public nodes, but
+   rewriting an established value during eval/render/callable/lookup/import is
+   presumed wrong. Classify each write as canonical construction/adoption,
+   one-time cold materialization of new public nodes, or debt; delete runtime-
+   placement rewrites instead of documenting them away, and do not leave
+   materialized source ancestry mutable. Proof: grep finds no
+   normal eval/render/callable/lookup/import placement writes to `sourceParent`,
+   and any remaining write is covered by source-construction or cold
+   materialization tests. Latest progress: the central adoption helper now
+   refuses to rewrite an established `sourceParent`; existing wrapper
+   construction can still collect flags/source-root state, but it cannot move
+   canonical source ancestry.
+7. [ ] Remove callable runtime wrapper `adopt(...)` calls that only exist for
+scope/placement. Replace with `wireCallableScopeFrames(...)`, mixin output
+slots, or print/eval state.
+8. [ ] Split `Rules.evalNode` source-backed callable output assembly so
+placement wrappers are not adopted into caller/source rules merely to evaluate
+or register output.
+9. [ ] Revisit `Call.markCallOutput(...)` and `Node.evalStatic(...)` ownership
+boundaries. Proof: owned public/materialized results keep required metadata,
+while callable `Rules` output returns with `sourceParent === undefined`.
+10. [ ] Replace import placement copying/adoption that writes source ancestry
+for runtime import wrappers. Proof: reference/import fixtures pass without
+`wrapped.sourceParent = anchorRules.sourceParent`. Latest progress: configured
+`with`/`set` import variables now install live binding cells on the imported
+rules surface and additive result wrapper, so imported detached closures and
+guards resolve configured values without falling back to caller declarations;
+the recursive import placement child copier was deleted; first-use scalar
+placements now reuse canonical source children through placement state; and
+callable references now preserve `callable-rules` entries so imported mixin
+hits do not require materialized mixin nodes. Full `import-style.test.ts`
+passes (`93` passed, `1` skipped). The explicit `wrapped.sourceParent =
+anchorRules.sourceParent` assignment was removed and
+`rg "\\.sourceParent\\s*=" packages/core/src/tree/import-style.ts` is clean.
+Remaining debt: import wrapper `adopt(...)` calls still need auditing because
+`adopt(...)` is still source-ownership-shaped machinery even though it no
+longer rewrites established `sourceParent`; nested ruleset placements still use
+shallow wrappers and should eventually carry source identity directly instead
+of relying only on placement segments. Latest evidence: the full import-style
+suite and selector-attr suite pass together (`102` passed, `1` skipped) after
+source-backed import child frames were wired as placement state, raw attribute
+interpolation became non-static, fallback callable references render a
+callable signature instead of `[object Object]`, and reference-import callable
+descendants stay exposed through `CallableRulesEntry` without materialized
+Mixin nodes.
+11. [ ] Delete or isolate generic clone/copy/inherit helpers still reachable
+    from eval/render/callable/import paths. `inherit()` should be a rare and
+    shrinking replacement-metadata helper, not a repeated hot-path stamp; every
+    remaining call must be justified as cold materialization, scalar replacement,
+    or selector/extend subset construction. Selector `inherit()` must not
+    rewrite child `sourceParent` through adoption. Proof: hot callable/import
+    paths do not call `Node.clone`, `Node.copy`, `Node.inherit`,
+    `copyWithReusableLeaves`, or generic `cloning.ts`; remaining `.inherit(...)`
+    calls are cold public materialization, operator/function scalar replacement,
+    or documented selector extend subset handling that does not move source
+    ancestry. Follow-on audit must also reduce call volume: if a site only wants
+    location/source-root/flags, replace it with a narrow transfer or direct
+    constructor/adoption state instead of calling the generic helper. Latest
+    progress: `AttributeSelector` resolved output no longer imports or calls
+    `copyWithReusableLeaves(...)`, and source-backed callable ruleset/at-rule
+    placement wrappers now use explicit shallow metadata transfer instead of
+    `.inherit(sourceRuleset/sourceAtRule)`. Current audit evidence: `inherit()`
+    no longer copies `sourceParent`, and central adoption refuses to overwrite
+    an established `sourceParent`, but `rg "\.inherit\(" packages/core/src/tree
+    | wc -l` still reports `184` core tree call sites. Treat that volume as unfinished
+    architecture debt, not as acceptable because the helper is safer. The
+    remaining `reference.ts` `Object.defineProperty(..., 'sourceParent', ...)`
+    rules-like reference surface is now stamped as a non-writable one-time
+    public/reference surface, but still needs explicit classification as cold
+    public materialization or deletion/replacement with live placement state.
+12. [ ] Move indentation/placement rendering off physical parent/frame chains
+where source-backed callable wrappers make those chains misleading. Proof:
+ruleset header/nested output tests pass with print-state indentation.
+13. [ ] Add focused no-alias guard for `.parent` on `Node` so future agents do
+not restore a compatibility alias. Proof: build/tests use `sourceParent`, and
+grep only finds CSS selector text, scope-frame parents, or non-node metadata.
+14. [x] Migrate the remaining `less-parser` serialized-AST expectations exposed
+by the changed baseline after the reference/default-guard fixes. Proof:
+`pnpm --filter @jesscss/less-parser test -- --run --reporter=dot` passes.
+Latest evidence: focused `guards.test.ts` passes (`13` passed), including
+runtime default/ambiguous guard behavior, and full `less-parser` now passes
+(`26` files, `420` tests). The migrated expectations cover direct-field
+serializer shape (`rules`, `items`, `selectors`, `components`, `valueNode`),
+the nested reference/call target shape, and extend flag semantics via direct
+AST checks instead of relying on default `serializeTypes(...)` output.
+15. [x] Repair the Jess Less test-data gate now exposed by the changed
+baseline. Proof: `pnpm run verify:baseline -- --changed` gets past
+`pnpm run test:less:test-data` or records a narrowed, non-binding blocker.
+Current evidence: ordered rebuilds pass, `operations-advanced` is green after
+preserve-mode color/dimension arithmetic and same-unit multiplication stopped
+misclassifying Less-compatible operations, `import.less` is green after the
+Less harness kept the configured compat/plugin-simple registry instead of
+letting fixture-local bare compat replace it, and
+`pnpm run test:less:test-data -- --run --reporter=dot` passes (`65` tests).
+The fixes did not clone, adopt, materialize callable bodies, or rewrite
+`sourceParent`. Rejected follow-up from the earlier red gate still stands:
+inline sync guard filtering in ruleset-prefix lookup made guarded namespace
+paths miss entirely; guard work must prepare/evaluate namespace guard frames
+correctly rather than filtering prefixes with an unprepared context.
+16. [x] Rebuild the ordered benchmark path after the callable/placement slice
+and changed baseline are green. Proof: core/plugin/CLI builds pass before any
+timing command. Current evidence: `pnpm --filter @jesscss/core build` and
+`pnpm --filter jess build` passed before fixture and benchmark commands.
+17. [ ] Rerun canonical external Less `benchmark.less` and one V8 CPU profile
+only after the above focused callable/reference/parser/Jess fixture gates are
+green. Record wall-clock and profile evidence in `PERFORMANCE-HANDOFF.md`; do
+not claim speed from this rename/correctness pass alone.
+18. [x] Remove source-backed callable at-rule/ruleset result `.inherit(...)`
+stamping. Proof: shallow at-rule/ruleset placement/result wrappers carry
+location/source-root/visibility/selector flags/generated/index directly and do
+not use inherited replacement metadata to stand in for runtime placement.
+Latest evidence: focused callable helper suite passes (`15` passed), and
+`rg "createSourceBackedCallable(Ruleset|AtRule)[\\s\\S]*inherit|\\.inherit\\(source(Ruleset|AtRule)\\)"
+packages/core/src/tree/util/callable-surface.ts` is clean.
+19. [ ] Delete or isolate `AtRule.createBodyEvalRecord(...)` deep body copies
+outside source-backed callable eval. Proof: normal at-rule eval/render paths do
+not call `copyWithReusableLeavesPreservingComments(...)` merely to evaluate a
+body; any remaining copy is a cold public materialization boundary with a
+remove-when note.
+20. [x] Replace merge-chain coalescer item copies with source-backed/live value
+state where safe. Proof: merge-chain focused tests stay green and the
+coalescer no longer deep-copies every merged item on normal render. Latest
+progress: assignment normalization carries `normalizedAssignmentInput`, and
+merge coalescing now composes from accumulated value plus that live increment
+while reusing existing item nodes instead of `copyWithReusableLeaves(...)`.
+Callable-ruleset duplicate merge output is suppressed through placement-local
+mixin-output hidden-source state, direct declaration lookup rejects stale
+replaced declarations by active `Rules.rules` membership, and loop-emitted
+merge increments compose from evaluated scalar values when the carried
+increment still contains live references. Evidence: full
+`declaration.test.ts` passes (`73` passed), focused merge cluster passes (`7`
+passed), and `pnpm --filter @jesscss/core build` passes.
+21. [x] Re-audit `Node.evalStatic(...)` source-backed re-eval depth. Proof:
+source-backed callable isolation tests still pass without a broad re-eval tax,
+or a CPU/profile-backed note proves the remaining re-eval guard is required.
+Latest evidence: the broad `mixin`/`reference`/`call` swath still passes after
+removing the `context.sourceBackedCallableEvalDepth > 0` re-eval condition, so
+the broad guard was deleted instead of carried forward.
+22. [ ] Run `verify:aggressive-cutting-review` and resolve every flagged
+callable/lookup/import copy/materialization warning before commit. Proof:
+review gate passes or each remaining flag is documented as a cold exception
+with a remove-when condition.
+
+Latest binding-slice evidence: source-backed callable at-rules and `$for`
+iteration bodies use shallow source-backed callable rules surfaces with live
+slots instead of deep child copies; direct declaration lookup carries child
+surface traversal order; bare ampersand wrappers no longer expose nested mixins
+as ambient parent-scope callable hits; and the full Less test-data gate is
+green. Canonical benchmark timing is now unblocked but not a win yet: current
+Less v5 alpha/Jess timing is effectively tied with Less 4.6.3 within noise.
+Next work should continue items 6-13, 17, 19, and 22, with V8/CPU timing used
+to choose the next performance target.
+
 1. [x] Finish callable retry-frame bridge deletion where retry frames are
 covered. Scope: parent/fallback frame loops in `Rules.findMixin`, fallback
 frame `prepareCallableLookupFrame`, recursive namespace starts, and

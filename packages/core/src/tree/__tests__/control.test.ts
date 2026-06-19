@@ -332,7 +332,7 @@ describe('Control Nodes', () => {
     expect(resolved.location).toHaveLength(0);
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
-    expect(resolved.parent).toBeUndefined();
+    expect(resolved.sourceParent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -787,7 +787,7 @@ describe('Control Nodes', () => {
       expect(css).toContain('tick: yes');
       expect(calls).toBe(3);
       expect(clonedLoopRules).toBe(0);
-      expect(loopRules.parent).toBe(node);
+      expect(loopRules.sourceParent).toBe(node);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -877,7 +877,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.sourceParent).toBe(loopRules);
   });
 
   it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
@@ -918,7 +918,7 @@ describe('Control Nodes', () => {
       tick: 2;
     `);
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.sourceParent).toBe(loopRules);
   });
 
   it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
@@ -963,7 +963,7 @@ describe('Control Nodes', () => {
       tick: 2;
     `);
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.sourceParent).toBe(loopRules);
   });
 
   it('keeps canonical $while body children parented to the source wrapper', async () => {
@@ -990,7 +990,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(renderCalls).toBe(3);
-    expect(renderDecl.parent).toBe(renderRules);
+    expect(renderDecl.sourceParent).toBe(renderRules);
 
     const evalContext = new Context();
     const evalDecl = decl({ name: 'tick', value: any('yes') });
@@ -1016,7 +1016,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(evalCalls).toBe(3);
-    expect(evalDecl.parent).toBe(evalRules);
+    expect(evalDecl.sourceParent).toBe(evalRules);
   });
 
   it('throws when $while exceeds its iteration guard', async () => {
@@ -1039,8 +1039,8 @@ describe('Control Nodes', () => {
       rules: body
     });
 
-    expect(condition.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(condition.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
   });
 
   it('evaluates $for with block pattern + expression iterable', async () => {
@@ -1228,7 +1228,7 @@ describe('Control Nodes', () => {
     await expect(renderNodeToString(root, context)).resolves.toBe('');
 
     expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.sourceParent).toBe(loopRules);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -1315,7 +1315,7 @@ describe('Control Nodes', () => {
 
       expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
-      expect(itemDecl.parent).toBe(loopRules);
+      expect(itemDecl.sourceParent).toBe(loopRules);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -1494,7 +1494,7 @@ describe('Control Nodes', () => {
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.sourceParent).toBe(loopRules);
   });
 
   it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
@@ -1549,7 +1549,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
     expect(sourcePrepCalls).toBe(0);
-    expect(colorDecl.parent).toBe(loopRules);
+    expect(colorDecl.sourceParent).toBe(loopRules);
   });
 
   it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
@@ -1569,7 +1569,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
     expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.sourceParent).toBe(loopRules);
   });
 
   it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {

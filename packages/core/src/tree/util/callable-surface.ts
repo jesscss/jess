@@ -1,13 +1,41 @@
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
-import { Comment } from '../comment.js';
-import { F_STATIC, Node, type LocationInfo } from '../node.js';
+import {
+  F_EXTENDED,
+  F_EXTEND_TARGET,
+  F_IMPLICIT_AMPERSAND,
+  F_VISIBLE,
+  Node
+} from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
-import { canReuseLeaf, reuseLeaf } from './cloning.js';
-import { Mixin } from '../mixin.js';
 import { Ruleset } from '../ruleset.js';
 import { AtRule } from '../at-rule.js';
+import { Any } from '../any.js';
+import { createPublicNil } from '../nil.js';
+
+function callableLocation(node: Node): Node['location'] | undefined {
+  return node.location.length === 0 ? undefined : node.location;
+}
+
+function applyCallableSurfaceMetadata<T extends Node>(output: T, source: Node): T {
+  output._sourceRoot ??= source.sourceRoot;
+  if (!source.hasFlag(F_VISIBLE)) {
+    output.removeFlag(F_VISIBLE);
+  }
+  if (source.hasFlag(F_IMPLICIT_AMPERSAND)) {
+    output.addFlag(F_IMPLICIT_AMPERSAND);
+  }
+  if (source.hasFlag(F_EXTENDED)) {
+    output.addFlag(F_EXTENDED);
+  }
+  if (source.hasFlag(F_EXTEND_TARGET)) {
+    output.addFlag(F_EXTEND_TARGET);
+  }
+  output.generated ||= source.generated;
+  output.index ??= source.index;
+  return output;
+}
 
 export function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -27,200 +55,100 @@ export function getRootSourceRules(rules: Rules): Rules {
   return current;
 }
 
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
-function copyCallableRulesValue(value: unknown): unknown {
-  if (value instanceof Node) {
-    return copyCallableRulesNode(value);
-  }
-  if (Array.isArray(value)) {
-    const out = new Array(value.length);
-    for (let i = 0; i < value.length; i++) {
-      out[i] = copyCallableRulesValue(value[i]);
-    }
-    return out;
-  }
-  if (isRecordValue(value)) {
-    const out: Record<string, unknown> = {};
-    for (const key in value) {
-      out[key] = copyCallableRulesValue(value[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-function copyCallableAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const copied = node.derive();
-  return copied instanceof Node ? copied : undefined;
-}
-
-function copyCallableCommentNode(node: Comment): Node {
-  return new Comment(
-    node.value,
-    node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location,
-    node.sourceRoot?._treeContext
-  ).inherit(node);
-}
-
-function copyCallableReusableLeaf(node: Node): Node | undefined {
-  return canReuseLeaf(node) ? reuseLeaf(node) : undefined;
-}
-
-function constructCallableRulesNode(node: Node, value: unknown): Node {
-  const copy = Reflect.construct(
-    node.constructor,
-    [
-      value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
-    ]
-  );
-  if (!(copy instanceof Node)) {
-    throw new TypeError('Expected callable rules copy to remain a node');
-  }
-  return copy.inherit(node);
-}
-
-function callableLocation(node: Node): LocationInfo | undefined {
-  return node.location.length === 6 ? node.location : undefined;
-}
-
-function copyCallableDirectFieldNode(node: Node): Node | undefined {
-  if (isNode(node, N.Rules)) {
-    return new Rules(
-      copyCallableRulesChildren(node),
-      node.options ? { ...node.options } : undefined,
-      callableLocation(node),
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  if (isNode(node, N.Mixin)) {
-    return new Mixin(
-      {
-        ...(node.name !== undefined && {
-          name: copyCallableRulesNode(node.name) as Mixin['name']
-        }),
-        rules: copyCallableRulesNode(node.rules) as Rules,
-        ...(node.params !== undefined && {
-          params: copyCallableRulesNode(node.params) as Mixin['params']
-        }),
-        ...(node.guard !== undefined && {
-          guard: copyCallableRulesNode(node.guard) as Mixin['guard']
-        })
-      },
-      node.options ? { ...node.options } : undefined,
-      callableLocation(node),
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  if (isNode(node, N.Ruleset)) {
-    return new Ruleset(
-      {
-        selector: copyCallableRulesNode(node.selector) as Ruleset['selector'],
-        rules: copyCallableRulesNode(node.rules) as Rules,
-        ...(node.guard !== undefined && {
-          guard: copyCallableRulesNode(node.guard) as Ruleset['guard']
-        }),
-        ...(node.selectorBeforeExtend !== undefined && {
-          selectorBeforeExtend: copyCallableRulesNode(node.selectorBeforeExtend) as Ruleset['selectorBeforeExtend']
-        })
-      },
-      node.options ? { ...node.options } : undefined,
-      callableLocation(node),
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  if (isNode(node, N.AtRule)) {
-    return new AtRule(
-      {
-        name: copyCallableRulesNode(node.name) as AtRule['name'],
-        ...(node.prelude !== undefined && {
-          prelude: copyCallableRulesNode(node.prelude)
-        }),
-        ...(node.rules !== undefined && {
-          rules: copyCallableRulesNode(node.rules) as Rules
-        })
-      },
-      node.options ? { ...node.options } : undefined,
-      callableLocation(node),
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  return undefined;
-}
-
-function copyCallableRulesNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return copyCallableCommentNode(node);
-  }
-  const copiedAmpersand = copyCallableAmpersand(node);
-  if (copiedAmpersand) {
-    return copiedAmpersand;
-  }
-  const reusableLeaf = copyCallableReusableLeaf(node);
-  if (reusableLeaf) {
-    return reusableLeaf;
-  }
-  const directFieldCopy = copyCallableDirectFieldNode(node);
-  if (directFieldCopy) {
-    return directFieldCopy;
-  }
-  return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
-}
-
-function copyCallableRulesChildren(sourceRules: Rules): Node[] {
-  const source = sourceRules.rules;
-  const out = new Array<Node>(source.length);
-  for (let i = 0; i < source.length; i++) {
-    out[i] = copyCallableRulesNode(source[i]!);
-  }
-  return out;
-}
-
-function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
+function createSourceBackedCallableRulesSurface(sourceRules: Rules): Rules {
   const output = sourceRules.derive([]);
+  output.options.sourceBackedCallableSurface = true;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
-    output.value.push(source[i]!);
+    const child = createSourceBackedCallablePlacementChild(source[i]!);
+    if (child !== source[i]) {
+      output.adopt(child);
+    }
+    output.value.push(child);
   }
   output.markSourceBackedCallableSurfacePrepared();
   return output;
 }
 
-function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
-  if (!sourceRules.hasFlag(F_STATIC)) {
-    return false;
+function createSourceBackedCallableRuleset(sourceRuleset: Ruleset): Ruleset {
+  const body = createSourceBackedCallableRulesSurface(sourceRuleset.rules);
+  const output = new Ruleset(
+    {
+      selector: createPublicNil(),
+      rules: body
+    },
+    sourceRuleset.options ? { ...sourceRuleset.options } : undefined,
+    callableLocation(sourceRuleset),
+    sourceRuleset.sourceRoot?._treeContext
+  );
+  applyCallableSurfaceMetadata(output, sourceRuleset);
+  output.selector = sourceRuleset.selector;
+  output.rules = body;
+  output.guard = sourceRuleset.guard;
+  output.selectorBeforeExtend = sourceRuleset.selectorBeforeExtend;
+  output.value.selector = sourceRuleset.selector;
+  output.value.rules = body;
+  if (sourceRuleset.guard !== undefined) {
+    output.value.guard = sourceRuleset.guard;
   }
-  const value = sourceRules.rules;
-  for (let i = 0; i < value.length; i++) {
-    const child = value[i]!;
-    if (
-      child.type === 'Ruleset'
-      || child.type === 'AtRule'
-      || child.options?.setDefined === true
-      || (child.options?.assign !== undefined && child.options.assign !== ':')
-    ) {
-      return false;
-    }
+  if (sourceRuleset.selectorBeforeExtend !== undefined) {
+    output.value.selectorBeforeExtend = sourceRuleset.selectorBeforeExtend;
   }
-  return true;
+  output.registrationPrepared = true;
+  return output;
+}
+
+function createSourceBackedCallableAtRule(sourceAtRule: AtRule): AtRule {
+  const body = sourceAtRule.rules
+    ? createSourceBackedCallableRulesSurface(sourceAtRule.rules)
+    : undefined;
+  const output = new AtRule(
+    {
+      name: new Any('', { role: 'atkeyword' }),
+      ...(body && { rules: body })
+    },
+    sourceAtRule.options ? { ...sourceAtRule.options } : undefined,
+    callableLocation(sourceAtRule),
+    sourceAtRule.sourceRoot?._treeContext
+  );
+  applyCallableSurfaceMetadata(output, sourceAtRule);
+  output.name = sourceAtRule.name;
+  output.prelude = sourceAtRule.prelude;
+  output.rules = body;
+  output.value.name = sourceAtRule.name;
+  if (sourceAtRule.prelude !== undefined) {
+    output.value.prelude = sourceAtRule.prelude;
+  }
+  if (body !== undefined) {
+    output.value.rules = body;
+  }
+  output.hoistToRoot = sourceAtRule.hoistToRoot;
+  output.frames = sourceAtRule.frames;
+  output.registrationPrepared = true;
+  return output;
+}
+
+function createSourceBackedCallablePlacementChild(sourceChild: Node): Node {
+  if (isNode(sourceChild, N.Rules)) {
+    return createSourceBackedCallableRulesSurface(sourceChild);
+  }
+  if (isNode(sourceChild, N.Ruleset)) {
+    return createSourceBackedCallableRuleset(sourceChild);
+  }
+  if (isNode(sourceChild, N.AtRule)) {
+    return createSourceBackedCallableAtRule(sourceChild);
+  }
+  return sourceChild;
 }
 
 export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-  return sourceRules.derive();
+  const output = sourceRules.derive([]);
+  output.value.push(...sourceRules.rules);
+  return output;
 }
 
 export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-  return canReuseStaticCallableChildren(sourceRules)
-    ? createStaticCallableRulesSurface(sourceRules)
-    : sourceRules.derive(copyCallableRulesChildren(sourceRules));
+  return createSourceBackedCallableRulesSurface(sourceRules);
 }
 
 type DerivedRulesSurfaceOptions = {

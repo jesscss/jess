@@ -14,23 +14,25 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('a { b: c; }');
     expect(serializeTypes(tree)).toBeString(`
       (Rules
-        [
-          (Ruleset
-            selector: 
-              (BasicSelector 'a')
-            rules: 
-              (Rules
-                [
-                  (Declaration
-                    name: 
-                      (Any [role=property] 'b')
-                    value: 
-                      (Any [role=ident] 'c')
-                  )
-                ]
-              )
-          )
-        ]
+        rules:
+          [
+            (Ruleset
+              selector:
+                (BasicSelector 'a')
+              rules:
+                (Rules
+                  rules:
+                    [
+                      (Declaration
+                        name:
+                          (Any [role=property] 'b')
+                        valueNode:
+                          (Any [role=ident] 'c')
+                      )
+                    ]
+                )
+            )
+          ]
       )
     `);
   });
@@ -41,7 +43,8 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       selector:
         (ComplexSelector
-          [
+          components:
+            [
             (BasicSelector 'a')
             (Combinator '+')
             (BasicSelector 'b')
@@ -74,15 +77,14 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('[foo=\'bar\' i] { a: b }');
     const out = serializeTypes(tree);
     expect(out).toContainString(`
-      selector: 
+      selector:
         (AttributeSelector
           name: 'foo'
-          op: '='
-          value: 
+          attributeValue:
             (Quoted
-              (Any [role=any] 'bar')
+              value:
+                (Any [role=any] 'bar')
             )
-          mod: 'i'
         )
     `);
   });
@@ -93,14 +95,14 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       selector:
         (CompoundSelector
-          value:
+          components:
             [
               (BasicSelector 'a')
               (PseudoSelector
                 name: ':is'
                 arg:
                   (SelectorList
-                    value:
+                    selectors:
                       [
                         (BasicSelector 'b')
                         (BasicSelector 'c')
@@ -122,7 +124,7 @@ describe('serializeTypes coverage', () => {
         name: ':host'
         arg:
           (CompoundSelector
-            value:
+            components:
               [
                 (BasicSelector '.sel')
                 (BasicSelector '.a')
@@ -135,7 +137,7 @@ describe('serializeTypes coverage', () => {
         name: ':host-context'
         arg:
           (CompoundSelector
-            value:
+            components:
               [
                 (BasicSelector '.sel')
                 (BasicSelector '.b')
@@ -161,7 +163,7 @@ describe('serializeTypes coverage', () => {
         name: ':unknown'
         arg:
           (Sequence
-            value:
+            items:
               [
                 (Any '.sel')
                 (Any '.a')
@@ -257,7 +259,7 @@ describe('serializeTypes coverage', () => {
         name: 'color'
         args:
           (List
-            value:
+            items:
               [
                 (Color
                   node: 'plum'
@@ -474,7 +476,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] 'm')
         valueNode:
           (List
-            value:
+            items:
               [
                 (Num 1)
                 (Num 2)
@@ -488,7 +490,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] 'n')
         valueNode:
           (Sequence
-            value:
+            items:
               [
                 (Num 1)
                 (Num 2)

@@ -44,26 +44,38 @@ export function prepareCallableCandidateState({
   const rules = canUseUnlockedRules
     ? createUnlockedRules(candidateRules)
     : createOwnedRules(candidateRules);
-  const candidateParent = candidate.parent ?? callSiteRules;
-  const definitionParent = candidate.parent ?? candidateRules.parent;
+  const candidateSourceParent = isNode(candidate)
+    ? candidate.sourceParent
+    : candidate.parent;
+  const candidateParent = candidateSourceParent ?? callSiteRules;
+  const callSiteSourceRules = isNode(callSiteRules, N.Rules)
+    ? getRootSourceRules(callSiteRules)
+    : undefined;
+  const definitionParent = (
+    isNode(callSiteRules, N.Rules)
+    && candidateSourceParent === callSiteSourceRules
+  )
+    ? callSiteRules
+    : candidateSourceParent ?? candidateRules.sourceParent;
   if (!candidateParent) {
     throw new TypeError('Callable candidate setup requires a parent or call-site rules');
   }
 
-  if (isNode(candidate, N.Mixin)) {
-    rules.parent = candidateRules.parent;
-  }
-
   rules.options.rulesVisibility ??= {};
   rules.options.rulesVisibility.VarDeclaration = leakyRules ? 'public' : 'private';
-  candidateParent.adopt(rules);
-
   const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
     ? callSiteRules.getScopeFrame()
     : undefined;
-  const definitionFrame: ScopeFrame | undefined = isNode(definitionParent, N.Rules)
-    ? definitionParent.getScopeFrame()
-    : undefined;
+  const definitionFrame: ScopeFrame | undefined = candidateRules._scopeFrame
+    ?? (
+      isNode(definitionParent, N.Rules)
+        ? definitionParent._scopeFrame ?? (
+          definitionParent === candidateSourceParent && parentFrame
+            ? undefined
+            : definitionParent.getScopeFrame()
+        )
+        : undefined
+    );
   const lexicalScopeFrame = definitionFrame ?? parentFrame;
   const fallbackScopeFrame = (
     leakyRules

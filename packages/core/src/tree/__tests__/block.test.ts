@@ -193,7 +193,7 @@ describe('Block', () => {
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.render(context)).toBe('{foo}');
-    expect(sourceValue.parent).toBe(blockNode);
+    expect(sourceValue.sourceParent).toBe(blockNode);
     expect(blockNode.toTrimmedString()).toBe('{$value}');
   });
 });

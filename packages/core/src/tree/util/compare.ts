@@ -63,7 +63,7 @@ export function comparePosition(a: Node, b: Node) {
   let bParent = b0;
 
   while (true) {
-    aParent = aParent.parent!;
+    aParent = aParent.sourceParent!;
     if (aParent === commonAncestor) {
       break;
     }
@@ -71,7 +71,7 @@ export function comparePosition(a: Node, b: Node) {
   }
 
   while (true) {
-    bParent = bParent.parent!;
+    bParent = bParent.sourceParent!;
     if (bParent === commonAncestor) {
       break;
     }

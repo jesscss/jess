@@ -616,6 +616,16 @@ describe('Color Node', () => {
       }).toThrow('Cannot convert "10px" to a color');
     });
 
+    it('uses unitful dimensions as color channel values outside strict mode', async () => {
+      const color = new Color('#ff0000');
+      const dimension = new Dimension({ number: 10, unit: 'px' });
+      const context = new Context();
+
+      const result = color.operate(dimension, '+', context);
+
+      expect(result.render(context)).toBe('#ff0a0a');
+    });
+
     it('should throw error for invalid operation with non-color', () => {
       const color = new Color({
         format: ColorFormat.RGB,

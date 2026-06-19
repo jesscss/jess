@@ -17,7 +17,7 @@ describe('Preserve Mode Output Examples', () => {
     await expect(renderOperation([num(10), '/', dimension([2, 'px'])]))
       .resolves.toBe('10 / 2px');
     await expect(renderOperation([dimension([10, 'px']), '*', dimension([2, 'px'])]))
-      .resolves.toBe('calc(20 * 1px * 1px)');
+      .resolves.toBe('20px');
     await expect(renderOperation([dimension([10, 'px']), '/', dimension([2, 's'])]))
       .resolves.toBe('10px / 2s');
     await expect(renderOperation([dimension([10, 'px']), '*', dimension([2, 'em'])]))

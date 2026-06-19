@@ -1,6 +1,8 @@
 import { F_HAS_NODE_CHILD, F_STATIC, Node } from '../node.js';
+import { N } from '../node-type.js';
 import { Sequence } from '../sequence.js';
 import { copyWithReusableLeaves } from './cloning.js';
+import { isNode } from './is-node.js';
 
 function canReuseStaticScalarLeaf(value: Node): boolean {
   return value.hasFlag(F_STATIC)
@@ -9,6 +11,9 @@ function canReuseStaticScalarLeaf(value: Node): boolean {
 }
 
 export function cloneBoundValue(value: Node): Node {
+  if (isNode(value, N.Rules | N.Collection)) {
+    return value;
+  }
   if (canReuseStaticScalarLeaf(value)) {
     return value;
   }

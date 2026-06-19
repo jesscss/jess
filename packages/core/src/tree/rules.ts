@@ -10,7 +10,7 @@ import {
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type Ruleset } from './ruleset.js';
+import { Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
@@ -43,7 +43,6 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import type { StyleImport } from './import-style.js';
 import {
@@ -72,19 +71,35 @@ import {
   blocksAmbientMixinOutputLookup,
   canEnterMixinOutputForLookup,
   canEnterRulesEntryForLookup,
+  getMixinOutputChildForSource,
+  isHiddenMixinOutputChild,
   isOptionalRulesEntry,
   isPublicRulesEntry,
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
+import { isPlainObject } from './util/collections.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
-import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
+import {
+  type CallableEntry,
+  type CallableNamespaceGuard,
+  callableRulesEntry,
+  getCallableEntryGuard,
+  getCallableEntryName,
+  getCallableEntryNamespaceGuards,
+  getCallableEntryParams,
+  getMixinEntryRules,
+  isCallableEntry,
+  type CallableLookupEntry,
+  type MixinEntry
+} from './util/callable-entry.js';
 import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findWritableSetDefinedDeclarationOccurrence,
   type DirectDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
+import { comparePosition } from './util/compare.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -151,10 +166,10 @@ function isImportAtRule(node: Node): node is AtRule {
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
-  if (keys.length > path.length) {
+  if (path.length > keys.length) {
     return false;
   }
-  for (let i = 0; i < keys.length; i++) {
+  for (let i = 0; i < path.length; i++) {
     if (keys[i] !== path[i]) {
       return false;
     }
@@ -423,6 +438,10 @@ function childCallableRulesOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+function hidesAmbientMixinSurface(node: Node): boolean {
+  return isNode(node, N.Ruleset) && Ruleset.isBareAmpersandSelector(node.selector);
+}
+
 function rulesMayContainExactCallableSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
@@ -681,12 +700,22 @@ export type RulesOptions = {
   rulesVisibility?: Record<string, RulesVisibility>;
   /** Current compatibility carrier for explicit generated mixin-output state. */
   mixinOutputSlot?: MixinOutputSlot;
+  /** True for callable wrappers whose children are canonical source nodes. */
+  sourceBackedCallableSurface?: boolean;
+  /** True for import placement wrappers whose children stay source-owned. */
+  sourceBackedImportPlacement?: boolean;
   /**
    * Marks declaration-only Rules emitted from non-mixin call sites so post-eval
    * ordering can move them ahead of nested rulesets/at-rules without relying on
    * a live call-site back-pointer on the emitted Rules wrapper.
    */
   callDeclarationOutput?: boolean;
+  /**
+   * Marks shallow output wrappers produced by control nodes such as `$for` and
+   * `$while`. These wrappers can be returned as already-evaluated call output,
+   * so render must still run post-eval declaration merge coalescing once.
+   */
+  generatedControlOutput?: boolean;
   readonly?: boolean;
   /**
    * all imports other than classic `@import` set returned rules to local.
@@ -804,6 +833,342 @@ function collectCallableBucketRemainderResults(
   return results;
 }
 
+function appendCallableNamespaceGuard(
+  existing: CallableNamespaceGuard[] | undefined,
+  guard: Node,
+  rules: Rules
+): CallableNamespaceGuard[] {
+  if (existing?.length) {
+    for (let i = 0; i < existing.length; i++) {
+      const current = existing[i]!;
+      if (current.guard === guard && current.rules === rules) {
+        return existing;
+      }
+    }
+  }
+  if (!existing?.length) {
+    return [{ guard, rules }];
+  }
+  const next = existing.slice();
+  next.push({ guard, rules });
+  return next;
+}
+
+function withRulesetNamespaceGuard(entry: MixinEntry, ruleset: Ruleset): MixinEntry {
+  const guard = ruleset.guard;
+  if (!guard || guard instanceof Nil || !isCallableEntry(entry)) {
+    return entry;
+  }
+  const callableEntry = entry as CallableEntry;
+  return callableRulesEntry({
+    name: getCallableEntryName(callableEntry),
+    params: getCallableEntryParams(callableEntry),
+    rules: getMixinEntryRules(callableEntry),
+    guard: getCallableEntryGuard(callableEntry)
+  }, isNode(entry, N.Mixin) ? entry.sourceParent : entry.parent, entry.index, appendCallableNamespaceGuard(
+    getCallableEntryNamespaceGuards(callableEntry),
+    guard,
+    ruleset.rules
+  ));
+}
+
+function withCallableNamespaceGuard(entry: MixinEntry, namespace: CallableEntry): MixinEntry {
+  if (!isCallableEntry(entry)) {
+    return entry;
+  }
+  const namespaceGuard = getCallableEntryGuard(namespace);
+  const inheritedGuards = getCallableEntryNamespaceGuards(namespace);
+  if (!namespaceGuard && !inheritedGuards?.length) {
+    return entry;
+  }
+  const callableEntry = entry as CallableEntry;
+  let namespaceGuards = getCallableEntryNamespaceGuards(callableEntry);
+  if (inheritedGuards?.length) {
+    for (let i = 0; i < inheritedGuards.length; i++) {
+      const inherited = inheritedGuards[i]!;
+      namespaceGuards = appendCallableNamespaceGuard(namespaceGuards, inherited.guard, inherited.rules);
+    }
+  }
+  if (namespaceGuard) {
+    namespaceGuards = appendCallableNamespaceGuard(namespaceGuards, namespaceGuard, getMixinEntryRules(namespace));
+  }
+  return callableRulesEntry({
+    name: getCallableEntryName(callableEntry),
+    params: getCallableEntryParams(callableEntry),
+    rules: getMixinEntryRules(callableEntry),
+    guard: getCallableEntryGuard(callableEntry)
+  }, isNode(entry, N.Mixin) ? entry.sourceParent : entry.parent, entry.index, namespaceGuards);
+}
+
+function withRulesetNamespaceGuards(entries: MixinEntry[], ruleset: Ruleset): MixinEntry[] {
+  if (ruleset.guard instanceof Nil) {
+    return entries;
+  }
+  const guarded: MixinEntry[] = new Array(entries.length);
+  for (let i = 0; i < entries.length; i++) {
+    guarded[i] = withRulesetNamespaceGuard(entries[i]!, ruleset);
+  }
+  return guarded;
+}
+
+function withCallableNamespaceGuards(entries: MixinEntry[], namespace: CallableEntry): MixinEntry[] {
+  if (!getCallableEntryGuard(namespace) && !getCallableEntryNamespaceGuards(namespace)?.length) {
+    return entries;
+  }
+  const guarded: MixinEntry[] = new Array(entries.length);
+  for (let i = 0; i < entries.length; i++) {
+    guarded[i] = withCallableNamespaceGuard(entries[i]!, namespace);
+  }
+  return guarded;
+}
+
+function staticCallableAncestorKey(node: Node): string | undefined {
+  if (isNode(node, N.Mixin)) {
+    const name = getCallableEntryName(node);
+    return name instanceof Node ? String(name.valueOf()) : String(name ?? '');
+  }
+  if (isNode(node, N.Ruleset) && !isNode(node.selector, N.Nil)) {
+    const keys = getOrderedSelectorKeys(node.selector);
+    return keys.length === 1 ? keys[0] : undefined;
+  }
+  return undefined;
+}
+
+function withSourceNamespaceGuards(entry: MixinEntry, path: readonly string[]): MixinEntry {
+  if (!isCallableEntry(entry) || path.length < 2) {
+    return entry;
+  }
+  const namespacePath = path.slice(0, -1);
+  let namespaceGuards = getCallableEntryNamespaceGuards(entry);
+  let namespaceIndex = namespacePath.length - 1;
+  let cursor: Node | undefined = isNode(entry)
+    ? entry.sourceParent
+    : entry.parent;
+  while (cursor) {
+    if (isNode(cursor, N.Mixin)) {
+      const key = staticCallableAncestorKey(cursor);
+      if (key && namespaceIndex >= 0 && key === namespacePath[namespaceIndex]) {
+        const guard = getCallableEntryGuard(cursor);
+        if (guard) {
+          namespaceGuards = appendCallableNamespaceGuard(namespaceGuards, guard, cursor.rules);
+        }
+        namespaceIndex--;
+      }
+    } else if (isNode(cursor, N.Ruleset)) {
+      const key = staticCallableAncestorKey(cursor);
+      if (key && namespaceIndex >= 0 && key === namespacePath[namespaceIndex]) {
+        if (cursor.guard && !(cursor.guard instanceof Nil)) {
+          namespaceGuards = appendCallableNamespaceGuard(namespaceGuards, cursor.guard, cursor.rules);
+        }
+        namespaceIndex--;
+      }
+    }
+    cursor = cursor.sourceParent;
+  }
+  if (!namespaceGuards?.length) {
+    return entry;
+  }
+  const callableEntry = entry as CallableEntry;
+  return callableRulesEntry({
+    name: getCallableEntryName(callableEntry),
+    params: getCallableEntryParams(callableEntry),
+    rules: getMixinEntryRules(callableEntry),
+    guard: getCallableEntryGuard(callableEntry)
+  }, isNode(entry) ? entry.sourceParent : entry.parent, entry.index, namespaceGuards);
+}
+
+function entryMatchesNamespaceSourcePath(entry: MixinEntry, path: readonly string[]): boolean {
+  if (path.length < 2) {
+    return true;
+  }
+  if (isNode(entry, N.Ruleset)) {
+    const terminalKey = path[path.length - 1];
+    const keyPaths = getCallableRulesetKeyPaths(entry);
+    for (let i = 0; i < keyPaths.length; i++) {
+      const keys = keyPaths[i]!;
+      if (keysEndWithPath(keys, path)) {
+        return true;
+      }
+      if (terminalKey !== undefined && keys[keys.length - 1] === terminalKey) {
+        return true;
+      }
+    }
+    const selectorKeys = collectStaticSelectorCallableKeys(String(entry.selector.valueOf()));
+    if (selectorKeys.length > 0 && keysEndWithPath(selectorKeys, path)) {
+      return true;
+    }
+    if (terminalKey !== undefined && selectorKeys[selectorKeys.length - 1] === terminalKey) {
+      return true;
+    }
+  }
+  let namespaceIndex = path.length - 2;
+  let cursor: Node | undefined = isNode(entry)
+    ? entry.sourceParent
+    : entry.parent;
+  while (cursor && namespaceIndex >= 0) {
+    const key = staticCallableAncestorKey(cursor);
+    if (key) {
+      if (key !== path[namespaceIndex]) {
+        return false;
+      }
+      namespaceIndex--;
+    }
+    cursor = cursor.sourceParent;
+  }
+  return namespaceIndex < 0;
+}
+
+function keysEndWithPath(keys: readonly string[], path: readonly string[]): boolean {
+  if (keys.length < path.length) {
+    return false;
+  }
+  const start = keys.length - path.length;
+  for (let pathIndex = 0; pathIndex < path.length; pathIndex++) {
+    if (keys[start + pathIndex] !== path[pathIndex]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectStaticSelectorCallableKeys(selector: string): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < selector.length; i++) {
+    const marker = selector.charCodeAt(i);
+    if (marker !== 35 && marker !== 46) {
+      continue;
+    }
+    const start = i;
+    i++;
+    while (i < selector.length) {
+      const char = selector.charCodeAt(i);
+      if (
+        char <= 32
+        || char === 35
+        || char === 40
+        || char === 41
+        || char === 43
+        || char === 44
+        || char === 46
+        || char === 58
+        || char === 62
+        || char === 91
+        || char === 93
+        || char === 123
+        || char === 126
+        || char === 125
+      ) {
+        break;
+      }
+      i++;
+    }
+    if (i > start + 1) {
+      keys.push(selector.slice(start, i));
+    }
+    i--;
+  }
+  return keys;
+}
+
+function withSourceNamespaceGuardsForPath(entries: MixinEntry[], path: readonly string[]): MixinEntry[] {
+  let guarded: MixinEntry[] | undefined;
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    const next = withSourceNamespaceGuards(entry, path);
+    if (next === entry && guarded === undefined) {
+      continue;
+    }
+    if (guarded === undefined) {
+      guarded = entries.slice(0, i);
+    }
+    guarded.push(next);
+  }
+  return guarded ?? entries;
+}
+
+function compareMixinEntrySourceOrder(a: MixinEntry, b: MixinEntry): number {
+  if (a === b) {
+    return 0;
+  }
+  const aNode = isNode(a) ? a : a.parent;
+  const bNode = isNode(b) ? b : b.parent;
+  if (aNode && bNode) {
+    try {
+      const compared = comparePosition(aNode, bNode);
+      if (compared !== 0) {
+        return compared;
+      }
+    } catch {
+      // Fall through to local index ordering for detached callable wrappers.
+    }
+  }
+  return (a.index ?? 0) - (b.index ?? 0);
+}
+
+function sameNamespaceGuardChain(a: CallableNamespaceGuard[] | undefined, b: CallableNamespaceGuard[] | undefined): boolean {
+  const aLength = a?.length ?? 0;
+  const bLength = b?.length ?? 0;
+  if (aLength !== bLength) {
+    return false;
+  }
+  for (let i = 0; i < aLength; i++) {
+    if (a![i]!.guard !== b![i]!.guard || a![i]!.rules !== b![i]!.rules) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function dedupeNamespaceCallableResults(entries: MixinEntry[]): MixinEntry[] {
+  let deduped: MixinEntry[] | undefined;
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    let duplicate = false;
+    const current = deduped ?? entries;
+    const limit = deduped === undefined ? i : current.length;
+    for (let j = 0; j < limit; j++) {
+      const seen = current[j]!;
+      if (
+        getMixinEntryRules(seen) === getMixinEntryRules(entry)
+        && sameNamespaceGuardChain(
+          isCallableEntry(seen) ? getCallableEntryNamespaceGuards(seen) : undefined,
+          isCallableEntry(entry) ? getCallableEntryNamespaceGuards(entry) : undefined
+        )
+      ) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      if (deduped !== undefined) {
+        deduped.push(entry);
+      }
+      continue;
+    }
+    if (deduped === undefined) {
+      deduped = entries.slice(0, i);
+    }
+  }
+  return deduped ?? entries;
+}
+
+function normalizeNamespaceCallableResults(entries: MixinEntry[], path: readonly string[]): MixinEntry[] {
+  if (entries.length === 0) {
+    return entries;
+  }
+  const guarded = dedupeNamespaceCallableResults(withSourceNamespaceGuardsForPath(entries, path));
+  if (guarded.length < 2) {
+    return guarded;
+  }
+  const ordered = guarded.slice();
+  ordered.sort(compareMixinEntrySourceOrder);
+  return ordered;
+}
+
+function normalizeCompoundPrefixCallableResults(entries: MixinEntry[]): MixinEntry[] {
+  return dedupeNamespaceCallableResults(entries);
+}
+
 type AssignmentTargetBindingTarget = {
   assignmentBindingsByName?: Map<string, BindingCell>;
   assignmentReadonlyByName?: Set<string>;
@@ -912,6 +1277,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   _hasReferenceImports = false;
 
   private _registrationPrepared = false;
+  private _generatedControlOutputCoalesced = false;
 
   /**
    * Rules clones still need to preserve function bindings so visitor/plugin
@@ -986,11 +1352,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.callableLookupVersion = 0;
     this._hasExtends = false;
     this._hasReferenceImports = false;
-    // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
-    // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
-    // re-wire against the clone's actual parent chain. Reusing an empty frame from the
-    // source tree can shadow a live wrapper frame that actually carries live slots.
-    if (source._scopeFrame?.hasLiveBindings || source._scopeFrame?.fallbackFrame) {
+    // Preserve explicit runtime frame placement across shallow Rules surfaces.
+    // Ordinary declaration-only ScopeFrames should still be rebuilt lazily when
+    // they have no live/parent/fallback placement state.
+    if (source._scopeFrame?.hasLiveBindings || source._scopeFrame?.parent || source._scopeFrame?.fallbackFrame) {
       this.scopeFrame = buildScopeFrame(
         undefined,
         this,
@@ -1033,13 +1398,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
-        let cursor = this.parent;
+        let cursor = this.sourceParent;
         while (cursor) {
           if (isNode(cursor, N.Rules)) {
             resolvedParent = (cursor as Rules).getScopeFrame(undefined, prepareCallableCoverage);
             break;
           }
-          cursor = cursor.parent;
+          cursor = cursor.sourceParent;
         }
       }
       this._scopeFrame = buildScopeFrame(
@@ -1118,9 +1483,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!bucket) {
         varsByName.set(name, bucket = []);
       }
-      bucket.push(createVarDeclarationBindingEntry(node));
+      bucket.push(createVarDeclarationBindingEntry(node, this));
     }
     return pendingDeclarationNames;
+  }
+
+  prepareScopeFrameDeclarationBindings(): {
+    varsByName: Map<string, BindingEntry[]>;
+    pendingDeclarationNames: VarDeclaration[] | undefined;
+  } {
+    const pendingDeclarationNames = this.varsByName === undefined
+      ? this.prepareScopeFrameDeclarationIndex()
+      : this.collectScopeFramePendingDeclarationNames();
+    return {
+      varsByName: this.varsByName ?? new Map(),
+      pendingDeclarationNames
+    };
   }
 
   private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
@@ -1264,10 +1642,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     const value = this.rules;
     for (let i = 0; i < value.length; i++) {
-      const child = childCallableRulesOf(value[i]!);
+      const childNode = value[i]!;
+      const child = childCallableRulesOf(childNode);
       const childHasSurface = includeRulesets
-        ? child && rulesMayContainExactCallableSurface(child)
-        : child && rulesMayContainExactMixinSurface(child);
+        ? child && (rulesMayContainExactRulesetSurface(child) || (!hidesAmbientMixinSurface(childNode) && rulesMayContainExactMixinSurface(child)))
+        : child && !hidesAmbientMixinSurface(childNode) && rulesMayContainExactMixinSurface(child);
       if (childHasSurface) {
         return true;
       }
@@ -1278,13 +1657,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private invalidateExactCallableSurfaceSummaries(): void {
     this.mayContainExactMixinSurface = undefined;
     this.mayContainExactRulesetSurface = undefined;
-    let current = this.parent;
+    let current = this.sourceParent;
     while (current) {
       if (isNode(current, N.Rules)) {
         current.mayContainExactMixinSurface = undefined;
         current.mayContainExactRulesetSurface = undefined;
       }
-      current = current.parent;
+      current = current.sourceParent;
     }
   }
 
@@ -1294,7 +1673,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(current, N.Rules)) {
         current.mayContainReferenceImportSurface = undefined;
       }
-      current = current.parent;
+      current = current.sourceParent;
     }
   }
 
@@ -1416,7 +1795,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           options?.skipCurrentSurface !== true
         );
       }
-      cursor = cursor.parent;
+      cursor = cursor.sourceParent;
       if (options?.searchParents === false) {
         break;
       }
@@ -1579,7 +1958,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(node, N.Mixin)) {
         const name = node.name;
         if (name && name.type !== 'Interpolated') {
-          this.addCallableEntry(lookupKey, String(name.valueOf()), node, [], bucket);
+          const entry = node.sourceParent === rules
+            ? node
+            : callableRulesEntry({
+              name: node.name,
+              params: node.params,
+              rules: node.rules,
+              guard: node.guard
+            }, rules, node.index);
+          this.addCallableEntry(lookupKey, String(name.valueOf()), entry, [], bucket);
+        }
+        continue;
+      }
+      if (isNode(node, N.Rules)) {
+        if (!canEnterRulesEntryForLookup({ node }, { type: 'Mixin' })) {
+          continue;
+        }
+        const childEntries = node.getCallableEntriesForKey(lookupKey, false);
+        for (let childIndex = 0; childIndex < childEntries.length; childIndex++) {
+          bucket.push(childEntries[childIndex]!);
         }
         continue;
       }
@@ -1620,8 +2017,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (keys.length > 0 && ownSelector && !isNode(ownSelector, N.Nil)) {
-        const parentSelector = isNode(node.parent?.parent, N.Ruleset)
-          ? (node.parent.parent as Ruleset).selector
+        const parentSelector = isNode(node.sourceParent?.sourceParent, N.Ruleset)
+          ? (node.sourceParent.sourceParent as Ruleset).selector
           : undefined;
         const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
           ? getOrderedSelectorKeys(parentSelector)
@@ -1706,18 +2103,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let out: Array<RulesEntryLike> | undefined;
     const value = this.rules;
     for (let i = 0; i < value.length; i++) {
-      const child = childCallableRulesOf(value[i]!);
+      const childNode = value[i]!;
+      const child = childCallableRulesOf(childNode);
       if (!child) {
         continue;
       }
       const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
-      const hasExactCallableSurface = rulesMayContainExactCallableSurface(child);
+      const hiddenAmbientMixinSurface = hidesAmbientMixinSurface(childNode);
+      const hasExactRulesetSurface = rulesMayContainExactRulesetSurface(child);
+      const hasExactMixinSurface = !hiddenAmbientMixinSurface && rulesMayContainExactMixinSurface(child);
+      const hasExactCallableSurface = hasExactMixinSurface || hasExactRulesetSurface;
       if (!hasReferenceImportSurface && !hasExactCallableSurface) {
         continue;
       }
-      const hasExactMixinSurface = hasExactCallableSurface && rulesMayContainExactMixinSurface(child);
-      const hasExactRulesetSurface = hasExactCallableSurface && rulesMayContainExactRulesetSurface(child);
       if (hasExactCallableSurface) {
         this.hasExactCallableChildSurface = true;
         if (hasExactMixinSurface) {
@@ -1932,8 +2331,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private refreshParentDeclarationChildEntryAssignmentSummary(changedVariable?: VarDeclaration): void {
-    if (isNode(this.parent, N.Rules)) {
-      this.parent.refreshDirectDeclarationChildEntryAssignmentSummary(this, changedVariable);
+    if (isNode(this.sourceParent, N.Rules)) {
+      this.sourceParent.refreshDirectDeclarationChildEntryAssignmentSummary(this, changedVariable);
     }
   }
 
@@ -1983,6 +2382,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasTarget?: boolean;
       local?: boolean;
       searchParents?: boolean;
+      context?: Context;
     }
   ): Ruleset[] {
     const searchSurface = (
@@ -2067,7 +2467,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent;
+      cursor = cursor.sourceParent;
     }
     return results;
   }
@@ -2078,6 +2478,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasTarget?: boolean;
       local?: boolean;
       searchParents?: boolean;
+      context?: Context;
     }
   ): CallableRulesetPrefixMatch[] {
     const searchSurface = (
@@ -2104,7 +2505,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (
             keys.length > 0
             && keys.length < path.length
-            && keysStartWith(keys, path)
+            && keysStartWith(path, keys)
           ) {
             results.push({ ruleset: candidate, consumed: keys, scope });
           }
@@ -2162,7 +2563,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent;
+      cursor = cursor.sourceParent;
     }
     return results;
   }
@@ -2313,17 +2714,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let sawDefiniteMiss = false;
       for (const match of matches) {
         let nestedScope: Rules;
+        let rulesetNamespace: Ruleset | undefined;
+        let callableNamespace: CallableEntry | undefined;
         if (isNode(match, N.Ruleset)) {
           if (!includeRulesets) {
             return undefined;
           }
+          rulesetNamespace = match;
           nestedScope = match.rules;
-        } else if (isNode(match, N.Mixin)) {
-          if (!mixinHasNoRequiredParams(match)) {
+        } else if (isCallableEntry(match)) {
+          if (!callableEntryHasNoRequiredParams(match)) {
             sawDefiniteMiss = true;
             continue;
           }
-          nestedScope = match.rules;
+          callableNamespace = match;
+          nestedScope = getMixinEntryRules(match);
         } else {
           return undefined;
         }
@@ -2335,17 +2740,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           sawDefiniteMiss = true;
           continue;
         }
+        const resolvedEntries = rulesetNamespace
+          ? withRulesetNamespaceGuards(resolved.entries, rulesetNamespace)
+          : callableNamespace
+            ? withCallableNamespaceGuards(resolved.entries, callableNamespace)
+          : resolved.entries;
         if (nestedResults === undefined) {
-          nestedResults = resolved.entries;
-          nestedResultsOwned = resolved.owned;
+          nestedResults = resolvedEntries;
+          nestedResultsOwned = resolved.owned || resolvedEntries !== resolved.entries;
           continue;
         }
         if (!nestedResultsOwned) {
           nestedResults = [...nestedResults];
           nestedResultsOwned = true;
         }
-        for (let resolvedIndex = 0; resolvedIndex < resolved.entries.length; resolvedIndex++) {
-          nestedResults.push(resolved.entries[resolvedIndex]!);
+        for (let resolvedIndex = 0; resolvedIndex < resolvedEntries.length; resolvedIndex++) {
+          nestedResults.push(resolvedEntries[resolvedIndex]!);
         }
       }
 
@@ -2359,7 +2769,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const result = walk(this, keys, pathStart, options.searchParents !== false);
-    return result === DEFINITE_MIXIN_NAMESPACE_MISS ? [] : result?.entries;
+    return result === DEFINITE_MIXIN_NAMESPACE_MISS
+      ? []
+      : result?.entries
+        ? normalizeNamespaceCallableResults(result.entries, keys)
+        : undefined;
   }
 
   private callableBucketHasExactMixinNamespace(
@@ -2627,16 +3041,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!searchParents) {
         break;
       }
-      cursor = cursor.parent;
+      cursor = cursor.sourceParent;
     }
     return true;
   }
 
   private findRulesetNamespacePathFast(
     keys: string[],
-    options: CallableFindOptions = {}
+    options: CallableFindOptions = {},
+    pathStart = 0
   ): MixinEntry[] | undefined {
-    if (keys.length < 2) {
+    if (keys.length - pathStart < 2) {
       return undefined;
     }
 
@@ -2649,12 +3064,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const walk = (
       scope: Rules,
       path: string[],
+      offset: number,
       searchParents: boolean
     ): RulesetNamespaceFastResult => {
-      const [segment] = path;
+      const segment = path[offset];
       if (!segment) {
         return DEFINITE_MISS;
       }
+      const activePath = offset === 0 ? path : collectKeyRemainder(path, offset);
       let prefixMatches: CallableRulesetPrefixMatch[] = [];
       let prefixMatchesCovered = false;
       let hasMixinNamespace = false;
@@ -2665,7 +3082,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (scopeFrame) {
         prefixMatchesCovered = this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
           scopeFrame,
-          path,
+          activePath,
           searchParents,
           options,
           prefixMatches
@@ -2685,7 +3102,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           || frameHit.reason === 'reference-import'
           || frameHit.reason === 'frame'
         ) {
-          if (frameHit.reason === 'reference-import' && prefixMatches.length === 0) {
+          if (prefixMatchesCovered) {
+            mixinNamespaceCovered = true;
+          } else if (frameHit.reason === 'reference-import' && prefixMatches.length === 0) {
             const uncovered = scope.findMixinsFastForUncoveredCallable(
               segment,
               frameHit.reason,
@@ -2751,14 +3170,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           let fallbackFrame = scopeFrame.fallbackFrame;
           while (fallbackFrame) {
             if (isNode(fallbackFrame.rulesNode, N.Rules)) {
-              const fallbackPrefixMatches = fallbackFrame.rulesNode.findVisibleCallableRulesetPrefixMatches(path, {
-                hasTarget: options.hasTarget,
-                local: options.local,
-                searchParents: false
-              });
-              if (fallbackPrefixMatches.length > 0) {
-                prefixMatches = fallbackPrefixMatches;
-                break;
+              if (!prefixMatchesCovered) {
+                const fallbackPrefixMatches = fallbackFrame.rulesNode.findVisibleCallableRulesetPrefixMatches(activePath, {
+                  hasTarget: options.hasTarget,
+                  local: options.local,
+                  searchParents: false,
+                  context: options.context
+                });
+                if (fallbackPrefixMatches.length > 0) {
+                  prefixMatches = fallbackPrefixMatches;
+                  break;
+                }
               }
             }
             fallbackFrame = fallbackFrame.fallbackFrame;
@@ -2766,11 +3188,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
       if (!prefixMatchesCovered) {
-        prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
+        const directPrefixMatches = scope.findVisibleCallableRulesetPrefixMatches(activePath, {
           hasTarget: options.hasTarget,
           local: options.local,
-          searchParents
+          searchParents,
+          context: options.context
         });
+        if (prefixMatches.length === 0) {
+          prefixMatches = directPrefixMatches;
+        } else if (directPrefixMatches.length > 0) {
+          for (let i = 0; i < directPrefixMatches.length; i++) {
+            const direct = directPrefixMatches[i]!;
+            let found = false;
+            for (let existing = 0; existing < prefixMatches.length; existing++) {
+              const current = prefixMatches[existing]!;
+              if (current.ruleset === direct.ruleset && current.scope === direct.scope) {
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              prefixMatches.push(direct);
+            }
+          }
+        }
       }
       if (!mixinNamespaceCovered) {
         hasMixinNamespace = scope.findMixinsFast(segment, {
@@ -2780,7 +3221,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace) {
+      if (hasMixinNamespace && prefixMatches.length === 0) {
         return undefined;
       }
 
@@ -2788,10 +3229,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (options.terminalMixinOnly === true) {
           return DEFINITE_MISS;
         }
-        const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
+        const exactPathMatches = scope.findVisibleExactCallableRulesetPath(activePath, {
           hasTarget: options.hasTarget,
           local: options.local,
-          searchParents
+          searchParents,
+          context: options.context
         });
         return exactPathMatches.length > 0 ? exactPathMatches : DEFINITE_MISS;
       }
@@ -2802,19 +3244,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
+      let resolvedEntries: MixinEntry[] | undefined;
+      let resolvedEntriesOwned = false;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
           sawLegacyOnlyPrefix = true;
           continue;
         }
-        const remainderLength = path.length - consumed.length;
+        const remainderStart = offset + consumed.length;
+        const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
-          return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
+          if (options.terminalMixinOnly === true) {
+            continue;
+          }
+          (resolvedEntries ??= []).push(ruleset);
+          resolvedEntriesOwned = true;
+          continue;
         }
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
-          const segment = path[consumed.length]!;
+          const segment = path[remainderStart]!;
           simpleLookupOptions ??= {
             hasTarget: options.hasTarget,
             local: options.local,
@@ -2860,7 +3310,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const simpleCallableRulesets = ruleset.rules.findVisibleExactCallableRulesetPath([segment], {
               hasTarget: options.hasTarget,
               local: options.local,
-              searchParents: false
+              searchParents: false,
+              context: options.context
             });
             resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
           }
@@ -2869,14 +3320,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             ...options,
             searchParents: false
           };
-          const remainderStart = consumed.length;
-          resolved = ruleset.rules.findMixinNamespacePathFast(
+          const rulesetResolved = ruleset.rules.findRulesetNamespacePathFast(
+            path,
+            nestedOptions,
+            remainderStart
+          );
+          const mixinResolved = ruleset.rules.findMixinNamespacePathFast(
             path,
             undefined,
             nestedOptions,
             remainderStart
           );
-          if (resolved === undefined) {
+          if (rulesetResolved !== undefined && mixinResolved !== undefined) {
+            resolved = rulesetResolved.length === 0
+              ? mixinResolved
+              : mixinResolved.length === 0
+                ? rulesetResolved
+                : [...rulesetResolved, ...mixinResolved];
+          } else {
+            resolved = rulesetResolved ?? mixinResolved;
+          }
+          if (resolved === undefined || resolved.length === 0) {
             resolved = ruleset.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
               undefined,
@@ -2885,14 +3349,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         if (resolved?.length) {
-          return resolved;
+          const guarded = withRulesetNamespaceGuards(resolved, ruleset);
+          if (resolvedEntries === undefined) {
+            resolvedEntries = guarded;
+            resolvedEntriesOwned = guarded !== resolved;
+            continue;
+          }
+          if (!resolvedEntriesOwned) {
+            resolvedEntries = [...resolvedEntries];
+            resolvedEntriesOwned = true;
+          }
+          for (let resolvedIndex = 0; resolvedIndex < guarded.length; resolvedIndex++) {
+            resolvedEntries.push(guarded[resolvedIndex]!);
+          }
         }
       }
 
+      if (resolvedEntries !== undefined && resolvedEntries.length > 0) {
+        return resolvedEntries;
+      }
       return sawLegacyOnlyPrefix ? undefined : DEFINITE_MISS;
     };
 
-    const result = walk(this, keys, true);
+    const result = walk(this, keys, pathStart, true);
     return result === DEFINITE_MISS ? [] : result;
   }
 
@@ -2906,7 +3385,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const prefixMatches = this.findVisibleCallableRulesetPrefixMatches(keys, {
       hasTarget: options.hasTarget,
-      local: options.local
+      local: options.local,
+      context: options.context
     });
     if (prefixMatches.length === 0) {
       return { entries: [], owned: true };
@@ -2940,7 +3420,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           nestedOptions,
           consumed.length
         );
-        if (resolved === undefined) {
+        if (resolved === undefined || resolved.length === 0) {
           resolved = ruleset.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
             undefined,
@@ -2949,7 +3429,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
       if (resolved?.length) {
-        return { entries: resolved, owned: false };
+        const entries = withRulesetNamespaceGuards(resolved, ruleset);
+        return { entries, owned: entries !== resolved };
       }
     }
 
@@ -2973,15 +3454,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let descendantMissCovered = false;
     for (let i = 0; i < namespaceMixins.length; i++) {
       const entry = namespaceMixins[i]!;
-      if (!isNode(entry, N.Mixin)) {
+      if (!isCallableEntry(entry)) {
         continue;
       }
-      if (!mixinHasNoRequiredParams(entry)) {
+      if (!callableEntryHasNoRequiredParams(entry)) {
         continue;
       }
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
-      const entryRules = entry.rules;
+      const entryRules = getMixinEntryRules(entry);
       const childFrame = entryRules._scopeFrame ?? (entryRules.evaluated ? entryRules.getScopeFrame() : undefined);
       let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
@@ -3065,8 +3546,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
       if (nested?.length) {
+        const originalNested = nested;
+        nested = withCallableNamespaceGuards(nested, entry);
         if (resolved === undefined) {
           resolved = nested;
+          resolvedOwned = nested !== originalNested;
           continue;
         }
         if (!resolvedOwned) {
@@ -3079,7 +3563,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    return resolved ?? (descendantMissCovered ? [] : undefined);
+    return resolved
+      ? normalizeNamespaceCallableResults(resolved, keys)
+      : descendantMissCovered ? [] : undefined;
   }
 
   findMixin(
@@ -3215,12 +3701,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isArray(keys) && keys.length > 1) {
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       let compoundPrefixFast: CallableRulesetPathResult | undefined;
+      let rulesetNamespaceFast: MixinEntry[] | undefined;
       let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
-        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-        if (rulesetNamespaceFast !== undefined) {
-          return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-        }
+        rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
         let namespaceMixins: MixinEntry[] | undefined;
         let namespaceMixinMissCovered = false;
         if (this._scopeFrame && !options.hasTarget && !options.local) {
@@ -3238,53 +3722,105 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             || frameHit.reason === 'reference-import'
             || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
           ) {
-            const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
-            const uncovered = this.findMixinsFastForUncoveredCallable(
-              namespaceKey,
-              reason,
-              false,
-              options
-            );
-            if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-              namespaceMixins = uncovered;
+            if (rulesetNamespaceFast !== undefined) {
               namespaceMixinMissCovered = true;
+            } else {
+              const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
+              const uncovered = this.findMixinsFastForUncoveredCallable(
+                namespaceKey,
+                reason,
+                false,
+                options
+              );
+              if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+                namespaceMixins = uncovered;
+                namespaceMixinMissCovered = true;
+              }
             }
           }
         }
-        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+        if (
+          namespaceMixins === undefined
+          && !namespaceMixinMissCovered
+          && rulesetNamespaceFast === undefined
+        ) {
           namespaceMixins = this.findMixinsFast(keys[0]!, {
             hasTarget: options.hasTarget,
             local: options.local,
             includeRulesets: false
           });
         }
-        if (!namespaceMixins || namespaceMixins.length === 0) {
+        if (
+          (!namespaceMixins || namespaceMixins.length === 0)
+          && (rulesetNamespaceFast === undefined || rulesetNamespaceFast.length === 0)
+        ) {
           if (options.terminalMixinOnly !== true) {
-            const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
-              hasTarget: options.hasTarget,
-              local: options.local
-            });
-            if (namespaceRulesets.length !== 0) {
-              return undefined;
-            }
             const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
               hasTarget: options.hasTarget,
-              local: options.local
+              local: options.local,
+              context: options.context
             });
             if (exactRulesetPath.length > 0) {
               return exactRulesetPath;
             }
+            const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
+              hasTarget: options.hasTarget,
+              local: options.local,
+              context: options.context
+            });
+            if (namespaceRulesets.length !== 0) {
+              return undefined;
+            }
           }
           return undefined;
         }
-        compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
-        mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
+        if (rulesetNamespaceFast === undefined || rulesetNamespaceFast.length === 0) {
+          compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
+        }
+        mixinNamespaceFast = namespaceMixins && namespaceMixins.length > 0
+        ? this.findCallableDescendantsWithinMixinNamespaces(
           namespaceMixins,
           keys,
           options
-        );
+        )
+          : undefined;
       }
-      const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+      let fast = mixinNamespaceFast ?? (
+        rulesetNamespaceFast !== undefined
+          && (rulesetNamespaceFast.length > 0 || options.terminalMixinOnly === true)
+          ? undefined
+          : this.findMixinNamespacePathFast(keys, mixinFilterType, options)
+      );
+      if (rulesetNamespaceFast !== undefined) {
+        if (rulesetNamespaceFast.length === 0) {
+          if (fast === undefined) {
+            return undefined;
+          }
+        } else if (fast === undefined || fast.length === 0) {
+          fast = rulesetNamespaceFast;
+        } else {
+          let union = fast;
+          let unionOwned = false;
+          for (let i = 0; i < rulesetNamespaceFast.length; i++) {
+            const node = rulesetNamespaceFast[i]!;
+            let found = false;
+            for (let existing = 0; existing < union.length; existing++) {
+              if (union[existing] === node) {
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              if (!unionOwned) {
+                union = [...union];
+                unionOwned = true;
+              }
+              union.push(node);
+            }
+          }
+          fast = union;
+        }
+      }
       if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
         let compoundUnion = compoundPrefixFast.entries;
         let compoundUnionOwned = compoundPrefixFast.owned;
@@ -3307,10 +3843,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         }
-        return compoundUnion;
+        return normalizeCompoundPrefixCallableResults(compoundUnion);
       }
       if (fast !== undefined) {
-        return fast.length > 0 ? fast : undefined;
+        return fast.length > 0 ? normalizeNamespaceCallableResults(fast, keys) : undefined;
       }
       return undefined;
     }
@@ -3326,23 +3862,36 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let rules: Rules | undefined = this;
     const { searchParents = true } = options ?? {};
     let findRoot = false;
+    const seen = new Set<Rules>();
     while (rules) {
+      if (seen.has(rules)) {
+        return undefined;
+      }
+      seen.add(rules);
       const fn = rules.functionsByName?.get(keys);
       if (fn || !searchParents) {
         return fn;
       }
 
       do {
-        let parent: Node | undefined = rules.parent;
+        let parent: Node | undefined = rules.sourceParent;
+        let frameParent = rules._scopeFrame?.parent ?? rules._scopeFrame?.fallbackFrame;
         rules = undefined;
         while (parent) {
           if (isNode(parent, N.Rules)) {
             rules = parent;
             break;
           }
-          parent = parent.parent;
+          parent = parent.sourceParent;
         }
-        const rulesParent = rules?.parent;
+        while (!rules && frameParent) {
+          if (isNode(frameParent.rulesNode, N.Rules)) {
+            rules = frameParent.rulesNode;
+            break;
+          }
+          frameParent = frameParent.parent ?? frameParent.fallbackFrame;
+        }
+        const rulesParent = rules?.sourceParent;
         if (findRoot && rules?.type === 'Rules' && rulesParent === undefined) {
           break;
         }
@@ -3651,6 +4200,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceMode = true;
     }
     const emitNode = (n: Node): MaybePromise<void> => {
+      if (isHiddenMixinOutputChild(this, n)) {
+        return;
+      }
       const isEvaluatedDefinitionNode = (this.evaluated || mode === 'render') && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
@@ -3663,15 +4215,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         emitLeadingBlockCommentForNode(n);
         return;
       }
-      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+      const isChildRules = isNode(n, N.Rules);
+      const isRulesetOrAtRule = isBlockContainer(n);
+      const isContainer = isChildRules || isRulesetOrAtRule;
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);
       }
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
         return;
       }
-      const isChildRules = isNode(n, N.Rules);
-      const isRulesetOrAtRule = isBlockContainer(n);
       // Add indentation only for simple nodes (declarations, etc.)
       // Ruleset and AtRule nodes indent themselves in renderOpening
       // Emit directly to preserve source map segments
@@ -3853,6 +4405,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
     if (this.evaluated || canRenderStaticRulesDirectly(this)) {
+      this.coalesceGeneratedControlOutput();
       return createRulesRenderState(this, this, sourceWasRoot);
     }
     if (this.registrationPrepared) {
@@ -4167,18 +4720,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               assignedValue = evaluatedValue;
             }
           }
-          if (isNode(result.parent, N.Rules)) {
+          if (isNode(result.sourceParent, N.Rules)) {
             syncDeclarationValueNode(result, assignedValue);
-            assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
+            assignScopeFrameVariable(result.sourceParent._scopeFrame, key, assignedValue);
           }
           return;
         }
 
         // Find the Rules node that contains the found declaration
-        if (!isNode(result.parent, N.Rules)) {
+        if (!isNode(result.sourceParent, N.Rules)) {
           throw new Error(`Could not find parent Rules for declaration '${key}'`);
         }
-        const foundRules = result.parent;
+        const foundRules = result.sourceParent;
 
         // Create a new declaration with the same name but our value.
         const newDeclaration = node.deriveWithOptions({
@@ -4230,7 +4783,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!arr) {
             map.set(name, arr = []);
           }
-          const newEntry = createVarDeclarationBindingEntry(node as VarDeclaration);
+          const newEntry = createVarDeclarationBindingEntry(node as VarDeclaration, this);
           arr.push(newEntry);
           if (this._scopeFrame) {
             let bucket = this._scopeFrame.declarationBucketsByName.get(name);
@@ -4354,6 +4907,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   markSourceBackedCallableSurfacePrepared(): void {
+    let indexedRuleCount = 0;
+    for (let i = 0; i < this.rules.length; i++) {
+      const child = this.rules[i]!;
+      child.index = isIndexedRuleChild(child) ? indexedRuleCount++ : undefined;
+    }
     this._registrationPrepared = true;
     this.registrationPrepared = true;
   }
@@ -4434,7 +4992,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _isNestableAtRuleBody(): boolean {
-    const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
+    const parentAtRule = isNode(this.sourceParent, N.AtRule) ? this.sourceParent : undefined;
     return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.name.valueOf()) : false;
   }
 
@@ -4646,7 +5204,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): void {
     rules.rules[index] = node;
     node.index = nodeIndex;
-    rules.adopt(node);
+    if (rules.options.sourceBackedImportPlacement !== true || node.sourceParent === undefined) {
+      rules.adopt(node);
+    } else {
+      const childRules = childCallableRulesOf(node);
+      if (childRules) {
+        rules.addDirectChildRuleEntry(childRules, rules.getDirectChildRulesVisibility(childRules));
+      }
+    }
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       const registrationContext = rules._scopeFrame?.hasLiveBindings
@@ -5060,6 +5625,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const evaluateEntry = (idx: number, rule: Node, allowImportRetry: boolean): MaybePromise<void> => {
       if (isNode(rule, N.VarDeclaration)) {
+        if (rule.options?.setDefined) {
+          rules.registerNode(rule, undefined, context);
+        }
         return;
       }
       const handleError = (error: unknown): Node | undefined => {
@@ -5073,16 +5641,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         throw error;
       };
-      const result = (() => {
+      const evalRuleInRulesContext = (): MaybePromise<Node | undefined> => {
+        const savedRulesContext = context.rulesContext;
+        context.rulesContext = rules;
         try {
           const value = rule.eval(context);
-          return isThenable(value)
-            ? (value as Promise<Node>).catch(handleError)
-            : value;
+          if (isThenable(value)) {
+            return (value as Promise<Node>)
+              .catch(handleError)
+              .finally(() => {
+                context.rulesContext = savedRulesContext;
+              });
+          }
+          context.rulesContext = savedRulesContext;
+          return value;
         } catch (error) {
+          context.rulesContext = savedRulesContext;
           return handleError(error);
         }
-      })();
+      };
+      const result = evalRuleInRulesContext();
       if (isThenable(result)) {
         return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
       }
@@ -5130,15 +5708,77 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return drained;
     };
+    const prepareDynamicIdentityLane = (): MaybePromise<void> => {
+      if (rules.options.sourceBackedCallableSurface !== true) {
+        return;
+      }
+      const needsSourceBackedIdentityPrep = (node: Node): boolean => {
+        if (!this._isRegisterableType(node)) {
+          return false;
+        }
+        if (!this._hasStaticName(node)) {
+          return true;
+        }
+        return isNode(node, N.Declaration)
+          && node.options?.assign !== undefined
+          && node.options.assign !== ':';
+      };
+      const prepareRest = (start: number): MaybePromise<void> => {
+        for (let idx = start; idx < rules.rules.length; idx++) {
+          const node = rules.rules[idx]!;
+          if (!needsSourceBackedIdentityPrep(node)) {
+            continue;
+          }
+          const savedRulesContext = context.rulesContext;
+          context.rulesContext = rules;
+          let prepared: MaybePromise<Node>;
+          try {
+            prepared = isNode(node, N.Declaration | N.VarDeclaration)
+              ? node.prepareRegistration(context, { reuseCanonical: true })
+              : node.prepareRegistration(context);
+          } catch (error) {
+            context.rulesContext = savedRulesContext;
+            throw error;
+          }
+          const applyPrepared = (preparedNode: Node): void => {
+            context.rulesContext = savedRulesContext;
+            if (preparedNode !== node) {
+              rules.rules[idx] = preparedNode;
+              preparedNode.index = node.index;
+              rules.adopt(preparedNode);
+            }
+            if (this._hasStaticName(preparedNode)) {
+              this._registerNodeIfEligible(rules, preparedNode, context);
+            }
+          };
+          if (isThenable(prepared)) {
+            return (prepared as Promise<Node>).then((preparedNode) => {
+              applyPrepared(preparedNode);
+              return prepareRest(idx + 1);
+            }, (error) => {
+              context.rulesContext = savedRulesContext;
+              throw error;
+            });
+          }
+          applyPrepared(prepared as Node);
+        }
+      };
+      return prepareRest(0);
+    };
 
     const evaluateImports = evaluateLane(isStyleImportRegistrationNode, true);
     const evaluateBody = (): MaybePromise<boolean> => {
       const importDrain = drainPendingImports(false);
       const afterImports = () => {
-        const calls = evaluateLane(rule => isNode(rule, N.Call), false);
+        const preparedIdentities = prepareDynamicIdentityLane();
+        const afterPreparedIdentities = () => {
+          const calls = evaluateLane(rule => isNode(rule, N.Call), false);
         const afterCalls = () => {
           const normal = evaluateLane((rule) => {
-            if (isNode(rule, N.VarDeclaration) || isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
+            if (isNode(rule, N.VarDeclaration)) {
+              return rule.options?.setDefined === true;
+            }
+            if (isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
               return false;
             }
             return true;
@@ -5152,6 +5792,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return (calls as Promise<void>).then(afterCalls);
         }
         return afterCalls();
+        };
+        if (isThenable(preparedIdentities)) {
+          return (preparedIdentities as Promise<void>).then(afterPreparedIdentities);
+        }
+        return afterPreparedIdentities();
       };
       if (isThenable(importDrain)) {
         return (importDrain as Promise<void>).then(afterImports);
@@ -5191,21 +5836,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const index = ownerRules.rules.indexOf(source);
       if (index !== -1) {
         ownerRules.rules[index] = replacement;
+        const key = String(replacement.name.valueOf());
+        ownerRules.bumpDeclarationLookupVersion(key);
+        ownerRules.invalidateDirectDeclarationLookup(key);
       }
       ownerRules.adopt(replacement);
       return replacement;
     };
-    const replaceDeclarationValue = (decl: Declaration, value: Node): Declaration => {
+    const replaceDeclarationValue = (decl: Declaration, value: Node, ownerRules?: Rules): Declaration => {
       const replacement = decl.deriveWithParts({ value });
-      return isNode(decl.parent, N.Rules)
-        ? replaceOwnedDeclaration(decl.parent, decl, replacement)
+      if (ownerRules && ownerRules !== decl.sourceParent && ownerRules.rules.includes(decl)) {
+        return replaceOwnedDeclaration(ownerRules, decl, replacement);
+      }
+      return isNode(decl.sourceParent, N.Rules)
+        ? replaceOwnedDeclaration(decl.sourceParent, decl, replacement)
         : replacement;
     };
-    const copyMergedValue = (value: Node): Node => (
-      canReuseLeaf(value)
-        ? reuseLeaf(value)
-        : copyWithReusableLeaves(value)
-    );
+    const reuseMergedValue = (value: Node): Node => value;
     const forEachMergedItem = (
       value: Node,
       assign: string,
@@ -5239,6 +5886,63 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const sameMergedItem = (left: Node, right: Node): boolean => {
       return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
     };
+    const collapseRepeatedMergedPrefix = (items: Node[]): Node[] => {
+      for (let start = items.length - 1; start > 0; start--) {
+        if (!sameMergedItem(items[0]!, items[start]!)) {
+          continue;
+        }
+        let matches = true;
+        const comparable = Math.min(start, items.length - start);
+        for (let i = 1; i < comparable; i++) {
+          if (!sameMergedItem(items[i]!, items[start + i]!)) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          return items.slice(start);
+        }
+      }
+      return items;
+    };
+    const findMergedItemSpan = (items: Node[], span: Node[]): number => {
+      if (span.length === 0 || span.length > items.length) {
+        return -1;
+      }
+      const lastStart = items.length - span.length;
+      for (let start = 0; start <= lastStart; start++) {
+        let matches = true;
+        for (let i = 0; i < span.length; i++) {
+          if (!sameMergedItem(items[start + i]!, span[i]!)) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          return start;
+        }
+      }
+      return -1;
+    };
+    const rotateExpandedMergedSequence = (
+      priorValue: Node,
+      nextValue: Node,
+      assign: string
+    ): Node | undefined => {
+      if (assign !== '&_:') {
+        return undefined;
+      }
+      const priorItems = collectMergedItems(priorValue, assign);
+      const nextItems = collectMergedItems(nextValue, assign);
+      const priorStart = findMergedItemSpan(nextItems, priorItems);
+      if (priorStart <= 0) {
+        return undefined;
+      }
+      return spaced([
+        ...priorItems,
+        ...nextItems.slice(0, priorStart)
+      ]);
+    };
     const startsWithMergedValue = (value: Node, prefix: Node, assign: string): boolean => {
       const prefixItems = collectMergedItems(prefix, assign);
       if (prefixItems.length === 0) {
@@ -5260,32 +5964,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
       if (assign === '&_:') {
-        return spaced([copyMergedValue(priorValue), copyMergedValue(nextValue)]);
+        return spaced([reuseMergedValue(priorValue), reuseMergedValue(nextValue)]);
       }
       const priorItems = collectMergedItems(priorValue, assign);
       const nextItems = collectMergedItems(nextValue, assign);
       let nextStart = 0;
       if (priorItems.length > 0 && nextItems.length > 0) {
-        const lastPrior = priorItems[priorItems.length - 1]!;
-        const firstNext = nextItems[0]!;
-        if (sameMergedItem(lastPrior, firstNext)) {
-          nextStart = 1;
+        const comparablePrefix = Math.min(priorItems.length, nextItems.length);
+        while (
+          nextStart < comparablePrefix
+          && sameMergedItem(priorItems[nextStart]!, nextItems[nextStart]!)
+        ) {
+          nextStart++;
+        }
+        if (nextStart === 0) {
+          const lastPrior = priorItems[priorItems.length - 1]!;
+          const firstNext = nextItems[0]!;
+          if (sameMergedItem(lastPrior, firstNext)) {
+            nextStart = 1;
+          }
         }
       }
-      const mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
+      let mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
       let mergedIndex = 0;
       for (let i = 0; i < priorItems.length; i++) {
-        mergedItems[mergedIndex++] = copyMergedValue(priorItems[i]!);
+        mergedItems[mergedIndex++] = reuseMergedValue(priorItems[i]!);
       }
       for (let i = nextStart; i < nextItems.length; i++) {
-        mergedItems[mergedIndex++] = copyMergedValue(nextItems[i]!);
+        mergedItems[mergedIndex++] = reuseMergedValue(nextItems[i]!);
       }
+      mergedItems = collapseRepeatedMergedPrefix(mergedItems);
       return new List(mergedItems);
     };
     const inlineCrossScopeMergedLeadingReference = (
       decl: Node,
       priorValue: Node,
-      assign: string
+      assign: string,
+      ownerRules: Rules
     ): Node => {
       if (!isNode(decl, N.Declaration)) {
         return decl;
@@ -5302,26 +6017,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return decl;
       }
       const inlinedItems = new Array<Node>(container.items.length);
-      inlinedItems[0] = copyMergedValue(priorValue);
+      inlinedItems[0] = reuseMergedValue(priorValue);
       for (let i = 1; i < container.items.length; i++) {
-        inlinedItems[i] = copyMergedValue(container.items[i]!);
+        inlinedItems[i] = reuseMergedValue(container.items[i]!);
       }
       const inlinedValue = assign === '&_:'
         ? spaced(inlinedItems)
         : new List(inlinedItems);
-      return replaceDeclarationValue(decl, inlinedValue);
+      return replaceDeclarationValue(decl, inlinedValue, ownerRules);
     };
     const composeMergedValue = (
       decl: Node,
       ownerRules: Rules,
       prior: Node,
       assign: string,
-      priorAccumulatedValue?: Node
+      priorAccumulatedValue?: Node,
+      nextIncrementValue?: Node
     ): { value: Node; node: Node } | undefined => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return undefined;
       }
-      const nextDeclValue = getDeclValue(decl);
+      const nextDeclValue = nextIncrementValue ?? getDeclValue(decl);
       if (!nextDeclValue) {
         return undefined;
       }
@@ -5333,9 +6049,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (startsWithMergedValue(nextDeclValue, basePriorValue, assign)) {
         return { value: nextDeclValue, node: decl };
       }
-      const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue, assign);
-      let outputDecl = replaceDeclarationValue(decl, mergedValue);
-      outputDecl = normalizeMergedDeclarationValue(outputDecl);
+      const mergedValue = rotateExpandedMergedSequence(basePriorValue, nextDeclValue, assign)
+        ?? mergeDeclarationValues(basePriorValue, nextDeclValue, assign);
+      let outputDecl = replaceDeclarationValue(decl, mergedValue, ownerRules);
+      outputDecl = normalizeMergedDeclarationValue(outputDecl, ownerRules);
       const declImportant = decl.important;
       const priorImportant = prior.important;
       if (!declImportant && priorImportant) {
@@ -5351,7 +6068,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const mergedDeclValue = getDeclValue(outputDecl);
       return mergedDeclValue ? { value: mergedDeclValue, node: outputDecl } : undefined;
     };
-    const normalizeMergedDeclarationValue = (node: Node): Declaration => {
+    const normalizeMergedDeclarationValue = (node: Node, ownerRules?: Rules): Declaration => {
       if (!isNode(node, N.Declaration)) {
         throw new TypeError('Expected declaration while normalizing merged declaration value');
       }
@@ -5376,30 +6093,95 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return node;
       }
       if (current.items.length === 1) {
-        return replaceDeclarationValue(node, new Nil());
+        return replaceDeclarationValue(node, new Nil(), ownerRules);
       }
       if (current.items.length === 2) {
-        return replaceDeclarationValue(node, copyMergedValue(current.items[1]!));
+        return replaceDeclarationValue(node, reuseMergedValue(current.items[1]!), ownerRules);
       }
       const rest = new Array<Node>(current.items.length - 1);
       for (let i = 1; i < current.items.length; i++) {
-        rest[i - 1] = copyMergedValue(current.items[i]!);
+        rest[i - 1] = reuseMergedValue(current.items[i]!);
       }
-      return replaceDeclarationValue(node, new List(rest));
+      return replaceDeclarationValue(node, new List(rest), ownerRules);
     };
 
     const lastVisibleByName = new Map<string, DeclOccurrence>();
     const mergedAnchorByName = new Map<string, DeclOccurrence>();
     const accumulatedValueByName = new Map<string, Node>();
+    const hasSourceAncestor = (node: Node, type: 'Mixin' | 'Ruleset'): boolean => {
+      let cursor = node.sourceParent;
+      while (cursor) {
+        if (cursor.type === type) {
+          return true;
+        }
+        cursor = cursor.sourceParent;
+      }
+      return false;
+    };
+    const containsReference = (node: Node): boolean => {
+      const stack: unknown[] = [node];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        if (isNode(current, N.Reference)) {
+          return true;
+        }
+        if (!(current instanceof Node)) {
+          if (Array.isArray(current)) {
+            for (let i = 0; i < current.length; i++) {
+              stack.push(current[i]);
+            }
+          } else if (isPlainObject(current)) {
+            for (const key in current) {
+              stack.push(current[key]);
+            }
+          }
+          continue;
+        }
+        const value = current.value;
+        if (Array.isArray(value)) {
+          for (let i = 0; i < value.length; i++) {
+            const child = value[i];
+            if (child instanceof Node) {
+              stack.push(child);
+            }
+          }
+        } else if (isPlainObject(value)) {
+          for (const key in value) {
+            stack.push(value[key]);
+          }
+        }
+      }
+      return false;
+    };
+    const hideMergedAnchor = (occurrence: DeclOccurrence, currentNode: Node): void => {
+      if (occurrence.node === currentNode && occurrence.ownerRules !== undefined) {
+        occurrence.ownerRules.removeFlag(F_VISIBLE);
+        return;
+      }
+      const outputChild = getMixinOutputChildForSource(occurrence.ownerRules, occurrence.node);
+      if (outputChild) {
+        if (outputChild === occurrence.node) {
+          if (hasSourceAncestor(occurrence.node, 'Mixin')) {
+            occurrence.node.removeFlag(F_VISIBLE);
+            return;
+          }
+          const slot = occurrence.ownerRules.options.mixinOutputSlot;
+          (slot!.hiddenOutputSources ??= new WeakSet()).add(occurrence.node);
+          return;
+        }
+        outputChild.removeFlag(F_VISIBLE);
+        return;
+      }
+      occurrence.node.removeFlag(F_VISIBLE);
+    };
     const processDeclarationOccurrence = (node: Node, ownerRules: Rules): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
       let currentNode: Node = node;
       const name = String(node.name);
-      const assign = String(node.options.normalizedFromAssign ?? '');
+      const assign = String(node.options.normalizedFromAssign ?? node.options.assign ?? '');
       const merged = isMergedAssign(assign);
-
       if (!merged) {
         mergedAnchorByName.delete(name);
         accumulatedValueByName.delete(name);
@@ -5408,10 +6190,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         return;
       }
-      currentNode = normalizeMergedDeclarationValue(node);
+      currentNode = normalizeMergedDeclarationValue(node, ownerRules);
       let currentAccumulatedValue: Node | undefined;
 
-      const prior = lastVisibleByName.get(name);
+      const existingAnchor = mergedAnchorByName.get(name);
+      const prior = assign === '+:'
+        ? lastVisibleByName.get(name)
+        : existingAnchor;
       const priorAccumulatedValue = accumulatedValueByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
@@ -5419,37 +6204,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         prior?.ownerRules.options.mixinOutputSlot
         || ownerRules.options.mixinOutputSlot
       );
-      const shouldComposeAcrossScopes = Boolean(
-        needsCrossScopeCompose && !crossesMixinOutputBoundary
+      const currentValueBeforeCompose = getDeclValue(currentNode);
+      const hasMergeValueContainer = assign === '&_:'
+        ? isNode(currentValueBeforeCompose, N.Sequence)
+        : isNode(currentValueBeforeCompose, N.List);
+      const rawIncrementValue = node.options.normalizedAssignmentInput;
+      const currentIncrementValue = rawIncrementValue
+        && currentValueBeforeCompose
+        && (!rawIncrementValue.hasFlag(F_STATIC) || containsReference(rawIncrementValue))
+        ? currentValueBeforeCompose
+        : rawIncrementValue;
+      const shouldComposeMergedChain = Boolean(
+        prior
+        && (!crossesMixinOutputBoundary || currentIncrementValue)
+        && (needsCrossScopeCompose || hasMergeValueContainer || currentIncrementValue)
       );
-      if (priorAccumulatedValue && shouldComposeAcrossScopes) {
-        currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign);
+      if (priorAccumulatedValue && needsCrossScopeCompose && shouldComposeMergedChain) {
+        currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign, ownerRules);
       }
-      if (prior && shouldComposeAcrossScopes) {
+      if (prior && shouldComposeMergedChain) {
         const composed = composeMergedValue(
           currentNode,
           ownerRules,
           prior.node,
           assign,
-          priorAccumulatedValue
+          priorAccumulatedValue,
+          currentIncrementValue
         );
         currentAccumulatedValue = composed?.value ?? currentAccumulatedValue;
         currentNode = composed?.node ?? currentNode;
       }
       const currentValue = getDeclValue(currentNode);
-      currentAccumulatedValue ??= currentValue;
+      currentAccumulatedValue ??= currentIncrementValue ?? currentValue;
 
-      const existingAnchor = mergedAnchorByName.get(name);
       const occurrence = { node: currentNode, ownerRules };
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {
         const anchorIsSameOccurrence = existingAnchor.node === currentNode
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
-          if (existingAnchor.node === currentNode && existingAnchor.ownerRules !== ownerRules) {
-            existingAnchor.ownerRules.removeFlag(F_VISIBLE);
-          } else {
-            existingAnchor.node.removeFlag(F_VISIBLE);
-          }
+          hideMergedAnchor(existingAnchor, currentNode);
           mergedAnchorByName.set(name, occurrence);
           if (currentAccumulatedValue) {
             accumulatedValueByName.set(name, currentAccumulatedValue);
@@ -5577,6 +6370,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules,
       rulesToHoist
     };
+  }
+
+  /** @internal */
+  coalesceGeneratedControlOutput(): void {
+    if (
+      this._generatedControlOutputCoalesced
+      || this.options.generatedControlOutput !== true
+    ) {
+      return;
+    }
+    this._generatedControlOutputCoalesced = true;
+    this._coalesceMergedDeclarations(this);
   }
 
   private _checkReadonlyImportShadows(rules: Rules): void {
@@ -5732,18 +6537,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override evalNode(context: Context): MaybePromise<Rules> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
+    const isSourceBackedCallableEval = this.options.sourceBackedCallableSurface === true;
+    if (isSourceBackedCallableEval) {
+      context.sourceBackedCallableEvalDepth++;
+    }
     let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
     try {
       result = this._prepareForEval(context);
     } catch (error) {
+      if (isSourceBackedCallableEval) {
+        context.sourceBackedCallableEvalDepth--;
+      }
       this._restoreEvalAfterError(context, saved);
       throw error;
     }
-    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => this._finishEval(rules, context, saved);
+    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => {
+      if (isSourceBackedCallableEval) {
+        context.sourceBackedCallableEvalDepth--;
+      }
+      return this._finishEval(rules, context, saved);
+    };
     if (isThenable(result)) {
       return result.then(
         finish,
         (error) => {
+          if (isSourceBackedCallableEval) {
+            context.sourceBackedCallableEvalDepth--;
+          }
           this._restoreEvalAfterError(context, saved);
           throw error;
         }
@@ -5821,8 +6641,10 @@ type PendingOrderedIdentityPrepState = {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
-  const params = mixinNode.params;
+function callableEntryHasNoRequiredParams(entry: MixinEntry): boolean {
+  const params = isCallableEntry(entry)
+    ? getCallableEntryParams(entry)
+    : undefined;
   if (!params || params.length === 0) {
     return true;
   }

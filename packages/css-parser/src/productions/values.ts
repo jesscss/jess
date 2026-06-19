@@ -47,6 +47,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         let RECORDING_PHASE = $.RECORDING_PHASE;
         let name = $.CONSUME(T.CustomProperty);
         let assign = $.CONSUME2(T.Assign);
+        const valueStartOffset = (assign.endOffset ?? assign.startOffset) + 1;
         let nodes: Node[];
         if (!RECORDING_PHASE) {
           nodes = [];
@@ -69,7 +70,13 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         }
         let location = $.endRule();
         let nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context);
-        let value = new Sequence(nodes!, undefined, location, this.context);
+        const terminator = $.LA(1);
+        const valueEndOffset = terminator?.startOffset ?? location[3] + 1;
+        const rawValue = $.sourceSlice(valueStartOffset, valueEndOffset);
+        const valueLocation = $.getLocationFromNodes(nodes!) ?? location;
+        valueLocation[0] = valueStartOffset;
+        valueLocation[3] = Math.max(valueStartOffset, valueEndOffset - 1);
+        let value = new Any(rawValue, { role: 'any' }, valueLocation, this.context);
         return [nameNode, assign, value];
       }
     }

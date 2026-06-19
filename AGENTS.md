@@ -37,6 +37,23 @@ When information is volatile, point to the canonical source instead of restating
 ## AST And Runtime Safety
 
 - Maintain valid parent/child relationships at all times.
+- `Node.sourceParent` is the canonical source-tree parent only. Runtime
+  placement, callable output ownership, render indentation, scope frames, and
+  wrapper ownership must not be represented by writing `sourceParent`.
+- After canonical construction/adoption, rewriting `sourceParent` is structural
+  debt. Treat `sourceParent` as write-once source ancestry for normal runtime
+  paths; explicit cold materialization may stamp ancestry on new public nodes,
+  but should not leave that ancestry mutable. Prefer deleting the rewrite or
+  carrying placement in runtime state.
+- Generic replacement metadata such as `inherit()` must not copy
+  `sourceParent`; real children get source ancestry only through explicit
+  canonical adoption/construction. Do not make `inherit()` call adoption as a
+  side effect on hot paths; split replacement metadata from source ownership.
+- Treat frequent `.inherit(...)` call volume as unfinished architecture work,
+  even when the helper no longer mutates `sourceParent`. A call site should be
+  rare scalar replacement, cold public materialization, or last-resort selector
+  subset construction; otherwise delete it or replace it with narrower carried
+  state.
 - Fix structural bugs where they are created, not by filtering around them later.
 - Do not use `as any` to bypass node/runtime invariants.
 - Do not attach ad-hoc properties to nodes unless the repo already treats that property as part of the runtime model.
@@ -58,6 +75,23 @@ When working in the evaluation engine, optimize for:
 - reduced recursive node walks and repeated source/placement rediscovery
 - smaller hot-path function-call ladders where they show up in real eval/render
   work
+- hot AST node shapes that are proven by measurement, not debug convenience.
+  Do not use per-node `Object.defineProperty`/`Object.defineProperties` or
+  non-enumerability on hot node metadata merely to make inspection or JSON output
+  prettier. Likewise, do not assume fewer own fields is automatically faster:
+  `declare`/absent or prototype-default fields must beat stable own slots in
+  the real benchmark before being kept.
+
+Deep child copies are not an eval/render ownership strategy. Deep-copying AST
+children is illegal in performance work except for two explicit boundaries:
+narrow selector subset copies for Less extend behavior, and only as a last
+resort there; or materializing a live binding/rules value at the third-party
+JavaScript function boundary so external code receives an ordinary node shape.
+Mixin and callable evaluation must use canonical source nodes plus live
+binding/placement state so repeated calls do not clone bodies. Do not use
+`Reflect.construct`, generic recursive value copying, spread-cloned node value
+objects, or copy helpers to make callable/eval/render trees appear owned.
+Delete or redesign that machinery instead.
 
 Errors are for exceptional failure, not routine control flow. Do not throw,
 catch, allocate, or return `Error` instances to represent expected misses,
@@ -69,6 +103,8 @@ actually expected to handle an exceptional failure.
 Avoid treating these as acceptable end states:
 
 - cloning as routine eval isolation
+- deep child copies as callable, mixin, eval, render, lookup, or registration
+  ownership outside the two explicit boundaries above
 - materialization as a normal internal eval strategy
 - helper or wrapper growth that does not map to the target runtime model
 - trading one deleted node for more expensive state graphs, recursive walks, or

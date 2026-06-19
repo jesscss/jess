@@ -68,6 +68,12 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
+  it('normalizes valueOf() with sequence token separators', () => {
+    const rule = seq([any('1px'), any('100%')]);
+
+    expect(rule.valueOf()).toBe('1px 100%');
+  });
+
   it('stores child nodes on a constructor-owned direct field', () => {
     const first = num(10);
     const second = num(20);
@@ -448,7 +454,7 @@ describe('Sequence', () => {
     expect(buffer.parts).toEqual(['left right']);
   });
 
-  it('writes static sequence render output into shared flat buffers with one mark', () => {
+  it('writes static sequence render output into shared flat buffers without readback marks', () => {
     const buffer = createRenderBuffer('flat');
     buffer.shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
@@ -460,7 +466,8 @@ describe('Sequence', () => {
 
     expect(sequenceNode.render(context, buffer)).toBe('left right');
     expect(buffer.parts).toEqual(['left', ' ', 'right']);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('keeps single-item sequence buffer output out of explicit writers', () => {
@@ -515,7 +522,7 @@ describe('Sequence', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.render(context)).toBe('0 one, foo 2');
-    expect(child.parent).toBe(node);
+    expect(child.sourceParent).toBe(node);
     expect(child.toTrimmedString()).toBe('one, $item');
     expect(node.toTrimmedString()).toBe('0 one, $item 2');
   });
@@ -529,8 +536,8 @@ describe('Sequence', () => {
     const result = left.operate(right, '+', context);
 
     expect(result.toTrimmedString()).toBe('left right');
-    expect(leftChild.parent).toBe(left);
-    expect(rightChild.parent).toBe(right);
+    expect(leftChild.sourceParent).toBe(left);
+    expect(rightChild.sourceParent).toBe(right);
   });
 
   it('assembles sequence addition output without result-array push staging', () => {
@@ -596,8 +603,8 @@ describe('Sequence', () => {
     const result = left.operate(right, '+', context);
 
     expect(result.toTrimmedString()).toBe('left, right');
-    expect(leftChild.parent).toBe(left);
-    expect(rightChild.parent).toBe(right);
+    expect(leftChild.sourceParent).toBe(left);
+    expect(rightChild.sourceParent).toBe(right);
   });
 
   it('adds list values to sequences without mapped copy-array scaffolding', () => {
@@ -660,8 +667,8 @@ describe('Sequence', () => {
 
       expect(result.toTrimmedString()).toBe('left right');
       expect(CountingSequence.constructedCopies).toBe(0);
-      expect(leftChild.parent).toBe(left);
-      expect(rightChild.parent).toBe(right);
+      expect(leftChild.sourceParent).toBe(left);
+      expect(rightChild.sourceParent).toBe(right);
     } finally {
       CountingSequence.countConstructions = false;
     }
@@ -755,7 +762,7 @@ describe('Sequence', () => {
     expect(writer.reads).toBe(1);
   });
 
-  it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {
+  it('keeps implicit sequence spacing even when source boundaries are adjacent', () => {
     const trivia = createTriviaMap({
       before: new Map(),
       after: new Map()
@@ -768,10 +775,10 @@ describe('Sequence', () => {
 
     expect(rule.toTrimmedString({
       trivia
-    })).toBe('1020');
+    })).toBe('10 20');
   });
 
-  it('uses trivia map source boundaries while rendering through context', () => {
+  it('keeps implicit sequence spacing while rendering adjacent source boundaries through context', () => {
     const trivia = createTriviaMap({
       before: new Map(),
       after: new Map()
@@ -783,7 +790,7 @@ describe('Sequence', () => {
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
 
-    expect(rule.render(context, { trivia })).toBe('1020');
+    expect(rule.render(context, { trivia })).toBe('10 20');
   });
 
   it('does not let source adjacency merge evaluated identifier-like values', () => {

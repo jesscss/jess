@@ -13,10 +13,20 @@ type CallableEntryValue = {
   guard?: Node;
 };
 
+export type CallableNamespaceGuard = {
+  guard: Node;
+  rules: Rules;
+};
+
 export type CallableRulesEntry = {
   kind: 'callable-rules';
   value: CallableEntryValue;
+  name?: unknown;
+  params?: List<Node>;
+  rules: Rules;
+  guard?: Node;
   parent?: Node;
+  namespaceGuards?: CallableNamespaceGuard[];
   options?: { hasDefault?: boolean };
   index?: number;
 };
@@ -85,13 +95,19 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
 export function callableRulesEntry(
   value: CallableEntryValue,
   parent?: Node,
-  index?: number
+  index?: number,
+  namespaceGuards?: CallableNamespaceGuard[]
 ): CallableRulesEntry {
   const hasDefault = callableGuardContainsDefault(value.guard);
   return {
     kind: 'callable-rules',
     value,
+    name: value.name,
+    params: value.params,
+    rules: value.rules,
+    guard: value.guard,
     parent,
+    namespaceGuards,
     index,
     ...(hasDefault && { options: { hasDefault: true } })
   };
@@ -127,4 +143,10 @@ export function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
   return isNode(entry, N.Mixin)
     ? entry.guard
     : entry.value.guard;
+}
+
+export function getCallableEntryNamespaceGuards(entry: CallableEntry): CallableNamespaceGuard[] | undefined {
+  return isNode(entry, N.Mixin)
+    ? undefined
+    : entry.namespaceGuards;
 }

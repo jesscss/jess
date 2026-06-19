@@ -31,6 +31,13 @@ describe('BasicSelector', () => {
     expect(el('#id').toTrimmedString()).toBe('#id');
   });
 
+  it('preserves authored tag selector escape case while keeping normalized keys', () => {
+    const node = el('\\62\\6c\\6f \\63 \\6B \\0071 \\000075o\\74 e');
+
+    expect(node.toTrimmedString()).toBe('\\62\\6c\\6f \\63 \\6B \\0071 \\000075o\\74 e');
+    expect(node.valueOf()).toBe('\\62\\6c\\6f \\63 \\6b \\0071 \\000075o\\74 e');
+  });
+
   it('renders selectors through render(context)', () => {
     expect(el('.foo').render(context)).toBe('.foo');
     expect(el('#id').render(context)).toBe('#id');

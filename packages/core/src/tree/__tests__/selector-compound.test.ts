@@ -213,7 +213,7 @@ describe('Compound Selector', () => {
       const resolved = await selector.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('.resolved.other');
-      expect(first.parent).toBe(selector);
+      expect(first.sourceParent).toBe(selector);
     } finally {
       Reflect.construct = originalConstruct;
     }
@@ -241,8 +241,8 @@ describe('Compound Selector', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo]');
-    expect(sourceElement.parent).toBe(selector);
-    expect(sourceAttr.parent).toBe(selector);
+    expect(sourceElement.sourceParent).toBe(selector);
+    expect(sourceAttr.sourceParent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
 
@@ -252,13 +252,13 @@ describe('Compound Selector', () => {
       el('.keep')
     ]);
     const sourceChild = selector.components[1]!;
-    const sourceParent = sourceChild.parent;
+    const sourceParent = sourceChild.sourceParent;
     const sourceLocation = sourceChild.location;
     const resolved = await selector.eval(context);
 
     expect(resolved.toTrimmedString()).toBe('.keep');
     expect(resolved).not.toBe(sourceChild);
-    expect(sourceChild.parent).toBe(sourceParent);
+    expect(sourceChild.sourceParent).toBe(sourceParent);
     expect(sourceChild.location).toBe(sourceLocation);
     expect(selector.toTrimmedString()).toBe('&.keep');
   });

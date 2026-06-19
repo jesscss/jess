@@ -173,10 +173,11 @@ function writeDirectLeafAtRuleHeader(
   w.add(nameText, parts.name);
   if (preludeText) {
     if (hasNonAtRuleWhitespace(preludeText)) {
-      if (!(endsWithAtRuleWhitespace(nameText) || startsWithAtRuleWhitespace(preludeText))) {
+      const nameEndsWithSpace = endsWithAtRuleWhitespace(nameText);
+      if (!(nameEndsWithSpace || startsWithAtRuleWhitespace(preludeText))) {
         w.add(' ');
       }
-      w.add(trimAtRuleLeadingWhitespace(preludeText), prelude!);
+      w.add(trimAtRuleLeadingWhitespace(preludeText, nameEndsWithSpace ? '' : ' '), prelude!);
     }
   }
   w.add(';');
@@ -325,9 +326,9 @@ function popAtRuleBodyEvalRecord(
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
   let depth = 0;
-  while (cursor?.parent && depth++ < 10) {
-    const parent = cursor.parent;
-    const grandparent = parent.parent;
+  while (cursor?.sourceParent && depth++ < 10) {
+    const parent = cursor.sourceParent;
+    const grandparent = parent.sourceParent;
     if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules)) {
       cursor = grandparent;
       continue;
@@ -472,6 +473,33 @@ function createAtRuleEvalResultNode(
   );
   if (!ownsEvaluatedPrelude && !ownsEvaluatedBody && !ownsOutput) {
     return source;
+  }
+  if (source.rules?.options.sourceBackedCallableSurface === true) {
+    const node = new AtRule(
+      {
+        name: new Any('', { role: 'atkeyword' })
+      },
+      source._options ? { ...source._options } : undefined,
+      source.location.length ? source.location : undefined,
+      source.sourceRoot?._treeContext
+    ).inherit(source);
+    node.name = source.name;
+    node.prelude = source.prelude;
+    node.rules = source.rules;
+    node.value.name = source.name;
+    if (source.prelude !== undefined) {
+      node.value.prelude = source.prelude;
+    }
+    if (source.rules !== undefined) {
+      node.value.rules = source.rules;
+    }
+    node.hoistToRoot = source.hoistToRoot;
+    node.frames = source.frames;
+    return applyAtRuleBodyPublicResultState(
+      node,
+      record,
+      ownsEvaluatedBody || ownsOutput ? record.evaluatedBody : undefined
+    );
   }
   return applyAtRuleBodyPublicResultState(
     source.deriveAtRule({
@@ -799,11 +827,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       && canRenderStaticRulesDirectly(sourceRules)
       && !context.opts.collapseNesting
     );
+    const shouldUseSourceBody = sourceRules?.options.sourceBackedCallableSurface === true;
     return {
       source: this,
       evalFrame,
       ...(renderSourceBody ? { renderSourceBody } : undefined),
-      ...(sourceRules && !renderSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
+      ...(sourceRules && !renderSourceBody && !shouldUseSourceBody ? { bodyRules: this.ownRules(sourceRules) } : undefined),
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {

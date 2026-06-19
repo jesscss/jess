@@ -394,8 +394,8 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
-    expect(sourceVar.parent).toBe(node);
-    expect(sourceDecl.parent).toBe(node);
+    expect(sourceVar.sourceParent).toBe(node);
+    expect(sourceDecl.sourceParent).toBe(node);
     expect(context.rulesContext).toBeUndefined();
   });
 

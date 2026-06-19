@@ -2052,10 +2052,10 @@ describe('Style import', () => {
         throw new TypeError('Expected import result to be a Rules placement');
       }
       expect(placement.value[0]).not.toBe(sourceChild);
-      expect(sourceChild?.parent).toBe(importedRules);
+      expect(sourceChild?.sourceParent).toBe(importedRules);
     });
 
-    it('keeps first-use source-free scalar declaration imports placement-owned while reusing the scalar leaf', async () => {
+    it('keeps first-use source-free scalar declaration imports source-backed through placement state', async () => {
       const red = any('red');
       const sourceDecl = decl({ name: any('color'), value: red });
       const importedRules = rules([sourceDecl]);
@@ -2076,17 +2076,19 @@ describe('Style import', () => {
         throw new TypeError('Expected import result to be a Rules placement');
       }
       const placementDecl = placement.value[0];
-      expect(placementDecl).not.toBe(sourceDecl);
-      expect(sourceDecl.parent).toBe(importedRules);
+      expect(placementDecl).toBe(sourceDecl);
+      expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(sourceDecl.sourceParent).toBe(importedRules);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected placement child to be a declaration');
       }
       expect(placementDecl.valueNode).toBe(red);
-      expect(red.parent).toBe(sourceDecl);
+      expect(red.sourceParent).toBe(sourceDecl);
     });
 
-    it('keeps nested source-free scalar import placement owned while reusing scalar leaves', async () => {
+    it('keeps nested source-free scalar import placement source-backed while reusing scalar leaves', async () => {
       const red = any('red');
       const sourceDecl = decl({ name: any('color'), value: red });
       const sourceRuleset = ruleset({
@@ -2112,7 +2114,7 @@ describe('Style import', () => {
       }
       const placementRuleset = placement.value[0];
       expect(placementRuleset).not.toBe(sourceRuleset);
-      expect(sourceRuleset.parent).toBe(importedRules);
+      expect(sourceRuleset.sourceParent).toBe(importedRules);
       expect(isNode(placementRuleset, N.Ruleset)).toBe(true);
       if (!isNode(placementRuleset, N.Ruleset)) {
         throw new TypeError('Expected placement child to be a ruleset');
@@ -2128,7 +2130,7 @@ describe('Style import', () => {
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       const placementDecl = placementRuleset.rules?.value[0];
-      expect(placementDecl).not.toBe(sourceDecl);
+      expect(placementDecl).toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected nested placement declaration');
@@ -2138,7 +2140,7 @@ describe('Style import', () => {
       expect(getImportPlacementSourceChild(placement, red)).toBe(red);
       expect(getImportPlacementSegmentSourceChild(placement, red)).toBe(red);
       expect(placementDecl.valueNode).toBe(red);
-      expect(red.parent).toBe(sourceDecl);
+      expect(red.sourceParent).toBe(sourceDecl);
     });
 
     it('keeps cache-hit reference visibility isolated from the cached import source', async () => {

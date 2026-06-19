@@ -173,7 +173,7 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(replacement.parent).toBe(selectorNode.node);
+    expect(replacement.sourceParent).toBe(selectorNode.node);
     expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
     expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
@@ -208,7 +208,7 @@ describe('InterpolatedSelector', () => {
 
       expect(resolved.toTrimmedString()).toBe('.foo');
       expect(clonedInterpolatedValues).toBe(0);
-      expect(value.parent).toBe(selectorNode);
+      expect(value.sourceParent).toBe(selectorNode);
     } finally {
       Interpolated.prototype.clone = originalClone;
     }
@@ -237,9 +237,9 @@ describe('InterpolatedSelector', () => {
 
       expect(resolved.toTrimmedString()).toBe('.a.b');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(replacement.parent).toBe(selectorNode.node);
-      expect(left.parent).toBe(replacement);
-      expect(right.parent).toBe(replacement);
+      expect(replacement.sourceParent).toBe(selectorNode.node);
+      expect(left.sourceParent).toBe(replacement);
+      expect(right.sourceParent).toBe(replacement);
     } finally {
       BasicSelector.prototype.clone = originalClone;
     }

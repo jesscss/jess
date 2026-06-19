@@ -324,8 +324,8 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -367,9 +367,9 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(leaf.parent).toBe(body);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
+    expect(leaf.sourceParent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -441,9 +441,9 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(variable.parent).toBe(body);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
+    expect(variable.sourceParent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -481,8 +481,8 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(selector.sourceParent).toBe(node);
+    expect(bodyAtRule.sourceParent).toBe(node.rules);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -516,8 +516,8 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(selector.sourceParent).toBe(node);
+    expect(bodyAtRule.sourceParent).toBe(node.rules);
   });
 
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
@@ -544,7 +544,7 @@ describe('Rule', () => {
         font-family: Body;
       }
     `);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.sourceParent).toBe(node.rules);
   });
 
   it('keeps source selector and body parentage canonical during direct render', async () => {
@@ -591,9 +591,9 @@ describe('Rule', () => {
     }
 
     expect(ownedBodyPrepCalls).toBe(0);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(body.value[0]?.parent).toBe(body);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
+    expect(body.value[0]?.sourceParent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -687,7 +687,7 @@ describe('Rule', () => {
       expect(buffer.parts).toEqual(['color: red;\n']);
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
-      expect(body.parent).toBe(node);
+      expect(body.sourceParent).toBe(node);
       expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
@@ -737,7 +737,7 @@ describe('Rule', () => {
       `);
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
-      expect(body.parent).toBe(node);
+      expect(body.sourceParent).toBe(node);
       expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
@@ -779,8 +779,8 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyRenderCalls).toBe(0);
-    expect(nestedBody.parent).toBe(node);
-    expect(nestedBody.value[0]?.parent).toBe(nestedBody);
+    expect(nestedBody.sourceParent).toBe(node);
+    expect(nestedBody.value[0]?.sourceParent).toBe(nestedBody);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -814,7 +814,7 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyRenderCalls).toBe(0);
-    expect(dynamicBody.parent).toBe(node);
+    expect(dynamicBody.sourceParent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -842,8 +842,8 @@ describe('Rule', () => {
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
       expect(prepareCalls).toBe(0);
-      expect(guard.parent).toBe(node);
-      expect(body.parent).toBe(node);
+      expect(guard.sourceParent).toBe(node);
+      expect(body.sourceParent).toBe(node);
       expect(guard.evaluated).toBe(false);
       expect(body.evaluated).toBe(false);
       expect(node.evaluated).toBe(false);
@@ -885,8 +885,8 @@ describe('Rule', () => {
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
-    expect(guard.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(guard.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
     expect(guard.evaluated).toBe(false);
     expect(body.evaluated).toBe(false);
     expect(node.guard).toBe(guard);
@@ -933,9 +933,9 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyPrepCalls).toBe(0);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(child.parent).toBe(body);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
+    expect(child.sourceParent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -973,9 +973,9 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyPrepCalls).toBe(0);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(child.parent).toBe(body);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
+    expect(child.sourceParent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -1035,7 +1035,7 @@ describe('Rule', () => {
     const prepared = await node.prepareRegistration(context);
 
     expect(prepared).not.toBe(node);
-    expect(selector.parent).toBe(node);
+    expect(selector.sourceParent).toBe(node);
     expect(prepared.rules).toBe(body);
   });
 
@@ -1050,7 +1050,7 @@ describe('Rule', () => {
       return originalClone.apply(this, args);
     };
     const selector = sellist([sel([selectorLeaf])]);
-    const sourceLeafParent = selectorLeaf.parent;
+    const sourceLeafParent = selectorLeaf.sourceParent;
     const node = ruleset({
       selector,
       rules: rules([])
@@ -1059,7 +1059,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(getPrintOptions(), true)).toBe('.foo {\n');
       expect(selectorLeafClones).toBe(0);
-      expect(selectorLeaf.parent).toBe(sourceLeafParent);
+      expect(selectorLeaf.sourceParent).toBe(sourceLeafParent);
     } finally {
       selectorLeaf.clone = originalClone;
     }
@@ -1153,8 +1153,8 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(selector.sourceParent).toBe(node);
+    expect(body.sourceParent).toBe(node);
     expect(resolved.rules).not.toBe(body);
   });
 
@@ -1191,7 +1191,7 @@ describe('Rule', () => {
     target.addFlag(F_EXTEND_TARGET);
     const added = sel([addedLeaf]);
     added.addFlag(F_EXTENDED);
-    const addedLeafParent = addedLeaf.parent;
+    const addedLeafParent = addedLeaf.sourceParent;
     const node = ruleset({
       selector: sellist([target, added]),
       rules: rules([])
@@ -1205,7 +1205,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(options)).toBe('.added {\n');
       expect(addedLeafClones).toBe(0);
-      expect(addedLeaf.parent).toBe(addedLeafParent);
+      expect(addedLeaf.sourceParent).toBe(addedLeafParent);
     } finally {
       addedLeaf.clone = originalClone;
     }

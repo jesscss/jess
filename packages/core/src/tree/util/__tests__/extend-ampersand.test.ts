@@ -191,8 +191,8 @@ describe('Extend Ampersand Handling Tests', () => {
         true
       );
 
-      expect(parentSelector.parent).toBeUndefined();
-      expect(sourceSelectorChildren.map(child => child.parent)).toEqual(
+      expect(parentSelector.sourceParent).toBeUndefined();
+      expect(sourceSelectorChildren.map(child => child.sourceParent)).toEqual(
         sourceSelectorChildren.map(() => selector)
       );
 
@@ -403,7 +403,7 @@ describe('Extend Ampersand Handling Tests', () => {
 
       expect(selector.valueOf()).toBe('.parent .child');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(child.parent).toBeUndefined();
+      expect(child.sourceParent).toBeUndefined();
     } finally {
       BasicSelector.prototype.clone = originalClone;
     }

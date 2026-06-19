@@ -224,7 +224,7 @@ describe('PseudoSelector', () => {
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.render(context)).toBe(':is(.foo, .bar)');
-    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(sourceArg?.sourceParent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
 
@@ -249,7 +249,7 @@ describe('PseudoSelector', () => {
     expect(resolved).not.toBe(pseudoNode);
     expect(resolved.generated).toBe(true);
     expect(resolved.render(context)).toBe('.foo .bar');
-    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(sourceArg?.sourceParent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
 
@@ -276,7 +276,7 @@ describe('PseudoSelector', () => {
     expect(resolved.render(context)).toBe('.foo .bar');
     expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
     expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(sourceArg?.sourceParent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector)');
   });
 
@@ -350,7 +350,7 @@ describe('PseudoSelector', () => {
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved.render(context)).toBe(':unknown(.foo.bar)');
-    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(sourceArg?.sourceParent).toBe(pseudoNode);
     expect(resolved.keySet.equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
   });
 });

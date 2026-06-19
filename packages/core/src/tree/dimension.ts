@@ -45,6 +45,59 @@ const UNIT_TO_GROUP: ReadonlyMap<string, ConversionGroup> = new Map<ConversionUn
     .concat(ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]) as UnitMapEntries)
 );
 
+export function serializeDimensionSyntax(number: number, unit = ''): string {
+  // Check if unit is compound (contains '/', '*', or '±')
+  const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
+
+  if (isCompoundUnit) {
+    // Output as calc() for compound units
+    // Parse the compound unit to reconstruct a valid calc() expression
+    const numberStr = `${round(number, 8)}`.toLowerCase();
+    let out = 'calc(';
+
+    // Parse compound unit to create calc expression
+    if (unit.includes('/')) {
+      // Division: "px/s" or "1/s" → calc(number * 1px / 1s) or calc(number / 1s)
+      const parts = unit.split('/');
+      const numerator = parts[0] || '1';
+      const denominator = parts[1] || '1';
+      if (numerator === '1') {
+        // Special case: "1/s" means number / unit → calc(number / 1s)
+        out += `${numberStr} / 1${denominator}`;
+      } else {
+        // General case: "px/s" → calc(number * 1px / 1s)
+        out += `${numberStr} * 1${numerator} / 1${denominator}`;
+      }
+    } else if (unit.includes('*')) {
+      // Multiplication: "px*em" → calc(number * 1px * 1em)
+      // Example: 10px * 2em → 20 with unit "px*em" → calc(20 * 1px * 1em)
+      const parts = unit.split('*');
+      let units = `1${parts[0] ?? ''}`;
+      for (let i = 1; i < parts.length; i++) {
+        units += ` * 1${parts[i] ?? ''}`;
+      }
+      out += `${numberStr} * ${units}`;
+    } else if (unit.includes('±')) {
+      // Addition/subtraction: "px±em" → calc(1px ± 1em)
+      // Note: We don't have the original values, so this is approximate
+      // The actual operation would be calc(aVal * 1px ± bVal * 1em)
+      const parts = unit.split('±');
+      const unit1 = parts[0] || '';
+      const unit2 = parts[1] || '';
+      // Output as calc(1unit1 + 1unit2) - approximation since we don't have original values
+      out += `1${unit1} + 1${unit2}`;
+    } else {
+      // Fallback - shouldn't happen
+      out += `${numberStr} * 1${unit}`;
+    }
+    return `${out})`;
+  }
+
+  // Normal unit output
+  const numberStr = `${round(number, 8)}`.toLowerCase();
+  return unit ? `${numberStr}${unit}` : numberStr;
+}
+
 export interface Dimension extends Node<DimensionValue> {
   eval(context: Context): Dimension;
 }
@@ -82,8 +135,7 @@ export class Dimension extends Node<DimensionValue> {
   private operateAsColor(b: Color, op: Operator, context?: Context): Color {
     const { number, unit } = this;
     const unitMode = context?.opts?.unitMode ?? 'preserve';
-    const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
-    if (unit && isStrictLikeMode) {
+    if (unit && unitMode === 'strict') {
       throw new TypeError(`Cannot convert "${this}" to a color`);
     }
     const thisColor = finalizeOperationMetadataResult(this, new Color(
@@ -138,10 +190,7 @@ export class Dimension extends Node<DimensionValue> {
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
           if (isPreserveMode) {
-            return finalizeOperationMetadataResult(this, new Dimension({
-              number: calculate(aVal, op, bVal),
-              unit: `${aUnit}*${bUnit}`
-            }));
+            return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
           }
           throw new TypeError('Cannot multiply two units together');
         } else {
@@ -307,61 +356,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   private serializeSyntax(): string {
-    let { number, unit = '' } = this;
-
-    // Check if unit is compound (contains '/', '*', or '±')
-    const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
-
-    if (isCompoundUnit) {
-      // Output as calc() for compound units
-      // Parse the compound unit to reconstruct a valid calc() expression
-      const numberStr = `${round(number, 8)}`.toLowerCase();
-      let out = 'calc(';
-
-      // Parse compound unit to create calc expression
-      if (unit.includes('/')) {
-        // Division: "px/s" or "1/s" → calc(number * 1px / 1s) or calc(number / 1s)
-        const parts = unit.split('/');
-        const numerator = parts[0] || '1';
-        const denominator = parts[1] || '1';
-        if (numerator === '1') {
-          // Special case: "1/s" means number / unit → calc(number / 1s)
-          out += `${numberStr} / 1${denominator}`;
-        } else {
-          // General case: "px/s" → calc(number * 1px / 1s)
-          out += `${numberStr} * 1${numerator} / 1${denominator}`;
-        }
-      } else if (unit.includes('*')) {
-        // Multiplication: "px*em" → calc(number * 1px * 1em)
-        // Example: 10px * 2em → 20 with unit "px*em" → calc(20 * 1px * 1em)
-        const parts = unit.split('*');
-        let units = `1${parts[0] ?? ''}`;
-        for (let i = 1; i < parts.length; i++) {
-          units += ` * 1${parts[i] ?? ''}`;
-        }
-        out += `${numberStr} * ${units}`;
-      } else if (unit.includes('±')) {
-        // Addition/subtraction: "px±em" → calc(1px ± 1em)
-        // Note: We don't have the original values, so this is approximate
-        // The actual operation would be calc(aVal * 1px ± bVal * 1em)
-        const parts = unit.split('±');
-        const unit1 = parts[0] || '';
-        const unit2 = parts[1] || '';
-        // Output as calc(1unit1 + 1unit2) - approximation since we don't have original values
-        out += `1${unit1} + 1${unit2}`;
-      } else {
-        // Fallback - shouldn't happen
-        out += `${numberStr} * 1${unit}`;
-      }
-      return `${out})`;
-    }
-
-    // Normal unit output
-    const numberStr = `${round(number, 8)}`.toLowerCase();
-    if (unit) {
-      return `${numberStr}${unit}`;
-    }
-    return numberStr;
+    return serializeDimensionSyntax(this.number, this.unit);
   }
 
   override resolve(_context: Context): this {

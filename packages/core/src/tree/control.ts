@@ -24,7 +24,7 @@ import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import { createOwnedCallableRulesSurface } from './util/callable-surface.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -123,13 +123,46 @@ function createDerivedIterationRulesSurface(
 }
 
 function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
-  const output = new Rules([]);
+  const output = new Rules([], { generatedControlOutput: true });
   if (childNodes) {
     for (const childNode of childNodes) {
       output.push(childNode);
     }
   }
   return output;
+}
+
+function isMergeDeclarationAssign(assign: unknown): boolean {
+  return assign === '+:'
+    || assign === '+,:'
+    || assign === '+_:'
+    || assign === '&,:'
+    || assign === '&_:';
+}
+
+function rulesMayRenderMergedDeclarations(rules: Rules): boolean {
+  const stack: Rules[] = [rules];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    for (let i = 0; i < current.rules.length; i++) {
+      const child = current.rules[i]!;
+      if (
+        isNode(child, N.Declaration)
+        && (
+          isMergeDeclarationAssign(child.options.assign)
+          || isMergeDeclarationAssign(child.options.normalizedFromAssign)
+        )
+      ) {
+        return true;
+      }
+      if (isNode(child, N.Rules)) {
+        stack.push(child);
+      } else if (isNode(child, N.Ruleset | N.AtRule) && child.rules) {
+        stack.push(child.rules);
+      }
+    }
+  }
+  return false;
 }
 
 async function runWithRulesContext<T>(
@@ -146,19 +179,27 @@ async function runWithRulesContext<T>(
   }
 }
 
-function deriveIterationChild(node: Node): Node {
-  return copyWithReusableLeaves(node);
-}
-
-function createIterationEvalSurface(sourceRules: Rules): Rules {
-  const iterationRules = createDerivedIterationRulesSurface(
-    sourceRules,
-    sourceRules.rules.map(deriveIterationChild)
-  );
+function createIterationEvalSurface(
+  sourceRules: Rules,
+  scopeFrame?: ScopeFrame,
+  markPrepared = false
+): Rules {
+  const iterationRules = markPrepared
+    ? createOwnedCallableRulesSurface(sourceRules)
+    : createDerivedIterationRulesSurface(sourceRules);
+  iterationRules.scopeFrame = scopeFrame;
+  if (scopeFrame) {
+    scopeFrame.rulesNode = iterationRules;
+  }
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
   };
+  if (!markPrepared) {
+    for (const child of sourceRules.rules) {
+      iterationRules.rules.push(child);
+    }
+  }
   return iterationRules;
 }
 
@@ -174,7 +215,7 @@ function attachIterationFallbackFrame(
   seen.add(node);
   if (includeSelf && isNode(node, N.Rules)) {
     const scopeFrame = node.getScopeFrame();
-    scopeFrame.fallbackFrame ??= frame;
+    scopeFrame.fallbackFrame = frame;
   }
   for (const child of node.children()) {
     attachIterationFallbackFrame(child, frame, seen, true);
@@ -193,9 +234,10 @@ function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
 }
 
 function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rules {
-  const iterationRules = createIterationEvalSurface(sourceRules);
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
-  return iterationRules;
+  return createIterationEvalSurface(
+    sourceRules,
+    buildScopeFrame(undefined, sourceRules, stateRules.getScopeFrame())
+  );
 }
 
 function hasIterationStateMutation(rules: Rules): boolean {
@@ -405,8 +447,6 @@ async function createForIterationSurface(
     resolvedKey = new Any(String(key), { role: 'property' });
   }
 
-  const iterationRules = createIterationEvalSurface(originalRules);
-
   const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
   const liveSlots = new Map<string, BindingCell>();
   for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
@@ -420,9 +460,13 @@ async function createForIterationSurface(
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+  const iterationRules = createIterationEvalSurface(
+    originalRules,
+    buildScopeFrame(new Map(), originalRules, parentFrame, liveSlots),
+    true
+  );
   attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
-  return iterationRules.prepareRegistration(context);
+  return iterationRules;
 }
 
 export type IfBranch = {
@@ -615,7 +659,7 @@ export class For extends Node<StructuredLoopValue> {
           counter
         );
         counter++;
-        const result = await iterationRules.eval(context);
+        const result = await runWithRulesContext(context, iterationRules, () => iterationRules.eval(context));
         const iterationFrame = iterationRules.getScopeFrame();
         attachIterationFallbackFrame(result, iterationFrame);
 
@@ -632,7 +676,9 @@ export class For extends Node<StructuredLoopValue> {
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createGeneratedOutputRulesSurface(outputRules);
+      const output = createGeneratedOutputRulesSurface(outputRules);
+      output.coalesceGeneratedControlOutput();
+      return output;
     };
     return run();
   }
@@ -695,6 +741,10 @@ export class For extends Node<StructuredLoopValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
+    if (rulesMayRenderMergedDeclarations(this.rules)) {
+      const output = await this.evalNode(context);
+      return await this.renderOutput(context, output, buffer, options);
+    }
     const { pattern, iterable, rules: originalRules } = this;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
@@ -711,7 +761,9 @@ export class For extends Node<StructuredLoopValue> {
         counter
       );
       counter++;
-      output += await iterationRules.render(context, buffer, options);
+      output += await runWithRulesContext(context, iterationRules, () => (
+        iterationRules.render(context, buffer, options) as MaybePromise<string>
+      ));
     }
     return output;
   }

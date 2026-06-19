@@ -591,6 +591,35 @@ describe('Call', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('keeps separator-owned comment trivia in buffered call render output', async () => {
+    const buffer = createRenderBuffer('flat');
+    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+
+    expect(await rule.render(context, buffer, { trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+    expect(buffer.parts).toEqual(['linear-gradient(#333 /*{comment}*/, #111)']);
+  });
+
+  it('normalizes scalar dimensions on the rendered call fast path', async () => {
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: 'rotate',
+      args: list([dimension([-0.0000000001, 'deg'])])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rotate(0deg)');
+    expect(buffer.parts).toEqual(['rotate(0deg)']);
+  });
+
   it('writes empty CSS call render output into buffers without writer readback scaffolding', () => {
     const buffer = createRenderBuffer('flat');
     const writer = new CountingWriter();
@@ -938,8 +967,8 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('red 10px');
       expect(CountingSequence.constructedCopies).toBe(2);
       expect(collectionEvalCalls).toBe(0);
-      expect(originalArg.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalArg.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       MixinCollection.prototype.evalCall = originalCollectionEvalCall;
       CountingSequence.countConstructions = false;
@@ -1188,7 +1217,7 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(10, 20, 30)');
     expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
-    expect(arg.parent).toBe(rule.args);
+    expect(arg.sourceParent).toBe(rule.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -1204,7 +1233,7 @@ describe('Call', () => {
     };
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
-    expect(arg.parent).toBe(rule.args);
+    expect(arg.sourceParent).toBe(rule.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -1220,7 +1249,7 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('wrap(): body-output');
     expect(buffer.parts).toEqual(['wrap(): body-output']);
-    expect(content.parent).toBe(rule);
+    expect(content.sourceParent).toBe(rule);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -1237,7 +1266,7 @@ describe('Call', () => {
     };
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
-    expect(content.parent).toBe(rule);
+    expect(content.sourceParent).toBe(rule);
     expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
@@ -1412,8 +1441,8 @@ describe('Call', () => {
       expect(buffer.parts).toEqual(['ok']);
       expect(CountingSequence.constructedCopies).toBe(0);
       expect(rule.evaluated).toBe(false);
-      expect(originalValue.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalValue.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       CountingSequence.countConstructions = false;
       CountingSequence.constructedCopies = 0;
@@ -1438,8 +1467,8 @@ describe('Call', () => {
       expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
       expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
       expect(derivedCalls.count).toBe(0);
-      expect(args.parent).toBe(rule);
-      expect(name.parent).toBe(rule);
+      expect(args.sourceParent).toBe(rule);
+      expect(name.sourceParent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
@@ -1457,8 +1486,8 @@ describe('Call', () => {
 
     expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
-    expect(args.parent).toBe(rule);
-    expect(name.parent).toBe(rule);
+    expect(args.sourceParent).toBe(rule);
+    expect(name.sourceParent).toBe(rule);
     expect(name.evaluated).toBe(false);
     expect(rule.evaluated).toBe(false);
   });
@@ -1509,8 +1538,8 @@ describe('Call', () => {
     expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
     expect(topDeclaration.important).toBeUndefined();
     expect(nestedDeclaration.important).toBeUndefined();
-    expect(topReplacement?.parent).toBe(root);
-    expect(nestedReplacement?.parent).toBe(nestedRules);
+    expect(topReplacement?.sourceParent).toBe(root);
+    expect(nestedReplacement?.sourceParent).toBe(nestedRules);
     expect(root.toTrimmedString()).toBeString(`
       color: red !important;
       .nested {
@@ -1807,7 +1836,7 @@ describe('Call', () => {
 
       expect(resolved.toTrimmedString()).toBe('var()');
       expect(clonedLists).toBe(0);
-      expect(args.parent).toBe(rule);
+      expect(args.sourceParent).toBe(rule);
     } finally {
       List.prototype.clone = originalClone;
     }
@@ -1831,7 +1860,7 @@ describe('Call', () => {
 
       expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
       expect(clonedLists).toBe(0);
-      expect(args.parent).toBe(rule);
+      expect(args.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
@@ -2053,7 +2082,7 @@ describe('Call', () => {
       expect(isNode(result, N.Rules)).toBe(true);
       expect(result.toTrimmedString()).toContain('color: blue');
       expect(clonedReferences).toBe(0);
-      expect(name.parent).toBe(rule);
+      expect(name.sourceParent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
     } finally {
@@ -2085,7 +2114,7 @@ describe('Call', () => {
       expect(rendered).toContain('color: blue');
       expect(isNode(resolved, N.Rules)).toBe(true);
       expect(resolved.toTrimmedString()).toContain('color: blue');
-      expect(name.parent).toBe(rule);
+      expect(name.sourceParent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
     } finally {
@@ -2114,7 +2143,7 @@ describe('Call', () => {
     if (!isNode(result, N.Rules)) {
       throw new Error('Expected Rules result');
     }
-    expect(Reflect.has(result, 'sourceParent')).toBe(false);
+    expect(result.sourceParent).toBeUndefined();
     expect(result.options.callDeclarationOutput).toBe(true);
   });
 
@@ -2202,8 +2231,8 @@ describe('Call', () => {
 
     expect(result.toTrimmedString()).toBe('ok');
     expect(received).toBe(originalValue);
-    expect(originalValue.parent).toBe(originalArgs);
-    expect(originalArgs.parent).toBe(rule);
+    expect(originalValue.sourceParent).toBe(originalArgs);
+    expect(originalArgs.sourceParent).toBe(rule);
   });
 
   it('does not clone childless source-free scalar leaves for callback arg lists', async () => {
@@ -2290,9 +2319,9 @@ describe('Call', () => {
       expect(CountingSequence.constructedCopies).toBe(1);
       expect(rawArg).not.toBe(originalValue);
       expect(rawArg instanceof Sequence ? rawArg.items[0] : undefined).toBe(originalLeaf);
-      expect(rawArg?.parent?.parent).toBe(rule);
-      expect(originalValue.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(rawArg?.sourceParent).toBeUndefined();
+      expect(originalValue.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       CountingSequence.countConstructions = false;
       CountingSequence.constructedCopies = 0;
@@ -2330,8 +2359,8 @@ describe('Call', () => {
     expect(rawArgsDuringCall).toBeDefined();
     expect(rawArgsDuringCall).not.toBe(originalArgs);
     expect(originalArgs.value).toEqual([originalValue]);
-    expect(originalValue.parent).toBe(originalArgs);
-    expect(originalArgs.parent).toBe(rule);
+    expect(originalValue.sourceParent).toBe(originalArgs);
+    expect(originalArgs.sourceParent).toBe(rule);
   });
 
   it('records metadata rawArgs placement beside the owned argument surface', async () => {
@@ -2376,7 +2405,7 @@ describe('Call', () => {
       sourceArg: originalValue,
       index: 0
     });
-    expect(getCallRawArgDiagnosticMessageSource(rawArgsDuringCall, 0)).toBe('argument 1 from $red 10');
+    expect(getCallRawArgDiagnosticMessageSource(rawArgsDuringCall, 0)).toBe('argument 1 from red 10');
   });
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
@@ -2426,8 +2455,8 @@ describe('Call', () => {
     }
     for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
       expect(originalArgs.value).toEqual([originalValue]);
-      expect(originalValue.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalValue.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     }
   });
@@ -2526,8 +2555,8 @@ describe('Call', () => {
       }
       for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
         expect(originalArgs.value).toEqual([originalValue]);
-        expect(originalValue.parent).toBe(originalArgs);
-        expect(originalArgs.parent).toBe(rule);
+        expect(originalValue.sourceParent).toBe(originalArgs);
+        expect(originalArgs.sourceParent).toBe(rule);
         expect(rule.evaluated).toBe(false);
       }
     } finally {
@@ -2565,7 +2594,7 @@ describe('Call', () => {
     expect(rawArgsDuringCall).not.toBe(originalArgs);
     expect(rawArgsDuringCall?.value).toHaveLength(2);
     expect(originalArgs.value).toHaveLength(1);
-    expect(originalArgs.parent).toBe(rule);
+    expect(originalArgs.sourceParent).toBe(rule);
     expect(rule.evaluated).toBe(false);
   });
 
@@ -2599,8 +2628,8 @@ describe('Call', () => {
     expect(receivedArg).toBeDefined();
     expect(receivedArg).not.toBe(originalValue);
     expect(originalValue.evaluated).toBe(false);
-    expect(originalValue.parent).toBe(originalArgs);
-    expect(originalArgs.parent).toBe(rule);
+    expect(originalValue.sourceParent).toBe(originalArgs);
+    expect(originalArgs.sourceParent).toBe(rule);
   });
 
   it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
@@ -2633,7 +2662,7 @@ describe('Call', () => {
 
       expect(result.toTrimmedString()).toBe('ok');
       expect(scalarClones).toBe(0);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalArgs.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     } finally {
       Any.prototype.clone = originalClone;
@@ -2678,8 +2707,8 @@ describe('Call', () => {
 
       expect(result.toTrimmedString()).toBe('ok');
       expect(scalarClones).toBe(0);
-      expect(originalValue.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalValue.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       Any.prototype.clone = originalClone;
     }
@@ -2718,7 +2747,7 @@ describe('Call', () => {
 
       expect(result.toTrimmedString()).toBe('ok');
       expect(CountingCall.constructedCopies).toBe(0);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       CountingCall.countConstructions = false;
     }
@@ -2748,8 +2777,8 @@ describe('Call', () => {
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
       expect(clonedCalls).toBe(0);
-      expect(args.parent).toBe(rule);
-      expect(originalArg.parent).toBe(args);
+      expect(args.sourceParent).toBe(rule);
+      expect(originalArg.sourceParent).toBe(args);
     } finally {
       Call.prototype.clone = originalClone;
     }
@@ -2779,8 +2808,8 @@ describe('Call', () => {
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
       expect(sequenceCopies).toBe(0);
-      expect(args.parent).toBe(rule);
-      expect(arg.parent).toBe(args);
+      expect(args.sourceParent).toBe(rule);
+      expect(arg.sourceParent).toBe(args);
     } finally {
       Sequence.prototype.copy = originalCopy;
     }
@@ -2817,8 +2846,8 @@ describe('Call', () => {
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('noop(red 10px)');
       expect(CountingSequence.constructedCopies).toBe(0);
-      expect(originalArg.parent).toBe(originalArgs);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalArg.sourceParent).toBe(originalArgs);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       CountingSequence.countConstructions = false;
       CountingSequence.constructedCopies = 0;
@@ -2850,7 +2879,7 @@ describe('Call', () => {
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
       expect(sequenceCopies).toBe(0);
-      expect(content.parent).toBe(rule);
+      expect(content.sourceParent).toBe(rule);
     } finally {
       Sequence.prototype.copy = originalCopy;
     }
@@ -2872,7 +2901,7 @@ describe('Call', () => {
 
     expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(content.parent).toBe(rule);
+    expect(content.sourceParent).toBe(rule);
   });
 
   it('renders source-backed fallback call content without owning output content', async () => {
@@ -2905,7 +2934,7 @@ describe('Call', () => {
       expect(sequenceCopies).toBe(0);
       expect(derivedCalls.count).toBe(0);
       expect(buffer.parts).toEqual(['missing-fn(red): raw content']);
-      expect(content.parent).toBe(rule);
+      expect(content.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
@@ -2947,7 +2976,7 @@ describe('Call', () => {
       expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
       expect(derivedCalls.count).toBe(0);
       expect(sequenceCopies).toBe(0);
-      expect(content.parent).toBe(rule);
+      expect(content.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     } finally {
       Sequence.prototype.copy = originalCopy;
@@ -2998,7 +3027,7 @@ describe('Call', () => {
       expect(derivedCalls.count).toBe(0);
       expect(calls).toBe(2);
       expect(buffer.parts).toEqual(['bad(red): raw content']);
-      expect(content.parent).toBe(rule);
+      expect(content.sourceParent).toBe(rule);
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
@@ -3096,7 +3125,7 @@ describe('Call', () => {
 
     expect(isNode(resolved, N.Call)).toBe(false);
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(content.parent).toBe(rule);
+    expect(content.sourceParent).toBe(rule);
   });
 
   it('resolves optional JS failure fallback without shallow-cloning the source call', async () => {
@@ -3132,8 +3161,8 @@ describe('Call', () => {
       expect(isNode(resolved, N.Call)).toBe(false);
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
       expect(clonedCalls).toBe(0);
-      expect(args.parent).toBe(rule);
-      expect(originalArg.parent).toBe(args);
+      expect(args.sourceParent).toBe(rule);
+      expect(originalArg.sourceParent).toBe(args);
     } finally {
       Call.prototype.clone = originalClone;
     }
@@ -3170,8 +3199,8 @@ describe('Call', () => {
       expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
       expect(derivedCalls.count).toBe(0);
       expect(calls).toBe(3);
-      expect(args.parent).toBe(rule);
-      expect(name.parent).toBe(rule);
+      expect(args.sourceParent).toBe(rule);
+      expect(name.sourceParent).toBe(rule);
       expect(name.evaluated).toBe(false);
       expect(rule.evaluated).toBe(false);
     } finally {
@@ -3239,7 +3268,7 @@ describe('Call', () => {
 
       expect(result.toTrimmedString()).toBe('ok');
       expect(scalarClones).toBe(0);
-      expect(originalArgs.parent).toBe(rule);
+      expect(originalArgs.sourceParent).toBe(rule);
     } finally {
       Any.prototype.clone = originalClone;
     }

@@ -193,6 +193,15 @@ describe('Dimension', () => {
       expect(result.location).toEqual(left.location);
       expect(result.sourceNode).toBe(result);
     });
+
+    it('uses unitful dimensions as color channel values outside strict mode', async () => {
+      const left = dimension([10, 'px']);
+      const right = color('#ff0000');
+
+      const result = left.operate(right, '+', context);
+
+      expect(result.render(context)).toBe('#ff0a0a');
+    });
   });
 
   describe('multiplication', () => {
@@ -325,13 +334,10 @@ describe('Dimension', () => {
       expect(output).toContain('calc');
       expect(output).toContain('px');
     });
-    it('should create calc() when multiplying double units', async () => {
+    it('should use the left unit when multiplying matching units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      const result = left.operate(right, '*', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
+      await expect(renderOperate(left, right, '*', context)).resolves.toBe('20px');
     });
     it('should throw on divide by zero (preserve mode still throws)', () => {
       let left = dimension([10, 'px']);

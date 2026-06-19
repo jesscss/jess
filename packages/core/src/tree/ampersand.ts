@@ -631,11 +631,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     if (!amp._selectorContainer && frame && frame.selector) {
       amp = createAmpersandWithSelectorContainer(this, frame);
     } else if (!amp._selectorContainer) {
-      const parentSelector = amp.parent;
+      const parentSelector = amp.sourceParent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
       if (!isBareWrapperAmp) {
         const file = amp.sourceRoot?._treeContext?.file;
-        const selectorText = String(amp.parent?.valueOf?.() ?? '&');
+        const selectorText = String(amp.sourceParent?.valueOf?.() ?? '&');
         context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
           filePath: file?.fullPath,

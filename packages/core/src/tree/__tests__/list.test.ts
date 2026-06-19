@@ -403,8 +403,8 @@ describe('List', () => {
     const result = left.operate(right, '+', context);
 
     expect(result.toTrimmedString()).toBe('left, right');
-    expect(leftChild.parent).toBe(left);
-    expect(rightChild.parent).toBe(right);
+    expect(leftChild.sourceParent).toBe(left);
+    expect(rightChild.sourceParent).toBe(right);
   });
 
   it('adds list values without mapped copy-array scaffolding', () => {
@@ -451,8 +451,8 @@ describe('List', () => {
     const result = left.operate(right, '+', context);
 
     expect(result.toTrimmedString()).toBe('left, right');
-    expect(leftChild.parent).toBe(left);
-    expect(right.parent).toBeUndefined();
+    expect(leftChild.sourceParent).toBe(left);
+    expect(right.sourceParent).toBeUndefined();
   });
 
   it('derives list addition output without reconstructing the source list', () => {
@@ -479,8 +479,8 @@ describe('List', () => {
 
       expect(result.toTrimmedString()).toBe('left, right');
       expect(CountingList.constructedCopies).toBe(0);
-      expect(leftChild.parent).toBe(left);
-      expect(rightChild.parent).toBe(right);
+      expect(leftChild.sourceParent).toBe(left);
+      expect(rightChild.sourceParent).toBe(right);
     } finally {
       CountingList.countConstructions = false;
     }

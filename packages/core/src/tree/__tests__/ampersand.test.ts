@@ -253,7 +253,7 @@ describe('Ampersand', () => {
     expect(resolved).not.toBe(sourceSelector);
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
-    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+    expect(sourceChildren.map(child => child.sourceParent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
   it('renders appended generated selectors without reparenting source selectors', async () => {
@@ -284,8 +284,8 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+    expect(sourceParentChildren.map(child => child.sourceParent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.sourceParent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
   it('extends appended generated selectors without reparenting source selectors', async () => {
@@ -326,8 +326,8 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+    expect(sourceParentChildren.map(child => child.sourceParent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.sourceParent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
@@ -367,8 +367,8 @@ describe('Ampersand', () => {
     const one = el('.one');
     const two = el('.two');
     const selectorList = sellist([sel([one]), sel([two])]);
-    const sourceOneParent = one.parent;
-    const sourceTwoParent = two.parent;
+    const sourceOneParent = one.sourceParent;
+    const sourceTwoParent = two.sourceParent;
     const node = amp({ selectorContainer: { selector: selectorList } });
     node.addFlag(F_IMPLICIT_AMPERSAND);
     const originalClone = BasicSelector.prototype.clone;
@@ -386,8 +386,8 @@ describe('Ampersand', () => {
 
       expect(resolved?.toTrimmedString()).toBe(':is(.one, .two)');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(one.parent).toBe(sourceOneParent);
-      expect(two.parent).toBe(sourceTwoParent);
+      expect(one.sourceParent).toBe(sourceOneParent);
+      expect(two.sourceParent).toBe(sourceTwoParent);
     } finally {
       BasicSelector.prototype.clone = originalClone;
     }
@@ -574,7 +574,7 @@ describe('Ampersand', () => {
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);
-    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+    expect(sourceChildren.map(child => child.sourceParent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
   it('should validate each item individually when distributing template', async () => {

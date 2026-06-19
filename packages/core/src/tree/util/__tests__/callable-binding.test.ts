@@ -45,6 +45,6 @@ describe('callable binding helpers', () => {
 
     expect(rest.value[0]).not.toBe(source);
     expect(rest.value[0]?.valueOf()).toBe(source.valueOf());
-    expect(source.value[0]?.parent).toBe(source);
+    expect(source.value[0]?.sourceParent).toBe(source);
   });
 });

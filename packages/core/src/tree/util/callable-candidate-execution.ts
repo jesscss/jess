@@ -3,8 +3,10 @@ import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
 import type { List } from '../list.js';
 import type { Rules } from '../rules.js';
+import { Bool } from '../bool.js';
+import { Condition } from '../condition.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
-import type { CallableEntry } from './callable-entry.js';
+import { getCallableEntryNamespaceGuards, type CallableEntry } from './callable-entry.js';
 import {
   recordCallableDefaultGuardResult,
   type CallableDefaultState
@@ -18,6 +20,7 @@ import { ensureCallableOuterRulesSurface } from './callable-outer-rules.js';
 import { wireCallableScopeFrames } from './callable-scope-frame.js';
 import type { PreparedCallableCandidateState } from './callable-candidate-state.js';
 import type { CallSignature } from './recursion-helper.js';
+import { withRulesContext } from './context.js';
 
 type ExecuteCallableCandidateOptions = {
   context: Context;
@@ -39,6 +42,29 @@ type ExecuteCallableCandidateResult = {
     passWhenDefaultTrue: boolean;
   };
 };
+
+async function evaluateNamespaceGuards(context: Context, candidate: CallableEntry): Promise<boolean> {
+  const namespaceGuards = getCallableEntryNamespaceGuards(candidate);
+  if (!namespaceGuards?.length) {
+    return true;
+  }
+  for (let i = 0; i < namespaceGuards.length; i++) {
+    const { guard, rules } = namespaceGuards[i]!;
+    rules.getScopeFrame();
+    const passes = await withRulesContext(context, rules, async () => {
+      context.isDefault = false;
+      if (guard instanceof Condition) {
+        return await guard.evaluateBoolean(context);
+      }
+      const resolvedGuard = await guard.eval(context);
+      return resolvedGuard instanceof Bool && resolvedGuard.value === true;
+    });
+    if (!passes) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export async function executeCallableCandidate({
   context,
@@ -103,6 +129,12 @@ export async function executeCallableCandidate({
       liveSlots,
       usesPreboundParamGuardOuterRules
     });
+  } else if (lexicalScopeFrame) {
+    wireCallableScopeFrames({
+      rules,
+      lexicalScopeFrame,
+      fallbackScopeFrame
+    });
   } else if (context.leakyRules === true && parentFrame) {
     wireCallableScopeFrames({
       rules,
@@ -129,6 +161,10 @@ export async function executeCallableCandidate({
     createOuterRules
   });
   outerRules = preparedGuardOuterRules;
+
+  if (!await evaluateNamespaceGuards(context, candidate)) {
+    return {};
+  }
 
   const guardResult = await evaluateCallableGuard({
     context,

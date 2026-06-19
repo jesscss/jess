@@ -4737,6 +4737,72 @@ creation, parser/eval traversal, render body/header, direct lookup/reference,
 or remaining copy/materialization surfaces, with the same v4-vs-v5 comparator
 as the wall-clock gate.
 
+2026-06-19 Node source-field shape pass: kept descriptor deletion/source-parent
+cleanup; rejected broader field-count cuts. The fresh profile after the extend
+guard still showed `Node` construction as a visible frame. The kept change
+removes per-node `Object.defineProperties(...)` setup for `sourceNode` and the
+old `parent` pointer, keeps `sourceNode` as a plain own field, renames the
+ownership pointer to `sourceParent`, and keeps `inherit(...)` from stamping
+source ancestry. This folds in the canonical-source-parent architecture:
+runtime placement and callable output ownership must not be expressed by moving
+a parent/source pointer.
+
+Field-shape A/B details matter. With TypeScript `useDefineForClassFields`,
+`foo: T | undefined` still emits an own field, while `declare foo:
+T | undefined` names the property for type checking without runtime emission.
+A prototype tried moving `allowRoot`, `allowRuleRoot`, `generated`, and
+`frozen` to `Node.prototype` defaults and making `hoistToRoot`/`index` absent
+until first assignment. It passed Less test-data but measured worse/noisier:
+`benchmark.less` medians `151.04ms`, `146.15ms`, and confirmation `150.00ms`
+over `40` runs after `12` warmups. A broader absent-metadata prototype used
+`declare` for `_location`, `_sourceRoot`, `_treeContext`, `_options`, and
+`sourceParent` and skipped constructor writes when options/location were
+`undefined`; it also passed Less test-data but regressed to median `159.18ms`.
+That cut was rejected. The likely cause is hot missing-property/prototype reads
+and less stable object shape outweighing the narrower instance.
+
+Kept evidence: full Less test-data passed (`65` passed), ordered
+`@jesscss/core` and `jess` builds passed, and corrected Less v4-vs-v5
+comparator runs after the kept descriptor/source-parent shape measured
+`benchmark.less` medians `145.15ms`, `147.04ms`, and A/B confirmation
+`144.47ms` over `40` runs after `12` warmups. Earlier CPU aggregation for the
+plain source-field version showed `Node` constructor samples drop from `169` to
+`35`. This is a real improvement over the post-extend no-diagnostic run
+(`157.42ms`) but still far from the stored Less 4.5 median target `42.16ms`.
+
+Follow-up cleanup in the same source-field batch kept two small runtime cuts
+that were exposed by the broad verification pass. First,
+`normalizeNamespaceCallableResults(...)` no longer re-filters already-resolved
+direct-crawl/fallback-frame namespace hits through canonical source ancestry;
+that source-only recheck incorrectly discarded valid runtime fallback-frame
+hits and duplicated work after the direct lookup path had already proven the
+candidate path. Guard decoration and dedupe remain. Second, extend root
+aggregation no longer clones the first `BitSet` in each local/root union:
+`BitSet.or(...)` already creates a fresh set on the second and later item, and
+these aggregate reads do not mutate the adopted first set. The node-copy
+frontier verifier was tightened after the last expected loop eval-copy seam had
+already been removed.
+
+Current measured state after those cleanups: `pnpm run benchmark:less:v4-v5 --
+--runs=40 --warmup=12 --files=benchmark.less` reports Less v5/Jess median
+`134.35ms`, trimmed average `134.91ms`, min `126.79ms`, and max `174.66ms`
+against the stored Less 4.5 median `42.16ms`. This is better than the
+descriptor-only `144-147ms` runs, but the campaign is still not complete.
+
+Next target direction: keep field shape monomorphic unless measurement says
+otherwise. Do not reintroduce per-node descriptors or non-enumerability for
+debug/JSON convenience, but also do not remove hot own fields just because the
+base node looks wide. Fresh profile target should come from
+`_processNodes`/adoption, `isNode`, render header/body, direct
+lookup/reference, remaining copy/materialization surfaces, or prototype-chain
+depth. A plausible next experiment is to measure hot node method/property
+dispatch against a flatter prototype shape or type-table/direct-function path:
+for example, collapse one or two hot abstract base methods into direct
+per-node fields/functions, or replace repeated inherited virtual calls in a
+single hot render/eval family with a local function table. Keep it only if
+canonical `benchmark.less` wall-clock improves, because fewer prototype hops
+can trade off against larger instances or worse inline-cache stability.
+
 ## Parked Lessons
 
 - Declaration pre-render caching regressed enough real benchmarks that it should

@@ -86,6 +86,7 @@ export class LessParser {
       parser.context = options.context;
     }
     parser.context.opts.trivia = undefined;
+    parser.sourceText = text;
     parser.input = lexerResult.tokens;
     const ruleMethod = parser[rule];
     if (typeof ruleMethod !== 'function') {
