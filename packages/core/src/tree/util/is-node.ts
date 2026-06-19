@@ -45,6 +45,5 @@ export function isNode(
   if (typeof value !== 'object') {
     return false;
   }
-  const nodeType = (value as { nodeType?: unknown }).nodeType;
-  return typeof nodeType === 'number' && (nodeType & mask) !== 0;
+  return (((value as Node).nodeType ?? 0) & mask) !== 0;
 }

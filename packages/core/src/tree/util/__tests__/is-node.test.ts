@@ -73,5 +73,6 @@ describe('is-node', () => {
   test('isNode returns false for malformed typed objects', () => {
     expect(isNode({ type: 'NotNode' }, N.Selector)).toBe(false);
     expect(isNode({ nodeType: 0 }, N.Selector)).toBe(false);
+    expect(isNode({ nodeType: 'Selector' }, N.Selector)).toBe(false);
   });
 });

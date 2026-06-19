@@ -148,49 +148,36 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the Node source-ancestry constructor cut and rejected
-  broader field-count variants. The kept change removes per-node
-  `Object.defineProperties(...)` descriptor allocation for `sourceNode` and
-  `parent`, renames the ownership pointer to `sourceParent`, and makes
-  `inherit(...)` metadata-only instead of placement/source-parent stamping.
-  Follow-up cleanup kept runtime fallback-frame namespace hits from being
-  discarded by a source-ancestry-only re-filter and removed first-item
-  `BitSet.clone()` calls in extend root aggregate unions. `sourceNode` is now a
-  normal own field and `sourceParent` is a normal write-once source-ancestry
-  field; non-enumerability for debug/JSON nicety is not worth hot constructor
-  cost.
-- Verdict: measured keep, but not goal completion. Corrected Less v5/Jess
-  comparator repeats after the kept source-field shape measured medians
-  `145.15ms`, `147.04ms`, and A/B confirmation `144.47ms` over `40` runs after
-  `12` warmups. A prototype-default cut for `allowRoot`, `allowRuleRoot`,
-  `generated`, `frozen`, plus absent `hoistToRoot`/`index`, passed tests but
-  measured worse/noisier (`151.04ms`, repeat `146.15ms`, confirmation
-  `150.00ms`). A broader `declare`/absent metadata cut for `_location`,
-  `_sourceRoot`, `_treeContext`, `_options`, and `sourceParent` also passed
-  tests but regressed to `159.18ms`. The lesson is measured field shape, not
-  blind own-slot minimization: absent/prototype reads can cost more than stable
-  own fields on hot nodes. The stored Less 4.5 target remains median
-  `42.16ms`, so the campaign is still far from complete. After the namespace
-  normalization and BitSet clone cleanup, the current comparator is median
-  `134.35ms` / trimmed average `134.91ms`.
-- New traversal: none.
-- New node/materialization: none kept.
-- Render path: unchanged.
-- Helper/API surface: no public/helper surface kept for compatibility. The
-  source-parent helper is a narrower ownership setter replacing the old parent
-  rewrite helper.
-- Metadata mutations: removed constructor descriptor definitions and removed
-  `inherit(...)` source-parent mutation. Rejected attempts to move hot default
-  fields to prototype/absent slots because benchmark evidence did not support
-  them.
-- Evidence: `pnpm run verify:baseline -- --changed` passed, including core,
-  parser, Less fixture, compatibility, and frontier gates; ordered
-  `@jesscss/core` and `jess` builds passed; canonical comparator runs listed
-  above plus current `134.35ms` median / `134.91ms` trimmed average. The
-  source-field CPU profile previously showed `Node` constructor samples drop
-  from `169` to `35`; the rejected broader field-count versions were judged by
-  wall-clock because they moved benchmark time the wrong way. Next target
-  should come from fresh CPU/wall-clock evidence, with likely remaining
-  families in `_processNodes`/adoption, `isNode`, render header/body, direct
-  lookup/reference, remaining copy/materialization surfaces, and
-  prototype-chain depth/inheritance cost on hot node methods.
+- Latest pass: kept two small measured cuts and rejected three low-confidence
+  experiments. `isNode(value, mask)` now uses direct bit comparison after the
+  object/null guard. Rules-container serialization now skips duplicate
+  declaration comparison staging unless a property name repeats in that body.
+- Verdict: measured keep, but not goal completion. The stored Less 4.5 target
+  remains median `42.16ms`; current combined quick comparator evidence is still
+  roughly `155ms` median under high system load. The accepted cuts are bounded
+  wins, not the end of the performance campaign.
+- New traversal: duplicate declaration handling now does one cheap forward
+  name scan and only runs the reverse pre-render comparison pass when a
+  duplicate property family exists. No recursive walk was added.
+- New node/materialization: none. The duplicate-comparison detached
+  `OutputWriter` is now skipped for unique declaration bodies.
+- Render path: unique declaration bodies render directly without
+  duplicate-cache pre-render setup; repeated properties still use the existing
+  Less duplicate-declaration comparison semantics.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Rejected: a constructor `_processNodes(...)` fast path had useful shape
+  counters and a tiny noisy A/B signal but not enough decision-quality
+  wall-clock evidence, so it was not kept. Callable direct-type rewrites in the
+  lookup collector passed focused tests but worsened median. Removing one
+  CSS-call argument container copy passed focused/full call tests but worsened
+  the real benchmark.
+- Evidence: focused tests passed for touched areas
+  (`is-node`, `node-flags`, `rules`, `ruleset`, `outputwriter`: `254` passed,
+  `5` skipped). Ordered `@jesscss/awaitable-pipe`, `@jesscss/core`, and `jess`
+  builds passed. `isNode` worker evidence: reversed `40`/`12` comparator
+  `151.73ms` median patched vs `160.84ms` baseline. Render worker evidence:
+  isolated Less mirror `40`/`12` comparator `144.54ms` median patched vs
+  `148.10ms` baseline. Final combined `40`/`12` run after removing the
+  rejected constructor probe measured `153.67ms` median / `160.14ms` trimmed
+  average under high background CPU variance.

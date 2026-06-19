@@ -150,6 +150,27 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 subagent experiment pass: four parallel isolated experiments were
+run while the main worktree stayed on `feature/jess-performance-evidence`.
+Keep the small `isNode(value, mask)` direct bit comparison cut: focused
+`is-node` tests passed and reversed `40`/`12` comparator evidence measured
+`151.73ms` median patched vs `160.84ms` baseline. Keep the render-body
+duplicate declaration staging gate: unique declaration bodies now skip
+duplicate-comparison `OutputWriter` setup, focused render/output tests passed,
+and isolated Less mirror `40`/`12` comparator evidence measured `144.54ms`
+median patched vs `148.10ms` baseline. Reject the callable collector direct
+type rewrite: focused lookup/callable tests passed but median worsened
+(`154.29ms` patched vs `150.72ms` baseline in that worker). Reject broad
+CSS-call argument container reuse: focused/full call tests passed but benchmark
+worsened (`160.14ms`, then `168.66ms`, vs `151.19ms` baseline). A main-thread
+constructor `_processNodes(...)` loop-shape probe found scalar recursion volume
+was high and nested object recursion was rare, but wall-clock A/B was too small
+and noisy to keep. Final combined `40`/`12` benchmark after removing that probe
+measured `153.67ms` median / `160.14ms` trimmed average against the stored Less
+4.5 `42.16ms` median. Next useful work should refresh CPU samples around the
+remaining `copyChild` / `constructCopy` / callable-output stacks, and around
+render-body/header cost after the duplicate-staging gate.
+
 2026-06-18 extend root-bit pruning pass: a safe coarse root-level selector-bit
 guard now skips extend instructions for roots that share no selector bits with
 the target. This is intentionally weaker than the rejected selector-level
