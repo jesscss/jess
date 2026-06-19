@@ -11,15 +11,7 @@ export function createTriviaMap(indexes?: {
 }): TriviaMap {
   const before = indexes?.before ?? new Map<number, IToken[]>();
   const after = indexes?.after ?? new Map<number, IToken[]>();
-  const runs = new Set<IToken[]>();
-  for (const tokens of before.values()) {
-    runs.add(tokens);
-  }
-  for (const tokens of after.values()) {
-    runs.add(tokens);
-  }
   return {
-    runs,
     lookup(offset, direction) {
       if (offset === undefined) {
         return undefined;
@@ -47,8 +39,6 @@ export function createTriviaMap(indexes?: {
 function isTriviaMap(value: unknown): value is TriviaMap {
   return typeof value === 'object'
     && value !== null
-    && 'runs' in value
-    && value.runs instanceof Set
     && 'lookup' in value
     && typeof value.lookup === 'function'
     && 'entries' in value

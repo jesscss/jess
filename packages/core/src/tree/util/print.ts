@@ -83,15 +83,13 @@ function isTriviaMap(value: unknown): value is TriviaMap {
     return false;
   }
   if (
-    !('runs' in value)
-    || !('lookup' in value)
+    !('lookup' in value)
     || !('entries' in value)
     || !('has' in value)
   ) {
     return false;
   }
-  return value.runs instanceof Set
-    && typeof value.lookup === 'function'
+  return typeof value.lookup === 'function'
     && typeof value.entries === 'function'
     && typeof value.has === 'function';
 }

@@ -7,8 +7,6 @@ export * from './config.js';
 export type TriviaLookup = 'before' | 'after';
 
 export interface TriviaMap {
-  /** The single owned set of continuous whitespace/comment runs for a file. */
-  runs: Set<IToken[]>;
   /**
    * Find a run keyed before or after a source offset. Parser-backed trivia may
    * index the same run from both adjacent offsets; serializers should use the

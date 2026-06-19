@@ -4944,6 +4944,35 @@ Jess median `139.06ms`, variance `30.57%`). Stored-baseline mode measured Jess
 median `143.31ms`. Keep as a small allocation/API cut with no material
 regression signal, not as performance goal progress.
 
+Kept parser/trivia cut from the next profile-guided pass: deleted
+`TriviaMap.runs` entirely. Fresh CPU profile
+`profiling/core-architecture/20260619-075751-post-callable-arguments-flatten-cpu`
+showed `createTriviaMap(...)` as a visible self-time frame (`20` self samples).
+Repo search showed the `runs` member was only shape/documentation/type-guard
+machinery; normal rendering already uses `lookup(...)`, `entries(...)`,
+`has(...)`, and `options.emittedTrivia` for duplicate suppression. The kept
+change removes the eager `before.values()`/`after.values()` scan, removes the
+stale `Set` allocation, and narrows `isTriviaMap(...)` guards to the contract
+actually consumed by print/trivia code.
+
+Evidence: focused core trivia/render tests passed (`76` tests), focused
+css-parser AST/output tests passed (`61` tests), ordered `@jesscss/core` and
+`jess` builds passed, and `git diff --check` passed. Live comparator after the
+cut measured `benchmark.less` over `50` runs after `15` warmups with Less 4.6.3
+median `35.64ms` / trimmed average `36.30ms`, and Less v5/Jess median
+`145.74ms` / trimmed average `153.48ms`. This is not a speed win; keep it as a
+hot-profile machinery deletion with no material regression claim.
+
+Lazy rest/direct-function validation note: do not move this ahead of hotter
+profile targets unless a fresh profile shows direct `defineFunction(...)`
+validation dominating. A previous measured prototype that moved signature
+normalization/rest-position checks to construction and parsed once still
+regressed/noised (`148.81ms` live median, `143.57ms` stored-baseline median)
+and was reverted. A future lazy-validation experiment may be valid if it
+isolates third-party/direct-call validation from normal Less eval, but it must
+be benchmarked because try/catch around hot calls can perturb V8 as much as the
+validation scan it avoids.
+
 Next target direction: keep field shape monomorphic unless measurement says
 otherwise. Do not reintroduce per-node descriptors or non-enumerability for
 debug/JSON convenience, but also do not remove hot own fields just because the

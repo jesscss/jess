@@ -148,28 +148,27 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the callable `@arguments` flattening simplification and
-  measurement-doctrine updates. `createArgumentsBindingValue(...)` now flattens
-  rest `Sequence` values directly, and `createCallableLiveSlots(...)` no
-  longer allocates a temporary flattened `Node[]` before creating the
-  `@arguments` binding. The pass also recorded live Less 4 comparator rules for
-  noisy multi-agent benchmarking and rejected three measured define/call
-  abstraction prototypes in `PERFORMANCE-HANDOFF.md`.
-- Verdict: small allocation/API cut with no speed claim, not goal completion.
-  The stored Less 4.5 target remains median `42.16ms`; noisy same-load
-  comparator evidence after the kept simplification measured Less 4.6.3 median
-  `35.79ms` and Jess median `139.06ms`, while stored-baseline mode measured
-  Jess median `143.31ms`. Jess remains far slower than the target.
-- New traversal: none.
+- Latest pass: kept the `TriviaMap.runs` deletion. `createTriviaMap(...)` no
+  longer scans the `before`/`after` indexes into a secondary run set, no longer
+  allocates an empty compatibility `Set`, and trivia guards now validate the
+  actual lookup/entries/has contract only. The pass also reviewed lazy rest
+  parameter validation as a candidate and left it parked until a fresh profile
+  shows direct `defineFunction(...)` validation as hot.
+- Verdict: parser/trivia machinery deletion with no speed claim, not goal
+  completion. Live same-load comparison after the cut measured Less 4.6.3
+  median `35.64ms` and Jess median `145.74ms` over `50` runs after `15`
+  warmups. Jess remains far slower than the stored Less 4.5 target median
+  `42.16ms`.
+- New traversal: none. The change deletes the previous `before.values()` and
+  `after.values()` scans in `createTriviaMap(...)`.
 - New node/materialization: none.
 - Render path: unchanged.
-- Helper/API surface: deletes exported `getArgumentsBindingValues(...)`; no new
+- Helper/API surface: deletes the stale `runs` member from `TriviaMap`; no new
   helper added.
 - Metadata mutations: none.
-- Copy/materialization: deletes one temporary flattened `Node[]` allocation in
-  the lazy `@arguments` binding path. The remaining callable/raw-arg copying
-  surfaces stay open.
-- Evidence: focused callable-binding/live-slots/call tests passed (`145`
-  tests). Ordered `@jesscss/core` and `jess` builds passed. Benchmark evidence
-  is recorded in `PERFORMANCE-HANDOFF.md`; it supports no material regression,
-  not a speed win.
+- Copy/materialization: none.
+- Evidence: focused core trivia/render tests passed (`76` tests), focused
+  css-parser serialization/output tests passed (`61` tests), ordered
+  `@jesscss/core` and `jess` builds passed, and `git diff --check` passed.
+  Benchmark evidence is recorded in `PERFORMANCE-HANDOFF.md`; it supports no
+  material regression, not a speed win.
