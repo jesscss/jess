@@ -150,6 +150,28 @@ and extend work: `Node` construction, `copyChild`,
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
 
+2026-06-19 ruleset ownSelector copy deletion: kept the copy/materialization
+worker's safe deletion in `Ruleset._storeOwnSelector(...)`. Registration
+already passes the owned pre-eval selector into `_storeOwnSelector(...)`, so
+the old path immediately deep-copied that selector again through
+`copySelectorForRulesetMetadata(...)`. The patch stores that existing owned
+selector as `options.ownSelector` and adds a regression test proving it is the
+pre-eval selector and not the later evaluated selector. This deletes a normal
+registration-time selector copy and adds no nodes, traversal, helper surface,
+cache, or metadata mutation. Isolated worker evidence measured benchmark
+median/trimmed average from `205.12ms` / `211.92ms` to `162.99ms` /
+`170.43ms`, with CPU named totals `copyChild` `40.28ms -> 19.95ms` and
+`constructCopy` `14.84ms -> 5.20ms`; the main worktree is noisier but
+directionally favorable, with patched `40`/`12` at `145.78ms` median /
+`150.73ms` trimmed average and paired `24`/`8` unpatched `159.04ms` median vs
+patched `149.34ms` median. Focused ruleset/callable/extend/reference tests
+passed (`109` passed, `314` skipped, `5` open Vitest markers), ordered
+`@jesscss/core` and `jess` builds passed. Remaining copy targets from the
+worker call-chain audit: JS function boundary `copyWithReusableLeaves(...)`,
+declaration/reference ownership (`evaluateReferenceValueNode`,
+`cloneDefinedBoundValue`, `copyValueForDerived`), and render/header
+`copySelectorForRulesetMetadata(...)` uses.
+
 2026-06-19 Node-shape leaf-constructor pass: kept the `_processNodes(...)`
 leaf skip from the isolated Node-shape worker. `Node._processNodes(...)` now
 returns immediately when the class declares `childKeys === null`, so true leaf

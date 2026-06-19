@@ -1039,6 +1039,32 @@ describe('Rule', () => {
     expect(prepared.rules).toBe(body);
   });
 
+  it('stores registration ownSelector on the owned pre-eval selector without another deep copy', async () => {
+    const selector = sellist([sel([el('.foo')])]);
+    const node = ruleset({
+      selector,
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    let preEvalSelector: unknown;
+    Object.defineProperty(node, '_prepareRulesetSelectorIdentity', {
+      value(selectorArg: { eval(context: Context): MaybePromise<unknown> }, activeContext: Context) {
+        preEvalSelector = selectorArg;
+        return selectorArg.eval(activeContext);
+      }
+    });
+
+    const prepared = await node.prepareRegistration(context);
+    const ownSelector = prepared.options.ownSelector;
+
+    expect(prepared).not.toBe(node);
+    expect(prepared.selector).not.toBe(selector);
+    expect(ownSelector).toBe(preEvalSelector);
+    expect(ownSelector).not.toBe(prepared.selector);
+    expect(selector.sourceParent).toBe(node);
+  });
+
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
     const selectorLeaf = el('.foo');
     const originalClone = selectorLeaf.clone;

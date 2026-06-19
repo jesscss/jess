@@ -1336,9 +1336,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   private _storeOwnSelector(node: Ruleset, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
-    const ownSelector = !(selector instanceof Nil)
-      ? copySelectorForRulesetMetadata(selector as Selector)
-      : selector;
+    const ownSelector = selector;
     this.attachSelectorBits(ownSelector, selectorBits);
     if (node.options) {
       (node.options as RulesetOptions).ownSelector = ownSelector;

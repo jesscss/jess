@@ -148,30 +148,28 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the `_processNodes(...)` leaf-node skip from the isolated
-  Node-shape experiment. Node construction now skips value introspection when a
-  node class explicitly declares `childKeys === null`; `JsObject` and `JsArray`
-  no longer declare that leaf marker because their dynamic values may contain
-  nodes and still need canonical adoption.
+- Latest pass: kept the ruleset registration `ownSelector` duplicate-copy
+  deletion from the copy/materialization experiment. `_storeOwnSelector(...)`
+  now records the already-owned pre-eval selector passed into registration
+  instead of immediately sending it through `copySelectorForRulesetMetadata(...)`
+  for a second deep selector copy.
 - Verdict: measured keep, but not goal completion. The stored Less 4.5 target
-  remains median `42.16ms`; the paired main-worktree A/B under current load
-  measured unpatched `167.64ms` median and patched `147.42ms` median on
-  `24`/`8`. Jess is still about `3.50x` slower than the target by patched
-  median.
-- New traversal: none. This removes constructor-time value walking for classes
-  that explicitly promise they have no child nodes.
+  remains median `42.16ms`; the main-worktree `40`/`12` run with the patch
+  measured `145.78ms` median / `150.73ms` trimmed average. Paired `24`/`8`
+  evidence under noisy load measured unpatched `159.04ms` median and patched
+  `149.34ms` median. Jess is still about `3.46x` slower than the target by
+  the `40`/`12` median.
+- New traversal: none.
 - New node/materialization: none.
 - Render path: unchanged.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Rejected this pass: direct `nodeType` rewrites across `Rules` surface
-  classifiers reduced some `isNode` samples but did not improve wall-clock in
-  this worktree, so they were reverted. The extend root aggregate skip from an
-  isolated worker remains promising, but the main-worktree combined/isolated
-  timings did not reproduce a keep signal, so it was also reverted for this
-  batch.
-- Evidence: focused node/callable/lookup/extend tests passed (`200` passed,
-  `261` skipped, `5` open Vitest markers). Ordered `@jesscss/core` and `jess`
-  builds passed. Isolated worker proof for the Node-shape patch included
-  `verify:baseline -- --changed`, `verify:node-constructor-metadata`,
-  `verify:aggressive-cutting-review`, and `git diff --check`.
+- Copy/materialization: deletes one registration-time deep selector copy. The
+  remaining `copySelectorForRulesetMetadata(...)` uses are render/header
+  selector materialization paths and stay as the next copy-audit target, not as
+  a new ownership strategy.
+- Evidence: focused ruleset/callable/extend/reference tests passed (`109`
+  passed, `314` skipped, `5` open Vitest markers). Ordered `@jesscss/core` and
+  `jess` builds passed. The isolated worker also passed Less test-data,
+  `verify:baseline -- --changed`, `verify:aggressive-cutting-review`, and
+  `git diff --check`.
