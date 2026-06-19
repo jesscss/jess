@@ -611,11 +611,13 @@ export function processExtends(context: Context): void {
     // This ensures getEffectiveSelector composes with original selectors,
     // not ones already modified by earlier extends in this pass.
     preExtendSelectors = new WeakMap<Ruleset, Selector>();
-    for (const [, rulesetSet] of rulesetsByRoot) {
+    for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       for (const rs of rulesetSet) {
         const sel = selectorOrUndefined(rs.selector);
         if (sel) {
+          sel.keySetLibrary ??= context.selectorBits;
           preExtendSelectors.set(rs, sel);
+          addRootSelectorKeys(rootRules, sel);
         }
       }
     }
@@ -673,16 +675,6 @@ export function processExtends(context: Context): void {
       }
       return cached;
     };
-
-    for (const [rootRules, rulesetSet] of rulesetsByRoot) {
-      for (const ruleset of rulesetSet) {
-        const selector = selectorOrUndefined(ruleset.selector);
-        if (selector) {
-          selector.keySetLibrary ??= context.selectorBits;
-          addRootSelectorKeys(rootRules, selector);
-        }
-      }
-    }
 
     for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       if (!rootRules) {

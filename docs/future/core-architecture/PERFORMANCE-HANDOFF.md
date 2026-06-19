@@ -3616,6 +3616,45 @@ root aggregate pruning plus local-or-parent negative pruning; do not move
 selector-bit aggregation into registration unless no-extend files can avoid
 the cost.
 
+Follow-up root aggregate snapshot fold kept:
+
+- kept cut: `processExtends(...)` now builds each extend root's aggregate
+  selector-bit bucket during the already-required pre-extend selector snapshot
+  pass. This deletes the later duplicate walk over `rulesetsByRoot` without
+  moving keyset work into `registerRulesetWithRoot(...)`, so no-extend files
+  still avoid the rejected registration-time tax;
+- selector mutation handling stays conservative: every extend assignment path
+  already ORs the new selector into the root aggregate, so the root bucket can
+  gain false-positive keys after mutation but must not miss later chained
+  targets;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/process-extends.test.ts
+  src/tree/__tests__/extend-roots.test.ts
+  src/tree/__tests__/extend-eval-integration.test.ts` (`50` passed, `1`
+  skipped). The broader `extend-rules.test.ts` command still has the known
+  branch-baseline deep `.l -> ... -> .t` chaining failure, and the broad Less
+  fixture command was stopped after it failed to return; do not count that
+  fixture file as verified for this pass;
+- ordered benchmark-path rebuild passed before external timing;
+- wall-clock evidence on external canonical Less `benchmark.less
+  --runs=24 --warmup=8 --math=parens-division`: refreshed current branch
+  baseline before this patch was average `210.15ms` / median `212.73ms`, then
+  average `211.61ms` / median `209.79ms`; after this patch the same harness
+  reported average `201.50ms` / median `198.43ms`, average `201.70ms` /
+  median `197.50ms`, then average `199.22ms` / median `197.15ms`;
+- CPU profile caveat: the post-patch profiled run at
+  `profiling/core-architecture/20260619-extend-root-bitset-cpu/CPU.20260618.185717.59701.0.001.cpuprofile`
+  showed profiler-overhead average `214.92ms` / median `207.66ms` and sampled
+  `processExtends(...)` self-time around `19.67ms`, up from the refreshed
+  current profile's `12.67ms`. Treat the three stable wall-clock runs as the
+  keep signal, and treat this profile as "no clear CPU attribution win" rather
+  than proof that the timed win came from `processExtends(...)` self-time.
+
+Verdict: keep as a small measured wall-clock win. The safe rule is still
+"aggregate inside `processExtends`, not at registration," unless a future
+version proves no-extend inputs pay no keyset tax.
+
 Next architecture theories to test:
 
 1. Continue selector-bit/root-surface pruning only after modeling composed

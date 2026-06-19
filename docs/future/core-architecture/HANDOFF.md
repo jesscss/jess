@@ -112,29 +112,26 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: tested and rejected a stricter root activation closure for
-  extend pruning, plus two helper/cache micro-prototypes. No production code
-  was kept from this pass.
-- Verdict: the already-kept coarse root aggregate remains the right bitset
-  shape for now: one root bitset can reject visible extends whose target bits
-  are absent, and selector mutation updates that aggregate. The stricter
-  activation closure added arrays/loops and did not beat the real benchmark.
-- New traversal: none kept. The rejected activation prototype added a
-  root-local closure loop over visible extends; it was reverted after neutral
-  wall-clock and worse order-preserving CPU self-time.
+- Latest pass: kept a root aggregate snapshot fold in `processExtends(...)`.
+  The pre-extend selector snapshot pass now also fills each root selector-bit
+  bucket, deleting the later duplicate walk over `rulesetsByRoot`.
+- Verdict: keep as a measured wall-clock win. This keeps aggregation inside
+  `processExtends(...)`, not registration, so no-extend inputs still avoid the
+  previously rejected registration-time keyset tax.
+- New traversal: none added. One full root/ruleset scan was removed from the
+  extend path when extends exist.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: none kept.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: none kept. The rejected activation prototype added
-  root-local arrays and was reverted.
-- Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8`
-  for the order-preserving activation prototype was neutral/noisy
-  (`avg 209.69ms` / `median 207.40ms`, then `avg 210.90ms` /
-  `median 206.87ms`) against the refreshed branch baseline
-  (`avg 206.88ms` / `median 203.95ms`), and CPU self-time showed
-  `processExtends(...)` around `38.72ms`. Focused extend tests passed except
-  the known branch-baseline deep chaining failure in `extend-rules.test.ts`.
-  Details for this and the other rejected prototypes are in
+- Side maps/arrays/copies: no new side maps, arrays, or copies.
+- Evidence: external canonical Less `benchmark.less --runs=24 --warmup=8
+  --math=parens-division` improved from refreshed branch baseline averages
+  `210.15ms` and `211.61ms` to `201.50ms`, `201.70ms`, and `199.22ms`.
+  Focused `process-extends`, `extend-roots`, and `extend-eval-integration`
+  tests passed (`50` passed, `1` skipped). The known branch-baseline deep
+  chaining failure in `extend-rules.test.ts` remains, and the broad Less
+  fixture command was stopped after hanging, so do not count that fixture file
+  as verified for this pass. CPU profile attribution was mixed; details are in
   `PERFORMANCE-HANDOFF.md`.
