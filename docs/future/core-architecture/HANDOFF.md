@@ -112,27 +112,32 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept direct child-rule type checks in local `Rules` lookup
-  helpers. The CPU-backed target was the post-callable profile's `isNode(...)`
-  self-time around child rules/callable rules probing.
-- Verdict: keep as a small measured wall-clock and CPU-profile cleanup. The
-  change is local to `childRulesOf(...)` / `childCallableRulesOf(...)` and
-  replaces generic bitmask helper calls with direct `node.type` checks for the
-  known `Rules`, `Ruleset`, `AtRule`, and `Mixin` cases.
+- Latest pass: kept extend instruction value caching. The CPU-backed target
+  was `processExtends(...)`, with self-time around self-extend and reference
+  visibility checks plus repeated selector `valueOf()` calls inside the
+  per-ruleset loop.
+- Verdict: keep as a small measured median cleanup, not as completion of the
+  extend hotspot. Each `RootExtendInstruction` now carries `targetValue` and
+  `extendWithValue` strings computed once during instruction construction, and
+  `processExtends(...)` reuses those values for self-extend,
+  reference-visibility, and unmatched-warning checks.
 - New traversal: none.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
 - Helper/API surface: none added.
 - Metadata mutations: none added this pass.
-- Side maps/arrays/copies: none added.
-- Evidence: focused callable helper tests passed (`15` passed), and focused
-  reference/mixin/rules smoke passed (`9` passed, `483` skipped). Ordered
-  benchmark-path rebuild passed. Post-callable refresh measured `178.45ms`
-  average / `176.92ms` median. The kept source measured `174.32ms` average /
-  `172.11ms` median and `171.53ms` average / `169.61ms` median on external
-  canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
-  CPU profile
-  `profiling/core-architecture/20260618-195354-direct-child-rule-type-checks-cpu/CPU.20260618.195354.57146.0.001.cpuprofile`
-  showed `isNode(...)` reduced to scattered tiny samples while
-  `processExtends(...)` became the clearest next core self-time target.
+- Side maps/arrays/copies: no side maps or arrays added. The pass adds two
+  cached selector strings per extend instruction and removes repeated hot-loop
+  `valueOf()` calls.
+- Evidence: focused extend orchestration tests passed (`49` passed, `1`
+  skipped), and focused extend utility tests passed (`161` passed). Ordered
+  benchmark-path rebuild passed. Current-source refresh measured `174.75ms`
+  average / `172.53ms` median and `177.14ms` average / `175.35ms` median on
+  external canonical Less `benchmark.less --runs=24 --warmup=8
+  --math=parens-division`. The kept source measured `173.18ms` average /
+  `170.75ms` median, `176.33ms` average / `172.86ms` median, and `175.15ms`
+  average / `171.24ms` median. CPU profile
+  `profiling/core-architecture/20260618-200507-extend-instruction-value-cache-cpu/CPU.20260618.200507.29106.0.001.cpuprofile`
+  kept `processExtends(...)` total flat but reduced
+  `selectorMayContainExtendTarget(...)` total samples in that run.

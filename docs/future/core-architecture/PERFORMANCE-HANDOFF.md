@@ -320,6 +320,41 @@ useful, but moving bucket construction earlier or adding a broad potential
 union does not remove enough total work on `benchmark.less`; retry only with a
 shape that avoids both global pre-snapshot work and extra per-root bitset ORs.
 
+2026-06-18 extend instruction value-cache pass: refreshed current-source
+evidence was external canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` at `avg 174.75ms` / `median 172.53ms`
+(`variance 5.32%`) and `avg 177.14ms` / `median 175.35ms`
+(`variance 5.74%`). CPU profile
+`profiling/core-architecture/20260618-200301-current-refresh-cpu/CPU.20260618.200301.7654.0.001.cpuprofile`
+still pointed at `processExtends(...)` (`22` self / `143` total samples) with
+`selectorMayContainExtendTarget(...)`, `isDisjoint(...)`, `isEmptyBitSet(...)`,
+and repeated selector string work underneath the extend loop.
+
+The kept cut adds `targetValue` and `extendWithValue` to
+`RootExtendInstruction` at construction and uses those cached strings for
+self-extend checks, reference-visibility activation, and unmatched warning
+metadata. This deliberately avoids caching selector keysets or library-derived
+facts, after the previous prototype proved that keyset timing is semantic for
+extend matching.
+
+Focused behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/process-extends.test.ts src/tree/__tests__/extend-roots.test.ts src/tree/__tests__/extend-eval-integration.test.ts`
+(`49` passed, `1` skipped), and
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/extend-selector-algorithm.test.ts src/tree/util/__tests__/find-extendable-locations.test.ts src/tree/util/__tests__/extend-ampersand.test.ts src/tree/util/__tests__/extend-ampersand-boundary.test.ts src/tree/util/__tests__/extend-combinator-handling.test.ts src/tree/util/__tests__/extend-duplicate-validation.test.ts src/tree/util/__tests__/extend-comment-handling.test.ts src/tree/util/__tests__/extend-simplified-cases.test.ts src/tree/util/__tests__/extend-where-selector.test.ts`
+(`161` passed). Ordered benchmark-path rebuild passed before timing.
+
+External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` reported `avg 173.18ms` / `median 170.75ms`
+(`variance 4.75%`), `avg 176.33ms` / `median 172.86ms` (`variance 5.34%`),
+and `avg 175.15ms` / `median 171.24ms` (`variance 6.30%`). CPU profile
+`profiling/core-architecture/20260618-200507-extend-instruction-value-cache-cpu/CPU.20260618.200507.29106.0.001.cpuprofile`
+reported profiler-overhead `avg 182.09ms` / `median 179.73ms`; parsed samples
+kept total `processExtends(...)` flat (`143` total) but showed
+`selectorMayContainExtendTarget(...)` lower in that run (`30 -> 19` total
+samples). Keep as a small measured median cleanup only; the next real
+performance step still needs to remove whole extend/render/callable work, not
+just cache scalar facts.
+
 2026-06-18 rejected root activation closure: a stricter prototype tried to
 start each root from its actual selector aggregate, activate only visible
 extends whose target bits intersected that aggregate, then add each activated

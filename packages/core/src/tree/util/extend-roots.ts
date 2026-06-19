@@ -20,6 +20,8 @@ import { isDisjoint, isEmptyBitSet, type BitSet } from './bitset.js';
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
   fromReferenceScope: boolean;
+  targetValue: string;
+  extendWithValue: string;
 };
 
 function isSelectorValue(value: unknown): value is Selector {
@@ -634,10 +636,20 @@ export function processExtends(context: Context): void {
       return undefined;
     };
 
+    const toRootInstruction = (
+      target: Selector,
+      base: Omit<RootExtendInstruction, 'target' | 'targetValue'>
+    ): RootExtendInstruction => ({
+      ...base,
+      target,
+      targetValue: target.valueOf()
+    });
+
     const instructions: RootExtendInstruction[] = context.extends.flatMap(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
       selectorWithExtend.keySetLibrary ??= context.selectorBits;
       const base = {
         extendWith: selectorWithExtend,
+        extendWithValue: selectorWithExtend.valueOf(),
         extendingRuleset: findExtendingRuleset(extendNode),
         partial,
         extendRoot,
@@ -647,17 +659,11 @@ export function processExtends(context: Context): void {
       if (!partial && isNode(target, N.SelectorList)) {
         return target.selectors.map((item) => {
           item.keySetLibrary ??= context.selectorBits;
-          return {
-            ...base,
-            target: item
-          };
+          return toRootInstruction(item, base);
         });
       }
       target.keySetLibrary ??= context.selectorBits;
-      return [{
-        ...base,
-        target
-      }];
+      return [toRootInstruction(target, base)];
     });
 
     if (!instructions.length) {
@@ -760,7 +766,7 @@ export function processExtends(context: Context): void {
           if (!selectorMayContainExtendTarget(instruction, selector, parentSel)) {
             continue;
           }
-          const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
+          const isSelfExtend = instruction.targetValue === instruction.extendWithValue;
           if (isSelfExtend) {
             const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
             classifications.set(instruction, selfMatches ? 'local' : false);
@@ -805,7 +811,7 @@ export function processExtends(context: Context): void {
           }
           const activatesReferenceVisibility = (
             !instruction.partial
-            || instruction.target.valueOf() === instruction.extendWith.valueOf()
+            || instruction.targetValue === instruction.extendWithValue
           );
           instructionMatched.add(instruction);
           if (matchType === 'within-ampersand') {
@@ -1089,7 +1095,7 @@ export function processExtends(context: Context): void {
       if (instructionMatched.has(instruction)) {
         continue;
       }
-      const target = instruction.target.valueOf();
+      const target = instruction.targetValue;
       const targetLocation = instruction.target.location;
       const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
       const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
