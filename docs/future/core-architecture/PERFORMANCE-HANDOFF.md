@@ -3439,23 +3439,89 @@ Rejected follow-up declaration registration and lazy extend cuts:
   subtree set is CPU-visible, but it does not currently translate into stable
   wall-clock improvement.
 
+Follow-up no-extend guard kept; selector-bit candidate pruning rejected:
+
+- `Rules._finishEval(...)` now calls `processExtends(...)` only when
+  `context.extends.length > 0`, and `processExtends(...)` has the same early
+  guard for direct callers. No-extend input no longer snapshots or walks the
+  global registered ruleset set for extend work;
+- rejected prototype: extend processing built selector-bit facts lazily inside
+  `processExtends(...)`, with one aggregate selector bitset and key buckets per
+  visible root. The aggregate bitset skipped roots whose selector surface could
+  not contain the extend target, and buckets narrowed simple/compound targets
+  before running full Less extend semantics;
+- the first version eagerly built key buckets during ruleset registration. It
+  moved `processExtends(...)` CPU sharply but regressed/noised real wall-clock
+  (`benchmark.less --runs=24 --warmup=8` average `276.86ms`, median
+  `252.39ms`, variance `23.33%`; `--runs=32 --warmup=10` average `321.52ms`,
+  median `290.71ms`, variance `20.99%`). That proved no-extend and non-extend
+  registration paths must not pay selector-index costs;
+- the lazy version produced strong benchmark numbers:
+  `benchmark.less --runs=24 --warmup=8` average `196.46ms`, median `193.34ms`,
+  variance `4.42%`; `--runs=32 --warmup=10` average `200.20ms`, median
+  `199.09ms`, variance `5.64%`; no-extend `benchmark-v39.less --runs=24
+  --warmup=8` average `15.31ms`, median `15.15ms`, variance `10.80%`.
+  After reverting to the guard-only production patch, no-extend
+  `benchmark-v39.less --runs=24 --warmup=8` reported average `17.01ms`,
+  median `15.29ms`, variance `17.60%`;
+- the exact-code CPU profile for the lazy selector-bit prototype was
+  `profiling/core-architecture/20260618-175814-extend-bitset-candidates-complex-safe-post-cpu/CPU.20260618.175814.27791.0.001.cpuprofile`,
+  with `processExtends(...)` about `4.24ms`,
+  `applyExtendsToSelector(...)` about `3.90ms`,
+  `buildRulesetSelectorIndex(...)` about `6.64ms`, and
+  `registerRulesetWithRoot(...)` about `1.76ms`;
+- despite the timing win, the selector-bit candidate prototype was rejected.
+  Complex/combinator targets can match composed parent/child selectors that are
+  not represented by a ruleset's local selector bitset. The prototype failed
+  focused serialized/combinator extend tests before it was reverted. A direct
+  reproduction of the serialized complex target still hangs after reverting the
+  prototype, so that hang is tracked as separate existing extend debt rather
+  than blamed on the candidate path. The safe production state keeps only the
+  no-extend guard and reverts candidate pruning;
+- focused behavior passed:
+  `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/extend-unit.test.ts
+  src/tree/util/__tests__/extend-utils.test.ts src/tree/__tests__/extend.test.ts
+  src/tree/util/__tests__/find-extendable-locations.test.ts
+  src/tree/util/__tests__/fast-reject.test.ts` (`75` passed) before the
+  candidate prototype was reverted;
+- ordered benchmark-path rebuild passed:
+  `pnpm --filter styles-config build && pnpm --filter @jesscss/awaitable-pipe
+  build && pnpm --filter @jesscss/core build && pnpm --filter
+  @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build &&
+  pnpm --filter @jesscss/plugin-less build && pnpm --filter
+  @jesscss/plugin-less-compat build && pnpm --filter @jesscss/plugin-js build
+  && pnpm --filter jess build`.
+
+Verdict: keep only the no-extend guard. Reject selector-bit candidate pruning
+until it can model composed selector surfaces, chained extend-created keys, and
+complex/combinator targets without missing serialized targets or depending on
+the currently fragile complex-target behavior.
+The performance campaign remains open; the historical Less 4.x comparison
+target remains about `47.4ms`.
+
 Next architecture theories to test:
 
-1. Promote exact child-surface capability to the `ScopeFrame` once the frame
+1. Continue selector-bit/root-surface pruning only after modeling composed
+   selector surfaces. A safe version needs facts for local selector bits,
+   parent-composed selector bits, chained extend-created keys, and
+   complex/combinator targets before it can prune candidates. Do not reintroduce
+   simple local-selector buckets as the only candidate source.
+2. Promote exact child-surface capability to the `ScopeFrame` once the frame
    already receives callable coverage facts. The current `Rules` bit proved the
    diagnostic count moved; the next version should let exact simple-name lookup
    answer three questions from the frame without touching child arrays: this
    frame has exact callable buckets; this frame has no child callable surfaces
    for simple exact names; this frame has child surfaces that might contain
    simple callables. A miss can stop only in the first two cases.
-2. Split child-surface facts by lookup shape. A nested `Ruleset`/`AtRule` may
+3. Split child-surface facts by lookup shape. A nested `Ruleset`/`AtRule` may
    matter for exact simple names, namespace paths, declarations, or output
    leakage differently. One broad `hasDirectChildRuleSurface` forces too many
    defensive crawls. Prefer narrow booleans/counters such as
    `hasExactCallableChildSurface`, `hasNamespaceCallableChildSurface`, and
    declaration visibility facts if they can be carried at the same point
    `registerNode(...)` already sees the child.
-3. Cache misses at the frame/local-surface level only when the frame has a
+4. Cache misses at the frame/local-surface level only when the frame has a
    stable version and coverage proof. Avoid broad result caches that allocate a
    map entry per transient option shape. A useful cache key should be simple:
    exact key plus include-rulesets/filter shape, invalidated by the existing
@@ -3467,20 +3533,20 @@ Next architecture theories to test:
    `JESS_LEGACY_MIXIN_LOOKUP` comparator has been removed from runtime code.
    The next refinement should delete remaining registry callable plumbing only
    where a direct/frame path has explicit parity coverage.
-4. Prefer negative capability over positive result caching. The broad fixture
+5. Prefer negative capability over positive result caching. The broad fixture
    regressed because the candidate path repeatedly proved "nothing in this
    child surface" after the fact. A cheap carried "cannot contain simple exact
    callable hits" fact avoids both array allocation and recursive function-call
    ladders.
-5. Keep parent walking outside child recursion. Child traversal should stay
+6. Keep parent walking outside child recursion. Child traversal should stay
    `searchParents: false`; otherwise a missing child immediately re-searches
    the parent chain and multiplies exact-bucket probes. Parent ascent belongs
    to the outer `Rules.find(...)` loop or frame chain.
-6. Reuse existing direct buckets before building alternate structures. If
+7. Reuse existing direct buckets before building alternate structures. If
    `mixinsByName` exists, exact lookup should read it directly. If it does not,
    build direct buckets once and mark the frame covered. Do not build a
    parallel callable table unless it replaces `mixinsByName` and deletes work.
-7. Benchmark both the stress win and ordinary Less fixtures before keeping a
+8. Benchmark both the stress win and ordinary Less fixtures before keeping a
    change. The acceptance bar for the next patch is: preserve the
    `scope-lookup-stress.less` win, avoid regressing `mixins-guards.less`, and
    show counter evidence that exact-bucket probes or child collector builds

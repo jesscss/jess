@@ -112,22 +112,24 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: rejected declaration-registration reuse and lazy extend
-  subtree-value cuts.
-- Verdict: no production code kept. Declaration registration copying remains
-  the largest CPU-profile-selected stack, but reusing source-free assignment
-  containers during registration reparented the source container and changed
-  merge output. Lazy extend subtree-value collection deleted clear CPU samples,
-  but repeated wall-clock/hotpath confirmation was noisy or worse.
-- New traversal: none kept.
+- Latest pass: kept the no-extend extend guard; rejected selector-bit
+  candidate pruning for extend processing.
+- Verdict: production code kept only for no-extend input. `Rules._finishEval`
+  skips `processExtends(...)` when `context.extends.length === 0`, and
+  `processExtends(...)` has the same direct-call guard. Selector-bit root
+  aggregate/bucket candidate pruning was reverted because complex composed
+  selector cases can hang or miss serialized targets.
+- New traversal: none kept. The kept guard removes the previous unconditional
+  global ruleset snapshot/walk for no-extend input.
 - New node/materialization: none kept.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this patch.
-- Helper/API surface: none added.
+- Helper/API surface: none kept.
 - Metadata mutations: none added.
-- Evidence: declaration assignment tests rejected the registration reuse
-  prototype with both ownership and output failures. Focused extend tests
-  passed for lazy subtree values and CPU profile moved
-  `collectSelectorSubtreeValues(...)` to `0.00ms`, but `benchmark.less`
-  confirmations and stable hotpath sanity did not support keeping it. The code
-  was reverted; only `PERFORMANCE-HANDOFF.md` records the rejected experiments.
+- Evidence: focused extend/bitset tests passed before the rejected candidate
+  prototype was reverted, but it failed serialized/combinator extend tests.
+  A direct complex composed-selector reproduction still hangs after reverting
+  the prototype, so that hang is tracked as separate existing extend debt. The
+  selector-bit candidate path is recorded as rejected in
+  `PERFORMANCE-HANDOFF.md`. The kept no-extend guard is behavior-preserving
+  and backed by code-path evidence; no speed claim is made for the guard alone.

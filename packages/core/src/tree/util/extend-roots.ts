@@ -550,6 +550,10 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   try {
+    if (context.extends.length === 0) {
+      return;
+    }
+
     // Snapshot eval'd selectors before any extend modifications.
     // This ensures getEffectiveSelector composes with original selectors,
     // not ones already modified by earlier extends in this pass.
