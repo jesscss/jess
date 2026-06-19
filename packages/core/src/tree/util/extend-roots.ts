@@ -20,7 +20,12 @@ import { isDisjoint, isEmptyBitSet, type BitSet } from './bitset.js';
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
   fromReferenceScope: boolean;
+  targetKeySet: BitSet<string>;
+  targetKeySetLibrary: Selector['keySetLibrary'];
+  targetBitLibrary: BitSet<string>['_library'];
+  targetHasOpaqueKeys: boolean;
   targetValue: string;
+  extendWithKeySet: BitSet<string>;
   extendWithValue: string;
 };
 
@@ -530,15 +535,13 @@ function isInstructionVisibleForRoot(
 }
 
 function rootMayContainExtendTarget(instruction: RootExtendInstruction, rootKeySet: BitSet<string> | undefined): boolean {
-  if (!rootKeySet || instruction.target.keySetLibrary !== rootKeySet._library) {
+  if (!rootKeySet || instruction.targetKeySetLibrary !== rootKeySet._library) {
     return true;
   }
-  const targetKeys = instruction.target.keySet;
-  const library = targetKeys._library;
-  if (!library || isEmptyBitSet(targetKeys)) {
+  if (instruction.targetHasOpaqueKeys) {
     return true;
   }
-  return !isDisjoint(targetKeys, rootKeySet);
+  return !isDisjoint(instruction.targetKeySet, rootKeySet);
 }
 
 function selectorMayContainExtendTarget(
@@ -546,15 +549,14 @@ function selectorMayContainExtendTarget(
   selector: Selector,
   parentSelector: Selector | undefined
 ): boolean {
-  const targetKeys = instruction.target.keySet;
-  const library = targetKeys._library;
-  if (!library || isEmptyBitSet(targetKeys)) {
+  const library = instruction.targetBitLibrary;
+  if (!library || instruction.targetHasOpaqueKeys) {
     return true;
   }
   if (selector.keySetLibrary !== library) {
     return true;
   }
-  if (!isDisjoint(targetKeys, selector.keySet)) {
+  if (!isDisjoint(instruction.targetKeySet, selector.keySet)) {
     return true;
   }
   if (!parentSelector) {
@@ -563,7 +565,7 @@ function selectorMayContainExtendTarget(
   if (parentSelector.keySetLibrary !== library) {
     return true;
   }
-  return !isDisjoint(targetKeys, parentSelector.keySet);
+  return !isDisjoint(instruction.targetKeySet, parentSelector.keySet);
 }
 
 export function processExtends(context: Context): void {
@@ -586,17 +588,34 @@ export function processExtends(context: Context): void {
 
     const toRootInstruction = (
       target: Selector,
-      base: Omit<RootExtendInstruction, 'target' | 'targetValue'>
-    ): RootExtendInstruction => ({
-      ...base,
-      target,
-      targetValue: target.valueOf()
-    });
+      base: Omit<
+        RootExtendInstruction,
+        | 'target'
+        | 'targetKeySet'
+        | 'targetKeySetLibrary'
+        | 'targetBitLibrary'
+        | 'targetHasOpaqueKeys'
+        | 'targetValue'
+      >
+    ): RootExtendInstruction => {
+      const targetKeySet = target.keySet;
+      const targetBitLibrary = targetKeySet._library;
+      return {
+        ...base,
+        target,
+        targetKeySet,
+        targetKeySetLibrary: target.keySetLibrary,
+        targetBitLibrary,
+        targetHasOpaqueKeys: !targetBitLibrary || isEmptyBitSet(targetKeySet),
+        targetValue: target.valueOf()
+      };
+    };
 
     const instructions: RootExtendInstruction[] = context.extends.flatMap(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
       selectorWithExtend.keySetLibrary ??= context.selectorBits;
       const base = {
         extendWith: selectorWithExtend,
+        extendWithKeySet: selectorWithExtend.keySet,
         extendWithValue: selectorWithExtend.valueOf(),
         extendingRuleset: findExtendingRuleset(extendNode),
         partial,
@@ -642,24 +661,22 @@ export function processExtends(context: Context): void {
       const visibleExtends: RootExtendInstruction[] = [];
       for (const instruction of instructions) {
         if (isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)) {
-          const targetKeys = instruction.target.keySet;
           if (
             hasOpaqueVisibleTarget === false
             && (
-              instruction.target.keySetLibrary !== rootKeySetLibrary
-              || !targetKeys._library
-              || isEmptyBitSet(targetKeys)
+              instruction.targetKeySetLibrary !== rootKeySetLibrary
+              || instruction.targetHasOpaqueKeys
             )
           ) {
             hasOpaqueVisibleTarget = true;
           } else if (hasOpaqueVisibleTarget === false) {
             visibleTargetKeySet = visibleTargetKeySet
-              ? visibleTargetKeySet.or(targetKeys)
-              : targetKeys.clone();
+              ? visibleTargetKeySet.or(instruction.targetKeySet)
+              : instruction.targetKeySet.clone();
           }
           visibleExtendWithKeySet = visibleExtendWithKeySet
-            ? visibleExtendWithKeySet.or(instruction.extendWith.keySet)
-            : instruction.extendWith.keySet.clone();
+            ? visibleExtendWithKeySet.or(instruction.extendWithKeySet)
+            : instruction.extendWithKeySet.clone();
           visibleExtends.push(instruction);
         }
       }

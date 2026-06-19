@@ -112,44 +112,38 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: kept the rules-like known-field surface fast path after
-  rejecting a bulk-copy version. The CPU-backed target was
-  `createRulesLikeReferenceSurface(...)` after the current refresh showed it at
-  `20` self samples.
-- Verdict: keep the `Mixin`/`Ruleset` known-field fast path, leave `Rules` and
-  `Collection` on the generic fallback, and do not use `Object.assign(...)` for
-  this surface. The kept shape moved the target frame to `2` self samples and
-  measured a small wall-clock win.
-- New traversal: no new runtime traversal in the kept hot path. The
-  `Object.getOwnPropertyNames(...)` loop remains only as the existing fallback
-  for `Rules`/`Collection` and other rules-like shapes not covered by the
-  `Mixin`/`Ruleset` fast path.
+- Latest pass: kept extend instruction keyset carry. The CPU-backed target was
+  `processExtends(...)`, with `selectorMayContainExtendTarget(...)`,
+  `isEmptyBitSet(...)`, and `isDisjoint(...)` under it.
+- Verdict: keep the carried target/extendWith bitsets and precomputed target
+  opacity/library facts on each root extend instruction. It removes repeated
+  target keyset rediscovery inside root and selector guards without adding a
+  candidate index.
+- New traversal: none. The existing instruction/root/ruleset loops are
+  unchanged.
 - New node/materialization: none added.
 - Render path: unchanged. Rendering does not create nodes or arrays to
   stringify through this pass.
-- Helper/API surface: three private helper functions added in
-  `reference.ts`; they delete the hot generic property-name scan for `Mixin`
-  and `Ruleset` surfaces without changing public API.
-- Metadata mutations: the fast path copies the same shallow surface metadata
-  the old generic loop copied (`_location`, `_sourceRoot`, `_treeContext`,
-  `_options`, flags/state, `frozen`, and `value`) before the existing
-  source/parent/index finalization. This is not extra placement state; it is
-  the direct version of the previous generic surface copy.
-- Side maps/arrays/copies: no new side maps. The kept path deletes the
-  per-surface own-property array for `Mixin`/`Ruleset`; `_options` cloning
-  remains the same semantic copy as before.
-- Evidence: current-source refresh measured `181.99ms` average /
-  `180.22ms` median and `182.99ms` average / `179.89ms` median on external
+- Helper/API surface: no new helper or public API.
+- Metadata mutations: none.
+- Side maps/arrays/copies: no new side maps. Each instruction now carries the
+  already-needed target bitset, target library/opacity facts, and extendWith
+  bitset so later guards do not re-read/re-scan them. The two `.clone()` calls
+  in the diff are the pre-existing aggregate initialization copies for visible
+  target and extendWith bitsets; this pass changes their input from freshly
+  read selector keysets to carried instruction keysets.
+- Evidence: current-source refresh measured `186.04ms` average /
+  `185.21ms` median and `183.65ms` average / `177.61ms` median on external
   canonical Less `benchmark.less --runs=24 --warmup=8 --math=parens-division`.
   CPU profile
-  `profiling/core-architecture/20260618-204548-current-refresh-cpu/CPU.20260618.204548.47605.0.001.cpuprofile`
-  showed `createRulesLikeReferenceSurface(...)` at `20` self samples. The
-  `Object.assign(...)` prototype passed focused rules-like reference/callable
-  tests but benchmarked `189.75ms` / `188.01ms`, then `187.73ms` /
-  `181.22ms`; profile samples moved the target to `2` self while garbage
-  collection rose from `119` to `166` samples. Reverted. The known-field
-  prototype passed the same focused tests, rebuilt the benchmark package chain,
-  benchmarked `177.27ms` / `177.03ms`, `181.56ms` / `179.58ms`, then
-  `171.53ms` / `168.67ms`, and profile
-  `profiling/core-architecture/20260618-205030-rules-like-known-fields-cpu/CPU.20260618.205030.92674.0.001.cpuprofile`
-  moved the target to `2` self samples without the bulk-copy GC spike.
+  `profiling/core-architecture/20260618-205309-current-refresh-cpu/CPU.20260618.205309.10336.0.001.cpuprofile`
+  showed `processExtends(...)` at `22` self / `109` total samples,
+  `selectorMayContainExtendTarget(...)` at `6` self / `30` total, and
+  `isEmptyBitSet(...)` at `14` self. Focused extend/bitset tests passed
+  (`105` passed, `1` skipped), the ordered benchmark package chain rebuilt,
+  and the kept patch benchmarked `183.44ms` / `181.00ms`,
+  `184.82ms` / `181.26ms`, then `168.98ms` / `166.68ms`. CPU profile
+  `profiling/core-architecture/20260618-205514-extend-instruction-keysets-cpu/CPU.20260618.205514.40928.0.001.cpuprofile`
+  moved `processExtends(...)` to `15` self / `98` total,
+  `selectorMayContainExtendTarget(...)` to `4` self / `16` total, and removed
+  `isEmptyBitSet(...)` from named totals.

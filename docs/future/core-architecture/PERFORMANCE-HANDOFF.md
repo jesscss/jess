@@ -581,6 +581,34 @@ with the new known-field helpers totaling only `2` self samples and no
 CPU-profile win. Future rules-like work should still try to delete the need for
 the shallow surface entirely, not keep adding copy helpers.
 
+2026-06-18 kept extend instruction keyset carry: current profile after the
+rules-like surface cut selected `processExtends(...)` again:
+`profiling/core-architecture/20260618-205309-current-refresh-cpu/CPU.20260618.205309.10336.0.001.cpuprofile`
+showed `processExtends(...)` at `22` self / `109` total samples,
+`selectorMayContainExtendTarget(...)` at `6` self / `30` total,
+`isEmptyBitSet(...)` at `14` self, and `isDisjoint(...)` at `9` self. The kept
+cut carries each root extend instruction's target keyset, target selector
+library, target bitset library, target opaque/empty status, and extendWith
+keyset once during instruction construction. The root and selector guards then
+use these carried facts instead of repeatedly reading selector keysets and
+re-scanning target emptiness. This deliberately does not add a root/ruleset
+candidate index or another activation closure.
+
+Focused extend/bitset behavior passed:
+`pnpm --filter @jesscss/core test -- --run src/tree/util/__tests__/bitset.test.ts src/tree/util/__tests__/fast-reject.test.ts src/tree/util/__tests__/process-extends.test.ts src/tree/__tests__/extend-roots.test.ts src/tree/__tests__/extend-eval-integration.test.ts src/tree/__tests__/extend.test.ts`
+(`105` passed, `1` skipped). Ordered benchmark-path rebuild passed before
+timing. External canonical Less `benchmark.less --runs=24 --warmup=8
+--math=parens-division` measured current-source refresh at average `186.04ms`
+/ median `185.21ms`, then average `183.65ms` / median `177.61ms`. The kept
+prototype measured average `183.44ms` / median `181.00ms`, average
+`184.82ms` / median `181.26ms`, then average `168.98ms` / median `166.68ms`.
+CPU profile
+`profiling/core-architecture/20260618-205514-extend-instruction-keysets-cpu/CPU.20260618.205514.40928.0.001.cpuprofile`
+moved `processExtends(...)` to `15` self / `98` total,
+`selectorMayContainExtendTarget(...)` to `4` self / `16` total, and removed
+`isEmptyBitSet(...)` from named totals. Keep as a small measured wall-clock and
+CPU-profile win.
+
 2026-06-18 rejected extend helper micro-cut: replacing two
 `targetKeys.equals(library.getBitset())` checks with `targetKeys.isEmpty()`
 passed focused extend tests and the full Jess package rebuild, but wall-clock
