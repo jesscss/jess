@@ -64,10 +64,13 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     if (typeof value === 'string' && !this.escaped) {
       this.addFlag(F_STATIC);
     } else {

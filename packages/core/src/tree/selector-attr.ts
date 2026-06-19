@@ -264,12 +264,18 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     location?: LocationInfo | 0,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this.name = value.name;
     this.op = value.op;
     this.attributeValue = value.value;
     this.mod = value.mod;
     this._treeContext = treeContext;
+    if (isNode(this.name)) {
+      this.adopt(this.name);
+    }
+    if (this.attributeValue) {
+      this.adopt(this.attributeValue);
+    }
     if (rawAttributeInterpolationKey(this.attributeValue) !== undefined) {
       this.addFlag(F_NON_STATIC);
     }

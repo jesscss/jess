@@ -66,6 +66,10 @@ shows the approach should be abandoned.
    Added loops, recursion, `map/filter/sort`, parent walks, source walks,
    generators, side-map lookups, or object/array scans must explain why the fact
    could not be carried by parser/adoption/eval state already on the path.
+   `_processNodes(...)` is not a design primitive to preserve. For constructor
+   work, first ask whether the concrete field needs source ancestry/flags at
+   construction time at all; if yes, adopt that field directly, and if no,
+   delete or defer the work instead of recreating a generic child walk.
 2. No new node creation without a named ownership boundary.
    Classify every `new Node`, copy, `.inherit`, `.adopt`,
    `copyWithReusableLeaves`, wrapper `Rules`, materialized array, `frozen`, or
@@ -88,6 +92,12 @@ shows the approach should be abandoned.
 6. Evidence before performance claims.
    Tests and code-path evidence can prove "less wrong machinery." Only profiles
    or benchmarks can prove "faster."
+   For aggressive-cutting acceptance, neutral/noisy benchmark evidence is
+   enough when the patch truly deletes objects, recursive crawls, helper calls,
+   clones, or materialization and focused correctness passes. Do not reject a
+   deletion solely because it failed to prove an immediate speed win; reject it
+   when it fails correctness, adds offsetting machinery, or shows a material
+   and consistent real-benchmark regression.
 
 ## Ownership Classifications
 

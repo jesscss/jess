@@ -70,6 +70,12 @@ The fastest credible runtime path remains:
   work outside the active lane;
 - direct eval/render-to-string for normal output;
 - live lookup/binding/placement state instead of routine copied eval trees;
+- constructor child processing is a target for deletion, not preservation.
+  `_processNodes(...)` may not need to exist at all. For every remaining call,
+  reason from the concrete fields and use cases: which fields are real source
+  children, which only need flags/source ancestry lazily, and which need no
+  adoption/source-parent work. Prefer deleting the need for constructor
+  processing over moving the same work into another generic walker;
 - cold materialization only for public APIs or real semantic ownership
   boundaries;
 - no deep child copies for callable, mixin, eval, render, lookup, or
@@ -166,31 +172,39 @@ looped, so commit and push with `--no-verify` after the explicit gates pass.
 Keep this section to the current pass only. Move historical evidence to
 `PERFORMANCE-HANDOFF.md` or the focused tracker that owns it.
 
-- Latest pass: explicit no-child construction for hot scalar leaves.
-- Verdict: accepted as a measured small performance cut, not goal completion.
-  `Any`, `BasicSelector`, `Dimension`/`Num`, `Bool`, `Comment`,
-  `Combinator`, `Nil`, `Ampersand`, `JsFunction`, and `MixinCollection` now
-  pass `processChildren=false` to the base constructor because their canonical
-  constructor values contain no source-tree children to adopt.
-- New traversal: none. This deletes `_processNodes(...)` calls for true leaf
-  constructors instead of replacing them with another scan.
+- Latest pass: direct constructor ownership for high-count source-bearing
+  nodes plus corrected cutting acceptance doctrine.
+- Verdict: accepted as a structural/crawl reduction, not performance-goal
+  completion. `Reference`, `Call`, `Interpolated`, `PseudoSelector`,
+  `AttributeSelector`, `Quoted`, and `Color` now pass `processChildren=false`
+  and adopt only their real source-child slots. The review also corrected the
+  rule for future cuts: do not reject a real object/crawl/helper deletion solely
+  because it is neutral/noisy on wall-clock; reject it only for correctness
+  failure, offsetting machinery, or material/consistent benchmark regression.
+- New traversal: none. `Interpolated` directly loops its known replacement
+  array; no generic object/array recursion was added. This deletes thousands of
+  constructor `_processNodes(...)` calls instead of replacing them with another
+  discovery scan.
 - New node/materialization: none.
 - Render path: unchanged.
 - Helper/API surface: none added; the existing internal constructor flag is
-  used by more leaf constructors.
-- Metadata mutations: none added. These constructors previously had no
-  children to adopt; the pass avoids even entering source-parent mutation code.
+  used by more constructors.
+- Metadata mutations: no new mutation families. Existing source-child adoption
+  is preserved explicitly, including `Reference.rawKey` when it is a node,
+  without recursively scanning semantic payload objects.
 - Copy/materialization: none.
 - Materialized array/object note: no new arrays or objects are created by this
   pass.
 - Danger-token note: none added. No clone/copy/materialization path was added.
-- Evidence: constructor instrumentation found the hottest remaining
-  `_processNodes(...)` calls were scalar leaves (`Any` 6129,
-  `BasicSelector` 5906, `Dimension` 3232, `Num` 3143 on one
-  `benchmark.less` render). Focused `@jesscss/core`
-  any/dimension/color/comment/selector/reference/rules/node-flags/visitor
-  suite passed (`425` passed, `10` skipped, `5` deferred markers). Live
-  comparator on `benchmark.less` used `--runs=100 --warmup=25 --less4=measure`;
-  patched runs measured `131.88ms` / `136.07ms`, then `131.49ms` / `133.38ms`,
-  while the immediate reverted same-load control measured `133.47ms` /
-  `135.96ms`.
+- Evidence: focused `@jesscss/core` reference/call/color/pseudo/attr/
+  interpolated/quoted/node-flags/visitor suite passed (`494` passed, `5`
+  skipped, `5` deferred markers). Constructor instrumentation on canonical
+  `benchmark.less` now reports `Reference`, `Color`, `Call`, `Interpolated`,
+  `PseudoSelector`, `Quoted`, and `AttributeSelector` at `0`
+  `_processNodes(...)` calls; top remaining calls are `Expression` `610`,
+  `Paren` `332`, `Extend` `184`, `Url` `69`, `AtRule` `42`, and `Condition`
+  `21`. Live comparator on `benchmark.less` used
+  `--runs=100 --warmup=25 --less4=measure`; Jess measured `132.35ms` median /
+  `135.22ms` trimmed average, neutral against the immediate Color-only
+  `132.67ms` / `134.91ms` run and old Color-scanner control `132.84ms` /
+  `134.95ms`, with no material regression.

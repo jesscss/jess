@@ -104,6 +104,14 @@ In benchmark-leashed cutting mode:
 - run stable wall-clock hot-path benchmarks before and after every
   performance-targeting hot-path edit, and record the benchmark `signal=` value
   with the interpretation;
+- treat remaining `_processNodes(...)` calls as an elimination target in two
+  possible ways: either the constructor can adopt concrete source-child fields
+  directly and skip the generic scanner, or the work `_processNodes(...)` does
+  may not need to happen eagerly at all. Before adding another direct adoption
+  branch, reason from the field use cases: source ancestry, state flags,
+  rules-parent/source-root lookup, render/trivia/error context, and public
+  materialization. Some facts may be carried by parser/eval frames, computed
+  lazily, or deleted entirely;
 - choose measured performance targets from actual time attribution first:
   V8/CPU profile samples, benchmark phase timing, or scoped elapsed-time
   instrumentation for named functions/tasks;
@@ -115,9 +123,12 @@ In benchmark-leashed cutting mode:
   deleted, or whether a rejected prototype merely moved work elsewhere. They
   must not pick a performance target by themselves;
 - do not claim speed wins without real benchmark evidence;
-- reject or reshape changes that reduce local object counts but slow or fail
-  to improve the real benchmark, unless the change fixes correctness and the
-  regression is explicitly accepted as debt.
+- keep object, allocation, helper-call, clone/materialization, or recursive
+  crawl reductions when focused correctness passes and same-load benchmark
+  evidence is neutral/noisy. They are accepted as architecture/crawl cuts, not
+  speed wins. Reject or reshape them only when they fail correctness, add
+  offsetting machinery, or show a material/consistent wall-clock regression
+  against the real benchmark.
 
 ## Active Hotspot Leash
 
@@ -152,6 +163,31 @@ and extend work: `Node` construction, `copyChild`,
 `processExtends(...)`, `isSameOrDescendantRoot(...)`, and
 `applyExtendsToSelector(...)`. Keep lookup counters in view only when a timed
 profile also shows lookup/reference frames as the real hot task.
+
+2026-06-19 high-count constructor ownership pass: kept the fourth
+`_processNodes` constructor reduction and corrected the acceptance doctrine
+around structural cuts. `Reference`, `Call`, `Interpolated`, `PseudoSelector`,
+`AttributeSelector`, `Quoted`, and `Color` now pass `processChildren=false`
+and explicitly adopt only their real source-child slots. This preserves
+existing source syntax ownership, including node-valued `Reference.rawKey`,
+without recursively scanning semantic payloads such as color channel objects,
+reference option/key data, generated pseudo placement records, and plain
+strings. A focused `@jesscss/core` reference/call/color/pseudo/attr/
+interpolated/quoted/node-flags/visitor suite passed (`494` passed, `5`
+skipped, `5` deferred markers). Constructor instrumentation around
+`Node.prototype._processNodes(...)` on one canonical `benchmark.less` render
+reported `Reference`, `Color`, `Call`, `Interpolated`, `PseudoSelector`,
+`Quoted`, and `AttributeSelector` at `0` calls; top remaining calls are now
+`Expression` `610`, `Paren` `332`, `Extend` `184`, `Url` `69`, `AtRule`
+`42`, and `Condition` `21`. Ordered benchmark-path rebuild passed. Live
+`benchmark.less` comparator evidence over `100` runs after `25` warmups with
+`--less4=measure` measured Jess at `132.35ms` median / `135.22ms` trimmed
+average; this is neutral against the immediate Color-only `132.67ms` /
+`134.91ms` run and the old Color-scanner control `132.84ms` / `134.95ms`.
+Keep as a structural/crawl reduction, not a speed claim. Future review rule:
+do not reject real object/allocation/helper/crawl deletions solely because
+same-load wall-clock is neutral/noisy; reject them for correctness failure,
+offsetting machinery, or material/consistent real-benchmark regression.
 
 2026-06-19 explicit scalar-leaf constructor pass: kept the third
 `_processNodes` constructor reduction. A one-off constructor counter around
@@ -220,10 +256,13 @@ samples, object-valued constructor heat, or a design that removes the need for
 source-parent mutation rather than adding per-wrapper `instanceof` branches.
 A base-constructor leaf shortcut that skipped `_processNodes(...)` when
 `childKeys === null` also passed focused tests (`425` passed, `10` skipped,
-`5` deferred markers), but same-load A/B did not beat control: patched measured
-`132.23ms` / `133.93ms`, while the immediately reverted control measured
-`132.23ms` / `133.45ms`. Keep it reverted; moving the `childKeys` check from
-`_processNodes(...)` into the base constructor is not a useful cut by itself.
+`5` deferred markers), but same-load A/B was neutral/tiny-worse: patched
+measured `132.23ms` / `133.93ms`, while the immediately reverted control
+measured `132.23ms` / `133.45ms`. Under the current acceptance rule this would
+not be rejected merely for lacking a speed win, but the explicit scalar-leaf
+constructor pass superseded it by deleting the constructor call at the source
+without adding a base-constructor branch. Keep it reverted as the weaker shape,
+not because neutral wall-clock is disqualifying.
 A lazy `rulesParent` getter cache passed focused
 tests but measured flat/slower than control (`136.04ms` / `137.61ms` patched
 vs `134.57ms` / `137.36ms` reverted control), so it was reverted. A plain
@@ -5205,14 +5244,17 @@ can trade off against larger instances or worse inline-cache stability.
   profile elapsed time, and carried nested-exact matching risk. Do not add
   selector-key filtering machinery unless it removes a larger walk/classify
   phase with focused extend matrix proof.
-- `_processNodes(...)` childKeys-routing is behavior-safe but not a measured
-  win in helper form. Ported prototype passed focused node flag/mutation,
+- `_processNodes(...)` childKeys-routing was behavior-safe but the wrong
+  architecture shape. Ported prototype passed focused node flag/mutation,
   render, reference, mixin, and ruleset tests (`508` passed, `9` skipped,
-  `9` deferred-case markers) plus full `pnpm build`, but benchmark was neutral:
-  patched Jess median `143.33ms` / trimmed `147.06ms`, same-worktree reverted
-  median `143.63ms` / trimmed `146.93ms`. If revisited, avoid adding per-node
-  helper-call ladders; try class-assigned adoption functions or
-  constructor-local ownership only where it removes the base constructor walk.
+  `9` deferred-case markers) plus full `pnpm build`, and benchmark was
+  essentially neutral: patched Jess median `143.33ms` / trimmed `147.06ms`,
+  same-worktree reverted median `143.63ms` / trimmed `146.93ms`. Do not cite
+  that neutral benchmark as a rejection reason. It stayed reverted because it
+  kept a generic helper-call/routing layer in the constructor path instead of
+  eliminating constructor child processing. If revisited, use class-assigned
+  adoption functions or constructor-local ownership only where it removes the
+  base constructor walk.
 - `sourceParent` / `_sourceRoot` / frames should be evaluated by usage family,
   not by universal equivalence. Current `context.frames`/node `frames` mostly
   cover collapse/render placement; they are not a drop-in ancestry service, but

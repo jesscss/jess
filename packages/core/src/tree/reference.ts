@@ -3601,12 +3601,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     if (typeof value === 'string') {
       value = { key: value };
     }
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.target = value.target;
     this.key = value.key;
     this.rawKey = value.rawKey;
     this.role = options?.role;
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
+    if (this.key instanceof Node) {
+      this.adopt(this.key);
+    }
+    if (this.rawKey instanceof Node) {
+      this.adopt(this.rawKey);
+    }
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }

@@ -140,12 +140,15 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
-    super(colorData, colorOptions, location);
+    super(colorData, colorOptions, location, false);
     this._treeContext = treeContext;
     this.node = colorData.node;
     this._rgbChannels = colorData.rgb;
     this._hslChannels = colorData.hsl;
     this._alphaValue = colorData.alpha;
+    if (this.node instanceof Node) {
+      this.adopt(this.node);
+    }
     this.addFlag(F_STATIC);
   }
 

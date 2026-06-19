@@ -76,11 +76,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2],
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
     this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    if (this.arg && isNode(this.arg)) {
+      this.adopt(this.arg);
+    }
   }
 
   private renderPseudoSyntax(options?: PrintOptions): string {

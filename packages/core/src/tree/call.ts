@@ -1541,11 +1541,20 @@ export class Call extends Node<CallValue, CallOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (isNode(this.args)) {
+      this.adopt(this.args);
+    }
+    if (isNode(this.contentNode)) {
+      this.adopt(this.contentNode);
+    }
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }

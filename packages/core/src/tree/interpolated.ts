@@ -200,11 +200,14 @@ export class Interpolated<
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    super(value, options, location, false);
     this._treeContext = treeContext;
     this.source = value.source;
     this.replacements = value.replacements;
     this.role = options?.role as Role | undefined;
+    for (let i = 0; i < this.replacements.length; i++) {
+      this.adopt(this.replacements[i]!);
+    }
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
