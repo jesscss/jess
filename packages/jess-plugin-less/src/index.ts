@@ -1602,7 +1602,11 @@ function buildStructuralFedAtRuleStatement(
   context: TreeContext
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, child, 'name', 'at-rule-name');
-  if (name !== '@charset' && name !== '@namespace') {
+  if (
+    name !== '@charset'
+    && name !== '@namespace'
+    && !isScannerNativeUnknownAtRuleStatementName(name)
+  ) {
     return { reason: 'only @charset and @namespace statement at-rules are in the scanner-native structural-fed subset' };
   }
   const preludeIsland = singleIsland(ownerIslands, child, 'at-rule-prelude');
@@ -1610,7 +1614,10 @@ function buildStructuralFedAtRuleStatement(
     return { reason: 'at-rule statement prelude island missing' };
   }
   const prelude = structuralFieldText(plan.document, child, 'prelude', 'prelude');
-  if (!prelude || !isScannerNativeAtRuleStatementPrelude(name, prelude)) {
+  const preludeSupported = name === '@charset' || name === '@namespace'
+    ? prelude !== undefined && isScannerNativeAtRuleStatementPrelude(name, prelude)
+    : prelude !== undefined && isScannerNativeUnknownAtRuleStatementPrelude(prelude);
+  if (!preludeSupported) {
     return { reason: 'at-rule statement prelude is outside the scanner-native structural-fed subset' };
   }
   return {
@@ -2509,6 +2516,13 @@ const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
 const RAW_NAMESPACE_PRELUDE_PATTERN =
   /^(?:(?:[-_a-zA-Z][\w-]*|\*)[ \t]+)?(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\))$/u;
+const KNOWN_SEMANTIC_AT_RULE_STATEMENT_NAMES = new Set([
+  '@charset',
+  '@import',
+  '@layer',
+  '@namespace',
+  '@plugin'
+]);
 const QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;
 const EXACT_QUOTED_IMPORT_PATH_PATTERN =
@@ -2558,6 +2572,20 @@ function isScannerNativeAtRuleStatementPrelude(name: string, preludeText: string
     return RAW_NAMESPACE_PRELUDE_PATTERN.test(preludeText);
   }
   return RAW_QUOTED_STRING_PATTERN.test(preludeText);
+}
+
+function isScannerNativeUnknownAtRuleStatementName(name: string | undefined): name is string {
+  return name !== undefined
+    && /^@[a-zA-Z][\w-]*$/u.test(name)
+    && !KNOWN_SEMANTIC_AT_RULE_STATEMENT_NAMES.has(name.toLowerCase());
+}
+
+function isScannerNativeUnknownAtRuleStatementPrelude(preludeText: string): boolean {
+  if (MULTILINE_VALUE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return false;
+  }
+  return RAW_QUOTED_STRING_PATTERN.test(preludeText)
+    || SIMPLE_FLAT_VALUE_PATTERN.test(preludeText);
 }
 
 function isScannerNativeApplyPrelude(preludeText: string): boolean {

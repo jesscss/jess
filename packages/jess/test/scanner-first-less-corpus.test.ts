@@ -77,6 +77,8 @@ const lessBenchmarkPath = path.resolve(testData, '../less/benchmark/benchmark.le
 const less45BenchmarkReference = loadLess45BenchmarkReference('benchmark.less');
 const less45BenchmarkLessMedianRenderMs = less45BenchmarkReference.renderMedianMs;
 const structuralFedExpectedCssOverrides = new Set([
+  'tests-unit/impor/impor.less',
+  'tests-unit/plugi/plugi.less',
   'tests-unit/tailwind/tailwind.less'
 ]);
 

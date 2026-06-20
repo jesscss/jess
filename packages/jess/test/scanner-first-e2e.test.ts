@@ -2024,6 +2024,41 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'"UTF-8"\')');
   });
 
+  it('feeds root unknown statement at-rules through structural parse without import or plugin semantics', async () => {
+    const source = '@impor "impor-typo-dont-parse-as-@import.less";\n@plugi "plugi-typo-dont-parse-as-@plugin";\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(source);
+    expect(rendered).toContain('@impor "impor-typo-dont-parse-as-@import.less"');
+    expect(rendered).toContain('@plugi "plugi-typo-dont-parse-as-@plugin"');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/unknown-statements.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('rawName: \'@impor\'');
+    expect(types).toContain('rawPrelude: \'"impor-typo-dont-parse-as-@import.less"\'');
+    expect(types).toContain('rawName: \'@plugi\'');
+    expect(types).toContain('rawPrelude: \'"plugi-typo-dont-parse-as-@plugin"\'');
+    expect(types).not.toContain('name: (Any \'@impor\')');
+    expect(types).not.toContain('prelude: (Any');
+  });
+
   it('feeds root CSS @import statements through structural parse', async () => {
     const cases = [
       {
