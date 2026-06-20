@@ -983,6 +983,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       { property: 'content', value: '"hello } world"' },
       { property: 'background', value: 'url(/assets/a}/b.png)' },
+      { property: 'background', value: 'url(/assets/a,b.png)' },
       { property: 'font-family', value: '"Open Sans", sans-serif' }
     ];
 
@@ -1018,6 +1019,42 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(types).toContain(`['${value}']`);
       expect(types).not.toContain('valueNode: (');
     }
+  });
+
+  it('feeds comma-separated flat declaration values through structural parse without value materialization', async () => {
+    const source = '.a { text-shadow: -1px -1px 1px red, 6px 5px 5px yellow; box-shadow: 0 0 1px red, 0 0 2px blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('text-shadow: -1px -1px 1px red, 6px 5px 5px yellow');
+    expect(rendered).toContain('box-shadow: 0 0 1px red, 0 0 2px blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/comma-values.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('rawName: \'text-shadow\'');
+    expect(types).toContain('[\'-1px -1px 1px red, 6px 5px 5px yellow\']');
+    expect(types).toContain('rawName: \'box-shadow\'');
+    expect(types).toContain('[\'0 0 1px red, 0 0 2px blue\']');
+    expect(types).not.toContain('valueNode: (');
   });
 
   it('feeds simple Less function values through progressive declaration segments', async () => {
@@ -2981,14 +3018,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.base { color: blue; }\n.button:hover:extend(.base) { width: 1px; }\n',
         reason: 'selector is outside the scanner-native structural-fed subset'
-      },
-      {
-        source: '.a { background: url(/assets/a,b.png); }\n',
-        reason: 'declaration value is outside the scanner-native structural-fed subset'
-      },
-      {
-        source: '.a { box-shadow: 0 0 1px red, 0 0 2px blue; }\n',
-        reason: 'declaration value is outside the scanner-native structural-fed subset'
       },
       {
         source: '.a { content: "hello" /* comment */; }\n',

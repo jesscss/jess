@@ -2258,11 +2258,15 @@ const SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN =
   /^(?<left>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)[ \t]*(?<operator>[+-])[ \t]*(?<right>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)$/u;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
+const SIMPLE_FLAT_VALUE_ATOM_SOURCE =
+  String.raw`(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*)`;
 const SIMPLE_FLAT_VALUE_PATTERN =
-  /^(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*)(?:[ \t]+(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*))*$/u;
+  new RegExp(String.raw`^${SIMPLE_FLAT_VALUE_ATOM_SOURCE}(?:[ \t]+${SIMPLE_FLAT_VALUE_ATOM_SOURCE})*$`, 'u');
+const RAW_COMMA_FLAT_VALUE_PATTERN =
+  new RegExp(String.raw`^${SIMPLE_FLAT_VALUE_ATOM_SOURCE}(?:[ \t]+${SIMPLE_FLAT_VALUE_ATOM_SOURCE})*(?:[ \t]*,[ \t]*${SIMPLE_FLAT_VALUE_ATOM_SOURCE}(?:[ \t]+${SIMPLE_FLAT_VALUE_ATOM_SOURCE})*)+$`, 'u');
 const RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
-const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{}a-zA-Z0-9]+\)$/u;
+const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{},a-zA-Z0-9]+\)$/u;
 const RAW_QUOTED_URL_PATTERN = /^url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\)$/u;
 const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
@@ -2295,6 +2299,7 @@ function isConservativeRawScannerNativeValue(valueText: string): boolean {
     || RAW_SIMPLE_URL_PATTERN.test(valueText)
     || RAW_QUOTED_URL_PATTERN.test(valueText)
     || RAW_FONT_LIST_PATTERN.test(valueText)
+    || RAW_COMMA_FLAT_VALUE_PATTERN.test(valueText)
   );
 }
 
