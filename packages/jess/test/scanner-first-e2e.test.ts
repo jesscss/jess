@@ -2541,8 +2541,54 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back canonically for unproven block at-rule families', async () => {
-    const source = '@font-face { font-family: demo; src: url(/demo.woff); }\n';
+  it('feeds root @font-face declaration blocks through structural parse', async () => {
+    const source = '@font-face { font-family: demo; font-weight: 400; font-style: normal; }\n.a { font-family: demo; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@font-face');
+    expect(rendered).toContain('font-family: demo');
+    expect(rendered).toContain('font-weight: 400');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 6,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/font-face.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@font-face\'');
+    expect(types).toContain('rawName: \'font-family\'');
+    expect(types).toContain('rawName: \'font-weight\'');
+    expect(types).toContain('rawName: \'font-style\'');
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).not.toContain('prelude: (Any');
+    expect(types).not.toContain('value: (Any');
+  });
+
+  it('falls back for nested @font-face blocks until those shapes are proven', async () => {
+    const source = '.a { @font-face { font-family: demo; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -2556,7 +2602,39 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, root @layer, and root @font-face block at-rules are in the progressive structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for root @font-face preludes until those shapes are proven', async () => {
+    const source = '@font-face demo { font-family: demo; }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const result = probePlugin.runScannerFirstPrototype(
+      '/virtual/font-face-prelude.less',
+      source,
+      new TreeContext({
+        file: {
+          name: 'font-face-prelude.less',
+          path: '/virtual',
+          fullPath: '/virtual/font-face-prelude.less',
+          source
+        },
+        plugin: probePlugin
+      })
+    );
+
+    expect(result.tree).toBeUndefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'root @font-face preludes are outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,

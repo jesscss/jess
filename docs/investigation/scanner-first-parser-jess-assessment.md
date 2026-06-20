@@ -1946,7 +1946,7 @@ storage.
   Dynamic/lazy variable references that need richer Less lookup semantics,
   mixed-unit arithmetic/calc behavior, Less import options, reference/multiple/
   once/de-dupe behavior, unresolved imports, raw HTTP `url(...)` imports,
-  non-`@media`/root-`@layer`/root-`@supports` block at-rule families,
+  non-`@media`/root-`@layer`/root-`@supports`/root-`@font-face` block at-rule families,
   pseudo/attribute/interpolated selectors, and richer nested at-rule bodies
   remain canonical fallbacks until their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
@@ -1998,6 +1998,14 @@ storage.
     already-supported ordinary nested rules.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
+  - [x] Added the first root declaration-block at-rule proof:
+    `@font-face { font-family: demo; font-weight: 400; font-style: normal; }`
+    now builds a raw-field core `AtRule` with raw declaration children, renders
+    equal CSS, serializes the raw `@font-face` name plus raw declaration names,
+    and reports zero island requests, zero legacy parser executions, and zero
+    promoted bytes. Nested `@font-face` still falls back canonically; this is
+    not a generic at-rule-block parser and does not yet cover quoted `src:
+    url(...)` fixture shapes.
   - [x] Fourth thin proof: scope-only rule headers (`&` and an empty header from
     a bare block) map to real core `Rules` containers instead of raw-selector
     `Ruleset` nodes. The tests parse `.a { & { color: blue; } }` and
@@ -2268,11 +2276,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the raw structural scan measured
-    2.12ms median over 20 samples, with 10,283 structural records, 5,762
+    2.09ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    6.78ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    9.69ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2296,16 +2304,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 234.33ms, structural sidecar full render
-    227.15ms across 306 probe records, selected-materialization sidecar full
-    render 252.07ms across 306 probe records with 5,301
+    current parser/eval/render 225.67ms, structural sidecar full render
+    238.00ms across 306 probe records, selected-materialization sidecar full
+    render 254.34ms across 306 probe records with 5,301
     requested/materialized islands and 148,710 promoted bytes, and
-    structural-fed prototype 234.21ms across 198 prototype records with 12
+    structural-fed prototype 225.50ms across 198 prototype records with 12
     structural-fed records, 186 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 12 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.56x, structural sidecar 5.39x, selected
-    materialization 5.98x, and structural-fed 5.56x. These medians are gate
+    median were current 5.35x, structural sidecar 5.65x, selected
+    materialization 6.03x, and structural-fed 5.35x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

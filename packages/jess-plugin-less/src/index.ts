@@ -964,14 +964,18 @@ function validateStructuralFedAtRule(
   mathMode: MathMode = 'parens-division'
 ): string | undefined {
   const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
-  if (name !== '@media' && name !== '@layer' && name !== '@supports') {
-    return 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset';
+  const rootDeclarationBlockAtRule = isStructuralFedRootDeclarationBlockAtRule(name, parentKind);
+  if (name !== '@media' && name !== '@layer' && name !== '@supports' && !rootDeclarationBlockAtRule) {
+    return 'only @media, @supports, root @layer, and root @font-face block at-rules are in the progressive structural-fed subset';
   }
   if ((name === '@layer' || name === '@supports') && parentKind !== 'root') {
     return 'only root @layer and @supports block at-rules are in the progressive structural-fed subset';
   }
   const prelude = structuralFieldText(document, atRule, 'prelude', 'prelude');
-  if (prelude === undefined && name !== '@layer') {
+  if (rootDeclarationBlockAtRule && prelude !== undefined) {
+    return 'root @font-face preludes are outside the scanner-native structural-fed subset';
+  }
+  if (prelude === undefined && name !== '@layer' && !rootDeclarationBlockAtRule) {
     return 'at-rule prelude is outside the scanner-native structural-fed subset';
   }
   if (prelude !== undefined && MULTILINE_VALUE_PATTERN.test(prelude)) {
@@ -982,6 +986,9 @@ function validateStructuralFedAtRule(
   }
   for (const child of atRule.children) {
     if (child.kind === 'rule') {
+      if (rootDeclarationBlockAtRule) {
+        return `unsupported at-rule child ${child.kind}`;
+      }
       if (parentKind !== 'root' && name !== '@media') {
         return `unsupported at-rule child ${child.kind}`;
       }
@@ -998,7 +1005,7 @@ function validateStructuralFedAtRule(
       }
       continue;
     }
-    if (parentKind === 'root' || child.kind !== 'declaration') {
+    if ((!rootDeclarationBlockAtRule && parentKind === 'root') || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
     const declarationReason = validateStructuralFedDeclaration(document, child, variables, true, mathMode);
@@ -1007,6 +1014,13 @@ function validateStructuralFedAtRule(
     }
   }
   return undefined;
+}
+
+function isStructuralFedRootDeclarationBlockAtRule(
+  name: string | undefined,
+  parentKind: 'root' | 'rule' | 'at-rule'
+): boolean {
+  return parentKind === 'root' && name === '@font-face';
 }
 
 function validateStructuralFedMixinDefinition(
@@ -1197,15 +1211,19 @@ function buildStructuralFedAtRule(
   mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
-  if (name !== '@media' && name !== '@layer' && name !== '@supports') {
-    return { reason: 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset' };
+  const rootDeclarationBlockAtRule = isStructuralFedRootDeclarationBlockAtRule(name, parentKind);
+  if (name !== '@media' && name !== '@layer' && name !== '@supports' && !rootDeclarationBlockAtRule) {
+    return { reason: 'only @media, @supports, root @layer, and root @font-face block at-rules are in the progressive structural-fed subset' };
   }
   if ((name === '@layer' || name === '@supports') && parentKind !== 'root') {
     return { reason: 'only root @layer and @supports block at-rules are in the progressive structural-fed subset' };
   }
   const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
-  if (!preludeIsland && name !== '@layer') {
+  if (!preludeIsland && name !== '@layer' && !rootDeclarationBlockAtRule) {
     return { reason: 'at-rule prelude island missing' };
+  }
+  if (preludeIsland && rootDeclarationBlockAtRule) {
+    return { reason: 'root @font-face preludes are outside the scanner-native structural-fed subset' };
   }
   const preludeToken = preludeIsland
     ? readScannerNativeAtRulePreludeToken(plan, atRule, preludeIsland, name)
@@ -1221,6 +1239,9 @@ function buildStructuralFedAtRule(
   let progressiveNodes = 1;
   for (const child of atRule.children) {
     if (child.kind === 'rule') {
+      if (rootDeclarationBlockAtRule) {
+        return { reason: `unsupported at-rule child ${child.kind}` };
+      }
       if (parentKind !== 'root' && name !== '@media') {
         return { reason: `unsupported at-rule child ${child.kind}` };
       }
@@ -1241,7 +1262,7 @@ function buildStructuralFedAtRule(
       progressiveNodes += builtChild.progressiveNodes ?? 0;
       continue;
     }
-    if (parentKind === 'root' || child.kind !== 'declaration') {
+    if ((!rootDeclarationBlockAtRule && parentKind === 'root') || child.kind !== 'declaration') {
       return { reason: `unsupported at-rule child ${child.kind}` };
     }
     const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, true, mathMode);
