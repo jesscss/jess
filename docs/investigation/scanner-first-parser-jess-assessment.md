@@ -1750,17 +1750,19 @@ proof is useful, but it was not proof that materialized islands feed evaluation
 or rendering.
 
 The current prototype adds a hidden structural-fed path for a deliberately tiny
-complete path: ordinary rules whose bodies contain ordinary declarations,
-nested ordinary rules, and `@media` block at-rules where selectors, preludes,
-and values are all simple scanner-native tokens. The scanner/materializer layer
-stores token text, kind, and source spans; it does not treat current core AST
-nodes as the parser's internal representation. The current compiler prototype
-adapts those token records into canonical `@jesscss/core`
-`Rules`/`Ruleset`/`AtRule`/`Declaration` nodes only at the temporary
-compiler-boundary bridge because `safeParse` still returns a core tree. It
-records zero requested islands / zero actual parser execution for that path.
-Less variable references, arithmetic, functions, mixin calls, extends, and
-broader selectors currently fall back canonically until their materializers are
+complete path: ordinary rules whose bodies contain ordinary declarations and
+nested ordinary rules where selectors and values are all simple scanner-native
+tokens. The scanner/materializer layer stores token text, kind, and source
+spans; it does not treat current canonical selector/value nodes as the parser's
+internal representation. The current compiler prototype constructs
+experimental progressive core nodes for `Ruleset` and `Declaration` in that
+literal subset, so simple selector/declaration strings render without
+`Any` value wrappers or selector AST nodes. It still returns a root `Rules`
+tree because `safeParse` is a core-tree boundary. It records zero requested
+islands / zero actual parser execution for that path. Block at-rules, Less
+variable references, arithmetic, functions, mixin calls, extends, imports,
+reference import boundaries, broader selectors, and trivia-preservation cases
+currently fall back canonically until their progressive materializers are
 scanner-native.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
@@ -1906,13 +1908,15 @@ storage.
 - [x] Structural-fed prototype: use structural results and scanner-native
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
-- [x] Structural-fed prototype: support simple selector, simple literal
-  declaration value, and simple `@media` prelude token detection with zero
-  legacy island parser executions.
+- [x] Structural-fed prototype: support simple selector and simple literal
+  declaration value token detection with zero legacy island parser executions.
+  Less variable declarations and block at-rules remain canonical fallbacks until
+  their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
-  core `Any`/selector nodes are created only when adapting into the current
-  compiler tree.
+  successful progressive-fed rules/declarations render without core
+  `Any`/selector wrapper nodes, while unsupported cases fall back to the
+  canonical parser.
 - [x] Seed structure-target examples for CSS/Less so minimal structural shape
   can be reasoned about before implementing more JIT parsing.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
@@ -1920,6 +1924,13 @@ storage.
   stable source identity, render/evaluate simple string segments directly, and
   JIT-parse individual fields/segments onto the same node only when
   eval/render/visitor/plugin behavior requires richer semantics.
+  - [x] First thin proof: `ProgressiveRuleset` and `ProgressiveDeclaration`
+    render/serialize string-backed selector/name/value/body payloads, preserve
+    exact value segments, and handle nested progressive rules without creating
+    selector/value child nodes.
+  - [x] Structural-fed prototype now uses those progressive nodes for ordinary
+    rule/declaration success cases and records `progressiveNodes` so tests and
+    corpus logs prove the cheap path was actually used.
 - [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `{ name: "color", value: ["blue"], important: false }`, render
@@ -1929,9 +1940,11 @@ storage.
 - [ ] Structural-fed prototype: add scanner-native Less variable-reference
   materialization so plain Less variable declarations and reads can run without
   canonical fallback.
-- [x] Structural-fed prototype: support `@media` block at-rules containing
+- [ ] Structural-fed prototype: support `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native.
+  - Current decision: block at-rules fall back while progressive at-rule body
+    formatting and reference/import semantics are unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -1954,9 +1967,10 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 10 structural-fed, 92 canonical
+  - Current audit snapshot: 64 files / 65 cases, 6 structural-fed, 77 canonical
     fallback, 22 current expected-CSS failures, 22 structural expected-CSS
-    failures, zero requested/materialized islands, and zero promoted bytes.
+    failures, zero requested/materialized islands, zero promoted bytes, and 10
+    progressive nodes constructed directly from structural fields.
     Counts include imported/sub-rendered Less prototype records, so
     structural-fed plus fallback records can exceed the top-level case count.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
@@ -1967,11 +1981,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the raw structural scan measured
-    1.49ms median over 20 samples, with 10,291 structural records, 5,770
+    1.97ms median over 20 samples, with 10,291 structural records, 5,770
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    10.44ms total, producing 5,333 structural records, 3,102 raw islands, and 5
+    9.18ms total, producing 5,333 structural records, 3,102 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -1990,12 +2004,12 @@ storage.
     Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 210.18ms, structural sidecar full render
-    211.44ms across 306 probe records, selected-materialization sidecar full
-    render 236.80ms across 306 probe records with 5,391
-    requested/materialized islands and 150,324 promoted bytes, and
-    structural-fed prototype 196.51ms across 306 prototype records with 30
-    structural-fed records, 276 canonical fallbacks, zero
+    current parser/eval/render 238.10ms, structural sidecar full render
+    234.74ms across 306 probe records, selected-materialization sidecar full
+    render 256.72ms across 306 probe records with 5,391
+    requested/materialized islands and 150,297 promoted bytes, and
+    structural-fed prototype 239.39ms across 249 prototype records with 18
+    structural-fed records, 231 canonical fallbacks, zero
     requested/materialized islands, and zero promoted bytes. These medians are gate evidence for
     parity/instrumentation and broad overhead bounds, not a speed claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

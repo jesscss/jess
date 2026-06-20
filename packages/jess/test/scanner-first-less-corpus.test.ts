@@ -35,6 +35,7 @@ type CorpusMetrics = {
   actualParses: number;
   promotedBytes: number;
   requestedIslands: number;
+  progressiveNodes: number;
   durationMs: number;
 };
 
@@ -51,6 +52,7 @@ type BenchmarkModeMetrics = {
   requestedIslands: number;
   actualParses: number;
   promotedBytes: number;
+  progressiveNodes: number;
   fallbackFullTreeMaterializations: number;
 };
 
@@ -143,6 +145,7 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
       actualParses: 0,
       promotedBytes: 0,
       requestedIslands: 0,
+      progressiveNodes: 0,
       durationMs: 0
     };
     const startedAt = nowMs();
@@ -186,12 +189,18 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
         metrics.actualParses += probe.actualParses;
         metrics.promotedBytes += probe.promotedBytes;
         metrics.requestedIslands += probe.requestedIslands;
+        metrics.progressiveNodes += probe.progressiveNodes ?? 0;
       }
     }
 
     metrics.durationMs = nowMs() - startedAt;
     expect(metrics.cases).toBeGreaterThan(0);
     expect(metrics.structuralFed + metrics.canonicalFallback).toBeGreaterThanOrEqual(metrics.cases);
+    expect(metrics.structuralFed).toBeGreaterThan(0);
+    expect(metrics.progressiveNodes).toBeGreaterThan(0);
+    expect(metrics.requestedIslands).toBe(0);
+    expect(metrics.actualParses).toBe(0);
+    expect(metrics.promotedBytes).toBe(0);
     console.info(`[scanner-first-less-corpus] ${JSON.stringify(metrics)}`);
   }, 120_000);
 
@@ -264,6 +273,11 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
     expect(structuralFedMetrics.prototypeRecords).toBeGreaterThanOrEqual(corpusCases.length * benchmarkSampleRuns);
     expect(structuralFedMetrics.structuralFed + structuralFedMetrics.canonicalFallback)
       .toBe(structuralFedMetrics.prototypeRecords);
+    expect(structuralFedMetrics.structuralFed).toBeGreaterThan(0);
+    expect(structuralFedMetrics.progressiveNodes).toBeGreaterThan(0);
+    expect(structuralFedMetrics.requestedIslands).toBe(0);
+    expect(structuralFedMetrics.actualParses).toBe(0);
+    expect(structuralFedMetrics.promotedBytes).toBe(0);
     expectBenchmarkOverheadWithinSmokeLimit('structural-sidecar', metrics, 5);
     expectBenchmarkOverheadWithinSmokeLimit('selected-materialization', metrics, 10);
     expectBenchmarkOverheadWithinSmokeLimit('structural-fed', metrics, 5);
@@ -326,6 +340,7 @@ function createBenchmarkModeMetrics(): BenchmarkModeMetrics {
     requestedIslands: 0,
     actualParses: 0,
     promotedBytes: 0,
+    progressiveNodes: 0,
     fallbackFullTreeMaterializations: 0
   };
 }
@@ -353,6 +368,7 @@ function recordBenchmarkMode(
     metrics.requestedIslands += prototype.requestedIslands;
     metrics.actualParses += prototype.actualParses;
     metrics.promotedBytes += prototype.promotedBytes;
+    metrics.progressiveNodes += prototype.progressiveNodes ?? 0;
     metrics.fallbackFullTreeMaterializations += prototype.fallbackFullTreeMaterializations;
     if (prototype.runtimeTreeSource === 'structural-fed') {
       metrics.structuralFed++;

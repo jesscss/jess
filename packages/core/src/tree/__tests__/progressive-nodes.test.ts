@@ -50,7 +50,8 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(progressive).toBeInstanceOf(ProgressiveRuleset);
-    expect(progressive.toTrimmedString()).toBe('.a { color: blue; }');
+    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(progressive.toTrimmedString({ compress: true })).toBe('.a { color: blue; }');
     expect(isNode(progressive, N.Ruleset)).toBe(false);
     expect(serializeTypes(progressive)).toBeString(`
       (ProgressiveRuleset
@@ -84,7 +85,7 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(progressive.toTrimmedString()).toBe('.a { display: block; .b { color: blue; } }');
+    expect(progressive.toTrimmedString()).toBe('.a {\n  display: block;\n  .b {\n    color: blue;\n  }\n}\n');
   });
 
   test('writes progressive render output without value child nodes', () => {
@@ -97,7 +98,7 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.render(context, buffer)).toBe('.a { color: blue; }');
-    expect(buffer.segments).toEqual(['.a { color: blue; }']);
+    expect(node.render(context, buffer)).toBe('.a {\n  color: blue;\n}\n');
+    expect(buffer.segments).toEqual(['.a {\n  color: blue;\n}\n']);
   });
 });

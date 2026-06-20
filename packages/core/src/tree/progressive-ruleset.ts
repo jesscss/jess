@@ -2,6 +2,7 @@ import { type Context } from '../context.js';
 import { Node, defineType, type LocationInfo } from './node.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { ProgressiveDeclaration } from './progressive-declaration.js';
+import { indent } from './util/serialize-helper.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
 
@@ -45,6 +46,46 @@ export class ProgressiveRuleset extends Node<ProgressiveRulesetValue> {
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
+    const writer = options.writer;
+    if (options.compress) {
+      this.writeCompressedSyntax(options);
+      return;
+    }
+
+    const currentIndent = indent(options.depth);
+    const childIndent = indent(options.depth + 1);
+    writer.add(`${currentIndent}${this.selector} {\n`, this);
+    options.depth++;
+    for (const rule of this.rules) {
+      if (typeof rule === 'string') {
+        writer.add(childIndent, this);
+        writer.add(rule, this);
+        if (!writer.endsWith('\n')) {
+          writer.add('\n');
+        }
+        continue;
+      }
+      if (rule instanceof ProgressiveDeclaration) {
+        writer.add(childIndent, rule);
+        rule.writeSyntax(options);
+        writer.add(';\n');
+        continue;
+      }
+      if (rule instanceof ProgressiveRuleset) {
+        rule.writeSyntax(options);
+        continue;
+      }
+      writer.add(childIndent, rule);
+      rule.writeSyntax(options);
+      if (!writer.endsWith('\n')) {
+        writer.add('\n');
+      }
+    }
+    options.depth--;
+    writer.add(`${currentIndent}}\n`, this);
+  }
+
+  private writeCompressedSyntax(options: FinalPrintOptions): void {
     const writer = options.writer;
     writer.add(`${this.selector} {`, this);
     for (const rule of this.rules) {

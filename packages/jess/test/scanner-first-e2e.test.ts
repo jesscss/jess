@@ -256,7 +256,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
 
     expect(document.fieldRanges.size).toBeGreaterThan(0);
-    expect(progressive.toTrimmedString()).toBe('.a { color: blue; }');
+    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
     expect(serializeTypes(progressive)).toBe([
       '(ProgressiveRuleset',
       '  selector: \'.a\'',
@@ -508,6 +508,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'structural-fed',
       structuralDiagnostics: 0,
       fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       executedIslands: 0
@@ -534,6 +535,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -557,8 +559,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackReason: 'Less variable declarations are not in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -584,6 +587,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -607,8 +611,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackReason: 'Less variable declarations are not in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -633,8 +638,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('border-color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackReason: 'Less variable declarations are not in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -659,8 +665,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('border-color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackReason: 'Less variable declarations are not in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -687,6 +694,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -713,6 +721,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 6,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -720,7 +729,32 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds a block at-rule containing an ordinary ruleset through structural parse', async () => {
+  it('skips structural-fed prototype work for import-scoped parse options', () => {
+    const source = '.a { color: blue; }\n';
+    const cases = [
+      { reference: true },
+      { multiple: true }
+    ];
+
+    for (const importOptions of cases) {
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const result = probePlugin.safeParse('/virtual/imported.less', source, { importOptions });
+
+      expect(result.errors).toEqual([]);
+      expect(probePlugin.lastScannerFirstPrototype).toBeUndefined();
+      expect(probePlugin.lastScannerFirstProbe).toMatchObject({
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+    }
+  });
+
+  it('falls back for block at-rules until progressive at-rule bodies are proven', async () => {
     const source = '@media screen { .a { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -736,8 +770,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@media screen');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -745,7 +781,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds nested media declarations inside an ordinary ruleset through structural parse', async () => {
+  it('falls back for nested block at-rules until progressive at-rule bodies are proven', async () => {
     const source = '.a { @media screen { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -761,8 +797,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@media screen');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -785,8 +823,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'unsupported block at-rule in the first structural-fed subset',
+      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -827,11 +866,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '@prop: color;\n.a { @{prop}: blue; }\n',
-        reason: 'unsupported rule child mixin-call'
+        reason: 'Less variable declarations are not in the progressive structural-fed subset'
       },
       {
         source: '@brand: blue ! important;\n.a { color: @brand; }\n',
-        reason: 'important variable declarations are not in the first structural-fed subset'
+        reason: 'Less variable declarations are not in the progressive structural-fed subset'
       },
       {
         source: '.wrapper { grid-template-areas:\n  "header header"\n  "content sidebar"; }\n',
