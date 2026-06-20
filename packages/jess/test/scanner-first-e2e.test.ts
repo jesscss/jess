@@ -2587,6 +2587,73 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('value: (Any');
   });
 
+  it('feeds root CSS declaration-block at-rules through structural parse', async () => {
+    const source = [
+      '// @page with declarations',
+      '@page {',
+      '  margin: 2cm;',
+      '  size: A4;',
+      '  marks: crop cross;',
+      '}',
+      '',
+      '// @font-face with declarations',
+      '@font-face {',
+      '  font-family: "MyFont";',
+      '  src: url("myfont.woff2");',
+      '  font-weight: 400;',
+      '  font-style: normal;',
+      '}',
+      '',
+      '// @counter-style with declarations',
+      '@counter-style my-counter {',
+      '  system: fixed;',
+      '  symbols: "A" "B" "C";',
+      '  suffix: ". ";',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@page');
+    expect(rendered).toContain('src: url("myfont.woff2")');
+    expect(rendered).toContain('@counter-style my-counter');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 13,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/declaration-block-at-rules.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('rawName: \'@page\'');
+    expect(types).toContain('rawName: \'@font-face\'');
+    expect(types).toContain('rawName: \'@counter-style\'');
+    expect(types).toContain('rawPrelude: \'my-counter\'');
+    expect(types).toContain('rawName: \'src\'');
+    expect(types).toContain('[\'url("myfont.woff2")\']');
+    expect(types).not.toContain('value: (Any');
+  });
+
   it('falls back for nested @font-face blocks until those shapes are proven', async () => {
     const source = '.a { @font-face { font-family: demo; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -2602,7 +2669,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, root @layer, and root @font-face block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
@@ -2634,7 +2701,71 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(result.tree).toBeUndefined();
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'root @font-face preludes are outside the scanner-native structural-fed subset',
+      fallbackReason: '@font-face preludes are outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for root @page preludes until those shapes are proven', async () => {
+    const source = '@page demo { margin: 2cm; }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const result = probePlugin.runScannerFirstPrototype(
+      '/virtual/page-prelude.less',
+      source,
+      new TreeContext({
+        file: {
+          name: 'page-prelude.less',
+          path: '/virtual',
+          fullPath: '/virtual/page-prelude.less',
+          source
+        },
+        plugin: probePlugin
+      })
+    );
+
+    expect(result.tree).toBeUndefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: '@page preludes are outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for root @counter-style without a prelude until those shapes are proven', async () => {
+    const source = '@counter-style { system: fixed; }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const result = probePlugin.runScannerFirstPrototype(
+      '/virtual/counter-style-no-prelude.less',
+      source,
+      new TreeContext({
+        file: {
+          name: 'counter-style-no-prelude.less',
+          path: '/virtual',
+          fullPath: '/virtual/counter-style-no-prelude.less',
+          source
+        },
+        plugin: probePlugin
+      })
+    );
+
+    expect(result.tree).toBeUndefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: '@counter-style prelude is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
