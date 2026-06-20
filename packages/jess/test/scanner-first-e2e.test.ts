@@ -2248,27 +2248,51 @@ describe('scanner-first CSS/Less e2e probe', () => {
     )).toBe(true);
   });
 
-  it('falls back for statement at-rules outside the structural-fed subset', async () => {
-    const source = '@namespace svg url("http://www.w3.org/2000/svg");\n.a { color: blue; }\n';
-    const baseline = await new Compiler().renderString(source, { language: 'less' });
-    const probePlugin = lessPlugin({
-      scannerFirstProbe: {
-        structuralFedPrototype: true
+  it('feeds root @namespace statement at-rules through structural parse', async () => {
+    const cases = [
+      {
+        source: '@namespace "http://www.w3.org/1999/xhtml";\n.a { color: blue; }\n',
+        rawPrelude: '"http://www.w3.org/1999/xhtml"'
+      },
+      {
+        source: '@namespace svg url("http://www.w3.org/2000/svg");\n.a { color: blue; }\n',
+        rawPrelude: 'svg url("http://www.w3.org/2000/svg")'
       }
-    });
-    const rendered = await new Compiler({
-      compile: { plugins: [probePlugin] }
-    }).renderString(source, { language: 'less' });
+    ];
 
-    expect(rendered).toBe(baseline);
-    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @charset statement at-rules are in the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
-      actualParses: 0,
-      requestedIslands: 0
-    });
+    for (const { source, rawPrelude } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain('@namespace');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 3,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/namespace.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const statement = parseResult.tree!.rules[0];
+      const types = serializeRuntimeTypes(statement);
+      expect(types).toContain('(AtRuleStatement');
+      expect(types).toContain('rawName: \'@namespace\'');
+      expect(statement.rawPrelude).toBe(rawPrelude);
+      expect(types).not.toContain('name: (Any \'@namespace\')');
+      expect(types).not.toContain('prelude: (Any');
+    }
   });
 
   it('feeds root @media blocks with ordinary rules through structural parse', async () => {

@@ -39,6 +39,11 @@ type CorpusMetrics = {
   durationMs: number;
 };
 
+type CorpusFallbackDetail = {
+  label: string;
+  reason: string;
+};
+
 type BenchmarkMode = 'current' | 'structural-sidecar' | 'selected-materialization' | 'structural-fed';
 
 type BenchmarkModeMetrics = {
@@ -157,6 +162,7 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
       progressiveNodes: 0,
       durationMs: 0
     };
+    const fallbackDetails: CorpusFallbackDetail[] = [];
     const startedAt = nowMs();
 
     for (const corpusCase of corpusCases) {
@@ -193,7 +199,12 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
           metrics.structuralFed++;
         } else {
           metrics.canonicalFallback++;
-          increment(metrics.fallbackReasons, probe.fallbackReason ?? 'unknown');
+          const reason = probe.fallbackReason ?? 'unknown';
+          increment(metrics.fallbackReasons, reason);
+          fallbackDetails.push({
+            label: corpusLabel(corpusCase),
+            reason
+          });
         }
         metrics.actualParses += probe.actualParses;
         metrics.promotedBytes += probe.promotedBytes;
@@ -204,6 +215,9 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
 
     metrics.durationMs = nowMs() - startedAt;
     console.info(`[scanner-first-less-corpus] ${JSON.stringify(metrics)}`);
+    if (process.env.JESS_SCANNER_FIRST_CORPUS_DETAILS === '1') {
+      console.info(`[scanner-first-less-corpus-details] ${JSON.stringify(fallbackDetails)}`);
+    }
     expect(metrics.cases).toBeGreaterThan(0);
     expect(metrics.structuralFed + metrics.canonicalFallback).toBeGreaterThanOrEqual(metrics.cases);
     expect(metrics.structuralFed).toBeGreaterThan(0);

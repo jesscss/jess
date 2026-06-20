@@ -1367,15 +1367,15 @@ function buildStructuralFedAtRuleStatement(
   context: TreeContext
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, child, 'name', 'at-rule-name');
-  if (name !== '@charset') {
-    return { reason: 'only @charset statement at-rules are in the scanner-native structural-fed subset' };
+  if (name !== '@charset' && name !== '@namespace') {
+    return { reason: 'only @charset and @namespace statement at-rules are in the scanner-native structural-fed subset' };
   }
   const preludeIsland = singleIsland(ownerIslands, child, 'at-rule-prelude');
   if (!preludeIsland) {
     return { reason: 'at-rule statement prelude island missing' };
   }
   const prelude = structuralFieldText(plan.document, child, 'prelude', 'prelude');
-  if (!prelude || !RAW_QUOTED_STRING_PATTERN.test(prelude)) {
+  if (!prelude || !isScannerNativeAtRuleStatementPrelude(name, prelude)) {
     return { reason: 'at-rule statement prelude is outside the scanner-native structural-fed subset' };
   }
   return {
@@ -2272,6 +2272,8 @@ const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
 const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
+const RAW_NAMESPACE_PRELUDE_PATTERN =
+  /^(?:(?:[-_a-zA-Z][\w-]*|\*)[ \t]+)?(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\))$/u;
 const QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;
 const EXACT_QUOTED_IMPORT_PATH_PATTERN =
@@ -2311,6 +2313,16 @@ function isScannerNativeAtRulePrelude(atRuleName: string | undefined, preludeTex
     return RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN.test(preludeText);
   }
   return SIMPLE_LITERAL_VALUE_PATTERN.test(preludeText);
+}
+
+function isScannerNativeAtRuleStatementPrelude(name: string, preludeText: string): boolean {
+  if (MULTILINE_VALUE_PATTERN.test(preludeText) || RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return false;
+  }
+  if (name === '@namespace') {
+    return RAW_NAMESPACE_PRELUDE_PATTERN.test(preludeText);
+  }
+  return RAW_QUOTED_STRING_PATTERN.test(preludeText);
 }
 
 function isCssImportPath(pathText: string): boolean {

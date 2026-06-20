@@ -277,6 +277,11 @@ function createStatementNode(
     return statement('import', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
   }
 
+  if (atInclude) {
+    const nameEnd = trimmedStart + 8;
+    return statement('mixin-call', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
+  }
+
   if (colon === -1 && atRuleStatement) {
     const nameEnd = trimmedStart + atRuleStatement.length;
     return statement(
@@ -289,11 +294,6 @@ function createStatementNode(
       trimmedEnd,
       parent
     );
-  }
-
-  if (atInclude) {
-    const nameEnd = trimmedStart + 8;
-    return statement('mixin-call', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
   }
 
   if (colon !== -1) {
@@ -524,16 +524,34 @@ function atRulePreludeSpan(source: SourceText, start: number, end: number): Sour
 }
 
 /**
- * Finds a declaration colon that is not nested inside brackets or parens.
+ * Finds a declaration colon that is not nested inside brackets, parens, or quoted strings.
  *
- * This preserves common selector and function syntax while staying scanner-only.
+ * This preserves common selector, function, and URL-like statement syntax while staying scanner-only.
  */
 function findTopLevelColon(text: string): number {
   let parenDepth = 0;
   let bracketDepth = 0;
+  let quote = 0;
+  let escaped = false;
 
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
+    if (quote !== 0) {
+      if (escaped) {
+        escaped = false;
+      } else if (code === Char.Backslash) {
+        escaped = true;
+      } else if (code === quote) {
+        quote = 0;
+      }
+      continue;
+    }
+
+    if (code === Char.DoubleQuote || code === Char.SingleQuote) {
+      quote = code;
+      continue;
+    }
+
     if (code === Char.OpenParen) {
       parenDepth++;
     } else if (code === Char.CloseParen && parenDepth > 0) {
@@ -576,12 +594,15 @@ function isWhitespaceCode(code: number): boolean {
 }
 
 const enum Char {
+  Backslash = 92,
   CloseBrace = 125,
   CloseBracket = 93,
   CloseParen = 41,
   Colon = 58,
+  DoubleQuote = 34,
   OpenBrace = 123,
   OpenBracket = 91,
   OpenParen = 40,
+  SingleQuote = 39,
   Semicolon = 59
 }

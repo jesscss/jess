@@ -1935,8 +1935,10 @@ storage.
   including ordinary nested rules, simple root `@layer` blocks with ordinary
   rule bodies, root `@supports` blocks with a single scanner-native declaration
   condition, root `@charset` statement at-rules with scanner-native quoted
-  preludes, CSS-preserved root `@import` statements with quoted CSS paths or
-  quoted `url(...)` preludes, and simple Less variable declaration/reference
+  preludes, root `@namespace` statement at-rules with quoted or
+  prefix-plus-quoted/quoted-`url(...)` preludes, CSS-preserved root `@import`
+  statements with quoted CSS paths or quoted `url(...)` preludes, and simple
+  Less variable declaration/reference
   token detection for already-seen and same-scope hoisted simple literal/raw
   values, plus one-step same-unit `+`/`-` arithmetic over scanner-native
   numbers/dimensions, plus scope-only `& { ... }` and bare `{ ... }` blocks that
@@ -2167,6 +2169,13 @@ storage.
     `rawPrelude` instead of canonical `Any` header children. Less import options
     and raw HTTP `url(...)` imports still fall back canonically until option
     semantics and URL/comment ownership are proven in the cheap path.
+  - [x] Extended the raw-field `AtRuleStatement` proof to root `@namespace`
+    statements with quoted preludes and prefix plus quoted `url(...)` preludes.
+    This also fixed the structural scanner's declaration-colon detector so
+    colons inside quoted strings no longer misclassify statement at-rules as
+    declarations. The parser-level structure test covers the quote-aware colon
+    boundary, and the Less e2e proof renders/serializes `@namespace` through
+    raw `AtRuleStatement` fields with zero legacy island parser executions.
   - [x] Extended the structural-fed import proof to exact quoted Less imports
     such as `@import "tokens.less";` when the imported file itself stays in the
     scanner-native subset. The prototype resolves and reads the imported file,
@@ -2269,10 +2278,10 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 6 structural-fed prototype
-    records, 60 canonical fallback records, 22 current expected-CSS failures, 22
+  - Current audit snapshot: 64 files / 65 cases, 7 structural-fed prototype
+    records, 59 canonical fallback records, 22 current expected-CSS failures, 22
     structural expected-CSS failures, zero requested/materialized islands, zero
-    promoted bytes, and 21 progressive nodes from the upstream corpus. That is
+    promoted bytes, and 25 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     block comments, richer selectors/values, mixins, imports, or diagnostics
     that still fall back canonically. The comma-value proof above did not
@@ -2287,12 +2296,12 @@ storage.
   SCSS/Jess widening.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
-    `benchmark/benchmark.less` fixture, the raw structural scan measured
-    2.10ms median over 20 samples, with 10,283 structural records, 5,762
+    `benchmark/benchmark.less` fixture, the latest raw structural scan measured
+    2.27ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    9.12ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    16.24ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2316,16 +2325,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 225.25ms, structural sidecar full render
-    202.34ms across 306 probe records, selected-materialization sidecar full
-    render 242.21ms across 306 probe records with 5,301
-    requested/materialized islands and 148,710 promoted bytes, and
-    structural-fed prototype 214.16ms across 198 prototype records with 18
-    structural-fed records, 180 canonical fallbacks, zero
-    requested/materialized islands, zero promoted bytes, and 63 progressive
+    current parser/eval/render 212.49ms, structural sidecar full render
+    208.52ms across 306 probe records, selected-materialization sidecar full
+    render 243.36ms across 306 probe records with 5,295
+    requested/materialized islands and 148,572 promoted bytes, and
+    structural-fed prototype 207.89ms across 198 prototype records with 21
+    structural-fed records, 177 canonical fallbacks, zero
+    requested/materialized islands, zero promoted bytes, and 75 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.34x, structural sidecar 4.80x, selected
-    materialization 5.74x, and structural-fed 5.08x. These medians are gate
+    median were current 5.04x, structural sidecar 4.95x, selected
+    materialization 5.77x, and structural-fed 4.93x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

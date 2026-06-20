@@ -226,6 +226,31 @@ describe('parseStructure', () => {
     expect(rule.children[0]).toMatchObject({ kind: 'mixin-call' });
   });
 
+  test('ignores colons inside quoted statement at-rule preludes', () => {
+    const document = parseStructure('@namespace "http://www.w3.org/1999/xhtml";', fixtureLessProfile);
+    const statement = document.root.children[0]!;
+
+    expect(statement).toMatchObject({
+      kind: 'at-rule-statement',
+      start: 0,
+      end: document.source.length - 1
+    });
+    expect(document.fieldRanges.get(statement, 'name')).toEqual({
+      field: 'name',
+      index: 0,
+      start: 0,
+      end: 10,
+      kind: 'at-rule-name'
+    });
+    expect(document.fieldRanges.get(statement, 'prelude')).toEqual({
+      field: 'prelude',
+      index: 0,
+      start: 11,
+      end: document.source.length - 1,
+      kind: 'prelude'
+    });
+  });
+
   test('recovers malformed blocks into diagnostics without throwing', () => {
     const document = parseStructure('.foo { color: red;', fixtureProfile);
 
