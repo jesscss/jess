@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   SourceText,
-  parseStructure,
+  parseStructure
 } from '../index.js';
 import { fixtureLessProfile, fixtureProfile, fixtureScssProfile } from './fixtures.js';
 
@@ -140,5 +140,22 @@ describe('parseStructure', () => {
       }
     ]);
     expect(after.changedRanges(after)).toEqual([]);
+  });
+
+  test('reports structural performance guard stats without materializing islands', () => {
+    const before = parseStructure(new SourceText('.foo { color: red; }', { version: 1 }), fixtureLessProfile);
+    const after = parseStructure(new SourceText('.foo { color: @brand; }', { version: 2 }), fixtureLessProfile);
+    const stats = after.stats(before);
+
+    expect(after.source.hasLineMap).toBe(false);
+    expect(stats).toMatchObject({
+      sourceBytes: new TextEncoder().encode(after.source.text).byteLength,
+      structuralRecords: 6,
+      maxBlockDepth: 2,
+      diagnostics: 0,
+      rawIslands: 3,
+      changedRanges: 1
+    });
+    expect(stats.recordsPerInputByte).toBeGreaterThan(0);
   });
 });

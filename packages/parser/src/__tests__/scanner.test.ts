@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   ScannerCursor,
   SourceText,
+  collectScannerStats,
   recoverToNextBoundary,
   renderParserDiagnostic,
   scanBalancedDelimited,
@@ -24,6 +25,25 @@ describe('ScannerCursor', () => {
     expect(cursor.advance()).toBe(1);
     expect(cursor.consume('{}')).toBe(true);
     expect(cursor.eof()).toBe(true);
+  });
+});
+
+describe('scanner performance guard stats', () => {
+  test('reports scanner event counts without forcing source line maps', () => {
+    const source = new SourceText('/* hi */\n// lead\n{ content: "{x}"; } "loose" bad(;');
+    const stats = collectScannerStats(source, { lineComments: true });
+
+    expect(source.hasLineMap).toBe(false);
+    expect(stats).toMatchObject({
+      inputBytes: new TextEncoder().encode(source.text).byteLength,
+      inputLength: source.length,
+      triviaRanges: 6,
+      delimiterScans: 1,
+      stringScans: 1,
+      commentScans: 2,
+      recoveryScans: 1,
+      diagnostics: 0
+    });
   });
 });
 
@@ -76,7 +96,7 @@ describe('string scanning', () => {
 
   test('reports unterminated strings without throwing', () => {
     const diagnostics: ParserDiagnostic[] = [];
-    const cursor = new ScannerCursor("'abc");
+    const cursor = new ScannerCursor('\'abc');
     const result = scanString(cursor, diagnostics);
 
     expect(result).toMatchObject({
@@ -89,7 +109,7 @@ describe('string scanning', () => {
     expect(diagnostics).toEqual([
       expect.objectContaining({
         code: 'unterminated-string',
-        expected: "'",
+        expected: '\'',
         actual: 'end of file',
         context: 'string'
       })

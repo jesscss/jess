@@ -59,9 +59,9 @@ the end of a long pass to mark completed work.
 
 - [ ] Slice 0: plan and corpus inventory
 - [ ] Slice 1: `@jesscss/parser` source model
-- [ ] Slice 2: scanner cursor and structural token helpers
+- [x] Slice 2: scanner cursor and structural token helpers
 - [x] Slice 3: language profiles
-- [ ] Slice 4: structural document parser
+- [x] Slice 4: structural document parser
 - [x] Slice 5: parse services and island parse planning
 - [x] Slice 6: semantic index builder
 - [ ] Slice 7: CSS and Less island provider entrypoints
@@ -1439,10 +1439,12 @@ Goal: replace the package internals with offset-first source primitives.
 - [x] Export source primitives from `@jesscss/parser`.
 - [x] Add JSDoc for exported source primitives and lazy line-map behavior.
 - [x] Test line/column conversion in both directions.
-- [ ] Test newline ownership and trivia ranges across comments, blank lines,
+- [x] Test newline ownership and trivia ranges across comments, blank lines,
   and EOF.
-- [ ] Performance guard: benchmark source bytes, line count, line-map entries,
-  construction time, and retained line-map memory where measurable.
+- [x] Performance guard: report source bytes, UTF-16 length, lazy line-map
+  materialization state, and line-map entries when already materialized.
+- [ ] Performance guard follow-up: benchmark construction time and retained
+  line-map memory in a dedicated harness instead of the parser hot path.
 - [x] Verification: `pnpm --filter @jesscss/parser test`.
 - [x] Verification: `pnpm --filter @jesscss/parser build`.
 
@@ -1462,9 +1464,10 @@ Goal: add shared CSS-family scanning primitives without compiler AST nodes.
 - [x] Add JSDoc for scanner helpers, diagnostics, and recovery semantics.
 - [x] Test strings, comments, escapes, delimiters, EOF, recovery, and rendered
   error messages.
-- [ ] Performance guard: report input bytes, trivia ranges, delimiter scans,
-  string/comment scans, recovery scans, and allocations per byte where
-  measurable.
+- [x] Performance guard: report input bytes, trivia ranges, delimiter scans,
+  string/comment scans, and recovery scans.
+- [ ] Performance guard follow-up: measure scanner allocations per byte in a
+  dedicated harness.
 - [x] Verification: `pnpm --filter @jesscss/parser test`.
 - [x] Verification: `pnpm --filter @jesscss/parser build`.
 
@@ -1517,9 +1520,10 @@ and raw islands.
 - [x] Test multi-line selectors, declaration values, custom properties,
   comments around nodes, incomplete declarations, and EOF blocks.
 - [x] Test malformed input recovery without throwing.
-- [ ] Performance guard: report structural records per input byte, max block
-  depth, diagnostics, raw island count, object count where measurable, changed
-  ranges, and parse time.
+- [x] Performance guard: report structural records per input byte, max block
+  depth, diagnostics, raw island count, trivia ranges, and changed ranges.
+- [ ] Performance guard follow-up: measure structural object count and parse
+  time in a dedicated harness instead of storing timing on structural documents.
 - [x] Verification: `pnpm --filter @jesscss/parser test`.
 - [x] Verification: `pnpm --filter @jesscss/parser build`.
 

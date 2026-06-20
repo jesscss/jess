@@ -1,5 +1,5 @@
-import { delimitedSpan, type DelimitedSpan, type TriviaRun } from '../source/index.js';
-import type { ScannerCursor } from './cursor.js';
+import { SourceText, delimitedSpan, type DelimitedSpan, type TriviaRun } from '../source/index.js';
+import { ScannerCursor } from './cursor.js';
 import {
   createParserDiagnostic,
   type ParserDiagnostic
@@ -11,7 +11,7 @@ export type DiagnosticSink = ParserDiagnostic[];
 /** Result of scanning a quoted string, including unterminated recovery state. */
 export type StringScanResult = {
   kind: 'string';
-  quote: '"' | "'";
+  quote: '"' | '\'';
   start: number;
   end: number;
   contentStart: number;
@@ -50,6 +50,93 @@ export type ScanTriviaOptions = {
   lineComments?: boolean;
 };
 
+/** Cold scanner report used by performance guard tests and diagnostics. */
+export type ScannerStats = {
+  readonly inputBytes: number;
+  readonly inputLength: number;
+  readonly triviaRanges: number;
+  readonly delimiterScans: number;
+  readonly stringScans: number;
+  readonly commentScans: number;
+  readonly recoveryScans: number;
+  readonly diagnostics: number;
+};
+
+/**
+ * Collects scanner event counts in a detached pass.
+ *
+ * This is intentionally not wired into the structural parser hot path. It
+ * exists for performance guards that need stable counts for trivia, delimiter,
+ * string/comment, and recovery behavior without allocating compiler AST nodes.
+ */
+export function collectScannerStats(
+  source: ScannerCursor | SourceText | string,
+  options: ScanTriviaOptions = {}
+): ScannerStats {
+  const cursor = source instanceof ScannerCursor
+    ? new ScannerCursor(source.source)
+    : new ScannerCursor(source);
+  const diagnostics: ParserDiagnostic[] = [];
+  const trivia: TriviaRun[] = [];
+  let delimiterScans = 0;
+  let stringScans = 0;
+  let commentScans = 0;
+  let recoveryScans = 0;
+
+  while (!cursor.eof()) {
+    const triviaStart = trivia.length;
+    scanTriviaInto(cursor, trivia, diagnostics, options);
+    for (let i = triviaStart; i < trivia.length; i++) {
+      const run = trivia[i]!;
+      if (run.kind === 'block-comment' || run.kind === 'line-comment') {
+        commentScans++;
+      }
+    }
+    if (cursor.eof()) {
+      break;
+    }
+    if (scanString(cursor, diagnostics)) {
+      stringScans++;
+      continue;
+    }
+    if (scanBlockComment(cursor, diagnostics)) {
+      commentScans++;
+      continue;
+    }
+    if (options.lineComments && scanLineComment(cursor)) {
+      commentScans++;
+      continue;
+    }
+    const code = cursor.peekCode();
+    if (code === Char.OpenBrace || code === Char.OpenParen || code === Char.OpenBracket) {
+      if (scanBalancedDelimited(cursor, diagnostics)) {
+        delimiterScans++;
+        continue;
+      }
+    }
+    if (code === Char.Semicolon || code === Char.CloseBrace) {
+      cursor.advance();
+      continue;
+    }
+    recoverToNextBoundary(cursor);
+    recoveryScans++;
+    if (!cursor.eof() && (cursor.peekCode() === Char.Semicolon || cursor.peekCode() === Char.CloseBrace)) {
+      cursor.advance();
+    }
+  }
+
+  return {
+    inputBytes: new TextEncoder().encode(cursor.source.text).byteLength,
+    inputLength: cursor.source.length,
+    triviaRanges: trivia.length,
+    delimiterScans,
+    stringScans,
+    commentScans,
+    recoveryScans,
+    diagnostics: diagnostics.length
+  };
+}
+
 /**
  * Scans a quoted string and records unterminated strings without throwing.
  *
@@ -65,7 +152,7 @@ export function scanString(
     return undefined;
   }
 
-  const quote = quoteCode === Char.DoubleQuote ? '"' : "'";
+  const quote = quoteCode === Char.DoubleQuote ? '"' : '\'';
   const start = cursor.offset;
   cursor.advance();
   const contentStart = cursor.offset;
@@ -513,9 +600,9 @@ function isHorizontalWhitespaceCode(code: number): boolean {
 
 function isNewlineCode(code: number): boolean {
   return (
-    code === Char.LineFeed ||
-    code === Char.CarriageReturn ||
-    code === Char.FormFeed
+    code === Char.LineFeed
+    || code === Char.CarriageReturn
+    || code === Char.FormFeed
   );
 }
 
@@ -540,8 +627,8 @@ function findInterpolationStart(
 
   for (const startSequence of startSequences) {
     if (
-      cursor.match(startSequence) &&
-      (best === undefined || startSequence.length > best.length)
+      cursor.match(startSequence)
+      && (best === undefined || startSequence.length > best.length)
     ) {
       best = startSequence;
     }

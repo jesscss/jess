@@ -8,6 +8,7 @@ export {
   type RenderedParserDiagnostic
 } from './diagnostics.js';
 export {
+  collectScannerStats,
   recoverToNextBoundary,
   scanBalancedDelimited,
   scanBlockComment,
@@ -23,5 +24,6 @@ export {
   type RecoveryBoundary,
   type RecoveryResult,
   type ScanTriviaOptions,
+  type ScannerStats,
   type StringScanResult
 } from './scan.js';

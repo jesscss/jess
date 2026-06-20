@@ -1,5 +1,5 @@
 export { LineMap, type LineColumn } from './line-map.js';
-export { SourceText, type SourceTextOptions } from './source-text.js';
+export { SourceText, type SourceTextOptions, type SourceTextStats } from './source-text.js';
 export {
   delimitedSpan,
   sourceSpan,

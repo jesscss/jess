@@ -5,6 +5,7 @@ import type {
   RawIslandNode,
   StructuralContainerNode,
   StructuralDocumentData,
+  StructuralDocumentStats,
   StructuralNode
 } from './types.js';
 import type { IslandKind, LanguageProfile } from '../profiles/index.js';
@@ -63,7 +64,7 @@ export class StructuralDocument {
   /** Produces foldable container ranges without materializing island ASTs. */
   foldingRanges(): readonly FoldingRange[] {
     const ranges: FoldingRange[] = [];
-    walk(this.root, node => {
+    walk(this.root, (node) => {
       if ('children' in node && node.kind !== 'document' && node.end > node.start) {
         ranges.push({ start: node.start, end: node.end });
       }
@@ -74,7 +75,7 @@ export class StructuralDocument {
   /** Produces coarse document symbols from structural names and headers. */
   symbols(): readonly DocumentSymbol[] {
     const symbols: DocumentSymbol[] = [];
-    walk(this.root, node => {
+    walk(this.root, (node) => {
       if (node.kind === 'document' || node.kind === 'raw-island' || node.kind === 'error') {
         return;
       }
@@ -100,8 +101,8 @@ export class StructuralDocument {
    */
   changedRanges(previousDocument: StructuralDocument): readonly ChangedRange[] {
     if (
-      previousDocument.source.version === this.source.version &&
-      previousDocument.source.text === this.source.text
+      previousDocument.source.version === this.source.version
+      && previousDocument.source.text === this.source.text
     ) {
       return [];
     }
@@ -119,9 +120,9 @@ export class StructuralDocument {
     let newEnd = newText.length;
 
     while (
-      oldEnd > start &&
-      newEnd > start &&
-      oldText.charCodeAt(oldEnd - 1) === newText.charCodeAt(newEnd - 1)
+      oldEnd > start
+      && newEnd > start
+      && oldText.charCodeAt(oldEnd - 1) === newText.charCodeAt(newEnd - 1)
     ) {
       oldEnd--;
       newEnd--;
@@ -129,6 +130,49 @@ export class StructuralDocument {
 
     return [{ start, oldEnd, newEnd }];
   }
+
+  /**
+   * Reports structural parse shape for performance guards.
+   *
+   * The report is computed on demand from the structural tree and side indexes;
+   * calling it does not materialize raw islands or compiler AST nodes.
+   */
+  stats(previousDocument?: StructuralDocument): StructuralDocumentStats {
+    const treeStats = countStructuralTree(this.root, 0);
+    const sourceBytes = this.source.stats().sourceBytes;
+    return {
+      sourceBytes,
+      structuralRecords: treeStats.records + this.#islands.length,
+      recordsPerInputByte: sourceBytes === 0
+        ? 0
+        : (treeStats.records + this.#islands.length) / sourceBytes,
+      maxBlockDepth: treeStats.maxDepth,
+      diagnostics: this.diagnostics.length,
+      rawIslands: this.#islands.length,
+      triviaRanges: this.trivia.length,
+      changedRanges: previousDocument ? this.changedRanges(previousDocument).length : undefined
+    };
+  }
+}
+
+function countStructuralTree(
+  node: StructuralNode,
+  depth: number
+): { records: number; maxDepth: number } {
+  let records = 1;
+  let maxDepth = depth;
+
+  if ('children' in node) {
+    for (const child of node.children) {
+      const childStats = countStructuralTree(child, depth + 1);
+      records += childStats.records;
+      if (childStats.maxDepth > maxDepth) {
+        maxDepth = childStats.maxDepth;
+      }
+    }
+  }
+
+  return { records, maxDepth };
 }
 
 function findDeepest(node: StructuralNode, offset: number): StructuralNode | undefined {

@@ -108,6 +108,18 @@ export type ChangedRange = {
   newEnd: number;
 };
 
+/** Cold structural parser report used by performance guard tests. */
+export type StructuralDocumentStats = {
+  readonly sourceBytes: number;
+  readonly structuralRecords: number;
+  readonly recordsPerInputByte: number;
+  readonly maxBlockDepth: number;
+  readonly diagnostics: number;
+  readonly rawIslands: number;
+  readonly triviaRanges: number;
+  readonly changedRanges?: number;
+};
+
 /**
  * Scanner options that affect trivia ownership but not language semantics.
  *

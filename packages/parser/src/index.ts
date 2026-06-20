@@ -40,12 +40,14 @@ export {
   type LineColumn,
   type SourceSpan,
   type SourceTextOptions,
+  type SourceTextStats,
   type TriviaKind,
   type TriviaRun
 } from './source/index.js';
 
 export {
   ScannerCursor,
+  collectScannerStats,
   createParserDiagnostic,
   recoverToNextBoundary,
   renderParserDiagnostic,
@@ -67,6 +69,7 @@ export {
   type RecoveryResult,
   type RenderedParserDiagnostic,
   type ScanTriviaOptions,
+  type ScannerStats,
   type StringScanResult
 } from './scanner/index.js';
 
@@ -99,6 +102,7 @@ export {
   type RawIslandNode,
   type StructuralContainerNode,
   type StructuralDocumentData,
+  type StructuralDocumentStats,
   type StructuralNode,
   type StructuralNodeKind,
   type StructuralStatementNode

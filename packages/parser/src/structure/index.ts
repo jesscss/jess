@@ -10,6 +10,7 @@ export {
   type RawIslandNode,
   type StructuralContainerNode,
   type StructuralDocumentData,
+  type StructuralDocumentStats,
   type StructuralNode,
   type StructuralNodeKind,
   type StructuralStatementNode

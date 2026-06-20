@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   LineMap,
+  ScannerCursor,
   SourceText,
   delimitedSpan,
+  scanTriviaInto,
   sourceSpan,
   type TriviaRun
 } from '../index.js';
@@ -25,8 +27,30 @@ describe('SourceText', () => {
     const source = new SourceText('a\nb');
 
     expect(source.hasLineMap).toBe(false);
+    expect(source.stats()).toEqual({
+      sourceBytes: 3,
+      sourceLength: 3,
+      lineMapMaterialized: false,
+      lineMapEntries: undefined
+    });
     expect(source.offsetToLineColumn(2)).toEqual({ line: 2, column: 1 });
     expect(source.hasLineMap).toBe(true);
+    expect(source.stats()).toEqual({
+      sourceBytes: 3,
+      sourceLength: 3,
+      lineMapMaterialized: true,
+      lineMapEntries: 2
+    });
+  });
+
+  test('reports utf-8 source bytes separately from utf-16 length', () => {
+    const source = new SourceText('.emoji { content: "☃"; }');
+
+    expect(source.stats()).toMatchObject({
+      sourceBytes: new TextEncoder().encode(source.text).byteLength,
+      sourceLength: source.text.length,
+      lineMapMaterialized: false
+    });
   });
 });
 
@@ -75,5 +99,27 @@ describe('span helpers', () => {
   test('represents trivia as ranges', () => {
     const trivia: TriviaRun = { start: 0, end: 2, kind: 'newline' };
     expect(trivia).toEqual({ start: 0, end: 2, kind: 'newline' });
+  });
+
+  test('keeps newline ownership explicit across comments, blank lines, and EOF', () => {
+    const source = new SourceText('/* a */\n\n// eof');
+    const cursor = new ScannerCursor(source);
+    const runs: TriviaRun[] = [];
+
+    scanTriviaInto(cursor, runs, [], { lineComments: true });
+
+    expect(runs.map(run => run.kind)).toEqual([
+      'block-comment',
+      'newline',
+      'newline',
+      'line-comment'
+    ]);
+    expect(runs).toEqual([
+      { start: 0, end: 7, kind: 'block-comment', closed: true },
+      { start: 7, end: 8, kind: 'newline' },
+      { start: 8, end: 9, kind: 'newline' },
+      { start: 9, end: 15, kind: 'line-comment', closed: true }
+    ]);
+    expect(cursor.offset).toBe(source.length);
   });
 });

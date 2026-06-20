@@ -3,7 +3,6 @@ import {
 } from 'eslint/config';
 import globals from 'globals';
 import stylistic from '@stylistic/eslint-plugin';
-import tseslint from 'typescript-eslint';
 import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import';
 import {
@@ -12,8 +11,36 @@ import {
 
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
+import Module, { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const typescript6ApiPath = require.resolve('@typescript/typescript6');
+const typescript6Api = require('@typescript/typescript6');
+const originalResolveFilename = Module._resolveFilename;
+
+typescript6Api.Extension ??= {
+  Cjs: '.cjs',
+  Cts: '.cts',
+  Js: '.js',
+  Jsx: '.jsx',
+  Mjs: '.mjs',
+  Mts: '.mts',
+  Ts: '.ts',
+  Tsx: '.tsx'
+};
+
+Module._resolveFilename = function(request, parent, isMain, options) {
+  if (request === 'typescript') {
+    return typescript6ApiPath;
+  }
+  if (request.startsWith('typescript/lib/')) {
+    return require.resolve(`@typescript/typescript6/${request.slice('typescript/'.length)}`);
+  }
+  return originalResolveFilename.call(this, request, parent, isMain, options);
+};
+
+const { default: tseslint } = await import('typescript-eslint');
 
 const compat = new FlatCompat({
   baseDirectory: __dirname,
