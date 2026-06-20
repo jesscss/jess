@@ -2700,8 +2700,10 @@ const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)(?:\([ \t]*\))?$/u;
 const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
+  'darken',
   'lighten',
-  'rgb'
+  'rgb',
+  'rgba'
 ]);
 const SCANNER_NATIVE_FUNCTION_CALL_PATTERN = /^(?<name>[-_a-zA-Z][\w-]*)\((?<args>.*)\)$/u;
 const SCANNER_NATIVE_MIXED_FUNCTION_VALUE_PATTERN = /^(?<prefix>.+[ \t]+)(?<call>[-_a-zA-Z][\w-]*\(.*\))$/u;

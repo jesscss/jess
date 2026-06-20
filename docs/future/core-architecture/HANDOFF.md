@@ -328,6 +328,14 @@ with `--no-verify` after the explicit gates pass.
   `!IMPORTANT` render the way the current Less path renders them, not as a
   forced canonical spelling. It also does not widen custom-property important
   handling or Less-variable important handling.
+- Aggressive Cutting Self-Prosecution, scanner-first color function allow-list
+  proof: admitting `darken(...)` and `rgba(...)` reuses the existing
+  scanner-native function value materializer and the same scalar argument
+  subset already proven for `lighten(...)` and `rgb(...)`. This pass does not add
+  another value parser, does not widen accepted argument grammar, and does not
+  change direct raw render behavior; unsupported function names, named-color
+  arguments, nested calls, comments, interpolation, and variable arguments still
+  fall back canonically.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

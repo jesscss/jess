@@ -1306,6 +1306,49 @@ describe('scanner-first CSS/Less e2e probe', () => {
           'name: (Any [role=property] \'color\')',
           'valueNode:'
         ]
+      },
+      {
+        source: '.a { color: darken(#fff, 10%); }\n',
+        renderedSnippet: 'color: #e6e6e6',
+        typeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '(Call',
+          'key: \'darken\'',
+          '(Color',
+          'node: \'#fff\'',
+          '(Dimension',
+          'number: 10',
+          'unit: \'%\''
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=property] \'color\')',
+          'valueNode:'
+        ]
+      },
+      {
+        source: '.a { color: rgba(10, 20, 30, 50%); }\n',
+        renderedSnippet: 'color: rgba(10, 20, 30, 50%)',
+        typeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '(Call',
+          'key: \'rgba\'',
+          '(Num 10)',
+          '(Num 20)',
+          '(Num 30)',
+          '(Dimension',
+          'number: 50',
+          'unit: \'%\''
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=property] \'color\')',
+          'valueNode:'
+        ]
       }
     ];
 
