@@ -1940,6 +1940,7 @@ function readScannerNativeExtendSelectorToken(
   }
   const sourceSelector = match.groups.selector;
   const targetSelector = match.groups.target;
+  const flagText = match.groups.flag;
   if (
     !sourceSelector
     || !targetSelector
@@ -1963,7 +1964,7 @@ function readScannerNativeExtendSelectorToken(
           locationFromRange(plan.document, targetStart, targetEnd),
           context
         ),
-        flag: ExtendFlag.Exact
+        flag: flagText === 'all' ? ExtendFlag.All : ExtendFlag.Exact
       },
       undefined,
       locationFromRange(plan.document, range.start, range.end),
@@ -2634,7 +2635,7 @@ const SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}$`, 'u');
 const SCANNER_NATIVE_EXTEND_TARGET_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
 const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =
-  /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^()\s{},;\r\n]+)\)$/u;
+  /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^()\s{},;\r\n]+)(?:[ \t]+(?<flag>all))?\)$/u;
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {

@@ -4,7 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { Compiler } from '../src/index.js';
 import lessPlugin from '../../jess-plugin-less/src/index.js';
-import { Declaration, Node, Ruleset, serializeTypes as serializeRuntimeTypes, TreeContext } from '@jesscss/core';
+import {
+  Declaration,
+  Extend,
+  ExtendFlag,
+  Node,
+  Ruleset,
+  serializeTypes as serializeRuntimeTypes,
+  TreeContext
+} from '@jesscss/core';
 import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
 import {
   createLanguageProfile,
@@ -1708,6 +1716,57 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('[\'blue\']');
     expect(types).toContain('[\'1px\']');
     expect(types).not.toContain('rawSelector: \'.button:extend(.base)\'');
+    expect(types).not.toContain('valueNode:');
+  });
+
+  it('feeds simple all Less extends through structural parse without parsing unrelated fields', async () => {
+    const source = '.base { color: blue; }\n.button:extend(.base all) { width: 1px; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('.base,\n.button');
+    expect(rendered).toContain('color: blue');
+    expect(rendered).toContain('width: 1px');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/all-extend.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const ruleset = parseResult.tree!.rules[1];
+    if (!(ruleset instanceof Ruleset)) {
+      throw new Error('Expected structural-fed all extend source to produce a Ruleset.');
+    }
+    const extendNode = ruleset.rules[0];
+    if (!(extendNode instanceof Extend)) {
+      throw new Error('Expected structural-fed all extend source to produce an Extend node.');
+    }
+    expect(extendNode.flag).toBe(ExtendFlag.All);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('rawSelector: \'.base\'');
+    expect(types).toContain('rawSelector: \'.button\'');
+    expect(types).toContain('(Extend');
+    expect(types).toContain('(BasicSelector \'.base\')');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).toContain('rawName: \'width\'');
+    expect(types).toContain('[\'blue\']');
+    expect(types).toContain('[\'1px\']');
+    expect(types).not.toContain('rawSelector: \'.button:extend(.base all)\'');
     expect(types).not.toContain('valueNode:');
   });
 
@@ -3886,10 +3945,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.a { color: lighten(#0000000, 10%); }\n',
         reason: 'declaration value is outside the scanner-native structural-fed subset'
-      },
-      {
-        source: '.base { color: blue; }\n.button:extend(.base all) { width: 1px; }\n',
-        reason: 'selector is outside the scanner-native structural-fed subset'
       },
       {
         source: '.base .child { color: blue; }\n.button:extend(.base .child) { width: 1px; }\n',

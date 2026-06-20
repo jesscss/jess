@@ -103,6 +103,25 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first simple `:extend(... all)` selector-header proof.
+- Verdict: accepted as a bounded Less semantics proof, not a performance claim.
+  The structural-fed path now admits only the already-cheap selector-header
+  extend shape with an optional lowercase `all` flag; complex targets,
+  interpolated selectors, pseudo/attribute source selectors, `&:extend(...)`
+  statements, and multiple extend groups remain canonical fallback.
+- New traversal/allocation: no new walks, side tables, arrays, or legacy parser
+  islands. The proof reuses the existing single regex gate and constructs only
+  the `Extend` plus target `BasicSelector` already required for Less extend
+  registration; the owning ruleset selector remains a raw string.
+- New materialization: no eager selector/value materialization. The e2e proof
+  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
+  source selector storage, and the runtime `ExtendFlag.All` value.
+- Helper/API surface: no exports and no compatibility shims. This is a private
+  scanner-native token widening inside the Less plugin prototype.
+- Metadata mutations: none added.
+- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
+  e2e suite, and scanner-first Less corpus parity audit.
+
 - Latest pass: scanner-first multiline CSS grid template-area raw declaration
   proof.
 - Verdict: accepted as a bounded scanner-fed render proof, not a performance
