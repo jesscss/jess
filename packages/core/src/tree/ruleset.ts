@@ -36,6 +36,11 @@ import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments } from './util/cloning.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
+import {
+  isScannerNativeRawSelector,
+  isScannerNativeRawSimpleSelector,
+  readScannerNativeNestedAmpersandPseudoSelector
+} from './util/raw-selector.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -102,9 +107,7 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
 }
 
 function canMaterializeRawSimpleSelector(value: string): boolean {
-  return value === '*'
-    || /^[-_a-zA-Z][\w-]*$/u.test(value)
-    || /^[.#][-_a-zA-Z][\w-]*$/u.test(value);
+  return isScannerNativeRawSimpleSelector(value);
 }
 
 const rawCompoundSelectorPartPattern = /(?:[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|\*)/gu;
@@ -130,8 +133,7 @@ function splitRawCompoundSelector(value: string): string[] | undefined {
 }
 
 function readRawAmpersandPseudoSelector(value: string): string | undefined {
-  const match = /^&(?<pseudo>:{1,2}[-_a-zA-Z][\w-]*)$/u.exec(value);
-  return match?.groups?.pseudo;
+  return readScannerNativeNestedAmpersandPseudoSelector(value);
 }
 
 function splitRawSelectorList(value: string): string[] | undefined {
@@ -217,9 +219,8 @@ function splitRawComplexSelector(value: string): RawComplexSelectorPart[] | unde
 
 function canMaterializeRawSelector(value: string): boolean {
   return (
-    canMaterializeRawSimpleSelector(value)
+    isScannerNativeRawSelector(value, true)
     || splitRawCompoundSelector(value) !== undefined
-    || readRawAmpersandPseudoSelector(value) !== undefined
     || splitRawComplexSelector(value) !== undefined
     || splitRawSelectorList(value) !== undefined
   );

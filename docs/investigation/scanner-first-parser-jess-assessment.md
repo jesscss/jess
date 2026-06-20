@@ -1781,7 +1781,7 @@ complex/interpolated selectors, parameters, guards, namespaces, and
 trivia-preservation cases currently fall back canonically until their
 progressive materializers are scanner-native.
 
-- [ ] DRY/performance follow-up: make raw selector subset classification have
+- [x] DRY/performance follow-up: make raw selector subset classification have
   one owner before widening selectors again. The current prototype has a
   plugin-side structural-fed admission check and a core-side raw selector
   constructor/materializer check. That duplication is tolerable for the current
@@ -1789,6 +1789,30 @@ progressive materializers are scanner-native.
   classifier/materialization plan so plugin admission and core materialization
   cannot drift and so cold semantic materialization does not repeatedly split
   the same raw selector string.
+  - Current implementation: `@jesscss/core` owns the shared scanner-native raw
+    selector admission predicates used by the Less plugin's structural-fed
+    admission gate and by `Ruleset`'s raw selector materialization boundary.
+    The public export is marked internal scanner-first machinery. The hot
+    admission helper is boolean/no-allocation; `Ruleset` still owns the local
+    branch splitting arrays needed only when semantics demand materialization,
+    including existing trimmed selector-list constructor behavior.
+  - Follow-up proof: evaluate whether selector payloads can stay string-backed
+    even deeper into core semantics. Simple selectors such as `#id`, `.class`,
+    pseudo selectors without parens, and `*` may not need distinct node objects
+    until a visitor or extend operation demands them. Combinators may also be
+    string segments rather than `Combinator` nodes, yielding shapes like
+    `CompoundSelector { value: ['#id', '.class'] }` and
+    `ComplexSelector { value: ['#id', '>', '.class', '+', 'div'] }`. If exact
+    combinator locations are needed, a companion relative-selector view could
+    start with the combinator, for example
+    `RelativeSelector { value: ['>', '.class', '+', 'div'] }`, while offsets
+    live in the packed field/range metadata. This is not approved syntax
+    widening yet; it is the next selector-shape experiment to prove against
+    extend behavior, visitor exposure, and render/source-map needs.
+  - Visitor research follow-up: survey public Less plugins that register
+    visitors to determine which selector/value internals are actually observed
+    in practice. Use that evidence before preserving visitor materialization for
+    every legacy leaf node shape.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.

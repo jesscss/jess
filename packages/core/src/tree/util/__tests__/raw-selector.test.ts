@@ -1,0 +1,62 @@
+import { describe, expect, test } from 'vitest';
+import {
+  isScannerNativeRawComplexExtendTargetSelector,
+  isScannerNativeRawExtendTargetSelector,
+  isScannerNativeRawSelector,
+  isScannerNativeRawSelectorBranch,
+  isScannerNativeRawSimpleSelector,
+  readScannerNativeNestedAmpersandPseudoSelector
+} from '../raw-selector.js';
+
+describe('scanner-native raw selector classifier', () => {
+  test('admits the cheap raw selector subset without materialization output', () => {
+    for (const selector of [
+      '*',
+      'div',
+      '#id',
+      '.class',
+      'button.primary',
+      '.a.b#c',
+      '.a > .b',
+      '.a + button.primary',
+      '.a ~ #id',
+      '.a .b',
+      '.a, button.primary'
+    ]) {
+      expect(isScannerNativeRawSelector(selector), selector).toBe(true);
+    }
+  });
+
+  test('keeps richer selectors outside the scanner-native subset', () => {
+    for (const selector of [
+      ':hover',
+      ':is(.a)',
+      '[data-kind]',
+      '.a::before',
+      '.a:hover',
+      '@{selector}',
+      '.a\n.b',
+      '.a,'
+    ]) {
+      expect(isScannerNativeRawSelector(selector), selector).toBe(false);
+    }
+  });
+
+  test('requires explicit admission for nested ampersand pseudo selectors', () => {
+    expect(isScannerNativeRawSelector('&:focus')).toBe(false);
+    expect(isScannerNativeRawSelector('&::before')).toBe(false);
+    expect(isScannerNativeRawSelector('&:focus', true)).toBe(true);
+    expect(isScannerNativeRawSelector('&::before', true)).toBe(true);
+    expect(readScannerNativeNestedAmpersandPseudoSelector('&:focus')).toBe(':focus');
+    expect(readScannerNativeNestedAmpersandPseudoSelector('&::before')).toBe('::before');
+  });
+
+  test('keeps extend targets stricter than ordinary selector branches', () => {
+    expect(isScannerNativeRawSelectorBranch('button.primary')).toBe(true);
+    expect(isScannerNativeRawSimpleSelector('button')).toBe(true);
+    expect(isScannerNativeRawExtendTargetSelector('button')).toBe(false);
+    expect(isScannerNativeRawExtendTargetSelector('.button')).toBe(true);
+    expect(isScannerNativeRawComplexExtendTargetSelector('.button > #icon')).toBe(true);
+    expect(isScannerNativeRawComplexExtendTargetSelector('button > .icon')).toBe(false);
+  });
+});

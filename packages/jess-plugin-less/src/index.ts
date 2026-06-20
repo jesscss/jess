@@ -25,6 +25,10 @@ import {
   Any,
   ProgressiveVariableDeclaration,
   Node,
+  isScannerNativeRawSelector,
+  isScannerNativeRawSelectorBranch,
+  isScannerNativeRawExtendTargetSelector,
+  isScannerNativeRawComplexExtendTargetSelector,
   getErrorFromParser,
   toDiagnostic,
   extractRelevantLines,
@@ -1971,13 +1975,7 @@ function readScannerNativeSelectorToken(
     return undefined;
   }
   const selectorText = plan.document.source.text.slice(range.start, range.end);
-  if (
-    !SCANNER_NATIVE_SELECTOR_PATTERN.test(selectorText)
-    && (
-      !allowNestedAmpersandPseudoSelector
-      || !SCANNER_NATIVE_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN.test(selectorText)
-    )
-  ) {
+  if (!isScannerNativeRawSelector(selectorText, allowNestedAmpersandPseudoSelector)) {
     return undefined;
   }
   return {
@@ -2014,7 +2012,7 @@ function readScannerNativeExtendSelectorToken(
   if (
     !sourceSelector
     || !targetSelector
-    || !SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN.test(sourceSelector)
+    || !isScannerNativeRawSelectorBranch(sourceSelector)
   ) {
     return undefined;
   }
@@ -2054,7 +2052,7 @@ function scannerNativeExtendTargetSelector(
   targetEnd: number,
   context: TreeContext
 ): BasicSelector | ComplexSelector | undefined {
-  if (SCANNER_NATIVE_EXTEND_TARGET_PATTERN.test(targetSelector)) {
+  if (isScannerNativeRawExtendTargetSelector(targetSelector)) {
     return new BasicSelector(
       targetSelector,
       undefined,
@@ -2062,7 +2060,7 @@ function scannerNativeExtendTargetSelector(
       context
     );
   }
-  if (!SCANNER_NATIVE_COMPLEX_SELECTOR_PATTERN.test(targetSelector)) {
+  if (!isScannerNativeRawComplexExtendTargetSelector(targetSelector)) {
     return undefined;
   }
   const parts: Array<BasicSelector | Combinator> = [];
@@ -2760,18 +2758,6 @@ const EXACT_QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')$/u;
 const URL_IMPORT_PATH_PATTERN =
   /^url\([ \t]*(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')[ \t]*\)(?:[ \t]+.+)?$/u;
-const SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE =
-  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)`;
-const SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE =
-  String.raw`${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE})*`;
-const SCANNER_NATIVE_SELECTOR_PATTERN =
-  new RegExp(String.raw`^${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
-const SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN =
-  new RegExp(String.raw`^${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}$`, 'u');
-const SCANNER_NATIVE_EXTEND_TARGET_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
-const SCANNER_NATIVE_COMPLEX_SELECTOR_PATTERN =
-  /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;
-const SCANNER_NATIVE_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = /^&:{1,2}[-_a-zA-Z][\w-]*$/u;
 const SCANNER_NATIVE_EXTEND_TARGET_TOKEN_PATTERN =
   /(?<combinator>[ \t]*[>+~][ \t]*)|(?<space>[ \t]+)|(?<selector>[.#][-_a-zA-Z][\w-]*)/gu;
 const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =

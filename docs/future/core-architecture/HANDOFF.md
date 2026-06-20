@@ -336,6 +336,16 @@ with `--no-verify` after the explicit gates pass.
   change direct raw render behavior; unsupported function names, named-color
   arguments, nested calls, comments, interpolation, and variable arguments still
   fall back canonically.
+- Aggressive Cutting Self-Prosecution, scanner-first raw selector classifier
+  DRY pass: core now owns the scanner-native raw selector admission predicates
+  used by the Less plugin's structural-fed admission gate and by `Ruleset` raw
+  selector materialization. The hot admission helper is boolean and does not
+  allocate option objects or materialization arrays; `Ruleset` still owns local
+  branch splitting when semantics demand materialization, including the existing
+  trimmed selector-list constructor behavior. This pass does not widen selector
+  syntax, does not introduce string-backed selector semantics beyond the
+  existing raw-field render path, and does not settle visitor exposure for
+  selector leaf nodes.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

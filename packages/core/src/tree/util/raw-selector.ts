@@ -1,0 +1,67 @@
+/**
+ * Shared scanner-native selector classifier for progressive raw selector paths.
+ *
+ * This intentionally recognizes only the cheap subset that can render as raw
+ * selector text and later materialize into current core selector nodes. Keep
+ * admission here so parser/plugin gates and core semantic materialization do not
+ * drift as the scanner-first subset widens.
+ */
+
+const RAW_SELECTOR_BRANCH_SOURCE =
+  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)`;
+const RAW_COMPLEX_SELECTOR_SOURCE =
+  String.raw`${RAW_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${RAW_SELECTOR_BRANCH_SOURCE})*`;
+
+const RAW_SELECTOR_PATTERN =
+  new RegExp(String.raw`^${RAW_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${RAW_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
+const RAW_SELECTOR_BRANCH_PATTERN =
+  new RegExp(String.raw`^${RAW_SELECTOR_BRANCH_SOURCE}$`, 'u');
+const RAW_SIMPLE_SELECTOR_PATTERN = /^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*)$/u;
+const RAW_EXTEND_TARGET_SELECTOR_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
+const RAW_EXTEND_TARGET_COMPLEX_SELECTOR_PATTERN =
+  /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;
+const RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = /^&:{1,2}[-_a-zA-Z][\w-]*$/u;
+
+/**
+ * @internal Scanner-first admission helper, not a supported public authoring
+ * API. Keep this boolean-only so hot admission checks do not allocate option
+ * objects or materialization plans.
+ */
+export function isScannerNativeRawSelector(
+  value: string,
+  allowNestedAmpersandPseudoSelector = false
+): boolean {
+  return (
+    RAW_SELECTOR_PATTERN.test(value)
+    || (
+      allowNestedAmpersandPseudoSelector
+      && RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN.test(value)
+    )
+  );
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function isScannerNativeRawSelectorBranch(value: string): boolean {
+  return RAW_SELECTOR_BRANCH_PATTERN.test(value);
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function isScannerNativeRawSimpleSelector(value: string): boolean {
+  return RAW_SIMPLE_SELECTOR_PATTERN.test(value);
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function readScannerNativeNestedAmpersandPseudoSelector(value: string): string | undefined {
+  const match = RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN.exec(value);
+  return match ? value.slice(1) : undefined;
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function isScannerNativeRawExtendTargetSelector(value: string): boolean {
+  return RAW_EXTEND_TARGET_SELECTOR_PATTERN.test(value);
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function isScannerNativeRawComplexExtendTargetSelector(value: string): boolean {
+  return RAW_EXTEND_TARGET_COMPLEX_SELECTOR_PATTERN.test(value);
+}

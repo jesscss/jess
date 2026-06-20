@@ -446,7 +446,7 @@ describe('progressive scanner-first proof nodes', () => {
   test('materializes raw-field selector lists only when semantic registration asks', () => {
     const context = new Context();
     const node = ruleset({
-      selector: '.a, button.primary',
+      selector: ' .a, button.primary ',
       rules: [
         rawdecl({
           name: 'color',
@@ -455,10 +455,10 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a, button.primary {\n  color: blue;\n}\n');
+    expect(node.toTrimmedString()).toBe(' .a, button.primary  {\n  color: blue;\n}\n');
     expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a, button.primary');
-    expect(serializeTypes(node)).toContain('rawSelector: \'.a, button.primary\'');
+    expect(node.rawSelector).toBe(' .a, button.primary ');
+    expect(serializeTypes(node)).toContain('rawSelector: \' .a, button.primary \'');
     void node.prepareRegistration(context);
     expect(node.rawSelector).toBeUndefined();
     expect(node.selector).toBeDefined();
