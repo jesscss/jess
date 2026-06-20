@@ -2385,6 +2385,17 @@ storage.
   - Current limit: real `@import`, `@plugin`, `@charset`, and `@namespace`
     names stay on their dedicated semantic paths. Unknown statement preludes
     are limited to quoted strings or simple flat scanner-native value tokens.
+- [x] Structural-fed prototype: support root unknown block at-rules with
+  scanner-native raw preludes and already-proven ordinary rule children.
+  - Proof target: `@unknown-block card { .a { color: blue; } }` renders from a
+    structural-fed raw `AtRule` containing a raw-selector `Ruleset` and raw
+    `Declaration`, records zero full-tree fallback, zero actual parses, zero
+    requested islands, and zero promoted bytes, and serializes without eager
+    `Any` name/prelude nodes.
+  - Current limit: known semantic block at-rules stay on dedicated paths or
+    canonical fallback until their specific grammar is proven. Unknown block
+    at-rule names must be identifier-like and non-semantic, and their preludes
+    currently share the simple scanner-native at-rule prelude subset.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2419,6 +2430,9 @@ storage.
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
     gone.
+    The unknown block at-rule proof is root-only and does not change the current
+    corpus counts; nested unknown block at-rules and known semantic families
+    still fall back until those shapes are separately proven.
     Tailwind `@apply` in `tests-unit/tailwind/tailwind.less` and Less issue-3660
     typo statement at-rules in `tests-unit/impor/impor.less` and
     `tests-unit/plugi/plugi.less` are explicit structural-fed expected-CSS
@@ -2439,11 +2453,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    1.90ms median over 20 samples, with 10,283 structural records, 5,762
+    1.94ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    5.94ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    5.78ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2467,16 +2481,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 210.60ms, structural sidecar full render
-    211.47ms across 306 probe records, selected-materialization sidecar full
-    render 230.67ms across 306 probe records with 5,295
+    current parser/eval/render 242.37ms, structural sidecar full render
+    241.24ms across 306 probe records, selected-materialization sidecar full
+    render 260.64ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 220.48ms across 198 prototype records with 30
+    structural-fed prototype 253.19ms across 198 prototype records with 30
     structural-fed records, 168 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 87 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.00x, structural sidecar 5.02x, selected
-    materialization 5.47x, and structural-fed 5.23x. These medians are gate
+    median were current 5.75x, structural sidecar 5.72x, selected
+    materialization 6.18x, and structural-fed 6.01x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

@@ -1060,7 +1060,14 @@ function validateStructuralFedAtRule(
 ): string | undefined {
   const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
   const rootDeclarationBlockPrelude = structuralFedRootDeclarationBlockPrelude(name, parentKind);
-  if (name !== '@media' && name !== '@layer' && name !== '@supports' && rootDeclarationBlockPrelude === undefined) {
+  const unknownBlockAtRule = parentKind === 'root' && isScannerNativeUnknownBlockAtRuleName(name);
+  if (
+    name !== '@media'
+    && name !== '@layer'
+    && name !== '@supports'
+    && rootDeclarationBlockPrelude === undefined
+    && !unknownBlockAtRule
+  ) {
     return STRUCTURAL_FED_AT_RULE_FAMILY_REASON;
   }
   if (name === '@layer' && parentKind !== 'root') {
@@ -1105,7 +1112,7 @@ function validateStructuralFedAtRule(
       if (rootDeclarationBlockPrelude !== undefined) {
         return `unsupported at-rule child ${child.kind}`;
       }
-      if (parentKind !== 'root' && name !== '@media' && name !== '@supports') {
+      if (parentKind !== 'root' && name !== '@media' && name !== '@supports' && !unknownBlockAtRule) {
         return `unsupported at-rule child ${child.kind}`;
       }
       const reason = validateStructuralFedRule(
@@ -1390,7 +1397,14 @@ function buildStructuralFedAtRule(
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
   const rootDeclarationBlockPrelude = structuralFedRootDeclarationBlockPrelude(name, parentKind);
-  if (name !== '@media' && name !== '@layer' && name !== '@supports' && rootDeclarationBlockPrelude === undefined) {
+  const unknownBlockAtRule = parentKind === 'root' && isScannerNativeUnknownBlockAtRuleName(name);
+  if (
+    name !== '@media'
+    && name !== '@layer'
+    && name !== '@supports'
+    && rootDeclarationBlockPrelude === undefined
+    && !unknownBlockAtRule
+  ) {
     return { reason: STRUCTURAL_FED_AT_RULE_FAMILY_REASON };
   }
   if (name === '@layer' && parentKind !== 'root') {
@@ -1455,7 +1469,7 @@ function buildStructuralFedAtRule(
       if (rootDeclarationBlockPrelude !== undefined) {
         return { reason: `unsupported at-rule child ${child.kind}` };
       }
-      if (parentKind !== 'root' && name !== '@media' && name !== '@supports') {
+      if (parentKind !== 'root' && name !== '@media' && name !== '@supports' && !unknownBlockAtRule) {
         return { reason: `unsupported at-rule child ${child.kind}` };
       }
       const builtChild = buildStructuralFedRuleset(
@@ -2523,6 +2537,16 @@ const KNOWN_SEMANTIC_AT_RULE_STATEMENT_NAMES = new Set([
   '@namespace',
   '@plugin'
 ]);
+const KNOWN_SEMANTIC_BLOCK_AT_RULE_NAMES = new Set([
+  '@container',
+  '@counter-style',
+  '@font-face',
+  '@keyframes',
+  '@layer',
+  '@media',
+  '@page',
+  '@supports'
+]);
 const QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;
 const EXACT_QUOTED_IMPORT_PATH_PATTERN =
@@ -2578,6 +2602,12 @@ function isScannerNativeUnknownAtRuleStatementName(name: string | undefined): na
   return name !== undefined
     && /^@[a-zA-Z][\w-]*$/u.test(name)
     && !KNOWN_SEMANTIC_AT_RULE_STATEMENT_NAMES.has(name.toLowerCase());
+}
+
+function isScannerNativeUnknownBlockAtRuleName(name: string | undefined): name is string {
+  return name !== undefined
+    && /^@[a-zA-Z][\w-]*$/u.test(name)
+    && !KNOWN_SEMANTIC_BLOCK_AT_RULE_NAMES.has(name.toLowerCase());
 }
 
 function isScannerNativeUnknownAtRuleStatementPrelude(preludeText: string): boolean {

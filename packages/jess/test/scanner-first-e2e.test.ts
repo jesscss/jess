@@ -2455,6 +2455,70 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
+  it('feeds root unknown block at-rules with ordinary rules through structural parse', async () => {
+    const source = '@unknown-block card { .a { color: blue; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@unknown-block card');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/root-unknown-block.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@unknown-block\'');
+    expect(types).toContain('rawPrelude: \'card\'');
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(ProgressiveAtRule');
+    expect(types).not.toContain('name: (Any \'@unknown-block\')');
+    expect(types).not.toContain('prelude: (Any \'card\')');
+  });
+
+  it('falls back for nested unknown block at-rules until those shapes are proven', async () => {
+    const source = '.a { @unknown-block card { .b { color: blue; } } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'only @media, @supports, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+  });
+
   it('feeds root @layer blocks with ordinary rules through structural parse', async () => {
     const cases = [
       {
