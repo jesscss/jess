@@ -7,6 +7,7 @@ import {
   Rules,
   Ruleset,
   AtRule,
+  AtRuleStatement,
   Declaration,
   ProgressiveVariableDeclaration,
   Node,
@@ -352,8 +353,22 @@ export class LessPlugin extends AbstractPlugin {
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
 
     for (const child of plan.document.root.children) {
-      if (child.kind !== 'rule' && child.kind !== 'at-rule' && child.kind !== 'variable-declaration') {
+      if (
+        child.kind !== 'rule'
+        && child.kind !== 'at-rule'
+        && child.kind !== 'at-rule-statement'
+        && child.kind !== 'variable-declaration'
+      ) {
         return fallback(`unsupported root node ${child.kind}`);
+      }
+      if (child.kind === 'at-rule-statement') {
+        const result = buildStructuralFedAtRuleStatement(plan, child, ownerIslands, context);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        progressiveNodes += result.progressiveNodes ?? 0;
+        continue;
       }
       if (child.kind === 'variable-declaration') {
         const eligibilityReason = validateStructuralFedVariableDeclaration(plan.document, child);
@@ -1014,6 +1029,33 @@ function buildStructuralFedRuleChild(
     return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables);
   }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
+}
+
+function buildStructuralFedAtRuleStatement(
+  plan: IslandParsePlan,
+  child: StructuralStatementNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const name = structuralFieldText(plan.document, child, 'name', 'at-rule-name');
+  if (name !== '@charset') {
+    return { reason: 'only @charset statement at-rules are in the scanner-native structural-fed subset' };
+  }
+  const preludeIsland = singleIsland(ownerIslands, child, 'at-rule-prelude');
+  if (!preludeIsland) {
+    return { reason: 'at-rule statement prelude island missing' };
+  }
+  const prelude = structuralFieldText(plan.document, child, 'prelude', 'prelude');
+  if (!prelude || !RAW_QUOTED_STRING_PATTERN.test(prelude)) {
+    return { reason: 'at-rule statement prelude is outside the scanner-native structural-fed subset' };
+  }
+  return {
+    node: new AtRuleStatement({
+      name,
+      prelude
+    }, undefined, locationFromRange(plan.document, child.start, child.end), context),
+    progressiveNodes: 1
+  };
 }
 
 function validateStructuralFedDeclaration(

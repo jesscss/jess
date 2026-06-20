@@ -15,6 +15,11 @@ export type AtRuleStatementValue = {
   prelude?: Node;
 };
 
+export type RawAtRuleStatementValue = {
+  name: string;
+  prelude?: string;
+};
+
 export type AtRuleStatementOptions = NodeOptions;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -162,23 +167,37 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
  * A semicolon at-rule with no body, such as `@charset`, `@import`, or
  * statement-form `@layer`.
  */
-export class AtRuleStatement extends Node<AtRuleStatementValue, AtRuleStatementOptions> {
-  static override childKeys = ['name', 'prelude'] as const;
+export class AtRuleStatement extends Node<AtRuleStatementValue | RawAtRuleStatementValue, AtRuleStatementOptions> {
+  static override childKeys = ['name', 'rawName', 'prelude', 'rawPrelude'] as const;
   override allowRoot = true;
 
   protected _valueOf: string | undefined;
-  name: AtRuleStatementValue['name'];
+  name: AtRuleStatementValue['name'] | undefined;
+  rawName: string | undefined;
   prelude: AtRuleStatementValue['prelude'];
+  rawPrelude: string | undefined;
 
   constructor(
-    value: AtRuleStatementValue,
+    value: AtRuleStatementValue | RawAtRuleStatementValue,
     options?: AtRuleStatementOptions,
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this.name = value.name;
-    this.prelude = value.prelude;
+    if (typeof value.name === 'string') {
+      if (!/^@[a-zA-Z][\w-]*$/u.test(value.name)) {
+        throw new TypeError('Raw at-rule statement name is outside the scanner-native at-rule subset.');
+      }
+      this.name = undefined;
+      this.rawName = value.name;
+      this.prelude = undefined;
+      this.rawPrelude = value.prelude;
+    } else {
+      this.name = value.name;
+      this.rawName = undefined;
+      this.prelude = value.prelude;
+      this.rawPrelude = undefined;
+    }
     this._treeContext = treeContext;
   }
 
@@ -195,7 +214,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, AtRuleStatementO
   }
 
   deriveAtRuleStatement(parts: AtRuleStatementValue, sourceParts: AtRuleStatementValue = {
-    name: this.name,
+    ...this.materializeRawHeaderForSemantics(),
     prelude: this.prelude
   }): AtRuleStatement {
     return new AtRuleStatement(
@@ -209,8 +228,37 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, AtRuleStatementO
     ).inherit(this);
   }
 
+  private materializeRawHeaderForSemantics(): AtRuleStatementValue {
+    if (this.name !== undefined) {
+      return { name: this.name, prelude: this.prelude };
+    }
+    const rawName = this.rawName;
+    if (rawName === undefined) {
+      throw new TypeError('AtRuleStatement requires a name before semantic materialization.');
+    }
+    const name = new Any(rawName, { role: 'atkeyword' }, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+      .inherit(this);
+    this.adopt(name);
+    this.name = name;
+    this.rawName = undefined;
+    this.value.name = name;
+    const rawPrelude = this.rawPrelude;
+    if (rawPrelude !== undefined) {
+      const prelude = new Any(rawPrelude, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+        .inherit(this);
+      this.adopt(prelude);
+      this.prelude = prelude;
+      this.rawPrelude = undefined;
+      this.value.prelude = prelude;
+    }
+    this._valueOf = undefined;
+    return { name, prelude: this.prelude };
+  }
+
   override valueOf() {
-    return (this._valueOf ??= (this.name.valueOf() + (this.prelude ? ' ' + this.prelude.valueOf() : '')));
+    return (this._valueOf ??= this.rawName !== undefined
+      ? this.rawName + (this.rawPrelude ? ' ' + this.rawPrelude : '')
+      : (this.name!.valueOf() + (this.prelude ? ' ' + this.prelude.valueOf() : '')));
   }
 
   private evalPreludeValue(prelude: Node, context: Context): MaybePromise<Node> {
@@ -222,6 +270,9 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, AtRuleStatementO
   }
 
   override evalNode(context: Context): MaybePromise<AtRuleStatement> {
+    if (this.rawName !== undefined) {
+      return this;
+    }
     const finishName = (name: Node): MaybePromise<AtRuleStatement> => {
       if (!(name instanceof Any) && !(name instanceof Interpolated)) {
         throw new TypeError('Expected at-rule statement name to resolve to Any or Interpolated');
@@ -260,6 +311,18 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, AtRuleStatementO
 
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
+    if (this.rawName !== undefined) {
+      w.add(indent(options.depth));
+      w.add(this.rawName, this);
+      if (this.rawPrelude !== undefined && hasNonAtRuleWhitespace(this.rawPrelude)) {
+        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(this.rawPrelude)) {
+          w.add(' ');
+        }
+        w.add(this.rawPrelude, this);
+      }
+      w.add(';');
+      return;
+    }
     let { name, prelude } = this;
     if (hasCommentChild(name) || hasCommentChild(prelude)) {
       name = this.ownName(name);

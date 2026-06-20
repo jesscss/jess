@@ -9,6 +9,7 @@ import {
   ProgressiveVariableDeclaration,
   any,
   atrule,
+  atrulestatement,
   progressiveatrule,
   progressivedecl,
   progressiveruleset,
@@ -504,6 +505,30 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).toContain('prelude:\n    (Any \'screen\')');
     expect(types).not.toContain('rawName');
     expect(types).not.toContain('rawPrelude');
+  });
+
+  test('renders raw-field core at-rule statements without name or prelude child nodes', () => {
+    const context = new Context();
+    const node = atrulestatement({
+      name: '@charset',
+      prelude: '"UTF-8"'
+    });
+
+    expect(node.toTrimmedString()).toBe('@charset "UTF-8";');
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@charset');
+    expect(node.prelude).toBeUndefined();
+    expect(node.rawPrelude).toBe('"UTF-8"');
+    expect(serializeTypes(node).trim()).toBe(`(AtRuleStatement
+  rawName: '@charset'
+  rawPrelude: '"UTF-8"'
+)`);
+
+    void rules([node]).prepareRegistration(context);
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@charset');
+    expect(node.prelude).toBeUndefined();
+    expect(node.rawPrelude).toBe('"UTF-8"');
   });
 
   test('materializes raw-field core declarations only when semantic registration asks', () => {

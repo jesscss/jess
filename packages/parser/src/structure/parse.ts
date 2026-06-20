@@ -269,11 +269,26 @@ function createStatementNode(
   const text = source.slice(trimmedStart, trimmedEnd);
   const colon = findTopLevelColon(text);
   const atImport = IMPORT_STATEMENT_PATTERN.test(text);
+  const atRuleStatement = AT_RULE_HEADER_PATTERN.exec(text)?.[0];
   const atInclude = INCLUDE_STATEMENT_PATTERN.test(text);
 
   if (atImport) {
     const nameEnd = trimmedStart + 7;
     return statement('import', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
+  }
+
+  if (colon === -1 && atRuleStatement) {
+    const nameEnd = trimmedStart + atRuleStatement.length;
+    return statement(
+      'at-rule-statement',
+      trimmedStart,
+      trimmedEnd,
+      trimmedStart,
+      nameEnd,
+      trimStart(source, nameEnd, trimmedEnd),
+      trimmedEnd,
+      parent
+    );
   }
 
   if (atInclude) {
@@ -353,11 +368,13 @@ function appendStatementFieldRanges(
     ? 'mixin-name'
     : node.kind === 'import'
       ? 'import-name'
-      : 'declaration-name';
+      : node.kind === 'at-rule-statement'
+        ? 'at-rule-name'
+        : 'declaration-name';
   fieldRanges.add(node, 'name', 0, node.nameStart, node.nameEnd, nameKind);
   if (node.valueStart < node.valueEnd) {
-    const valueField = node.kind === 'import' ? 'prelude' : 'value';
-    const valueKind = node.kind === 'import' ? 'prelude' : 'value';
+    const valueField = node.kind === 'import' || node.kind === 'at-rule-statement' ? 'prelude' : 'value';
+    const valueKind = node.kind === 'import' || node.kind === 'at-rule-statement' ? 'prelude' : 'value';
     fieldRanges.add(node, valueField, 0, node.valueStart, node.valueEnd, valueKind);
   }
 }
@@ -438,8 +455,14 @@ function appendIslands(
     {
       parentKind: owner.kind === 'declaration' || owner.kind === 'variable-declaration'
         ? 'declaration'
-        : undefined,
-      statementKind: owner.kind === 'variable-declaration' ? 'variable' : undefined
+        : owner.kind === 'at-rule-statement'
+          ? 'at-rule'
+          : undefined,
+      statementKind: owner.kind === 'variable-declaration'
+        ? 'variable'
+        : owner.kind === 'at-rule-statement'
+          ? 'at-rule'
+          : undefined
     }
   );
 

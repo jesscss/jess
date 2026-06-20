@@ -176,9 +176,18 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImport {
   return node.type === 'StyleImport';
 }
 
+function atRuleStatementNameText(node: AtRuleStatement): string {
+  return String(node.rawName ?? node.name?.valueOf?.() ?? node.name ?? '').trim();
+}
+
 function isImportAtRule(node: Node): node is AtRuleStatement {
   return isNode(node, N.AtRuleStatement)
-    && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
+    && atRuleStatementNameText(node) === '@import';
+}
+
+function isCharsetAtRule(node: Node): node is AtRuleStatement {
+  return isNode(node, N.AtRuleStatement)
+    && atRuleStatementNameText(node) === '@charset';
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
@@ -4515,7 +4524,7 @@ export class Rules<
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
-      if (isNode(node, N.Any) && node.role === 'charset') {
+      if ((isNode(node, N.Any) && node.role === 'charset') || isCharsetAtRule(node)) {
         // Charset is root output-order bookkeeping, not name registration.
         if (!context.currentCharset) {
           context.currentCharset = node;

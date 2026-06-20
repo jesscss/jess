@@ -11,6 +11,7 @@ import type { FieldRangeTable } from './field-ranges.js';
  */
 export type StructuralNodeKind =
   | 'at-rule'
+  | 'at-rule-statement'
   | 'block'
   | 'declaration'
   | 'document'
@@ -57,7 +58,7 @@ export type StructuralContainerNode = StructuralNodeBase & {
  * that need expression/value ASTs should request the corresponding raw island.
  */
 export type StructuralStatementNode = StructuralNodeBase & {
-  kind: 'declaration' | 'import' | 'mixin-call' | 'variable-declaration';
+  kind: 'at-rule-statement' | 'declaration' | 'import' | 'mixin-call' | 'variable-declaration';
   nameStart: number;
   nameEnd: number;
   valueStart: number;

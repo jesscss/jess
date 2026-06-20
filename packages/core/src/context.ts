@@ -5,6 +5,7 @@ import type {
   ImportOptions,
   Node,
   Any,
+  AtRuleStatement,
   Selector
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
@@ -253,7 +254,7 @@ export class Context {
    * A feature ported from Less - we suppress any `@charset`
    * after the first one.
    */
-  currentCharset?: Any;
+  currentCharset?: Any | AtRuleStatement;
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 

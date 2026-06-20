@@ -1915,9 +1915,10 @@ storage.
   declarations, exact `!important` declaration flags on non-custom values, simple
   root or ruleset-local `@media` prelude/body shape including ordinary nested
   rules, simple root `@layer` blocks with ordinary rule bodies, root `@supports`
-  blocks with a single scanner-native declaration condition, and simple
-  already-seen Less variable declaration/reference token detection with zero
-  legacy island parser executions. Hoisted/lazy variable references,
+  blocks with a single scanner-native declaration condition, root `@charset`
+  statement at-rules with scanner-native quoted preludes, and simple already-seen
+  Less variable declaration/reference token detection with zero legacy island
+  parser executions. Hoisted/lazy variable references, statement-form imports,
   non-`@media`/root-`@layer`/root-`@supports` block at-rule families,
   complex/list/interpolated selectors, and richer nested at-rule bodies remain
   canonical fallbacks until their progressive
@@ -2037,6 +2038,16 @@ storage.
     root `@media`, root `@layer`, root `@supports`, and ruleset-local `@media`
     blocks; other at-rule families remain unproven even though the core raw
     storage primitive is not hard-coded to `@media`.
+  - [x] Added the first raw-field core `AtRuleStatement` proof: the normal core
+    `AtRuleStatement` constructor can store raw scanner-native at-keyword/prelude
+    strings, renders and serializes root `@charset "UTF-8";` directly from
+    `rawName` / `rawPrelude`, and does not allocate canonical `Any` name/prelude
+    nodes during direct render or existing registration/import scanning. The
+    structural-fed Less prototype emits that raw statement node for the covered
+    root `@charset` subset and records zero legacy island parser executions.
+    Statement-form `@import` is intentionally still a canonical fallback because
+    import/reference ordering and file-resolution semantics are not proven in
+    the cheap path.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
@@ -2106,9 +2117,9 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 8 structural-fed, 75 canonical
-    fallback, 23 current expected-CSS failures, 23 structural expected-CSS
-    failures, zero requested/materialized islands, zero promoted bytes, and 16
+  - Current audit snapshot: 64 files / 65 cases, 10 structural-fed, 73 canonical
+    fallback, 22 current expected-CSS failures, 22 structural expected-CSS
+    failures, zero requested/materialized islands, zero promoted bytes, and 20
     progressive nodes constructed directly from structural fields.
     Counts include imported/sub-rendered Less prototype records, so
     structural-fed plus fallback records can exceed the top-level case count.

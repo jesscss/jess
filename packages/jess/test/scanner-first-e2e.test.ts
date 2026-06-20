@@ -1120,6 +1120,88 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds @charset statement at-rules through structural parse', async () => {
+    const source = '@charset "UTF-8";\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@charset "UTF-8"');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/charset.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(AtRuleStatement');
+    expect(types).toContain('rawName: \'@charset\'');
+    expect(types).toContain('rawPrelude: \'"UTF-8"\'');
+    expect(types).not.toContain('name: (Any \'@charset\')');
+    expect(types).not.toContain('prelude: (Any \'"UTF-8"\')');
+  });
+
+  it('keeps duplicate @charset suppression on the structural-fed statement path', async () => {
+    const source = '@charset "UTF-8";\n@charset "ISO-8859-1";\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@charset "UTF-8"');
+    expect(rendered).not.toContain('ISO-8859-1');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for statement at-rules outside the structural-fed subset', async () => {
+    const source = '@namespace svg url("http://www.w3.org/2000/svg");\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'only @charset statement at-rules are in the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
   it('feeds root @media blocks with ordinary rules through structural parse', async () => {
     const source = '@media screen { .a { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
