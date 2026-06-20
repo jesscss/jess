@@ -298,6 +298,9 @@ export function scanBalancedDelimited(
   if (closeCode === -1 || cursor.peekCode() !== openCode) {
     return undefined;
   }
+  if (openCode === Char.OpenParen && isUrlFunctionOpenParen(cursor)) {
+    return scanUrlPayloadDelimited(cursor, diagnostics);
+  }
 
   const start = cursor.offset;
   const openEnd = start + 1;
@@ -316,6 +319,10 @@ export function scanBalancedDelimited(
     }
 
     const code = cursor.peekCode();
+    if (code === Char.OpenParen && scanUrlPayloadDelimited(cursor, diagnostics)) {
+      continue;
+    }
+
     const nestedClose = matchingCloseCode(code);
     if (nestedClose !== -1) {
       stack.push(nestedClose);
@@ -364,6 +371,92 @@ export function scanBalancedDelimited(
     ...delimitedSpan(start, cursor.offset, openEnd, cursor.offset, start, openEnd, cursor.offset, cursor.offset),
     closed: false
   };
+}
+
+/**
+ * Skips the parenthesized payload of a CSS `url(...)` function.
+ *
+ * Unquoted URL payloads are not generic component-value syntax: braces,
+ * brackets, and escaped parens may be ordinary URL characters. Treating them
+ * as nested delimiters creates false structural diagnostics for data URIs and
+ * font URLs before any language-specific value parser has asked for details.
+ */
+function scanUrlPayloadDelimited(
+  cursor: ScannerCursor,
+  diagnostics: DiagnosticSink
+): DelimitedScanResult | undefined {
+  if (!isUrlFunctionOpenParen(cursor)) {
+    return undefined;
+  }
+
+  const start = cursor.offset;
+  const openEnd = start + 1;
+  cursor.advance();
+
+  while (!cursor.eof()) {
+    if (scanString(cursor, diagnostics)) {
+      continue;
+    }
+
+    const code = cursor.peekCode();
+    if (code === Char.CloseParen) {
+      cursor.advance();
+      return {
+        ...delimitedSpan(
+          start,
+          cursor.offset,
+          openEnd,
+          cursor.offset - 1,
+          start,
+          openEnd,
+          cursor.offset - 1,
+          cursor.offset
+        ),
+        closed: true
+      };
+    }
+
+    if (code === Char.Backslash) {
+      cursor.advance();
+      if (!cursor.eof()) {
+        cursor.advance();
+      }
+      continue;
+    }
+
+    cursor.advance();
+  }
+
+  diagnostics.push(
+    createParserDiagnostic({
+      code: 'unterminated-delimited-block',
+      message: 'Unterminated url( block.',
+      start,
+      end: cursor.offset,
+      expected: ')',
+      actual: 'end of file',
+      context: 'delimiter'
+    })
+  );
+
+  return {
+    ...delimitedSpan(start, cursor.offset, openEnd, cursor.offset, start, openEnd, cursor.offset, cursor.offset),
+    closed: false
+  };
+}
+
+function isUrlFunctionOpenParen(cursor: ScannerCursor): boolean {
+  if (cursor.peekCode() !== Char.OpenParen || cursor.offset < 3) {
+    return false;
+  }
+
+  const uOffset = cursor.offset - 3;
+  return (
+    isCodeUnit(cursor.codeAt(uOffset), Char.LowerU, Char.UpperU)
+    && isCodeUnit(cursor.codeAt(uOffset + 1), Char.LowerR, Char.UpperR)
+    && isCodeUnit(cursor.codeAt(uOffset + 2), Char.LowerL, Char.UpperL)
+    && !isIdentifierCode(cursor.codeAt(uOffset - 1))
+  );
 }
 
 /**
@@ -582,16 +675,37 @@ const enum Char {
   BlockCommentStart = 47,
   CarriageReturn = 13,
   CloseBrace = 125,
+  CloseParen = 41,
   DoubleQuote = 34,
   FormFeed = 12,
   LineFeed = 10,
+  LowerL = 108,
+  LowerR = 114,
+  LowerU = 117,
   OpenBrace = 123,
   OpenBracket = 91,
   OpenParen = 40,
   Semicolon = 59,
   SingleQuote = 39,
   Space = 32,
-  Tab = 9
+  Tab = 9,
+  UpperL = 76,
+  UpperR = 82,
+  UpperU = 85
+}
+
+function isCodeUnit(code: number, lower: number, upper: number): boolean {
+  return code === lower || code === upper;
+}
+
+function isIdentifierCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57)
+    || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 45
+    || code === 95
+  );
 }
 
 function isHorizontalWhitespaceCode(code: number): boolean {

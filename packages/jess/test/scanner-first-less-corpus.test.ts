@@ -69,8 +69,6 @@ const benchmarkModes: BenchmarkMode[] = [
 ];
 const allLessStructuralDiagnosticAllowlist = Object.fromEntries([
   ['packages/jess/test/fixtures/invalid.less', ['unclosed-block']],
-  ['less-test-data/tests-config/static-urls/urls.less', ['unterminated-delimited-block', 'unclosed-block']],
-  ['less-test-data/tests-config/url-args/urls.less', ['unterminated-delimited-block', 'unclosed-block']],
   ['less-test-data/tests-error/parse/at-rules-unmatching-block.less', ['unterminated-delimited-block']],
   ['less-test-data/tests-error/parse/custom-property-unmatched-block-1.less', ['unterminated-delimited-block', 'unclosed-block']],
   ['less-test-data/tests-error/parse/custom-property-unmatched-block-2.less', ['unterminated-delimited-block', 'unclosed-block']],
@@ -79,13 +77,7 @@ const allLessStructuralDiagnosticAllowlist = Object.fromEntries([
   ['less-test-data/tests-error/parse/parse-error-media-no-block-3.less', ['unclosed-block']],
   ['less-test-data/tests-error/parse/parse-error-missing-bracket.less', ['unclosed-block']],
   ['less-test-data/tests-error/parse/parse-error-missing-parens.less', ['unterminated-delimited-block']],
-  ['less-test-data/tests-unit/at-rules/at-rules.less', ['unterminated-delimited-block']],
-  ['less-test-data/tests-unit/css-3/css-3.less', ['unterminated-delimited-block']],
-  ['less-test-data/tests-unit/import/import-remote.less', ['unterminated-delimited-block']],
-  ['less-test-data/tests-unit/import/import/invalid-css.less', ['unterminated-string']],
-  ['less-test-data/tests-unit/merge/merge.less', ['unterminated-delimited-block', 'unclosed-block']],
-  ['less-test-data/tests-unit/strings/strings.less', ['unterminated-delimited-block', 'unclosed-block']],
-  ['less-test-data/tests-unit/urls/urls.less', ['unterminated-delimited-block', 'unclosed-block']]
+  ['less-test-data/tests-unit/import/import/invalid-css.less', ['unterminated-string']]
 ] satisfies Array<[string, string[]]>);
 const benchmarkWarmupRuns = 1;
 const benchmarkSampleRuns = 3;

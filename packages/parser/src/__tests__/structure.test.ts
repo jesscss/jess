@@ -57,6 +57,31 @@ describe('parseStructure', () => {
     ]);
   });
 
+  test('keeps url payload braces and escaped parens inside declaration boundaries', () => {
+    const document = parseStructure(
+      String.raw`.foo { background: url(data:image/svg+xml,<svg>{x}</svg>); font: url(http://x.test?family=\(400\),700); color: red; }`,
+      fixtureLessProfile
+    );
+    const rule = document.root.children[0]!;
+
+    if (!('children' in rule)) {
+      throw new Error('Expected rule to be a container.');
+    }
+
+    expect(document.diagnostics).toEqual([]);
+    expect(rule.children.map(child => child.kind)).toEqual([
+      'declaration',
+      'declaration',
+      'declaration'
+    ]);
+    expect(document.symbols().map(symbol => symbol.name)).toEqual([
+      '.foo',
+      'background',
+      'font',
+      'color'
+    ]);
+  });
+
   test('exposes node lookup, scope lookup, and raw declaration islands', () => {
     const source = new SourceText('.foo { color: @brand; }');
     const document = parseStructure(source, fixtureLessProfile);

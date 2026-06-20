@@ -215,6 +215,28 @@ describe('delimiter scanning and recovery', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  test('keeps unquoted url payload delimiters raw while scanning outer blocks', () => {
+    const diagnostics: ParserDiagnostic[] = [];
+    const text = String.raw`{ background: url(data:image/svg+xml,<svg>{x}</svg>); font: url(http://x.test?family=\(400\),700); } tail`;
+    const cursor = new ScannerCursor(text);
+    const closeStart = text.indexOf(' } tail') + 1;
+    const closeEnd = closeStart + 1;
+
+    expect(scanBalancedDelimited(cursor, diagnostics)).toEqual({
+      start: 0,
+      end: closeEnd,
+      contentStart: 1,
+      contentEnd: closeStart,
+      openStart: 0,
+      openEnd: 1,
+      closeStart,
+      closeEnd,
+      closed: true
+    });
+    expect(cursor.offset).toBe(closeEnd);
+    expect(diagnostics).toEqual([]);
+  });
+
   test('reports unclosed delimiters without throwing', () => {
     const diagnostics: ParserDiagnostic[] = [];
     const cursor = new ScannerCursor('(a[0]');

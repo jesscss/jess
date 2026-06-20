@@ -2910,11 +2910,11 @@ storage.
 - [x] Parser-only Less corpus gate: structurally parse every visible `.less`
   file before treating eval/render or late/JIT materialization as the next
   stage. Current evidence, 2026-06-20: 320 files across the Jess repo and
-  upstream Less test-data parse without throwing; the structural pass records
-  24,253 structural records, 13,765 raw islands, and 22,578 trivia ranges. It
-  still reports 27 diagnostics across 18 allowlisted files, including
-  intentional parse-error fixtures and ordinary Less fixtures that expose
-  remaining scanner gaps around URL/string/delimited-boundary handling. The
+  upstream Less test-data parse without throwing; after the `url(...)` raw
+  payload scanner fix, the structural pass records 24,968 structural records,
+  14,152 raw islands, and 23,410 trivia ranges. It still reports 14 diagnostics
+  across 10 allowlisted files, now limited to intentional parse-error fixtures,
+  one invalid-css string fixture, and the local invalid fixture. The
   parser-replacement lane should drive that allowlist down or reclassify
   entries with explicit recovery semantics before widening eval/render
   materialization.
