@@ -120,8 +120,10 @@ Direct behavior: render selector, property name, and literal value from strings.
 JIT triggers: selector visitor, source-map detail beyond stored source identity,
 or a plugin requesting typed selector/value nodes.
 
-Current status: structural-fed prototype should handle without island parser
-execution.
+Current status: structural-fed prototype handles this without island parser
+execution, and `packages/jess/test/scanner-first-e2e.test.ts` includes it in
+the executable thin structure-target proof: parse to raw core fields, render
+equal CSS, serialize raw fields, and assert no selector/value child nodes.
 
 ### CSS-002 Declaration Order
 
@@ -148,8 +150,9 @@ strings.
 JIT triggers: none for ordinary render; typed value visitor for `1px` may parse
 only that value field.
 
-Current status: structural-fed prototype should handle without island parser
-execution.
+Current status: structural-fed prototype handles this without island parser
+execution, and the executable thin structure-target proof asserts declaration
+ordering, raw value segments, equal render output, and no eager value nodes.
 
 ### CSS-003 Nested Rule
 
@@ -186,7 +189,9 @@ rule context.
 JIT triggers: `&`, selector-list merging, `:extend()`, or visitor access to
 typed selector nodes.
 
-Current status: structural-fed prototype should handle this simple nested form.
+Current status: structural-fed prototype handles this simple nested form, and
+the executable thin structure-target proof asserts nested raw selector fields,
+raw declaration fields, equal render output, and zero island parser requests.
 
 ### CSS-004 Selector List
 
@@ -252,8 +257,11 @@ Direct behavior: render raw value without tokenizing it.
 JIT triggers: custom-property-specific tooling or diagnostics, not ordinary
 compile render.
 
-Current status: structure scanner should retain boundaries; structural-fed
-prototype may still fall back where trivia/raw-value preservation is not proven.
+Current status: structural-fed prototype handles the single-line raw brace/string
+case without island parser execution. The executable thin structure-target proof
+asserts the raw custom-property value is one segment and does not allocate a
+canonical value node. Multiline/trivia-exact custom-property cases are still
+unproven.
 
 ### CSS-007 Media Rule
 
@@ -560,3 +568,12 @@ Before a target graduates into an automated structure corpus case:
 - when direct render/eval is claimed, compare CSS output to the current compiler
   or upstream expected CSS;
 - when fallback is expected, record the fallback reason as part of the case.
+
+The first executable structure-target proof currently lives in
+`packages/jess/test/scanner-first-e2e.test.ts` under
+`parses thin structure targets into raw core nodes that render and serialize
+without eager field materialization`. That test is intentionally small: it
+parses source through the structural-fed Less path, compares render output to
+the current compiler, serializes the resulting raw-field core tree, and asserts
+zero requested islands / zero legacy parser executions. Add new target rows
+there before widening a target's status in this document.

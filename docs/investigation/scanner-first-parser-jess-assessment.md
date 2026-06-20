@@ -1930,6 +1930,12 @@ storage.
   canonical parser.
 - [x] Seed structure-target examples for CSS/Less so minimal structural shape
   can be reasoned about before implementing more JIT parsing.
+  - [x] Added the first executable thin target proof in
+    `packages/jess/test/scanner-first-e2e.test.ts`: plain rule, ordered
+    declarations, nested ordinary rule, and single-line custom-property raw
+    value parse through the structural-fed path, render equal CSS, serialize
+    raw-field core nodes, and assert zero island requests / zero legacy parser
+    executions / no eager selector or value child nodes.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
   nodes that carry raw-or-parsed selector/name/value/prelude payloads plus
   stable source identity, render/evaluate simple string segments directly, and

@@ -71,6 +71,15 @@ type ProfileModeResults = {
   structuralFedPlugin: ReturnType<typeof lessPlugin>;
 };
 
+type ThinStructureTarget = {
+  name: string;
+  source: string;
+  renderedSnippets: string[];
+  rawTypeSnippets: string[];
+  forbiddenTypeSnippets: string[];
+  progressiveNodes: number;
+};
+
 function counter(
   entries: Array<readonly [string, number | ReturnType<typeof expect.any>]>
 ): Record<string, number | ReturnType<typeof expect.any>> {
@@ -552,6 +561,118 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('(ProgressiveDeclaration');
     expect(types).not.toContain('name: (Any \'color\')');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('parses thin structure targets into raw core nodes that render and serialize without eager field materialization', async () => {
+    const targets: ThinStructureTarget[] = [
+      {
+        name: 'plain literal rule',
+        source: '.a { color: blue; }\n',
+        renderedSnippets: ['.a', 'color: blue'],
+        rawTypeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '[\'blue\']'
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any \'color\')',
+          'valueNode: (Any \'blue\')'
+        ],
+        progressiveNodes: 2
+      },
+      {
+        name: 'ordered literal declarations',
+        source: '.a { width: 1px; color: blue; }\n',
+        renderedSnippets: ['width: 1px', 'color: blue'],
+        rawTypeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'width\'',
+          'rawValueSegments:',
+          '[\'1px\']',
+          'rawName: \'color\'',
+          '[\'blue\']'
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'valueNode: (Any \'1px\')',
+          'valueNode: (Any \'blue\')'
+        ],
+        progressiveNodes: 3
+      },
+      {
+        name: 'nested ordinary rule',
+        source: '.a { color: blue; .b { width: 1px; } }\n',
+        renderedSnippets: ['.a', '.b', 'color: blue', 'width: 1px'],
+        rawTypeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawSelector: \'.b\'',
+          'rawName: \'color\'',
+          'rawName: \'width\''
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'valueNode: (Any \'blue\')',
+          'valueNode: (Any \'1px\')'
+        ],
+        progressiveNodes: 4
+      },
+      {
+        name: 'custom property raw value',
+        source: '.a { --raw: { token: "}"; }; color: blue; }\n',
+        renderedSnippets: ['--raw: { token: "}"; }', 'color: blue'],
+        rawTypeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'--raw\'',
+          'rawValueSegments:',
+          '[\'{ token: "}"; }\']',
+          'rawName: \'color\''
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any \'--raw\')',
+          'valueNode: (Any \'{ token: "}"; }\')'
+        ],
+        progressiveNodes: 3
+      }
+    ];
+
+    for (const target of targets) {
+      const baseline = await new Compiler().renderString(target.source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(target.source, { language: 'less' });
+
+      expect(rendered, target.name).toBe(baseline);
+      for (const snippet of target.renderedSnippets) {
+        expect(rendered, target.name).toContain(snippet);
+      }
+      expect(probePlugin.lastScannerFirstPrototype, target.name).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: target.progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind, target.name).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind, target.name).toEqual({});
+
+      const parseResult = probePlugin.safeParse(`/virtual/thin-${target.name}.less`, target.source);
+      expect(parseResult.errors, target.name).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      for (const snippet of target.rawTypeSnippets) {
+        expect(types, target.name).toContain(snippet);
+      }
+      for (const snippet of target.forbiddenTypeSnippets) {
+        expect(types, target.name).not.toContain(snippet);
+      }
+    }
   });
 
   it('feeds nested ordinary rules through structural parse and scanner-native materialization', async () => {
