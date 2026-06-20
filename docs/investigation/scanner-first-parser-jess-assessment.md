@@ -2198,9 +2198,9 @@ storage.
     fallback. The registration path now reads raw declaration names for static
     invalidation keys and only materializes declaration name/value nodes when
     registration or eval demands semantic fields. Parameters, guards,
-    namespaces, overload resolution, variable-bearing mixin bodies, non-media
-    at-rules inside mixin bodies, and richer call syntax remain canonical
-    fallback.
+    namespaces, overload resolution, richer variable-bearing mixin bodies,
+    non-media at-rules inside mixin bodies, and richer call syntax remain
+    canonical fallback.
   - [x] Extended the no-argument Less mixin proof to scanner-native `@media`
     blocks inside mixin definitions. The structural-fed path emits raw-field
     `AtRule` nodes for the `@media` body, raw-field declaration nodes inside
@@ -2332,6 +2332,24 @@ storage.
     mixin calls, dynamic/interpolated mixin names, mixin definitions inside
     mixin bodies, or richer body syntax outside the already-proven scanner-fed
     subset.
+- [x] Structural-fed prototype: support simple no-argument Less mixin body
+  variable declarations and reads inside that same mixin body.
+  - Proof target: root and ruleset-local no-argument mixins with `@brand:
+    blue;` feeding direct declarations or nested ordinary rules render equal
+    CSS through the scanner-fed path, record zero full-tree fallback, zero
+    actual parses, zero requested islands, zero promoted bytes, and serialize
+    `ProgressiveVariableDeclaration` plus raw selector/declaration fields
+    rather than `VarDeclaration`, `Reference [role=value]`, or `Any` value
+    wrappers.
+  - Scope guard: a variable declared only inside the mixin body does not leak
+    into the caller ruleset. The negative proof intentionally falls back when
+    the caller later reads `@brand`, preserving current Less scoping until a
+    broader scanner-fed scope model is proven.
+  - Current limit: this is a simple same-mixin-body value proof only.
+    Parameters, guards, `!important` calls, alias/lazy values, interpolation,
+    arithmetic beyond the already-proven one-step subset, richer body syntax,
+    and mixin definitions nested inside mixin bodies remain canonical
+    fallbacks.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2361,9 +2379,9 @@ storage.
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
-    The current mixin-related fallback surface is now seven richer mixin
-    signatures and one mixin-definition body variable declaration; the earlier
-    generic `unsupported rule child mixin-definition` reason is gone.
+    The current mixin-related fallback surface is seven richer mixin signatures;
+    the earlier generic `unsupported rule child mixin-definition` reason and
+    `unsupported mixin-definition child variable-declaration` reason are gone.
     The comma-value, standalone block-comment, mixin-local `@media`, nested
     `@supports`, direct nested at-rule, recursive nested supported at-rule,
     ruleset-local no-arg mixin, and at-rule-local variable proofs above did not
@@ -2379,11 +2397,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.01ms median over 20 samples, with 10,283 structural records, 5,762
+    1.92ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    9.71ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    5.24ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2407,16 +2425,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 214.67ms, structural sidecar full render
-    216.16ms across 306 probe records, selected-materialization sidecar full
-    render 234.78ms across 306 probe records with 5,295
+    current parser/eval/render 218.54ms, structural sidecar full render
+    210.91ms across 306 probe records, selected-materialization sidecar full
+    render 241.31ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 217.16ms across 198 prototype records with 21
+    structural-fed prototype 218.81ms across 198 prototype records with 21
     structural-fed records, 177 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 75 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.09x, structural sidecar 5.13x, selected
-    materialization 5.57x, and structural-fed 5.15x. These medians are gate
+    median were current 5.18x, structural sidecar 5.00x, selected
+    materialization 5.72x, and structural-fed 5.19x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

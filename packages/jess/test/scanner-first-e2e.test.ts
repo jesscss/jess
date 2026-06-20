@@ -3294,6 +3294,90 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds no-arg Less mixin body variables through structural parse', async () => {
+    const cases = [
+      {
+        source: '.m() { @brand: blue; color: @brand; }\n.a { .m(); }\n',
+        expectedFragments: ['.a {', 'color: blue'],
+        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'name: \'@brand\'', 'rawName: \'color\'']
+      },
+      {
+        source: '.m() { @brand: blue; .b { color: @brand; } }\n.a { .m(); }\n',
+        expectedFragments: ['.b {', 'color: blue'],
+        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'rawSelector: \'.b\'', 'rawName: \'color\'']
+      },
+      {
+        source: '.a { .m() { @brand: blue; color: @brand; } .m(); }\n',
+        expectedFragments: ['.a {', 'color: blue'],
+        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', '(ProgressiveVariableDeclaration', 'rawName: \'color\'']
+      }
+    ];
+
+    for (const { source, expectedFragments, serializedFragments } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      for (const fragment of expectedFragments) {
+        expect(rendered).toContain(fragment);
+      }
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parsePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const parseResult = parsePlugin.safeParse('/virtual/mixin-body-vars.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      for (const fragment of serializedFragments) {
+        expect(types).toContain(fragment);
+      }
+      expect(types).toContain('(Call');
+      expect(types).not.toContain('(VarDeclaration');
+      expect(types).not.toContain('(Reference [role=value]');
+      expect(types).not.toContain('valueNode: (Any \'blue\')');
+    }
+  });
+
+  it('falls back when a ruleset reads a variable declared only inside a no-arg mixin body', async () => {
+    const source = '.a { .m() { @brand: blue; } .m(); color: @brand; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'Less variable reference is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
   it('feeds @media inside Less mixin definitions through structural parse', async () => {
     const source = '.m() { @media screen { color: blue; } }\n.a { .m(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

@@ -1135,25 +1135,33 @@ function validateStructuralFedMixinDefinition(
   if (!mixinName) {
     return 'mixin definition signature is outside the scanner-native structural-fed subset';
   }
+  const { variables: localVariables } = collectStructuralFedScopeVariables(document, mixinDefinition.children, variables);
   for (const child of mixinDefinition.children) {
     if (child.kind === 'rule') {
-      const reason = validateStructuralFedRule(document, child, variables, false, true, mathMode);
+      const reason = validateStructuralFedRule(document, child, localVariables, true, true, mathMode);
       if (reason) {
         return reason;
       }
       continue;
     }
     if (child.kind === 'at-rule') {
-      const reason = validateStructuralFedAtRule(document, child, variables, 'mixin-definition', mathMode);
+      const reason = validateStructuralFedAtRule(document, child, localVariables, 'mixin-definition', mathMode);
       if (reason) {
         return reason;
+      }
+      continue;
+    }
+    if (child.kind === 'variable-declaration') {
+      const variableReason = validateStructuralFedVariableDeclaration(document, child);
+      if (variableReason) {
+        return variableReason;
       }
       continue;
     }
     if (child.kind !== 'declaration') {
       return `unsupported mixin-definition child ${child.kind}`;
     }
-    const reason = validateStructuralFedDeclaration(document, child, variables, false, mathMode);
+    const reason = validateStructuralFedDeclaration(document, child, localVariables, true, mathMode);
     if (reason) {
       return reason;
     }
@@ -1272,6 +1280,7 @@ function buildStructuralFedMixinDefinition(
   }
 
   const rules: Node[] = [];
+  const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, mixinDefinition.children, variables);
   let progressiveNodes = 1;
   let triviaCursor = mixinDefinition.bodyStart;
   for (const child of mixinDefinition.children) {
@@ -1289,13 +1298,16 @@ function buildStructuralFedMixinDefinition(
       ownerIslands,
       context,
       'mixin-definition',
-      variables,
-      false,
+      localVariables,
+      true,
       true,
       mathMode
     );
     if ('reason' in builtChild) {
       return builtChild;
+    }
+    if ('name' in builtChild) {
+      localVariables.set(builtChild.name, builtChild.valueToken);
     }
     rules.push(builtChild.node);
     progressiveNodes += builtChild.progressiveNodes ?? 0;
