@@ -725,6 +725,47 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds quoted and url declaration values through structural parse without value materialization', async () => {
+    const cases = [
+      { property: 'content', value: '"hello } world"' },
+      { property: 'background', value: 'url(/assets/a}/b.png)' },
+      { property: 'font-family', value: '"Open Sans", sans-serif' }
+    ];
+
+    for (const { property, value } of cases) {
+      const source = `.a { ${property}: ${value}; }\n`;
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(`${property}: ${value}`);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/raw-value.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain(`rawName: '${property}'`);
+      expect(types).toContain('rawValueSegments:');
+      expect(types).toContain(`['${value}']`);
+      expect(types).not.toContain('valueNode: (');
+    }
+  });
+
   it('feeds exact important declarations through structural parse without value materialization', async () => {
     const cases = [
       { property: 'color', value: 'blue' },
@@ -1353,6 +1394,26 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.a { color: blue; --brand: ${color}; }\n',
         reason: 'custom property values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: hero;\n.a { content: "@{brand}"; }\n',
+        reason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: hero;\n.a { background: url(/@{brand}.png); }\n',
+        reason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { background: url(/assets/a,b.png); }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { box-shadow: 0 0 1px red, 0 0 2px blue; }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { content: "hello" /* comment */; }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
       },
       {
         source: '.wrapper { grid-template-areas:\n  "header header"\n  "content sidebar"; }\n',

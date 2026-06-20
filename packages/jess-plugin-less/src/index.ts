@@ -1043,6 +1043,9 @@ function validateStructuralFedDeclaration(
     }
     return undefined;
   }
+  if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
+    return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
+  }
   const valueParts = splitScannerNativeDeclarationImportant(valueText);
   if (IMPORTANT_FLAG_PATTERN.test(valueText) && !valueParts) {
     return 'important declarations are not in the first structural-fed subset';
@@ -1051,6 +1054,13 @@ function validateStructuralFedDeclaration(
     return 'important declarations with Less variable references are not in the scanner-native structural-fed subset';
   }
   const scannerNativeValueText = valueParts?.valueText ?? valueText;
+  if (
+    !valueParts
+    && isConservativeRawScannerNativeValue(scannerNativeValueText)
+    && !RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(scannerNativeValueText)
+  ) {
+    return undefined;
+  }
   if (looksLikeSimpleVariableReference(scannerNativeValueText) && !allowLessVariableReferences) {
     return 'Less variable references are not in this structural-fed subset';
   }
@@ -1157,7 +1167,7 @@ type ScannerNativeSelectorToken = {
 };
 
 type ScannerNativeValueToken = {
-  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list' | 'custom-property-raw';
+  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list' | 'custom-property-raw' | 'raw-value';
   start: number;
   end: number;
   text: string;
@@ -1295,7 +1305,19 @@ function structuralScannerNativeDeclarationValueToken(
     );
   }
   if (!SIMPLE_FLAT_VALUE_PATTERN.test(scannerNativeValueText)) {
-    return undefined;
+    if (
+      valueParts
+      || !isConservativeRawScannerNativeValue(scannerNativeValueText)
+      || RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(scannerNativeValueText)
+    ) {
+      return undefined;
+    }
+    return {
+      kind: 'raw-value',
+      start: range.start,
+      end: range.end,
+      text: scannerNativeValueText
+    };
   }
   return {
     kind: 'flat-literal-list',
@@ -1415,8 +1437,24 @@ const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
 const SIMPLE_FLAT_VALUE_PATTERN =
   /^(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*)(?:[ \t]+(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*))*$/u;
+const RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
+const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
+const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{}a-zA-Z0-9]+\)$/u;
+const RAW_FONT_LIST_PATTERN =
+  /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
   /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)$/u;
+
+function isConservativeRawScannerNativeValue(valueText: string): boolean {
+  if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {
+    return false;
+  }
+  return (
+    RAW_QUOTED_STRING_PATTERN.test(valueText)
+    || RAW_SIMPLE_URL_PATTERN.test(valueText)
+    || RAW_FONT_LIST_PATTERN.test(valueText)
+  );
+}
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {
   return SIMPLE_VARIABLE_REFERENCE_PATTERN.test(valueText);

@@ -1910,12 +1910,13 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
-  selector, simple and flat literal declaration values, conservative raw custom
-  property declarations, exact `!important` declaration flags on non-custom
-  values, simple root or ruleset-local `@media` prelude/body shape including
-  ordinary nested rules, simple root `@layer` blocks with ordinary rule bodies,
-  and simple already-seen Less variable declaration/reference token detection
-  with zero legacy island parser executions. Hoisted/lazy variable references,
+  selector, simple and flat literal declaration values, conservative quoted/url
+  declaration values, conservative raw custom property declarations, exact
+  `!important` declaration flags on non-custom values, simple root or
+  ruleset-local `@media` prelude/body shape including ordinary nested rules,
+  simple root `@layer` blocks with ordinary rule bodies, and simple already-seen
+  Less variable declaration/reference token detection with zero legacy island
+  parser executions. Hoisted/lazy variable references,
   non-`@media`/root-`@layer` block at-rule families, complex/list/interpolated
   selectors, and richer nested at-rule bodies remain canonical fallbacks until
   their progressive
@@ -1987,9 +1988,16 @@ storage.
     The structural-fed Less path keeps the entire value as one raw string
     segment for direct render/serialization and still reports zero selected
     island parser executions. This is deliberately not a general value parser:
-    quoted strings, `url()`, functions, comments, interpolation, arithmetic,
-    comma lists, and mixed variable/value streams remain outside the proven
-    cheap subset.
+    functions, comments, interpolation, arithmetic, rich comma lists, and mixed
+    variable/value streams remain outside the proven cheap subset.
+  - [x] Extended raw-field declaration transport to conservative quoted and
+    URL-ish declaration values such as `content: "hello } world"`,
+    `background: url(/assets/a}/b.png)`, and `font-family: "Open Sans",
+    sans-serif`. These values are carried as one raw string segment and rely on
+    the structural scanner's existing string/url boundary handling; they do not
+    allocate value child nodes or execute legacy island parsers. Values that
+    contain Less variable/interpolation-looking tokens still fall back so
+    canonical eval behavior is not skipped.
   - [x] Extended raw-field declaration transport to conservative custom
     property declarations such as `--brand: #06c` and raw single-line
     brace/string payloads such as `--raw: { token: "}"; }`. These values are

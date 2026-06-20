@@ -112,9 +112,10 @@ with `--no-verify` after the explicit gates pass.
   value child nodes on the direct render path. Semantic registration/eval
   materializes only the currently proven scanner-native at-rule header storage,
   simple selector subset (`*`, tag, `.class`, `#id`), adjacent basic compound
-  selector subset, simple/flat literal declaration value text, conservative raw
-  custom-property value text, and declaration exact `!important` flag text on
-  demand. The current Less structural-fed emitter uses raw core `AtRule` for
+  selector subset, simple/flat literal declaration value text, conservative
+  quoted/url declaration value text, conservative raw custom-property value
+  text, and declaration exact `!important` flag text on demand. The current Less
+  structural-fed emitter uses raw core `AtRule` for
   root `@media`, ruleset-local `@media` with scanner-native declaration bodies
   or already-supported ordinary nested rules, and root `@layer` with ordinary
   rule bodies; nested block at-rule families outside that shape remain outside
@@ -136,8 +137,9 @@ with `--no-verify` after the explicit gates pass.
   registration/eval boundaries. Extending the structural-fed emitter to root
   `@layer` and ruleset-local `@media` with ordinary nested rules reuses existing
   raw at-rule/ruleset storage and does not add render-time traversal. Extending
-  declarations to conservative raw custom-property values reuses the existing
-  raw declaration segment loop; it does not add another render traversal.
+  declarations to conservative quoted/url and raw custom-property values reuses
+  the existing raw declaration segment loop; it does not add another render
+  traversal.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat
