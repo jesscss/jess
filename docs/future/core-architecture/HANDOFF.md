@@ -103,6 +103,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first no-prelude CSS `@starting-style` block proof.
+- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
+  claim. The Less structural-fed path now admits `@starting-style { ... }`
+  only in the no-prelude CSS block form, at root with ordinary rule children
+  and inside rules with already-supported declaration children. Rule-local
+  nested-rule bodies, nested at-rule bodies, and mixin-body `@starting-style`
+  remain canonical fallback until separately proven.
+- Architecture surface: Less plugin structural-fed admission/building only.
+  It does not change core node APIs, package exports, SCSS/Jess parsing,
+  language-service behavior, or the default parser path.
+- Separation/duplication: this reuses the existing raw-field `AtRule`
+  builder and child validation paths. It adds one plugin-local predicate for
+  no-prelude CSS block at-rules rather than introducing a general unknown
+  at-rule parser or raw-prelude escape hatch.
+- Cumulative node weight: this slice creates only the existing raw-field
+  `AtRule` plus the already-proven raw `Ruleset`/`Declaration` children for
+  accepted shapes. It adds no maps, side tables, wrapper containers, selected
+  island requests, or retained caches.
+- New traversal: none. The child bodies already walk through the existing
+  structural-fed at-rule/rule/declaration loops.
+- New node/materialization: none beyond the raw-field `AtRule` already used by
+  `@media`, `@layer`, and unknown block proofs. The no-prelude case deliberately
+  rejects `@starting-style <prelude> { ... }` as canonical fallback.
+- Render path: focused root and rule-local proofs render equal CSS through
+  structural-fed with zero full-tree fallback, zero selected island requests,
+  zero actual parser executions, and zero promoted bytes.
+- Helper/API surface: one plugin-local predicate recognizes proven no-prelude
+  CSS block at-rule names. `@starting-style` is also listed as a known semantic
+  block name so it cannot accidentally use the root unknown-block path.
+- Metadata mutations: none added beyond normal node construction/adoption.
+  Existing unrelated `AUDIT:` markers remain outside this slice.
+- Review-flagged diff tokens: [side map/set] no side-map or side-set storage is
+  introduced; the only mention is this accounting line. No new canonical node
+  classes, selected-island request, full-tree fallback, or parser entrypoint are
+  introduced. The changed `new AtRule` path is the existing raw-field at-rule
+  builder admitting one additional no-prelude CSS block family.
+- Evidence: focused scanner-first e2e covers
+  `@starting-style { .a { opacity: 0; } }`,
+  `.a { opacity: 1; @starting-style { opacity: 0; } }`, and the negative
+  `@starting-style initial { ... }`, rule-local nested-rule, rule-local nested
+  at-rule, and mixin-body fallbacks. Full corpus movement is recorded in the
+  strategy doc after the corpus gate is rerun.
+
 - Latest pass: scanner-first simple Less mixin parameter/argument proof.
 - Verdict: accepted as a narrow structural-fed correctness proof, not a speed
   claim. The Less structural-fed path now admits `.m(@name) { ... }` style

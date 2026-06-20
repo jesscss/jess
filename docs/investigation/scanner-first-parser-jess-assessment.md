@@ -2585,6 +2585,16 @@ storage.
     `Any` declaration value wrapper. At-rules nested inside ordinary rules that
     are themselves inside at-rules remain fallback until that wider recursion
     policy is proven.
+  - [x] Extended the structural-fed at-rule proof to no-prelude CSS
+    `@starting-style` block at-rules. Root `@starting-style { .a { opacity:
+    0; } }` and rule-local `.a { opacity: 1; @starting-style { opacity: 0; } }`
+    render and serialize from raw-field `AtRule` nodes with zero selected
+    island parser executions, zero full-tree fallback, zero promoted bytes, no
+    raw prelude, no eager at-rule name wrapper, and no `Any` value wrapper for
+    the covered declaration values. `@starting-style` with a prelude remains
+    canonical fallback because only the CSS no-prelude block form is proven;
+    rule-local nested-rule bodies, rule-local nested at-rule bodies, and
+    mixin-body `@starting-style` also remain fallback until separately proven.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax and raw important-flag spelling, not exact source-token
     preservation for alternate assignment spacing or semicolon trivia.
@@ -2632,10 +2642,13 @@ storage.
   containing already-supported ordinary nested rules.
   - Current limit: raw `AtRule` semantic materialization is proven for the
     scanner-native root `@media`, ruleset-local `@media`, mixin-body `@media`,
-    root `@layer`, and simple parenthesized declaration-condition `@supports`
-    subsets only. Richer supports expressions, nested boolean conditions, and
-    variable-bearing supports values still stay canonical fallback until their
-    specific grammar is proven.
+    root `@layer`, no-prelude root/rule-local `@starting-style`, and simple
+    parenthesized declaration-condition `@supports` subsets only. Richer
+    supports expressions, nested boolean conditions, variable-bearing supports
+    values, rule-local nested-rule or nested-at-rule `@starting-style` bodies,
+    mixin-body `@starting-style`, and `@starting-style` bodies with richer Less
+    merge/function values still stay canonical fallback until their specific
+    grammar is proven.
 - [x] Structural-fed prototype: support supported at-rules nested inside
   ordinary rules that are themselves inside supported at-rule bodies, while
   keeping raw at-rule headers unmaterialized during ruleset registration.
@@ -2799,7 +2812,13 @@ storage.
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
-    The current mixin-related fallback surface is six richer mixin definition
+    The current at-rule-family fallback surface is down to one corpus case:
+    `tests-unit/at-rules-bubbling/at-rules-bubbling.less`. The
+    `tests-unit/starting-style/starting-style.less` file now passes
+    `@starting-style` at-rule-family admission and stops later at richer
+    declaration values from merge/function constructs, so declaration-value
+    fallbacks rose to nine without changing the whole-file structural-fed
+    count. The current mixin-related fallback surface is six richer mixin definition
     signatures and two richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
@@ -2830,11 +2849,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.68ms median over 20 samples, with 10,259 structural records, 5,738
+    2.21ms median over 20 samples, with 10,259 structural records, 5,738
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    6.27ms total, producing 5,301 structural records, 3,070 raw islands, and 5
+    11.22ms total, producing 5,301 structural records, 3,070 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2858,16 +2877,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 247.68ms, structural sidecar full render
-    259.61ms across 306 probe records, selected-materialization sidecar full
-    render 286.69ms across 306 probe records with 5,223
+    current parser/eval/render 296.89ms, structural sidecar full render
+    271.38ms across 306 probe records, selected-materialization sidecar full
+    render 306.44ms across 306 probe records with 5,223
     requested/materialized islands and 147,090 promoted bytes, and
-    structural-fed prototype 253.03ms across 198 prototype records with 39
+    structural-fed prototype 284.82ms across 198 prototype records with 39
     structural-fed records, 159 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 225 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.87x, structural sidecar 6.16x, selected
-    materialization 6.80x, and structural-fed 6.00x. These medians are gate
+    median were current 7.04x, structural sidecar 6.44x, selected
+    materialization 7.27x, and structural-fed 6.76x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

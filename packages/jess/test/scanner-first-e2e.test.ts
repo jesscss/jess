@@ -3054,7 +3054,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
@@ -3302,6 +3302,107 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('(QueryCondition');
     expect(types).toContain('selector: \'.b\'');
     expect(types).not.toContain('rawPrelude');
+  });
+
+  it('feeds CSS @starting-style blocks through structural parse', async () => {
+    const cases = [
+      {
+        name: 'root',
+        source: '@starting-style { .a { opacity: 0; } }\n',
+        expectedProgressiveNodes: 3,
+        filePath: '/virtual/root-starting-style.less'
+      },
+      {
+        name: 'rule-local',
+        source: '.a { opacity: 1; @starting-style { opacity: 0; } }\n',
+        expectedProgressiveNodes: 4,
+        filePath: '/virtual/nested-starting-style.less'
+      }
+    ];
+
+    for (const target of cases) {
+      const baseline = await new Compiler().renderString(target.source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(target.source, { language: 'less' });
+
+      expect(rendered, target.name).toBe(baseline);
+      expect(rendered, target.name).toContain('@starting-style');
+      expect(rendered, target.name).toContain('opacity: 0');
+      expect(probePlugin.lastScannerFirstPrototype, target.name).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: target.expectedProgressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind, target.name).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind, target.name).toEqual({});
+
+      const parseResult = probePlugin.safeParse(target.filePath, target.source);
+      expect(parseResult.errors, target.name).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      expect(types, target.name).toContain('(AtRule');
+      expect(types, target.name).toContain('rawName: \'@starting-style\'');
+      expect(types, target.name).toContain('rawName: \'opacity\'');
+      expect(types, target.name).not.toContain('rawPrelude');
+      expect(types, target.name).not.toContain('name: (Any \'@starting-style\')');
+      expect(types, target.name).not.toContain('valueNode: (Any \'0\')');
+    }
+  });
+
+  it('falls back for @starting-style preludes because only the no-prelude block form is proven', async () => {
+    const cases = [
+      {
+        name: 'prelude',
+        source: '@starting-style initial { .a { opacity: 0; } }\n',
+        reason: '@starting-style preludes are outside the scanner-native structural-fed subset'
+      },
+      {
+        name: 'rule-local nested rule',
+        source: '.a { @starting-style { .b { opacity: 0; } } }\n',
+        reason: 'unsupported at-rule child rule'
+      },
+      {
+        name: 'rule-local nested at-rule',
+        source: '.a { @starting-style { @media screen { opacity: 0; } } }\n',
+        reason: 'unsupported at-rule child at-rule'
+      },
+      {
+        name: 'mixin body',
+        source: '.m() { @starting-style { opacity: 0; } }\n.a { .m(); }\n',
+        reason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset'
+      }
+    ];
+
+    for (const { name, source, reason } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered, name).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype, name).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+    }
   });
 
   it('feeds nested @media blocks with ordinary declarations through structural parse', async () => {
@@ -3714,7 +3815,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
