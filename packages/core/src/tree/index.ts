@@ -57,6 +57,8 @@ export * from './operation.js';
 export * from './paren.js';
 export * from './quoted.js';
 export * from './range.js';
+export * from './progressive-declaration.js';
+export * from './progressive-ruleset.js';
 export * from './ruleset.js';
 export * from './rules.js';
 export * from './rules-raw.js';

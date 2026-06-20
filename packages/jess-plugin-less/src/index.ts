@@ -39,6 +39,9 @@ import {
   countRequestedOwnerKinds,
   createStructuralProbeSnapshot,
   structuralDiagnosticRanges,
+  type FieldRange,
+  type FieldRangeKind,
+  type FieldRangeName,
   type LanguageActivation,
   type ParseStructureOptions,
   type RawIslandNode,
@@ -759,8 +762,11 @@ function validateStructuralFedRule(
       return `unsupported rule child ${child.kind}`;
     }
 
-    const name = document.source.slice(child.nameStart, child.nameEnd);
-    const valueText = document.source.slice(child.valueStart, child.valueEnd);
+    const name = structuralFieldText(document, child, 'name', 'declaration-name');
+    const valueText = structuralFieldText(document, child, 'value', 'value');
+    if (name === undefined || valueText === undefined) {
+      return 'declaration metadata is missing from structural field table';
+    }
     const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
     if (!isPlainStructuralFedDeclarationName(name)) {
       return 'declaration name is outside the first structural-fed subset';
@@ -782,8 +788,11 @@ function validateStructuralFedVariableDeclaration(
   document: StructuralDocument,
   child: StructuralStatementNode
 ): string | undefined {
-  const name = document.source.slice(child.nameStart, child.nameEnd);
-  const valueText = document.source.slice(child.valueStart, child.valueEnd);
+  const name = structuralFieldText(document, child, 'name', 'declaration-name');
+  const valueText = structuralFieldText(document, child, 'value', 'value');
+  if (name === undefined || valueText === undefined) {
+    return 'variable declaration metadata is missing from structural field table';
+  }
   const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
   if (!PLAIN_LESS_VARIABLE_NAME_PATTERN.test(name)) {
     return 'variable declaration name is outside the first structural-fed subset';
@@ -833,8 +842,11 @@ function validateStructuralFedAtRule(
       continue;
     }
     if (child.kind === 'declaration') {
-      const name = document.source.slice(child.nameStart, child.nameEnd);
-      const valueText = document.source.slice(child.valueStart, child.valueEnd);
+      const name = structuralFieldText(document, child, 'name', 'declaration-name');
+      const valueText = structuralFieldText(document, child, 'value', 'value');
+      if (name === undefined || valueText === undefined) {
+        return 'declaration metadata is missing from structural field table';
+      }
       const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
       if (!isPlainStructuralFedDeclarationName(name)) {
         return 'declaration name is outside the first structural-fed subset';
@@ -862,10 +874,7 @@ function buildStructuralFedRuleset(
   context: TreeContext
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
-  if (!selectorIsland) {
-    return { reason: 'rule selector island missing' };
-  }
-  const selectorToken = readScannerNativeSimpleSelectorToken(plan, selectorIsland);
+  const selectorToken = readScannerNativeSimpleSelectorToken(plan, rule, selectorIsland);
   if (!selectorToken) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
@@ -900,7 +909,7 @@ function buildStructuralFedAtRule(
 
   const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
   const preludeToken = preludeIsland
-    ? readScannerNativeValueToken(plan, preludeIsland)
+    ? readScannerNativeValueToken(plan, atRule, 'prelude', preludeIsland)
     : undefined;
   if (preludeIsland && !preludeToken) {
     return { reason: 'at-rule prelude is outside the scanner-native structural-fed subset' };
@@ -957,18 +966,21 @@ function buildStructuralFedDeclaration(
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext
 ): StructuralFedBuildResult {
-  const name = plan.document.source.slice(child.nameStart, child.nameEnd);
+  const name = structuralFieldText(plan.document, child, 'name', 'declaration-name');
+  if (name === undefined) {
+    return { reason: 'declaration metadata is missing from structural field table' };
+  }
   const valueIsland = singleIsland(ownerIslands, child, 'declaration-value');
   if (!valueIsland) {
     return { reason: 'declaration value island missing' };
   }
-  const valueToken = readScannerNativeValueToken(plan, valueIsland);
+  const valueToken = readScannerNativeValueToken(plan, child, 'value', valueIsland);
   if (!valueToken) {
     return { reason: 'declaration value is outside the scanner-native structural-fed subset' };
   }
   return {
     node: new Declaration({
-      name: new Any(name, { role: 'property' }, locationFromRange(plan.document, child.nameStart, child.nameEnd), context),
+      name: new Any(name, { role: 'property' }, locationFromFieldRange(plan.document, child, 'name'), context),
       value: coreAnyFromToken(plan, valueToken, context)
     }, { assign: ':' }, locationFromRange(plan.document, child.start, child.end), context)
   };
@@ -980,12 +992,15 @@ function buildStructuralFedVariableDeclaration(
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext
 ): StructuralFedBuildResult {
-  const rawName = plan.document.source.slice(child.nameStart, child.nameEnd);
+  const rawName = structuralFieldText(plan.document, child, 'name', 'declaration-name');
+  if (rawName === undefined) {
+    return { reason: 'variable declaration metadata is missing from structural field table' };
+  }
   const valueIsland = singleIsland(ownerIslands, child, 'declaration-value');
   if (!valueIsland) {
     return { reason: 'variable declaration value island missing' };
   }
-  const valueToken = readScannerNativeValueToken(plan, valueIsland);
+  const valueToken = readScannerNativeValueToken(plan, child, 'value', valueIsland);
   if (!valueToken) {
     return { reason: 'variable declaration value is outside the scanner-native structural-fed subset' };
   }
@@ -995,7 +1010,7 @@ function buildStructuralFedVariableDeclaration(
       name: new Any(
         rawName.slice(1),
         { role: 'ident' },
-        locationFromRange(plan.document, child.nameStart, child.nameEnd),
+        locationFromFieldRange(plan.document, child, 'name'),
         context
       ),
       value: coreAnyFromToken(plan, valueToken, context)
@@ -1019,9 +1034,13 @@ type ScannerNativeValueToken = {
 
 function readScannerNativeSimpleSelectorToken(
   plan: IslandParsePlan,
-  island: RawIslandNode
+  owner: StructuralContainerNode,
+  island?: RawIslandNode
 ): ScannerNativeSelectorToken | undefined {
-  const range = trimmedRange(plan.document.source.text, island.start, island.end);
+  const range = structuralFieldRange(plan.document, owner, 'selector', 'selector');
+  if (!range || (island && (range.start !== island.start || range.end !== island.end))) {
+    return undefined;
+  }
   const selectorText = plan.document.source.text.slice(range.start, range.end);
   if (!SIMPLE_SELECTOR_PATTERN.test(selectorText)) {
     return undefined;
@@ -1049,9 +1068,14 @@ function coreSelectorFromToken(
 
 function readScannerNativeValueToken(
   plan: IslandParsePlan,
+  owner: StructuralContainerNode | StructuralStatementNode,
+  field: 'prelude' | 'value',
   island: RawIslandNode
 ): ScannerNativeValueToken | undefined {
-  const range = trimmedRange(plan.document.source.text, island.start, island.end);
+  const range = structuralFieldRange(plan.document, owner, field, field === 'prelude' ? 'prelude' : 'value');
+  if (!range || range.start !== island.start || range.end !== island.end) {
+    return undefined;
+  }
   const valueText = plan.document.source.text.slice(range.start, range.end);
   const match = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
   if (!match) {
@@ -1084,18 +1108,6 @@ function scannerNativeValueKind(match: RegExpExecArray): ScannerNativeValueToken
   return 'identifier';
 }
 
-function trimmedRange(source: string, start: number, end: number): { start: number; end: number } {
-  let nextStart = start;
-  let nextEnd = end;
-  while (nextStart < nextEnd && WHITESPACE_PATTERN.test(source[nextStart]!)) {
-    nextStart++;
-  }
-  while (nextEnd > nextStart && WHITESPACE_PATTERN.test(source[nextEnd - 1]!)) {
-    nextEnd--;
-  }
-  return { start: nextStart, end: nextEnd };
-}
-
 function locationFromRange(
   document: StructuralDocument,
   start: number,
@@ -1107,6 +1119,42 @@ function locationFromRange(
   return [start, startPos.line, startPos.column, end, endPos.line, endPos.column];
 }
 
+function structuralFieldRange(
+  document: StructuralDocument,
+  node: StructuralContainerNode | StructuralStatementNode,
+  field: FieldRangeName,
+  kind?: FieldRangeKind
+): FieldRange | undefined {
+  const range = document.fieldRanges.get(node, field);
+  if (!range || (kind !== undefined && range.kind !== kind)) {
+    return undefined;
+  }
+  return range;
+}
+
+function structuralFieldText(
+  document: StructuralDocument,
+  node: StructuralContainerNode | StructuralStatementNode,
+  field: FieldRangeName,
+  kind?: FieldRangeKind
+): string | undefined {
+  const range = structuralFieldRange(document, node, field, kind);
+  return range ? document.source.slice(range.start, range.end) : undefined;
+}
+
+function locationFromFieldRange(
+  document: StructuralDocument,
+  node: StructuralContainerNode | StructuralStatementNode,
+  field: FieldRangeName,
+  kind?: FieldRangeKind
+): LocationInfo {
+  const range = structuralFieldRange(document, node, field, kind);
+  if (!range) {
+    return locationFromRange(document, node.start, node.end);
+  }
+  return locationFromRange(document, range.start, range.end);
+}
+
 function isPlainStructuralFedDeclarationName(name: string): boolean {
   return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
 }
@@ -1115,8 +1163,7 @@ function structuralAtRuleName(
   document: StructuralDocument,
   atRule: StructuralContainerNode
 ): string | undefined {
-  const header = document.source.slice(atRule.headerStart, atRule.headerEnd);
-  return AT_RULE_NAME_PATTERN.exec(header)?.[0];
+  return structuralFieldText(document, atRule, 'name', 'at-rule-name');
 }
 
 function isSupportedStructuralFedAtRule(

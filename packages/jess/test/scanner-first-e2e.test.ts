@@ -4,8 +4,42 @@ import os from 'node:os';
 import path from 'node:path';
 import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
+import { createLanguageProfile, parseStructure, type StructuralContainerNode } from '../../parser/src/index.js';
 
 const tempDirs: string[] = [];
+
+const cssStructureProfile = createLanguageProfile({
+  name: 'css',
+  variablePrefixes: [],
+  interpolationStarts: [],
+  atRuleClassifiers: {
+    import: 'import'
+  },
+  statementStarters: [
+    { text: '@', kind: 'at-rule' },
+    { text: '--', kind: 'declaration' },
+    { text: '.', kind: 'rule' },
+    { text: '#', kind: 'rule' },
+    { text: '[', kind: 'rule' },
+    { text: ':', kind: 'rule' }
+  ],
+  classifyDeclarationName(text) {
+    return text.startsWith('--') ? 'custom-property' : 'property';
+  },
+  classifyRuleHeader(text) {
+    return text.length > 0 ? 'selector' : 'unknown';
+  },
+  classifyIsland(_text, _source, _range, context) {
+    if (context?.parentKind === 'declaration') {
+      return ['declaration-value'];
+    }
+    if (context?.statementKind === 'rule') {
+      return ['selector'];
+    }
+    return [];
+  }
+});
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
@@ -118,6 +152,20 @@ function expectParseEvalRenderPhases(profile: CapturedProfile): void {
   }
 }
 
+type StructuralFieldNode = StructuralContainerNode | StructuralContainerNode['children'][number];
+
+function structuralFieldText(
+  document: ReturnType<typeof parseStructure>,
+  node: StructuralFieldNode,
+  field: 'name' | 'selector' | 'value'
+): string {
+  const range = document.fieldRanges.get(node, field);
+  if (!range) {
+    throw new Error(`Missing ${field} field range for ${node.kind}.`);
+  }
+  return document.source.text.slice(range.start, range.end);
+}
+
 function findRepoRoot(start = process.cwd()): string {
   let current = start;
 
@@ -185,6 +233,45 @@ async function renderProfileModes(source: string): Promise<ProfileModeResults> {
 }
 
 describe('scanner-first CSS/Less e2e probe', () => {
+  it('builds progressive proof nodes from structural field metadata', () => {
+    const source = '.a { color: blue; }';
+    const document = parseStructure(source, cssStructureProfile);
+    const rule = document.root.children[0];
+    if (!rule || rule.kind !== 'rule') {
+      throw new Error('Expected one structural rule.');
+    }
+    const declaration = rule.children[0];
+    if (!declaration || declaration.kind !== 'declaration') {
+      throw new Error('Expected one structural declaration.');
+    }
+
+    const progressive = progressiveruleset({
+      selector: structuralFieldText(document, rule, 'selector'),
+      rules: [
+        progressivedecl({
+          name: structuralFieldText(document, declaration, 'name'),
+          value: [structuralFieldText(document, declaration, 'value')]
+        })
+      ]
+    });
+
+    expect(document.fieldRanges.size).toBeGreaterThan(0);
+    expect(progressive.toTrimmedString()).toBe('.a { color: blue; }');
+    expect(serializeTypes(progressive)).toBe([
+      '(ProgressiveRuleset',
+      '  selector: \'.a\'',
+      '  rules:',
+      '    [',
+      '      (ProgressiveDeclaration',
+      '        name: \'color\'',
+      '        valueSegments:',
+      '          [\'blue\']',
+      '      )',
+      '    ]',
+      ')'
+    ].join('\n'));
+  });
+
   it('keeps a plain rule and declaration structural-only', async () => {
     const source = '.a {\n  color: blue;\n}\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
