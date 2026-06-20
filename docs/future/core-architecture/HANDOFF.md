@@ -647,6 +647,36 @@ with `--no-verify` after the explicit gates pass.
   zero promoted bytes, and 71 progressive nodes across the included 64-file /
   65-case upstream Less corpus.
 
+- Latest pass: walk-side extend cleanup for raw compounds, single-component
+  complex selectors, batched exact matches, and target-presence classification.
+- Verdict: accepted as a deletion-enabling correctness split, not a speed
+  claim. The walk-and-consume surface now covers raw string compound exact and
+  partial matching, single-component `ComplexSelector` whole-item matching,
+  same-target batched exact selector-list extension, and root activation checks
+  that need target presence rather than output-change semantics.
+  `classifyExtendTargetPresence` reuses the walk decomposition with the
+  self-extend output-change guard disabled, and `extend-roots.ts` no longer
+  calls `findExtendableLocations(...).hasMatches`.
+- New traversal: no new selector walk family. `applyBatchedExtend` now asks the
+  existing walk classifier instead of the legacy location-search classifier for
+  its same-target selector-list branch. The target-presence helper uses the
+  existing `wouldMatchNode` traversal with a boolean guard to distinguish
+  presence from output-change classification.
+- New node/materialization: one cold, local `CompoundSelector.create([raw])`
+  surface is created inside raw compound component matching so the existing
+  whole-match application path can produce the same `:is(...)`/selector-list
+  shapes for raw string components. Single-component complex matching and
+  target-presence classification add no node materialization.
+- Render path: unchanged.
+- Helper/API surface: one exported helper was added to `extend-walk.ts` and is
+  immediately used to remove the legacy location-search dependency from
+  `extend-roots.ts`. The batched exact-match branch uses existing
+  `classifyExtendMatch`; no new public core API is intended.
+- Metadata mutations: none.
+- Evidence: `pnpm --filter @jesscss/core test -- --run
+  src/tree/util/__tests__/extend-walk.test.ts
+  src/tree/util/__tests__/extend-selector-algorithm.test.ts` passes.
+
 - Latest pass: scanner-first internal raw-selector export and Jess module
   at-rule island owner reconstruction.
 - Verdict: accepted as a package-boundary and provider-correctness fix, not a

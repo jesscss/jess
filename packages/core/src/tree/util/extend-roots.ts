@@ -7,10 +7,14 @@ import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
-import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
+import {
+  wouldExtendChange,
+  canUseWalkAndConsume,
+  classifyExtendMatch,
+  classifyExtendTargetPresence
+} from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
@@ -308,7 +312,7 @@ function analyzeNonPartialExtends(
     const parentHasTargetMatch = Boolean(
       parentSelector
       && !(parentSelector instanceof Nil)
-      && findExtendableLocations(parentSelector, instruction.target).hasMatches
+      && classifyExtendTargetPresence(parentSelector, instruction.target, instruction.partial)
     );
     return { instruction, ownChangedSingle, fullChangedSingle, parentHasTargetMatch };
   });
@@ -566,7 +570,6 @@ function haveSameRuleChildSources(left: Rules, right: Rules): boolean {
   return true;
 }
 
-
 export function processExtends(context: Context): void {
   try {
     // Snapshot eval'd selectors before any extend modifications.
@@ -622,7 +625,6 @@ export function processExtends(context: Context): void {
     if (!instructions.length) {
       return;
     }
-
     const instructionMatched = new Set<typeof instructions[0]>();
 
     const visibleRootsCache = new Map<Rules, Set<Rules>>();
@@ -673,7 +675,7 @@ export function processExtends(context: Context): void {
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
-            const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
+            const selfMatches = classifyExtendTargetPresence(selector, instruction.target, instruction.partial);
             classifications.set(instruction, selfMatches ? 'local' : false);
           } else {
             classifications.set(instruction, classifyInstructionMatch(selector, instruction, parentSel));

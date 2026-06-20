@@ -113,7 +113,11 @@ import type { Selector } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
-import { CompoundSelector } from '../selector-compound.js';
+import {
+  CompoundSelector,
+  isRawCompoundSelectorComponent,
+  type CompoundSelectorComponent
+} from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
@@ -133,7 +137,8 @@ import {
   canUseWalkAndConsume,
   walkAndExtend,
   extendWithNeedsConflictValidation,
-  wouldExtendChange
+  wouldExtendChange,
+  classifyExtendMatch
 } from './extend-walk.js';
 import { copyOwnedWithReusableLeaves } from './cloning.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
@@ -462,8 +467,8 @@ function applyBatchedExtend(
   // Fast path: non-partial SelectorList with a SimpleSelector find.
   // One scan to find all matching items, then append all extendWiths at once.
   if (isNode(selector, N.SelectorList) && isNode(find, N.SimpleSelector)) {
-    const searchResult = findExtendableLocations(selector, find);
-    if (!searchResult.hasMatches) {
+    const representativeExtendWith = extendWithList.find(extendWith => extendWith.valueOf() !== find.valueOf());
+    if (!representativeExtendWith) {
       return null;
     }
 
@@ -473,8 +478,8 @@ function applyBatchedExtend(
 
     for (const item of (selector as SelectorList).value) {
       const sItem = item as Selector;
-      const itemCompare = selectorCompare(sItem, find);
-      if (!itemCompare.hasWholeMatch) {
+      const itemMatch = classifyExtendMatch(sItem, find, representativeExtendWith, false);
+      if (itemMatch !== 'local') {
         originalItems.push(sItem);
         continue;
       }
@@ -591,6 +596,7 @@ function wrapMatchInIs(
     return copySelectorForExtend(matched);
   }
   const matchedForList = copySelectorForExtend(matched);
+  matchedForList.addFlag(F_EXTENDED);
   if (context?.find && context.find.valueOf() !== context.extendWith?.valueOf()) {
     matchedForList.addFlag(F_EXTEND_TARGET);
   }
@@ -783,11 +789,19 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound selectors can have duplicate components (e.g., .v.w.v)
       // Process components with root=false to prevent deduplication
-      const compoundProcessed = createProcessedSelector(el.value, false);
-      if (typeof compoundProcessed === 'string') {
-        return compoundProcessed;
+      const processedComponents: CompoundSelectorComponent[] = [];
+      for (const component of el.value) {
+        if (isRawCompoundSelectorComponent(component)) {
+          processedComponents.push(component);
+          continue;
+        }
+        const componentProcessed = createProcessedSelector(component, false);
+        if (typeof componentProcessed === 'string') {
+          return componentProcessed;
+        }
+        const processed = expectSelectorArray(componentProcessed);
+        processedComponents.push(...processed);
       }
-      const processedComponents = expectSelectorArray(compoundProcessed);
       push(sameArrayItems(processedComponents, el.value)
         ? el
         : CompoundSelector.create(processedComponents).inherit(el));
@@ -1198,6 +1212,20 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
   // also one of the input selectors, adopting the source object would reparent
   // it before `.inherit(inheritFrom)` reads the parent chain.
   const placedArray = copySelectorsForPlacement(processedArray);
+  if (inheritFrom) {
+    const inheritValue = inheritFrom.valueOf();
+    for (const selector of placedArray) {
+      if (selector.valueOf() !== inheritValue) {
+        continue;
+      }
+      selector.addFlag(F_EXTENDED);
+      const hasNonSelfExtension = placedArray.some(item => item.valueOf() !== inheritValue);
+      if (hasNonSelfExtension) {
+        selector.addFlag(F_EXTEND_TARGET);
+      }
+      break;
+    }
+  }
 
   const result = SelectorList.create(placedArray);
   return inheritFrom ? result.inherit(inheritFrom) : result;

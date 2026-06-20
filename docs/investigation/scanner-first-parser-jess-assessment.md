@@ -2012,11 +2012,15 @@ progressive materializers are scanner-native.
       same-target whole-item batch check. It now asks the walk-and-consume
       surface via `classifyExtendMatch`, using a non-self representative
       extender so self-extenders in the batch do not poison classification.
-    - [ ] Add a walk-side "target exists here" classifier before replacing the
+    - [x] Add a walk-side "target exists here" classifier before replacing the
       remaining `extend-roots.ts` `findExtendableLocations(...).hasMatches`
       checks. `wouldExtendChange` and `classifyExtendMatch` intentionally
       suppress self-extends, but root accessibility still needs to distinguish
       "target exists locally" from "this extend would change output".
+      Current result: `classifyExtendTargetPresence` reuses the walk
+      decomposition without the self-extend output-change guard, and
+      `extend-roots.ts` now uses it for parent-target presence and self-extend
+      activation checks instead of the legacy location-search surface.
     - [ ] Verify each deletion slice with focused core extend tests,
       scanner-first e2e, and the Less corpus parity/benchmark gates before
       marking this cleanup complete.

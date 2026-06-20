@@ -174,7 +174,7 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);
   }
   if (isNode(node, N.CompoundSelector) && !isNode(find, N.CompoundSelector)) {
-    return false;
+    return node.value.length === 1 && valueText(node.value[0]!) === find.valueOf();
   }
   return node.valueOf() === find.valueOf();
 }
@@ -627,6 +627,16 @@ function walkComplexSelector(
   partial: boolean,
   ctx: WalkContext
 ): Selector {
+  if (
+    !partial
+    && !isMultiPosition(spec)
+    && complex.value.length === 1
+    && isSelectorNode(complex.value[0])
+    && isWholeNodeMatch(complex.value[0], spec)
+  ) {
+    return applyWholeMatch(complex, spec, extendWith, partial, ctx);
+  }
+
   // Multi-position find: try contiguous subsequence match
   if (isMultiPosition(spec)) {
     return consumePositionsFromComplex(complex, spec, extendWith, partial, ctx);
@@ -693,6 +703,27 @@ function walkCompoundSelector(
 
   for (let i = 0; i < components.length; i++) {
     const comp = components[i]!;
+    if (isRawCompoundSelectorComponent(comp)) {
+      const findComp = spec.positions[0]?.[0];
+      if (!findComp || !positionComponentMatches(findComp, comp)) {
+        continue;
+      }
+      const rawSelector = CompoundSelector.create([comp]).inherit(compound);
+      const extended = applyWholeMatch(rawSelector, spec, extendWith, partial, {
+        isRoot: false,
+        parentType: 'CompoundSelector',
+        hasContentBefore: i > 0,
+        hasContentAfter: i < components.length - 1
+      });
+      if (extended !== rawSelector) {
+        if (!(extended instanceof SimpleSelector)) {
+          throw new TypeError('Expected simple selector');
+        }
+        newComponents[i] = extended;
+        anyChanged = true;
+      }
+      continue;
+    }
     const childCtx: WalkContext = {
       isRoot: false,
       parentType: 'CompoundSelector',
@@ -1099,15 +1130,26 @@ export function classifyExtendMatch(
   return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
 }
 
+export function classifyExtendTargetPresence(
+  target: Selector,
+  find: Selector,
+  partial: boolean,
+  parentSelector?: Selector
+): MatchResult {
+  const spec = decomposeFind(find);
+  return wouldMatchNode(target, spec, find, partial, ROOT_CTX, parentSelector, false);
+}
+
 function wouldMatchNode(
   node: Selector,
   spec: FindSpec,
   extendWith: Selector,
   partial: boolean,
   ctx: WalkContext,
-  parentSelector?: Selector
+  parentSelector?: Selector,
+  suppressSelfExtend = true
 ): MatchResult {
-  if (spec.original.valueOf() === extendWith.valueOf()) {
+  if (suppressSelfExtend && spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
 
@@ -1119,7 +1161,7 @@ function wouldMatchNode(
       if (ctx.isRoot && parentSelector) {
         if (node.hasFlag(F_AMPERSAND)) {
           const composed = Ruleset.composeSelector(node, parentSelector);
-          if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
+          if (wouldMatchNode(composed, spec, extendWith, partial, ROOT_CTX, undefined, suppressSelfExtend)) {
             return 'crossing';
           }
         }
@@ -1151,7 +1193,7 @@ function wouldMatchNode(
         parentType: 'SelectorList',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      }, parentSelector);
+      }, parentSelector, suppressSelfExtend);
       if (result) {
         return result;
       }
@@ -1170,6 +1212,26 @@ function wouldMatchNode(
       }
       return false;
     }
+    if (
+      !partial
+      && node.value.length === 1
+      && isSelectorNode(node.value[0])
+      && isWholeNodeMatch(node.value[0], spec)
+    ) {
+      if (ctx.isRoot && parentSelector) {
+        return false;
+      }
+      if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
+        return false;
+      }
+      if (ctx.parentType === 'SelectorList' && parentSelector) {
+        return 'within-ampersand';
+      }
+      if (parentSelector && parentContainsTarget(parentSelector, node)) {
+        return 'within-ampersand';
+      }
+      return 'local';
+    }
     for (let i = 0; i < node.value.length; i++) {
       const comp = node.value[i]!;
       if (isNode(comp, N.Combinator)) {
@@ -1180,7 +1242,7 @@ function wouldMatchNode(
         parentType: 'ComplexSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      });
+      }, undefined, suppressSelfExtend);
       if (result) {
         return result;
       }
@@ -1200,7 +1262,7 @@ function wouldMatchNode(
     // whole compound. Looking at each `&` component independently misses that.
     if (parentSelector && !partial && node.hasFlag(F_AMPERSAND)) {
       const composed = Ruleset.composeSelector(node, parentSelector);
-      if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
+      if (wouldMatchNode(composed, spec, extendWith, partial, ROOT_CTX, undefined, suppressSelfExtend)) {
         return 'crossing';
       }
     }
@@ -1214,7 +1276,7 @@ function wouldMatchNode(
         parentType: 'CompoundSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      });
+      }, undefined, suppressSelfExtend);
       if (result) {
         return result;
       }
@@ -1231,7 +1293,7 @@ function wouldMatchNode(
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
-      });
+      }, undefined, suppressSelfExtend);
       return innerResult ? 'within-ampersand' : false;
     }
     if (parentSelector) {
@@ -1240,7 +1302,7 @@ function wouldMatchNode(
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
-      });
+      }, undefined, suppressSelfExtend);
       return innerResult ? 'within-ampersand' : false;
     }
     return false;
@@ -1255,14 +1317,14 @@ function wouldMatchNode(
     // Tail-aware: when :is() is inside a compound, only the tail of
     // complex alternatives is at the current position.
     if (ctx.parentType === 'CompoundSelector') {
-      return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial);
+      return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial, suppressSelfExtend);
     }
     return wouldMatchNode(arg, spec, extendWith, partial, {
       isRoot: false,
       parentType: 'PseudoSelector',
       hasContentBefore: false,
       hasContentAfter: false
-    });
+    }, undefined, suppressSelfExtend);
   }
 
   return false;
@@ -1272,7 +1334,8 @@ function wouldMatchPseudoTailAware(
   pseudo: PseudoSelector,
   spec: FindSpec,
   extendWith: Selector,
-  partial: boolean
+  partial: boolean,
+  suppressSelfExtend: boolean
 ): MatchResult {
   const arg = selectorArgOf(pseudo);
   if (!arg) {
@@ -1286,7 +1349,7 @@ function wouldMatchPseudoTailAware(
         parentType: 'PseudoSelector',
         hasContentBefore: false,
         hasContentAfter: false
-      });
+      }, undefined, suppressSelfExtend);
     }
     const comps = alt.value;
     for (let i = comps.length - 1; i >= 0; i--) {
@@ -1296,7 +1359,7 @@ function wouldMatchPseudoTailAware(
           parentType: 'CompoundSelector',
           hasContentBefore: i > 0,
           hasContentAfter: i < comps.length - 1
-        });
+        }, undefined, suppressSelfExtend);
       }
     }
     return false;

@@ -1,5 +1,5 @@
 import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
-import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector, applyExtendsToSelector } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { getImplicitSelector } from '../selector-utils.js';
@@ -62,6 +62,16 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Full match extend examples', () => {
+    it('applies exact extends to selector-list items wrapped as single-component complex selectors', () => {
+      const target = sellist([sel([el('.base')])]);
+      const result = applyExtendsToSelector(target, [{
+        target: el('.base'),
+        extendWith: el('.child'),
+        partial: false
+      }]);
+      expect(result.valueOf()).toBe('.base,.child');
+    });
+
     it('derives selector-list extend output without cloning the matched source item', () => {
       const target = sellist([el('.a'), el('.b')]);
       const sourceItem = target.value[0]!;
