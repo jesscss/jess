@@ -1781,6 +1781,15 @@ complex/interpolated selectors, parameters, guards, namespaces, and
 trivia-preservation cases currently fall back canonically until their
 progressive materializers are scanner-native.
 
+- [ ] DRY/performance follow-up: make raw selector subset classification have
+  one owner before widening selectors again. The current prototype has a
+  plugin-side structural-fed admission check and a core-side raw selector
+  constructor/materializer check. That duplication is tolerable for the current
+  narrow proof, but future selector work should move toward a single small
+  classifier/materialization plan so plugin admission and core materialization
+  cannot drift and so cold semantic materialization does not repeatedly split
+  the same raw selector string.
+
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.
 Prefer progressively enhanced core nodes: the parser constructs the normal
