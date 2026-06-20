@@ -1418,6 +1418,9 @@ function validateStructuralFedDeclaration(
   if (isScannerNativeFunctionCallValue(scannerNativeValueText)) {
     return undefined;
   }
+  if (isScannerNativeMixedFunctionValue(scannerNativeValueText)) {
+    return undefined;
+  }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
     return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
   }
@@ -1469,7 +1472,7 @@ function buildStructuralFedDeclaration(
   return {
     node: new Declaration({
       name,
-      value: [valueToken.node ?? valueToken.text],
+      value: valueToken.segments ?? [valueToken.node ?? valueToken.text],
       important: valueToken.important
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
@@ -1595,6 +1598,7 @@ type ScannerNativeValueToken = {
   end: number;
   text: string;
   node?: Node;
+  segments?: Array<string | Node>;
   important?: string;
 };
 
@@ -1753,6 +1757,16 @@ function readScannerNativeDeclarationValueToken(
   if (functionToken) {
     return functionToken;
   }
+  const mixedFunctionToken = scannerNativeMixedFunctionValueToken(
+    plan.document,
+    range,
+    scannerNativeValueText,
+    context,
+    valueParts?.important
+  );
+  if (mixedFunctionToken) {
+    return mixedFunctionToken;
+  }
   return structuralScannerNativeDeclarationValueToken(plan.document, owner);
 }
 
@@ -1887,9 +1901,24 @@ function isScannerNativeFunctionCallValue(valueText: string): boolean {
     );
 }
 
+function isScannerNativeMixedFunctionValue(valueText: string): boolean {
+  const match = SCANNER_NATIVE_MIXED_FUNCTION_VALUE_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return false;
+  }
+  const prefix = match.groups.prefix;
+  const call = match.groups.call;
+  return (
+    prefix !== undefined
+    && call !== undefined
+    && SIMPLE_FLAT_VALUE_PATTERN.test(prefix.trimEnd())
+    && isScannerNativeFunctionCallValue(call)
+  );
+}
+
 function scannerNativeFunctionValueToken(
   document: StructuralDocument,
-  range: FieldRange,
+  range: { start: number; end: number },
   valueText: string,
   context: TreeContext,
   important?: string
@@ -1937,6 +1966,46 @@ function scannerNativeFunctionValueToken(
       locationFromRange(document, range.start, callEnd),
       context
     ),
+    important
+  };
+}
+
+function scannerNativeMixedFunctionValueToken(
+  document: StructuralDocument,
+  range: { start: number; end: number },
+  valueText: string,
+  context: TreeContext,
+  important?: string
+): ScannerNativeValueToken | undefined {
+  const match = SCANNER_NATIVE_MIXED_FUNCTION_VALUE_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const prefix = match.groups.prefix;
+  const callText = match.groups.call;
+  if (
+    prefix === undefined
+    || callText === undefined
+    || !SIMPLE_FLAT_VALUE_PATTERN.test(prefix.trimEnd())
+  ) {
+    return undefined;
+  }
+  const callStart = range.start + prefix.length;
+  const callToken = scannerNativeFunctionValueToken(
+    document,
+    { start: callStart, end: callStart + callText.length },
+    callText,
+    context
+  );
+  if (!callToken?.node) {
+    return undefined;
+  }
+  return {
+    kind: 'function-call',
+    start: range.start,
+    end: range.start + valueText.length,
+    text: valueText,
+    segments: [prefix, callToken.node],
     important
   };
 }
@@ -2142,6 +2211,7 @@ const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
   'rgb'
 ]);
 const SCANNER_NATIVE_FUNCTION_CALL_PATTERN = /^(?<name>[-_a-zA-Z][\w-]*)\((?<args>.*)\)$/u;
+const SCANNER_NATIVE_MIXED_FUNCTION_VALUE_PATTERN = /^(?<prefix>.+[ \t]+)(?<call>[-_a-zA-Z][\w-]*\(.*\))$/u;
 const SCANNER_NATIVE_FUNCTION_UNSUPPORTED_ARGS_PATTERN = /[\r\n(){};"']|\/\*|\/\//u;
 const SCANNER_NATIVE_HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/u;
 const SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN =

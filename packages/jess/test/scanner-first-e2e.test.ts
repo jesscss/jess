@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Compiler } from '../src/index.js';
-import lessPlugin from '@jesscss/plugin-less';
-import { serializeTypes as serializeRuntimeTypes, TreeContext } from '@jesscss/core';
+import lessPlugin from '../../jess-plugin-less/src/index.js';
+import { Declaration, Node, Ruleset, serializeTypes as serializeRuntimeTypes, TreeContext } from '@jesscss/core';
 import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
 import {
   createLanguageProfile,
@@ -1098,6 +1098,70 @@ describe('scanner-first CSS/Less e2e probe', () => {
         expect(types).not.toContain(snippet);
       }
     }
+  });
+
+  it('feeds mixed string and function declaration values through progressive segments', async () => {
+    const source = '.a { box-shadow: 0 0 2px lighten(#000, 10%); }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('box-shadow: 0 0 2px #1a1a1a');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 2,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/mixed-function-value.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('rawName: \'box-shadow\'');
+    expect(types).toContain('rawValueSegments:');
+    expect(types).toContain('\'0 0 2px \'');
+    expect(types).toContain('Call]');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode:');
+    expect(types).not.toContain('name: (Any [role=property] \'box-shadow\')');
+
+    const ruleset = parseResult.tree!.rules[0];
+    expect(ruleset).toBeInstanceOf(Ruleset);
+    if (!(ruleset instanceof Ruleset)) {
+      throw new Error('Expected structural-fed root child to be a Ruleset.');
+    }
+    const declaration = ruleset.rules[0];
+    expect(declaration).toBeInstanceOf(Declaration);
+    if (!(declaration instanceof Declaration)) {
+      throw new Error('Expected structural-fed ruleset child to be a Declaration.');
+    }
+    const segments = declaration.rawValueSegments;
+    expect(segments?.[0]).toBe('0 0 2px ');
+    expect(segments?.[1]).toBeInstanceOf(Node);
+    const callSegment = segments?.[1];
+    if (!(callSegment instanceof Node)) {
+      throw new Error('Expected mixed raw value segment to contain a Call node.');
+    }
+    const callTypes = serializeRuntimeTypes(callSegment);
+    expect(callTypes).toContain('(Call');
+    expect(callTypes).toContain('key: \'lighten\'');
+    expect(callTypes).toContain('(Color');
+    expect(callTypes).toContain('node: \'#000\'');
+    expect(callTypes).toContain('(Dimension');
+    expect(callTypes).toContain('number: 10');
+    expect(callTypes).toContain('unit: \'%\'');
   });
 
   it('feeds exact important declarations through structural parse without value materialization', async () => {
