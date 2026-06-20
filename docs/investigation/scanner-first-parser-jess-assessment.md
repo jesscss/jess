@@ -38,10 +38,11 @@ user-visible behavior.
 
 The same rule applies to rules-container bodies. `Rules.rules` is a justified
 role name because rules containers have a distinct body role, but at structural
-parse time that body can still be thin: a mixed raw-segment/string/node stream
-is a valid target when raw spans can render or defer work without creating child
-nodes. Promotion from raw segment to node should happen only for the specific
-body segment demanded by eval/render/visitor/plugin behavior.
+parse time that body can still be thin: a mixed string/node stream plus a cheap
+offset/kind metadata surface is a valid target when text can render or defer
+work without creating child nodes. Promotion from string segment to node should
+happen only for the specific body segment demanded by eval/render/visitor/plugin
+behavior.
 
 The best near-term shape is staged:
 
@@ -165,13 +166,31 @@ compile stage demands them. The structural island APIs themselves should stay
 core-blind and should not create a second permanent AST type that drifts from
 `@jesscss/core`.
 
-The cheapest value segment does not have to be an eager JavaScript string. The
-first implementation should evaluate a tiny offset-backed segment record for
-each raw value/body span, for example `{ start, end, kind }` plus access to the
-owning source. Rendering can write from offsets, diagnostics can ask the lazy
-line map for human positions, and JIT parsing can slice only the demanded span.
-If eager strings are faster in measurement, that is fine, but the default design
-should not assume a string allocation per value segment is free.
+The cheapest value/body segment may be a JavaScript string on the node, with
+separate compact offset/kind metadata for source identity. Do not freeze the
+storage yet. The first implementation should compare at least these candidate
+shapes:
+
+```ts
+// Simple parallel arrays on the owning node.
+interface RawValueField {
+  value: (string | Node)[];
+  valueOffsets: Uint32Array | number[];
+  valueKinds: Uint16Array | ValueKind[];
+}
+
+// Dense side table keyed by owning node, field name, and segment index.
+// The table stores typed/packed arrays, not an object per segment.
+type FieldRangeTable = unknown;
+```
+
+Rendering/eval can read strings directly, diagnostics can ask the lazy line map
+for human positions, and JIT parsing can use stored offsets for the demanded
+segment. The important allocation rule is not "never store strings"; it is "do
+not create extra wrapper nodes or duplicate parsed subtrees merely to remember
+where a string came from." The chosen representation should be the tightest
+shape that preserves direct string access, cheap source ranges, and cheap
+segment-kind checks under measurement.
 
 ### 3. Shared scanner/token classification
 
@@ -297,10 +316,11 @@ around a block body. The alternative to investigate is making `Rules` a base
 class or shared superclass for rule-container behavior. In that model,
 `Ruleset`, `AtRule`, and `Mixin` can inherit rules-container behavior and own
 `.rules` directly as their body stream, instead of owning `rules: Rules`. At
-structural parse time that stream may contain raw offset-backed segments,
-strings, and promoted nodes; it should not be forced into `Node[]` just so
-traversal can walk it. That keeps `.rules` as the meaningful semantic body field
-on multi-role nodes, but removes the nested wrapper node.
+structural parse time that stream may contain strings and promoted nodes, with
+offsets stored in the same compact source map used for declaration values. It
+should not be forced into `Node[]` just so traversal can walk it. That keeps
+`.rules` as the meaningful semantic body field on multi-role nodes, but removes
+the nested wrapper node.
 
 `Rules` should also be understood as a transparent body surface, not as
 "whatever prints braces." A stylesheet-root `Rules` serializes as a document.
@@ -1742,9 +1762,10 @@ scanner-native.
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.
 Prefer progressively enhanced core nodes: the parser constructs the normal
-`Ruleset`, `Declaration`, `AtRule`, and rules-container surfaces with raw field
-payloads first, then those same nodes parse and cache richer selector/value/
-prelude objects only when a compile stage demands them.
+`Ruleset`, `Declaration`, `AtRule`, and rules-container surfaces with literal
+string payloads plus offset/kind metadata first, then those same nodes parse
+and cache richer selector/value/prelude objects only when a compile stage
+demands them.
 
 ```ts
 Ruleset {
@@ -1766,22 +1787,25 @@ parsed slots:
 ```ts
 interface Declaration {
   name: string | Interpolated;
-  value: (RawSegment | string | Node)[];
+  value: (string | Node)[];
+  valueOffsets?: Uint32Array | number[];
+  valueKinds?: Uint16Array | ValueKind[];
   important: boolean;
 }
 ```
 
-For the cheapest path, render can write selector strings or ranges, declaration
-name strings or ranges, declaration value segments, and simple at-rule preludes
-directly. Eval can treat literal raw segments as scalar payloads without
-manufacturing `Any` wrappers until a feature needs node semantics. A field or
-segment should JIT-parse only when demanded by a feature that needs richer
-meaning: variable/reference resolution, arithmetic, function calls, selector
-nesting/ampersand resolution, `:extend()`, interpolation, plugin/visitor access
-to typed selector/value nodes, detailed diagnostics, or source map detail beyond
-the stored source identity. Put differently: scanner-first does not mean
-"create cheaper core AST nodes sooner"; it means "let the core node itself
-start raw and progressively enhance its fields."
+For the cheapest path, render can write selector strings, declaration name
+strings, declaration value string segments, and simple at-rule prelude strings
+directly. Offsets/ranges live in compact metadata, not in wrapper nodes
+around those strings. Eval can treat literal string segments as scalar payloads
+without manufacturing `Any` wrappers until a feature needs node semantics. A
+field or segment should JIT-parse only when demanded by a feature that needs
+richer meaning: variable/reference resolution, arithmetic, function calls,
+selector nesting/ampersand resolution, `:extend()`, interpolation,
+plugin/visitor access to typed selector/value nodes, detailed diagnostics, or
+source map detail beyond the stored source identity. Put differently:
+scanner-first does not mean "create cheaper core AST nodes sooner"; it means
+"let the core node itself start raw and progressively enhance its fields."
 
 The progressive fields should be single-owner caches, not adapter outputs.
 When a segment is parsed, the parsed node replaces or annotates that segment on
@@ -1842,18 +1866,19 @@ storage.
     use `.value`/`childKeys = ['value']`; old `items`/`components` names are
     not reintroduced. `Rules.rules` remains the semantic body contract for
     rules-bearing containers, and scanner-first structural parsing may make
-    that body a mixed raw-or-node segment stream before later promotion.
+    that body a mixed string-or-node segment stream before later promotion.
     `Declaration.valueNode` is not sacred: the next prototype should evaluate
-    `Declaration { name, value: (RawSegment | string | Node)[], important }` as
-    the cheap progressive shape instead of preserving the old
-    full-payload/value-node split.
+    `Declaration { name, value: (string | Node)[], important }` plus compact
+    offset/kind metadata (`valueOffsets`/`valueKinds`, a packed side table, or a
+    measured equivalent) as the cheap progressive shape instead of preserving the
+    old full-payload/value-node split.
 - [x] Prototype a `Rules` wrapper reduction design: determine whether nested
   `Ruleset`/`AtRule`/`Mixin` can inherit rules-container behavior so their
   `.rules` field is the inherited body surface instead of a nested `Rules` node.
-  The body may be a progressive raw-segment/string/node stream at structural
-  parse time and should promote only demanded segments while preserving scope
-  frames, lookup, extend, import/reference boundaries, render ordering, and
-  parent/source ownership.
+  The body may be a progressive string/node stream plus offset/kind metadata at
+  structural parse time and should promote only demanded segments while
+  preserving scope frames, lookup, extend, import/reference boundaries, render
+  ordering, and parent/source ownership.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   scanner-native materialization, selected-island adapter parsing, fallback
   full-tree parsing, or the existing parser path.
@@ -1888,14 +1913,15 @@ storage.
   can be reasoned about before implementing more JIT parsing.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
   nodes that carry raw-or-parsed selector/name/value/prelude payloads plus
-  stable source identity, render/evaluate simple raw segments directly, and
+  stable source identity, render/evaluate simple string segments directly, and
   JIT-parse individual fields/segments onto the same node only when
   eval/render/visitor/plugin behavior requires richer semantics.
 - [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `{ name: "color", value: ["blue"], important: false }`, render
-  from those string segments, and assert no selector/value child nodes are
-  created until a typed accessor or richer feature requests them.
+  from those string segments, maintain per-field/per-segment offsets separately,
+  and assert no selector/value child nodes are created until a typed accessor or
+  richer feature requests them.
 - [ ] Structural-fed prototype: add scanner-native Less variable-reference
   materialization so plain Less variable declarations and reads can run without
   canonical fallback.

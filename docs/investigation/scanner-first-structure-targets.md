@@ -4,13 +4,13 @@ This file is a seed corpus for deciding the cheapest parser-ready shape that can
 still render, evaluate, and JIT-parse correctly. These are targets, not frozen
 AST contracts. The preferred implementation direction is progressively enhanced
 core nodes: normal `Ruleset`, `Declaration`, `AtRule`, and rules-container nodes
-start with raw field payloads and stable source identity, then parse/cache richer
-field payloads only when demanded.
+start with literal string payloads plus offset/kind metadata, then parse/cache
+richer field payloads only when demanded.
 
 Each target separates:
 
-- cheap structure: strings, child lists, coarse kind/classification, and source
-  identity;
+- cheap structure: strings, child lists, coarse kind/classification, and compact
+  source-offset metadata;
 - direct behavior: what render/eval can do without deeper parsing;
 - JIT triggers: conditions that require field-level parsing or richer semantic
   objects.
@@ -29,12 +29,12 @@ storage. `StructuralDeclaration` mirrors the first implementation candidate,
 but `StructuralRule` is only a shorthand for "an existing core node once that
 body segment has been promoted." Fields like `selector`, `prelude`, `sourceRef`,
 and `valueKind` are assertion facts/placeholders until the matching core-node
-prototype proves its storage. String literals in examples may be represented by
-cheap offset-backed segments instead of eager strings.
+prototype proves its storage. `OffsetKindRef` stands in for compact offset/kind
+metadata such as `valueOffsets`/`valueKinds`, a packed side table, or a measured
+equivalent; it is not a wrapper node around every string.
 
 ```ts
-type SourceRef = unknown; // final storage deliberately unspecified
-type RawSegment = { start: number; end: number; kind: string }; // illustrative
+type OffsetKindRef = unknown; // maps node fields/segment indexes to offsets/kinds
 type Node = unknown; // existing core node when a segment is already parsed
 type Interpolated = unknown; // existing core interpolated name/value node
 
@@ -42,15 +42,17 @@ type StructuralRuleset = {
   kind: 'ruleset';
   selector: string;
   selectorKind: 'simple' | 'compound' | 'list' | 'complex' | 'unknown';
-  sourceRef: SourceRef;
-  rules: (RawSegment | string | StructuralRule)[];
+  sourceRef: OffsetKindRef;
+  rules: (string | StructuralRule)[];
 };
 
 type StructuralDeclaration = {
   kind: 'declaration';
   name: string | Interpolated;
   nameKind: 'property' | 'custom-property' | 'less-variable' | 'interpolated';
-  value: (RawSegment | string | Node)[];
+  value: (string | Node)[];
+  valueOffsets?: OffsetKindRef;
+  valueKinds?: OffsetKindRef;
   valueKind:
     | 'literal'
     | 'reference'
@@ -59,7 +61,7 @@ type StructuralDeclaration = {
     | 'custom-property-raw'
     | 'unknown';
   important: boolean;
-  sourceRef: SourceRef;
+  sourceRef: OffsetKindRef;
 };
 
 type StructuralAtRule = {
@@ -67,8 +69,8 @@ type StructuralAtRule = {
   name: string;
   prelude: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
-  sourceRef: SourceRef;
-  rules: (RawSegment | string | StructuralRule)[];
+  sourceRef: OffsetKindRef;
+  rules: (string | StructuralRule)[];
 };
 
 type StructuralAtRuleStatement = {
@@ -76,7 +78,7 @@ type StructuralAtRuleStatement = {
   name: string;
   prelude: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
-  sourceRef: SourceRef;
+  sourceRef: OffsetKindRef;
 };
 
 type StructuralRule =
@@ -111,7 +113,7 @@ Ruleset {
 }
 ```
 
-Direct behavior: render selector, property name, and literal value as strings.
+Direct behavior: render selector, property name, and literal value from strings.
 
 JIT triggers: selector visitor, source-map detail beyond stored source identity,
 or a plugin requesting typed selector/value nodes.
@@ -326,8 +328,8 @@ surface for literal values.
 ```
 
 Target structure: declaration value `@brand` should remain a single string
-segment with `valueKind: "reference"`; it should not eagerly become a full
-value AST.
+segment with `valueKind: "reference"` plus offset/kind metadata; it should not
+eagerly become a full value AST.
 
 Direct behavior: eval needs a cheap reference lookup against structural
 variable bindings. If the referenced value is literal, render the literal
@@ -496,10 +498,10 @@ otherwise produce no concrete selector. It should not become a synthetic ruleset
 that later serializes `&`.
 
 Direct behavior: create scope isolation and evaluate child raw-field rules in
-that scope. Its `.rules` body may start as a mixed raw-segment/string/node
-stream at structural parse time, promoting only demanded body segments. The
-block itself should not serialize braces when emitted directly as a
-rules-container node.
+that scope. Its `.rules` body may start as a mixed string/node stream with
+offset/kind metadata at structural parse time, promoting only demanded body
+segments. The block itself should not serialize braces when emitted directly as
+a rules-container node.
 
 JIT triggers: non-trivial parent selector merging, guarded/control semantics,
 or visitor access to a typed selector node for the original `&` text.
@@ -520,10 +522,10 @@ Target structure: a direct `Rules`/rules-container block with a thin body stream
 not a synthetic `&` selector and not a nested wrapper node inside `.rules`.
 
 Direct behavior: create scope isolation and evaluate child raw-field rules in
-that scope. Its `.rules` body may be a raw-segment/string/node stream during
-structural parsing; raw body segments are promoted only when a stage demands
-node semantics. The block itself should not serialize braces when emitted
-directly as a rules-container node.
+that scope. Its `.rules` body may be a string/node stream during structural
+parsing, with offsets stored separately; string body segments are promoted only
+when a stage demands node semantics. The block itself should not serialize
+braces when emitted directly as a rules-container node.
 
 JIT triggers: guard/control semantics if the same body form is later attached to
 `$if`, `$when`, loops, or mixins.
@@ -539,12 +541,15 @@ Before a target graduates into an automated structure corpus case:
   identity availability, not the exact source-identity representation;
 - assert no legacy parser execution during the structural parse;
 - assert no field-level JIT parse until the target's listed trigger is invoked;
-- assert raw field/body segments can be stored as cheap offset-backed records
-  into the source, with eager strings allowed only when measurement supports
-  them;
-- assert raw `.rules` segments preserve ordering, source identity, and renderable
-  boundaries without reparsing adjacent body text merely so traversal can walk
-  the body;
+- assert selector, declaration-name, at-rule-prelude, value-segment, and body
+  strings have cheap offset/kind metadata by owning node/field/segment index
+  where diagnostics, JIT parsing, source maps, or fast kind checks may need it;
+- compare candidate metadata shapes before freezing storage:
+  `valueOffsets`/`valueKinds` parallel arrays, a packed side table, or another
+  lower-allocation equivalent;
+- assert raw `.rules` string segments preserve ordering, source identity, and
+  renderable boundaries without reparsing adjacent body text merely so traversal
+  can walk the body;
 - assert triggered JIT parsing caches onto the owning core node and does not
   create repeated adapter-owned core subtrees for the same field/cache key;
 - assert segment promotion replaces or annotates only the demanded field/body
