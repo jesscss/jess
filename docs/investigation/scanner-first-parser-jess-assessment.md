@@ -1926,9 +1926,11 @@ storage.
   including ordinary nested rules, simple root `@layer` blocks with ordinary
   rule bodies, root `@supports` blocks with a single scanner-native declaration
   condition, root `@charset` statement at-rules with scanner-native quoted
-  preludes, and simple already-seen Less variable declaration/reference token
-  detection with zero legacy island parser executions. Hoisted/lazy variable
-  references, statement-form imports, non-`@media`/root-`@layer`/
+  preludes, CSS-preserved root `@import` statements with quoted CSS paths or
+  quoted `url(...)` preludes, and simple already-seen Less variable
+  declaration/reference token detection with zero legacy island parser
+  executions. Hoisted/lazy variable references, Less-resolving imports, Less
+  import options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
   root-`@supports` block at-rule families, pseudo/attribute/interpolated
   selectors, and richer nested at-rule bodies remain canonical fallbacks until
   their progressive materializers are proven.
@@ -2080,9 +2082,14 @@ storage.
     nodes during direct render or existing registration/import scanning. The
     structural-fed Less prototype emits that raw statement node for the covered
     root `@charset` subset and records zero legacy island parser executions.
-    Statement-form `@import` is intentionally still a canonical fallback because
-    import/reference ordering and file-resolution semantics are not proven in
-    the cheap path.
+  - [x] Extended the raw-field `AtRuleStatement` proof to CSS-preserved root
+    `@import` statements whose prelude is a quoted path or quoted `url(...)`
+    plus optional media text. These render through the structural-fed Less path
+    with zero legacy island parser executions and serialize with `rawName` /
+    `rawPrelude` instead of canonical `Any` header children. Less import
+    options, Less-resolving imports, and raw HTTP `url(...)` imports still fall
+    back canonically until import resolution and URL/comment ownership are
+    proven in the cheap path.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both

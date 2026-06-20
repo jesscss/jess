@@ -312,7 +312,11 @@ building prelude ASTs.
 JIT triggers: import resolution, charset diagnostics, media-query tooling, or a
 visitor requesting typed statement-prelude nodes.
 
-Current status: statement-form at-rules are a first-wave corpus gap.
+Current status: structural-fed prototype handles root `@charset` and
+CSS-preserved `@import` statements whose prelude is a quoted path or quoted
+`url(...)` plus optional media text. Less import options, Less-resolving imports,
+and raw HTTP `url(...)` imports still fall back canonically until import
+resolution and URL/comment ownership are proven in the cheap path.
 
 ## Less Targets
 

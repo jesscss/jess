@@ -638,6 +638,23 @@ describe('progressive scanner-first proof nodes', () => {
     expect(node.rawPrelude).toBe('"UTF-8"');
   });
 
+  test('renders raw-field core import statements without name or prelude child nodes', () => {
+    const node = atrulestatement({
+      name: '@import',
+      prelude: '"theme.css" screen'
+    });
+
+    expect(node.toTrimmedString()).toBe('@import "theme.css" screen;');
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@import');
+    expect(node.prelude).toBeUndefined();
+    expect(node.rawPrelude).toBe('"theme.css" screen');
+    expect(serializeTypes(node).trim()).toBe(`(AtRuleStatement
+  rawName: '@import'
+  rawPrelude: '"theme.css" screen'
+)`);
+  });
+
   test('materializes raw-field core declarations only when semantic registration asks', () => {
     const context = new Context();
     const declaration = rawdecl({

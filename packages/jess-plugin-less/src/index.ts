@@ -357,9 +357,19 @@ export class LessPlugin extends AbstractPlugin {
         child.kind !== 'rule'
         && child.kind !== 'at-rule'
         && child.kind !== 'at-rule-statement'
+        && child.kind !== 'import'
         && child.kind !== 'variable-declaration'
       ) {
         return fallback(`unsupported root node ${child.kind}`);
+      }
+      if (child.kind === 'import') {
+        const result = buildStructuralFedImportStatement(plan, child, context);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        progressiveNodes += result.progressiveNodes ?? 0;
+        continue;
       }
       if (child.kind === 'at-rule-statement') {
         const result = buildStructuralFedAtRuleStatement(plan, child, ownerIslands, context);
@@ -1058,6 +1068,28 @@ function buildStructuralFedAtRuleStatement(
   };
 }
 
+function buildStructuralFedImportStatement(
+  plan: IslandParsePlan,
+  child: StructuralStatementNode,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const name = structuralFieldText(plan.document, child, 'name', 'import-name');
+  if (name !== '@import') {
+    return { reason: 'import statement metadata is missing from structural field table' };
+  }
+  const prelude = structuralFieldText(plan.document, child, 'prelude', 'prelude');
+  if (!prelude || !isScannerNativeCssImportPrelude(prelude)) {
+    return { reason: 'import statement prelude is outside the scanner-native structural-fed subset' };
+  }
+  return {
+    node: new AtRuleStatement({
+      name,
+      prelude
+    }, undefined, locationFromRange(plan.document, child.start, child.end), context),
+    progressiveNodes: 1
+  };
+}
+
 function validateStructuralFedDeclaration(
   document: StructuralDocument,
   child: StructuralStatementNode,
@@ -1522,6 +1554,10 @@ const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
 const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
+const QUOTED_IMPORT_PATH_PATTERN =
+  /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;
+const URL_IMPORT_PATH_PATTERN =
+  /^url\([ \t]*(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')[ \t]*\)(?:[ \t]+.+)?$/u;
 const SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE =
   String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)`;
 const SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE =
@@ -1548,6 +1584,39 @@ function isScannerNativeAtRulePrelude(atRuleName: string | undefined, preludeTex
     return RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN.test(preludeText);
   }
   return SIMPLE_LITERAL_VALUE_PATTERN.test(preludeText);
+}
+
+function isCssImportPath(pathText: string): boolean {
+  const lower = pathText.toLowerCase();
+  return /\.css(?:[?#].*)?$/u.test(lower)
+    || lower.startsWith('http://')
+    || lower.startsWith('https://')
+    || lower.startsWith('//');
+}
+
+function scannerNativeCssImportPath(preludeText: string): string | undefined {
+  const quoted = QUOTED_IMPORT_PATH_PATTERN.exec(preludeText);
+  if (quoted?.groups) {
+    return quoted.groups.double ?? quoted.groups.single;
+  }
+  const url = URL_IMPORT_PATH_PATTERN.exec(preludeText);
+  if (url?.groups) {
+    return url.groups.double ?? url.groups.single;
+  }
+  return undefined;
+}
+
+function isScannerNativeCssImportPrelude(preludeText: string): boolean {
+  if (
+    MULTILINE_VALUE_PATTERN.test(preludeText)
+    || RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(preludeText)
+    || preludeText.includes('/*')
+    || preludeText.trimStart().startsWith('(')
+  ) {
+    return false;
+  }
+  const pathText = scannerNativeCssImportPath(preludeText);
+  return pathText !== undefined && isCssImportPath(pathText);
 }
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {

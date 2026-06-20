@@ -1425,6 +1425,59 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'"UTF-8"\')');
   });
 
+  it('feeds root CSS @import statements through structural parse', async () => {
+    const cases = [
+      {
+        source: '@import "theme.css" screen;\n.a { color: blue; }\n',
+        rawPrelude: '"theme.css" screen'
+      },
+      {
+        source: '@import url("https://cdn.example.com/theme.css") screen;\n.a { color: blue; }\n',
+        rawPrelude: 'url("https://cdn.example.com/theme.css") screen'
+      },
+      {
+        source: '@import "//cdn.example.com/theme.css";\n.a { color: blue; }\n',
+        rawPrelude: '"//cdn.example.com/theme.css"'
+      }
+    ];
+
+    for (const { source, rawPrelude } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain('@import');
+      expect(rendered).toContain('color: blue');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 3,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/css-import.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const statement = parseResult.tree!.rules[0];
+      const types = serializeRuntimeTypes(statement);
+      expect(types).toContain('(AtRuleStatement');
+      expect(types).toContain('rawName: \'@import\'');
+      expect(statement.rawPrelude).toBe(rawPrelude);
+      expect(types).toContain('rawPrelude: ');
+      expect(types).not.toContain('name: (Any \'@import\')');
+      expect(types).not.toContain('prelude: (Any');
+    }
+  });
+
   it('keeps duplicate @charset suppression on the structural-fed statement path', async () => {
     const source = '@charset "UTF-8";\n@charset "ISO-8859-1";\n.a { color: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -1444,6 +1497,75 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
       progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for import statements with Less import options', async () => {
+    const source = '@import (css) "theme.less";\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'import statement prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for raw HTTP url imports until url and Less line-comment ownership is proven', async () => {
+    const source = '@import url(https://cdn.example.com/theme.css) screen;\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'structural diagnostics are present',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for raw url imports outside the quoted CSS-preserved subset', async () => {
+    const source = '@import url(theme.css) screen;\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'import statement prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
