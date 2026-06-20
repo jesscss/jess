@@ -575,5 +575,8 @@ The first executable structure-target proof currently lives in
 without eager field materialization`. That test is intentionally small: it
 parses source through the structural-fed Less path, compares render output to
 the current compiler, serializes the resulting raw-field core tree, and asserts
-zero requested islands / zero legacy parser executions. Add new target rows
-there before widening a target's status in this document.
+zero requested islands / zero legacy parser executions. It also asserts the
+parser-side packed `FieldRangeTable` maps selector, declaration-name, and value
+fields back to the same raw strings. That proves cheap field metadata exists for
+these targets without blessing a final core-side metadata API. Add new target
+rows there before widening a target's status in this document.

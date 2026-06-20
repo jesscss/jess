@@ -6,7 +6,16 @@ import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { serializeTypes as serializeRuntimeTypes } from '@jesscss/core';
 import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
-import { createLanguageProfile, parseStructure, type StructuralContainerNode } from '../../parser/src/index.js';
+import {
+  createLanguageProfile,
+  parseStructure,
+  type FieldRangeKind,
+  type FieldRangeName,
+  type StructuralContainerNode,
+  type StructuralDocument,
+  type StructuralNode,
+  type StructuralNodeKind
+} from '../../parser/src/index.js';
 
 const tempDirs: string[] = [];
 
@@ -77,13 +86,42 @@ type ThinStructureTarget = {
   renderedSnippets: string[];
   rawTypeSnippets: string[];
   forbiddenTypeSnippets: string[];
+  fieldRangeFacts: ThinFieldRangeFact[];
   progressiveNodes: number;
+};
+
+type ThinFieldRangeFact = {
+  nodeKind: StructuralNodeKind;
+  field: FieldRangeName;
+  kind: FieldRangeKind;
+  text: string;
 };
 
 function counter(
   entries: Array<readonly [string, number | ReturnType<typeof expect.any>]>
 ): Record<string, number | ReturnType<typeof expect.any>> {
   return Object.fromEntries(entries);
+}
+
+function collectFieldRangeFacts(document: StructuralDocument): ThinFieldRangeFact[] {
+  const facts: ThinFieldRangeFact[] = [];
+  const visit = (node: StructuralNode) => {
+    for (const range of document.fieldRanges.rangesFor(node)) {
+      facts.push({
+        nodeKind: node.kind,
+        field: range.field,
+        kind: range.kind,
+        text: document.source.slice(range.start, range.end)
+      });
+    }
+    if ('children' in node) {
+      for (const child of node.children) {
+        visit(child);
+      }
+    }
+  };
+  visit(document.root);
+  return facts;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -580,6 +618,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
           'name: (Any \'color\')',
           'valueNode: (Any \'blue\')'
         ],
+        fieldRangeFacts: [
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.a' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
+        ],
         progressiveNodes: 2
       },
       {
@@ -599,6 +642,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
           'valueNode: (Any \'1px\')',
           'valueNode: (Any \'blue\')'
         ],
+        fieldRangeFacts: [
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.a' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'width' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: '1px' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
+        ],
         progressiveNodes: 3
       },
       {
@@ -615,6 +665,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
           '(BasicSelector',
           'valueNode: (Any \'blue\')',
           'valueNode: (Any \'1px\')'
+        ],
+        fieldRangeFacts: [
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.a' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' },
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.b' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'width' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: '1px' }
         ],
         progressiveNodes: 4
       },
@@ -633,6 +691,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
           '(BasicSelector',
           'name: (Any \'--raw\')',
           'valueNode: (Any \'{ token: "}"; }\')'
+        ],
+        fieldRangeFacts: [
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.a' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: '--raw' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: '{ token: "}"; }' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
         progressiveNodes: 3
       }
@@ -672,6 +737,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       for (const snippet of target.forbiddenTypeSnippets) {
         expect(types, target.name).not.toContain(snippet);
       }
+
+      const structuralDocument = probePlugin.structureParse(`/virtual/thin-${target.name}.less`, target.source);
+      expect(collectFieldRangeFacts(structuralDocument), target.name)
+        .toEqual(expect.arrayContaining(target.fieldRangeFacts));
     }
   });
 
