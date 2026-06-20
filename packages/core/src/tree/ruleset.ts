@@ -136,7 +136,10 @@ function splitRawSelectorList(value: string): string[] | undefined {
     const selector = branch.trim();
     if (
       selector.length === 0
-      || (!canMaterializeRawSimpleSelector(selector) && splitRawCompoundSelector(selector) === undefined)
+      || (
+        !isMaterializableRawSelectorBranch(selector)
+        && splitRawDescendantComplexSelector(selector) === undefined
+      )
     ) {
       return undefined;
     }
@@ -145,10 +148,31 @@ function splitRawSelectorList(value: string): string[] | undefined {
   return selectors.length > 1 ? selectors : undefined;
 }
 
+function isMaterializableRawSelectorBranch(value: string): boolean {
+  return canMaterializeRawSimpleSelector(value) || splitRawCompoundSelector(value) !== undefined;
+}
+
+function splitRawDescendantComplexSelector(value: string): string[] | undefined {
+  if (!/[ \t]/u.test(value) || /[\r\n]/u.test(value)) {
+    return undefined;
+  }
+  const branches = value.trim().split(/[ \t]+/u);
+  if (branches.length < 2) {
+    return undefined;
+  }
+  for (const branch of branches) {
+    if (!isMaterializableRawSelectorBranch(branch)) {
+      return undefined;
+    }
+  }
+  return branches;
+}
+
 function canMaterializeRawSelector(value: string): boolean {
   return (
     canMaterializeRawSimpleSelector(value)
     || splitRawCompoundSelector(value) !== undefined
+    || splitRawDescendantComplexSelector(value) !== undefined
     || splitRawSelectorList(value) !== undefined
   );
 }
@@ -299,8 +323,10 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     const selectorList = splitRawSelectorList(rawSelector);
     if (selectorList) {
       selector = SelectorList.create(
-        selectorList.map(part => this.materializeRawSelectorBranch(part))
+        selectorList.map(part => this.materializeRawSelectorListBranch(part))
       ).inherit(this);
+    } else if (splitRawDescendantComplexSelector(rawSelector)) {
+      selector = this.materializeRawDescendantComplexSelector(rawSelector).inherit(this);
     } else {
       selector = this.materializeRawSelectorBranch(rawSelector);
     }
@@ -311,7 +337,13 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     return selector;
   }
 
-  private materializeRawSelectorBranch(rawSelector: string): Selector {
+  private materializeRawSelectorListBranch(rawSelector: string): Selector {
+    return splitRawDescendantComplexSelector(rawSelector)
+      ? this.materializeRawDescendantComplexSelector(rawSelector)
+      : this.materializeRawSelectorBranch(rawSelector);
+  }
+
+  private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
     if (canMaterializeRawSimpleSelector(rawSelector)) {
       return new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
     }
@@ -326,6 +358,21 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       components.push(component);
     }
     return CompoundSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
+  }
+
+  private materializeRawDescendantComplexSelector(rawSelector: string): ComplexSelector {
+    const parts = splitRawDescendantComplexSelector(rawSelector);
+    if (!parts) {
+      throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
+    }
+    const components: ComplexSelectorComponent[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        components.push(Combinator.create(' '));
+      }
+      components.push(this.materializeRawSelectorBranch(parts[i]!));
+    }
+    return ComplexSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
   private deriveRuleset(

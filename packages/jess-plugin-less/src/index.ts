@@ -886,7 +886,7 @@ function buildStructuralFedRuleset(
   allowAtRules = true
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
-  const selectorToken = readScannerNativeSimpleSelectorToken(plan, rule, selectorIsland);
+  const selectorToken = readScannerNativeSelectorToken(plan, rule, selectorIsland);
   if (!selectorToken) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
@@ -1244,7 +1244,7 @@ function structuralScannerNativeVariableDeclarationValueToken(
 }
 
 type ScannerNativeSelectorToken = {
-  kind: 'basic-selector';
+  kind: 'selector';
   start: number;
   end: number;
   text: string;
@@ -1265,7 +1265,7 @@ type ScannerNativeValueToken = {
   important?: string;
 };
 
-function readScannerNativeSimpleSelectorToken(
+function readScannerNativeSelectorToken(
   plan: IslandParsePlan,
   owner: StructuralContainerNode,
   island?: RawIslandNode
@@ -1279,7 +1279,7 @@ function readScannerNativeSimpleSelectorToken(
     return undefined;
   }
   return {
-    kind: 'basic-selector',
+    kind: 'selector',
     start: range.start,
     end: range.end,
     text: selectorText
@@ -1522,8 +1522,12 @@ const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
 const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
+const SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE =
+  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)`;
+const SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE =
+  String.raw`${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}(?:[ \t]+${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE})*`;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
-  /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)(?:[ \t]*,[ \t]*(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*))*$/u;
+  new RegExp(String.raw`^${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {

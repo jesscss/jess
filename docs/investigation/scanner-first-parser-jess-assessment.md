@@ -1753,10 +1753,12 @@ The current prototype adds a hidden structural-fed path for a deliberately tiny
 complete path: ordinary rules whose bodies contain ordinary declarations and
 nested ordinary rules where selectors and values are scanner-native tokens.
 That now includes simple selectors, adjacent basic compound selectors, and
-comma-separated selector lists whose branches are still in that same cheap
-selector subset. The scanner/materializer layer stores token text, kind, and
-source spans; it does not treat current canonical selector/value nodes as the
-parser's internal representation. The current compiler prototype constructs
+descendant-only complex selectors whose parts are still in that same cheap
+selector subset, plus comma-separated selector lists whose branches are simple,
+compound, or descendant-only complex selectors in that subset. The
+scanner/materializer layer stores token text, kind, and source spans; it does
+not treat current canonical selector/value nodes as the parser's internal
+representation. The current compiler prototype constructs
 experimental progressive core nodes for `Ruleset`, `Declaration`, and a narrow
 root `@media` block in that literal subset, so covered selector/declaration/
 prelude strings render without `Any` value wrappers, selector AST nodes, or
@@ -1913,20 +1915,22 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selectors, adjacent basic
-  compound selectors, comma-separated selector lists whose branches are still in
-  that scanner-native selector subset, simple and flat literal declaration
-  values, conservative quoted/url declaration and Less variable values,
-  conservative raw custom property declarations, exact `!important` declaration
-  flags on non-custom values, simple root or ruleset-local `@media` prelude/body
-  shape including ordinary nested rules, simple root `@layer` blocks with
-  ordinary rule bodies, root `@supports` blocks with a single scanner-native
-  declaration condition, root `@charset` statement at-rules with scanner-native
-  quoted preludes, and simple already-seen Less variable declaration/reference
-  token detection with zero legacy island parser executions. Hoisted/lazy
-  variable references, statement-form imports, non-`@media`/root-`@layer`/
-  root-`@supports` block at-rule families, complex selector-list branches,
-  interpolated selectors, and richer nested at-rule bodies remain canonical
-  fallbacks until their progressive materializers are proven.
+  compound selectors, descendant-only complex selectors whose parts stay in the
+  same scanner-native subset, comma-separated selector lists whose branches are
+  simple/compound/descendant-only complex selectors in that subset, simple and
+  flat literal declaration values, conservative quoted/url declaration and Less
+  variable values, conservative raw custom property declarations, exact
+  `!important` declaration flags on non-custom values, simple root or
+  ruleset-local `@media` prelude/body shape including ordinary nested rules,
+  simple root `@layer` blocks with ordinary rule bodies, root `@supports` blocks
+  with a single scanner-native declaration condition, root `@charset` statement
+  at-rules with scanner-native quoted preludes, and simple already-seen Less
+  variable declaration/reference token detection with zero legacy island parser
+  executions. Hoisted/lazy variable references, statement-form imports,
+  non-`@media`/root-`@layer`/root-`@supports` block at-rule families,
+  non-descendant combinators, pseudo/attribute/interpolated selectors, and
+  richer nested at-rule bodies remain canonical fallbacks until their
+  progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -2051,6 +2055,13 @@ storage.
     render still uses the raw selector string, while semantic registration/eval
     materializes one canonical `SelectorList` containing branch selector nodes
     for the full raw list.
+  - [x] Extended that raw-field `Ruleset` proof to descendant-only complex
+    selectors and selector-list branches whose parts are already in the
+    scanner-native simple/adjacent compound selector subset, such as `.a .b`,
+    `button .icon.active`, and `.a .b, .c`: direct render still uses the raw
+    selector string, while semantic registration/eval materializes canonical
+    `ComplexSelector` / `SelectorList` nodes only when selector semantics are
+    demanded.
   - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
     constructor can store raw scanner-native at-keyword/prelude strings, renders
     and serializes them as `rawName` / `rawPrelude` without canonical header
@@ -2095,9 +2106,10 @@ storage.
     materializer for the requested field/span.
   - Current limit: raw `Ruleset` semantic materialization only covers the
     scanner-native simple selector subset (`*`, tag, `.class`, `#id`), adjacent
-    basic compound selectors, and comma-separated lists whose branches stay
-    inside that subset. Complex selector-list branches, interpolation, nested
-    selectors, and `:extend()` still need a real selector materializer or
+    basic compound selectors, descendant-only complex selectors made from those
+    parts, and comma-separated lists whose branches stay inside those shapes.
+    Non-descendant combinators, pseudo selectors, attributes, interpolation,
+    nested selectors, and `:extend()` still need a real selector materializer or
     canonical fallback before they count as completed scanner-first selector
     support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference

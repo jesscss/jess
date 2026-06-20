@@ -220,10 +220,11 @@ JIT triggers: selector-list splitting beyond scanner-native branches,
 selector component positions.
 
 Current status: structural-fed prototype handles comma-separated lists whose
-branches are already in the scanner-native selector subset, such as `.a, .b`
-and `.a, button.primary`, without island parser requests. Complex selector
-branches, interpolation, nested selectors, and `:extend()` remain outside this
-proof.
+branches are already in the scanner-native selector subset, such as `.a, .b`,
+`.a, button.primary`, and `.a .b, .c`, without island parser requests.
+Descendant-only complex branches whose parts stay in the cheap subset are
+covered; non-descendant combinators, pseudos, attributes, comments,
+interpolation, nested selectors, and `:extend()` remain outside this proof.
 
 ### CSS-005 Nested Ampersand Selector
 
@@ -243,7 +244,11 @@ parent merging.
 
 JIT triggers: `&` in selector text.
 
-Current status: first-wave corpus gap.
+Current status: structural-fed prototype handles descendant-only chains whose
+parts are already in the scanner-native simple/adjacent compound selector
+subset, such as `.a .b` and `button .icon.active`, without island parser
+requests. Non-descendant combinators, pseudos, attributes, comments,
+interpolation, nested selectors, and `:extend()` remain outside this proof.
 
 ### CSS-006 Custom Property Raw Value
 

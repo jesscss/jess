@@ -1077,6 +1077,47 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds descendant complex selectors through structural parse', async () => {
+    const cases = ['.a .b', 'button .icon.active', '.a .b, .c'];
+
+    for (const selector of cases) {
+      const source = `${selector} { color: blue; }\n`;
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain('color: blue');
+      expect(probePlugin.lastScannerFirstPrototype?.fallbackReason).toBeUndefined();
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/descendant-selector.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('(Ruleset');
+      expect(types).toContain(`rawSelector: '${selector}'`);
+      expect(types).not.toContain('(SelectorList');
+      expect(types).not.toContain('(ComplexSelector');
+      expect(types).not.toContain('(CompoundSelector');
+      expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('(Combinator');
+    }
+  });
+
   it('feeds ruleset-local Less variable declarations and later reads through structural parse', async () => {
     const source = '.a { @brand: blue; color: @brand; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

@@ -469,9 +469,75 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
+  test('materializes raw-field descendant complex selectors only when semantic registration asks', () => {
+    const context = new Context();
+    const node = ruleset({
+      selector: '.a button.primary',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('.a button.primary {\n  color: blue;\n}\n');
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('.a button.primary');
+    expect(serializeTypes(node)).toContain('rawSelector: \'.a button.primary\'');
+    void node.prepareRegistration(context);
+    expect(node.rawSelector).toBeUndefined();
+    const selector = node.selector;
+    if (!selector || !isNode(selector, N.ComplexSelector)) {
+      throw new Error('Expected raw descendant selector materialization to create a ComplexSelector.');
+    }
+    expect(selector.parent).toBe(node);
+    expect(selector.value[0]!.parent).toBe(selector);
+    expect(selector.value[1]!.parent).toBe(selector);
+    expect(selector.value[2]!.parent).toBe(selector);
+    const types = serializeTypes(node);
+    expect(types).toContain('(ComplexSelector');
+    expect(types).toContain('(Combinator \' \')');
+    expect(types).toContain('(BasicSelector \'.a\')');
+    expect(types).toContain('(CompoundSelector');
+    expect(types).toContain('(BasicSelector \'button\')');
+    expect(types).toContain('(BasicSelector \'.primary\')');
+    expect(types).not.toContain('rawSelector');
+  });
+
+  test('materializes raw-field selector lists with descendant branches only when semantic registration asks', () => {
+    const context = new Context();
+    const node = ruleset({
+      selector: '.a .b, .c',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('.a .b, .c {\n  color: blue;\n}\n');
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('.a .b, .c');
+    void node.prepareRegistration(context);
+    const selector = node.selector;
+    if (!selector || !isNode(selector, N.SelectorList)) {
+      throw new Error('Expected raw selector list materialization to create a SelectorList.');
+    }
+    expect(selector.value[0]!.parent).toBe(selector);
+    expect(selector.value[1]!.parent).toBe(selector);
+    expect(isNode(selector.value[0], N.ComplexSelector)).toBe(true);
+    const types = serializeTypes(node);
+    expect(types).toContain('(SelectorList');
+    expect(types).toContain('(ComplexSelector');
+    expect(types).toContain('(Combinator \' \')');
+    expect(types).not.toContain('rawSelector');
+  });
+
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
-      selector: '.a .b',
+      selector: '.a > .b',
       rules: []
     })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
   });
