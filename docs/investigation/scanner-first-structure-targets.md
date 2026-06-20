@@ -365,9 +365,10 @@ JIT triggers: reference accessors (`@map[key]`), variable variables (`@@name`),
 fallback behavior, missing-variable diagnostics, or visitor access to typed
 reference nodes.
 
-Current status: not complete. A temporary core `Reference` bridge did not
-resolve correctly in this prototype, so this should become a design target
-before another implementation attempt.
+Current status: structural-fed prototype handles simple literal/raw variable
+declarations and reads without creating `Reference` or value wrapper nodes.
+Alias values, accessors, dynamic names, missing-variable diagnostics, and typed
+visitor access still fall back or require later field materialization.
 
 ### LESS-003 Hoisted Variable Read
 
@@ -400,7 +401,10 @@ binding maps for files that do not need them.
 JIT triggers: dynamic names, guards, mixin scopes, or ambiguous lookup
 semantics.
 
-Current status: not complete.
+Current status: structural-fed prototype handles simple literal/raw variable
+declarations and reads hoisted within the same structural scope or inherited by
+nested ordinary rules. Dynamic names, alias values, guards, mixin scopes, and
+ambiguous lookup semantics still fall back canonically.
 
 ### LESS-004 Arithmetic
 

@@ -347,8 +347,9 @@ export class LessPlugin extends AbstractPlugin {
       return fallback('comments require canonical trivia preservation');
     }
 
+    const rootVariables = collectStructuralFedScopeVariables(plan.document, plan.document.root.children, new Map());
     const rules: Node[] = [];
-    const variables = new Map<string, ScannerNativeValueToken>();
+    const variables = rootVariables.variables;
     let progressiveNodes = 0;
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
 
@@ -788,7 +789,7 @@ function validateStructuralFedRule(
   allowLessVariables = true,
   allowAtRules = true
 ): string | undefined {
-  const localVariables = new Map(variables);
+  const { variables: localVariables } = collectStructuralFedScopeVariables(document, rule.children, variables);
   for (const child of rule.children) {
     if (child.kind === 'rule') {
       const nestedReason = validateStructuralFedRule(document, child, localVariables, allowLessVariables, allowAtRules);
@@ -902,7 +903,7 @@ function buildStructuralFedRuleset(
   }
 
   const rules: Node[] = [];
-  const localVariables = new Map(variables);
+  const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, rule.children, variables);
   let progressiveNodes = 1;
   for (const child of rule.children) {
     const builtChild = buildStructuralFedRuleChild(
@@ -932,6 +933,25 @@ function buildStructuralFedRuleset(
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),
     progressiveNodes
   };
+}
+
+function collectStructuralFedScopeVariables(
+  document: StructuralDocument,
+  children: readonly StructuralContainerNode['children'][number][],
+  inheritedVariables: ReadonlyMap<string, ScannerNativeValueToken>
+): { variables: Map<string, ScannerNativeValueToken> } {
+  const variables = new Map(inheritedVariables);
+  for (const child of children) {
+    if (child.kind !== 'variable-declaration') {
+      continue;
+    }
+    const name = structuralFieldText(document, child, 'name', 'declaration-name');
+    const valueToken = structuralScannerNativeVariableDeclarationValueToken(document, child);
+    if (name !== undefined && SIMPLE_VARIABLE_NAME_PATTERN.test(name) && valueToken) {
+      variables.set(name, valueToken);
+    }
+  }
+  return { variables };
 }
 
 function buildStructuralFedAtRule(

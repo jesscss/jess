@@ -1284,8 +1284,54 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('falls back for hoisted Less variable references until reference materialization is scanner-native', async () => {
-    const source = '.a { color: @brand; .b { border-color: @brand; } @brand: blue; }\n';
+  it('feeds hoisted Less variable references through structural parse', async () => {
+    const cases = [
+      {
+        source: '.a { color: @brand; .b { border-color: @brand; } @brand: blue; }\n',
+        expected: ['color: blue', 'border-color: blue'],
+        progressiveNodes: 5
+      },
+      {
+        source: '.a { color: @brand; @brand: blue; @brand: red; }\n',
+        expected: ['color: red'],
+        progressiveNodes: 4
+      },
+      {
+        source: '@brand: blue; .a { color: @brand; @brand: red; .b { color: @brand; } }\n',
+        expected: ['color: red'],
+        progressiveNodes: 6
+      }
+    ];
+
+    for (const { source, expected, progressiveNodes } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      for (const expectedText of expected) {
+        expect(rendered).toContain(expectedText);
+      }
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+    }
+  });
+
+  it('feeds root-level hoisted Less variable references through structural parse', async () => {
+    const source = '.a { color: @brand; }\n@brand: blue;\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -1298,12 +1344,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     expect(rendered).toBe(baseline);
     expect(rendered).toContain('color: blue');
-    expect(rendered).toContain('border-color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'Less variable reference is outside the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });

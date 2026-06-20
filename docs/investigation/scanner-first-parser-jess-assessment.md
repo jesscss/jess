@@ -1927,10 +1927,11 @@ storage.
   rule bodies, root `@supports` blocks with a single scanner-native declaration
   condition, root `@charset` statement at-rules with scanner-native quoted
   preludes, CSS-preserved root `@import` statements with quoted CSS paths or
-  quoted `url(...)` preludes, and simple already-seen Less variable
-  declaration/reference token detection with zero legacy island parser
-  executions. Hoisted/lazy variable references, Less-resolving imports, Less
-  import options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
+  quoted `url(...)` preludes, and simple Less variable declaration/reference
+  token detection for already-seen and same-scope hoisted simple literal/raw
+  values with zero legacy island parser executions. Dynamic/lazy variable
+  references that need richer Less lookup semantics, Less-resolving imports,
+  Less import options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
   root-`@supports` block at-rule families, pseudo/attribute/interpolated
   selectors, and richer nested at-rule bodies remain canonical fallbacks until
   their progressive materializers are proven.
@@ -1968,14 +1969,14 @@ storage.
     `AtRule`/prelude/value nodes.
   - [x] Third thin proof: `ProgressiveVariableDeclaration` stores invisible
     string-backed Less variable declarations while the structural-fed builder
-    resolves only already-seen simple `@ident` reads into raw declaration value
-    segments. Variable declaration values are simple literals or the same
-    conservative raw quoted/url subset used by raw declaration values in this
-    proof; alias declarations such as `@b: @a` and interpolation-like raw strings
-    fall back canonically so Less lazy lookup semantics are not frozen into
-    scanner-native strings. This proves zero `VarDeclaration`/`Reference`/value
-    wrapper nodes for the narrow path without claiming Less lazy/hoisted variable
-    semantics.
+    resolves already-seen and same-scope hoisted simple `@ident` reads into raw
+    declaration value segments. Variable declaration values are simple literals
+    or the same conservative raw quoted/url subset used by raw declaration
+    values in this proof; alias declarations such as `@b: @a` and
+    interpolation-like raw strings fall back canonically so broader Less lazy
+    lookup semantics are not frozen into scanner-native strings. This proves
+    zero `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path
+    while only claiming the bounded same-scope hoisting covered by e2e tests.
   - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
     and raw-field core `AtRule` nodes for covered root and ruleset-local
@@ -2122,12 +2123,13 @@ storage.
     need a real selector materializer or canonical fallback before they count as
     completed scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
-  materialization for plain already-seen Less variable declarations and reads
-  so they can run without canonical fallback.
-  - Current limit: references that depend on Less lazy/hoisted lookup semantics,
+  materialization for plain Less variable declarations and reads so already-seen
+  values and same-scope hoisted simple literal/raw values can run without
+  canonical fallback.
+  - Current limit: references that depend on dynamic names, alias/lazy values,
     complex variable values, interpolation, arithmetic, functions, accessors,
-    rich comma lists, comments, and variable values crossing import/reference
-    boundaries still fall back.
+    guards, mixin scopes, rich comma lists, comments, and variable values
+    crossing import/reference boundaries still fall back.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native, and support ruleset-local `@media` blocks
