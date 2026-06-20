@@ -44,11 +44,16 @@ complete only when the covered simple path proves it does not enter the
 fallback bridge, direct child scan, broad invalidation lane, or public
 materialization wrapper for that semantic case.
 
-## Core Size-Cut Target
+## Performance-First Cut Target
 
-The core cleanup target is a real deletion target, not a file-shuffling target:
-cut non-test `packages/core/src` TypeScript line count by at least 50% while
-preserving Jess/Less behavior. Current measured baseline in this worktree:
+Primary goal: make Jess/Less evaluation and rendering faster by reducing hot-path
+object creation, branch ladders, duplicate lookup/index ownership, recursive
+rediscovery, copied eval trees, helper call stacks, and metadata repair work.
+
+The 50% non-test `packages/core/src` line-count cut is a stretch goal and
+secondary pressure target. It is useful because duplicate runtime systems tend
+to be large, but it must never outrank runtime behavior, correctness, or the
+canonical-tree model. Current measured baseline in this worktree:
 
 ```txt
 55008 packages/core/src non-test TypeScript lines
@@ -77,18 +82,22 @@ Largest current files:
 1434 packages/core/src/tree/import-style.ts
 ```
 
-Rules for counting progress:
+Rules for counting secondary line-count progress:
 
+- a smaller diff that measurably or structurally removes hot-path objects,
+  branches, traversals, or duplicated state is better than a larger textual cut
+  that preserves the same runtime work;
 - moving code from one core file to another is not a cut;
 - replacing node methods with equally large service wrappers is not a cut;
 - deleting compatibility shims, duplicate lookup paths, defensive runtime
   checks, duplicate visitors/traversals, repeated serializer paths, and
-  parallel binding/index mechanisms counts only when tests preserve behavior;
+  parallel binding/index mechanisms counts only when tests preserve behavior and
+  the resulting runtime path is no heavier;
 - generated files, tests, snapshots, and docs do not count toward the source
   target;
 - every cut pass should report before/after non-test `packages/core/src` lines.
 
-High-yield lanes:
+Performance-aligned cut lanes:
 
 1. [ ] Declaration binding/direct lookup ownership: fold direct variable and
    property occurrence lookup into the declaration binding layer. Expected
@@ -114,18 +123,21 @@ High-yield lanes:
    defensive machinery that only exists to repair earlier copies. Expected cut:
    1,000-2,000 lines in `rules.ts`, `reference.ts`, and render helpers.
 
-These estimates still leave a large gap. After the first two lanes, rerun the
-line map and reassess whether smaller node files contain generated defensive
-patterns that can be deleted wholesale, not polished.
+These estimates still leave a large line-count gap. After the first two lanes,
+rerun the line map and reassess whether smaller node files contain generated
+defensive patterns that can be deleted wholesale, not polished. Do not choose
+the next lane by line savings alone; choose the lane that best reduces real
+runtime object creation, branching, and duplicated lookup/render work.
 
-Minimum proof for each line-count batch:
+Minimum proof for each performance/cut batch:
 
 - focused behavior tests for the touched semantic lane;
 - `pnpm run verify:binding-lookup-hot-paths` for lookup/binding cuts;
 - extend walk and integration tests for extend cuts;
 - `pnpm run verify:aggressive-cutting-review`;
 - `git diff --check`;
-- a fresh non-test `packages/core/src` line count.
+- a fresh non-test `packages/core/src` line count;
+- benchmark/profile evidence only when claiming measured speed.
 
 ## Active Binding Queue
 
