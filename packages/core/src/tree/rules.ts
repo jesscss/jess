@@ -180,6 +180,16 @@ function atRuleStatementNameText(node: AtRuleStatement): string {
   return String(node.rawName ?? node.name?.valueOf?.() ?? node.name ?? '').trim();
 }
 
+function atRuleNameText(node: AtRule): string {
+  if (node.rawName !== undefined) {
+    return node.rawName.trim();
+  }
+  if (node.name === undefined) {
+    throw new TypeError('AtRule requires a name.');
+  }
+  return String(node.name.valueOf()).trim();
+}
+
 function declarationNameText(node: Declaration | VarDeclaration): string | undefined {
   if (node.rawName !== undefined) {
     return node.rawName;
@@ -4499,7 +4509,7 @@ export class Rules<
 
   private _isNestableAtRuleBody(): boolean {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
-    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.name.valueOf()) : false;
+    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(atRuleNameText(parentAtRule)) : false;
   }
 
   /**

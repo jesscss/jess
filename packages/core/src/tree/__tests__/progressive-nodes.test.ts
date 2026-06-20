@@ -587,6 +587,30 @@ describe('progressive scanner-first proof nodes', () => {
     `);
   });
 
+  test('prepares raw-field rulesets under raw at-rule parents without materializing the header', () => {
+    const context = new Context();
+    const child = ruleset({
+      selector: '.a',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [child]
+    });
+
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@media');
+    expect(() => child.prepareRegistration(context)).not.toThrow();
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@media');
+  });
+
   test('materializes raw-field core at-rule headers only when semantic registration asks', () => {
     const context = new Context();
     const node = atrule({

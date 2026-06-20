@@ -103,6 +103,40 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first recursive supported at-rules inside at-rule child
+  rules.
+- Verdict: accepted as a thin scanner-fed proof, not a performance claim. The
+  Less structural-fed validator/builder now lets ordinary rules inside
+  supported `@media` / `@supports` bodies keep accepting supported at-rule
+  children. Core ruleset registration now reads a raw parent `AtRule.rawName`
+  when deciding whether a parent at-rule body is nestable, avoiding eager
+  `Any('@media')` header materialization for this raw-field path.
+- New traversal: none. The Less plugin reuses the existing recursive rule and
+  at-rule validation/build paths. Core adds one direct raw-name helper read in
+  an existing ruleset registration decision; it does not add a new walk or
+  side table lookup.
+- New node/materialization: none in production. The review script flagged one
+  test-only `new Context()` in `progressive-nodes.test.ts`; that context is the
+  existing registration fixture needed to prove a raw-field child ruleset can
+  prepare under a raw-field parent at-rule without materializing the header.
+- Render path: direct raw render still writes raw at-rule names/preludes and raw
+  declaration segments. The new e2e proof asserts equal CSS, structural-fed
+  runtime source, zero full-tree fallback, zero requested islands, zero actual
+  parses, zero promoted bytes, and serialized raw at-rule/declaration fields
+  without `BasicSelector` or `Any` value wrappers.
+- Helper/API surface: one private helper, `atRuleNameText(...)`, mirrors the
+  existing `atRuleStatementNameText(...)` helper and keeps the raw-name branch
+  local to `rules.ts`. It is not exported.
+- Metadata mutations: none added.
+- Review-flagged exception: the new `TypeError` preserves the previous
+  invariant behavior for a malformed parent `AtRule` with neither `rawName` nor
+  `name`. It is not a lookup miss, expected branch result, or routine
+  scanner-fed fallback path.
+- Evidence: focused red-to-green scanner-first e2e test; focused and full
+  `progressive-nodes.test.ts`; focused eslint for the clean touched files; core
+  build; Less plugin build; full scanner-first e2e; scanner-first Less corpus;
+  `git diff --check`; aggressive-cutting review.
+
 - Latest pass: scanner-first raw `@media` blocks inside no-argument Less mixin
   definitions.
 - Verdict: accepted as a thin proof extension, not a performance claim. The

@@ -1074,7 +1074,7 @@ function validateStructuralFedAtRule(
         child,
         localVariables,
         name !== '@layer',
-        parentKind === 'root',
+        structuralFedAtRuleChildRulesAllowAtRules(parentKind, name),
         mathMode
       );
       if (reason) {
@@ -1107,6 +1107,13 @@ function structuralFedRootDeclarationBlockPrelude(
     return 'required';
   }
   return undefined;
+}
+
+function structuralFedAtRuleChildRulesAllowAtRules(
+  parentKind: StructuralFedAtRuleParentKind,
+  name: string | undefined
+): boolean {
+  return parentKind === 'root' || name === '@media' || name === '@supports';
 }
 
 function validateStructuralFedMixinDefinition(
@@ -1407,7 +1414,7 @@ function buildStructuralFedAtRule(
         context,
         localVariables,
         name !== '@layer',
-        parentKind === 'root',
+        structuralFedAtRuleChildRulesAllowAtRules(parentKind, name),
         mathMode
       );
       if ('reason' in builtChild) {

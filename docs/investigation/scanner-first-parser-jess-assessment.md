@@ -2291,6 +2291,20 @@ storage.
     root/ruleset-local/mixin-body `@supports (property: value)` subsets only.
     Direct `@media` / simple `@supports` children inside those at-rule bodies
     are also proven when their own children stay in the supported subset.
+- [x] Structural-fed prototype: support supported at-rules nested inside
+  ordinary rules that are themselves inside supported at-rule bodies, while
+  keeping raw at-rule headers unmaterialized during ruleset registration.
+  - Proof target: `.a { @media screen { .b { @media print { .c { color:
+    blue; } } } } }` renders equal CSS through the scanner-fed path, records
+    zero full-tree fallback, zero actual parses, zero requested islands, zero
+    promoted bytes, and serializes raw at-rule names/preludes plus raw
+    declarations rather than eager selector/value wrappers. Core regression
+    coverage also proves a raw-field `Ruleset` can prepare under a raw-field
+    `AtRule` parent without materializing the at-rule header.
+  - Current limit: this proves recursion through supported `@media` /
+    `@supports` families only. Unsupported at-rule families, boolean supports
+    expressions, richer selectors/values, and declaration-block at-rules still
+    stay outside the scanner-fed subset.
 - [x] Structural-fed prototype: support simple Less variable declarations inside
   supported `@media` / `@supports` bodies so direct declarations and ordinary
   nested rules can read body-local scanner-native values without canonical
@@ -2304,9 +2318,8 @@ storage.
     variables in root declaration-block at-rules such as `@font-face`, richer
     variable values, alias/lazy references, interpolation, arithmetic beyond the
     already-proven one-step subset, reference/import semantics, boolean
-    supports expressions, nested richer `@supports`, at-rules nested inside
-    ordinary rules that are themselves inside at-rules, and other at-rule
-    families remain unproven.
+    supports expressions, nested richer `@supports`, and other at-rule families
+    remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2337,9 +2350,10 @@ storage.
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
     The comma-value, standalone block-comment, mixin-local `@media`, nested
-    `@supports`, direct nested at-rule, and at-rule-local variable proofs above
-    did not change the included-corpus counts because the relevant upstream
-    files also contain other unsupported constructs. Progressive
+    `@supports`, direct nested at-rule, recursive nested supported at-rule, and
+    at-rule-local variable proofs above did not change the included-corpus
+    counts because the relevant upstream files also contain other unsupported
+    constructs. Progressive
     render/serialize proof is covered by the dedicated thin structure-target
     tests rather than inferred from this broad upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
@@ -2350,11 +2364,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.24ms median over 20 samples, with 10,283 structural records, 5,762
+    1.95ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    10.23ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    8.64ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2378,16 +2392,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 213.88ms, structural sidecar full render
-    205.70ms across 306 probe records, selected-materialization sidecar full
-    render 240.89ms across 306 probe records with 5,295
+    current parser/eval/render 220.89ms, structural sidecar full render
+    207.46ms across 306 probe records, selected-materialization sidecar full
+    render 232.49ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 218.12ms across 198 prototype records with 21
+    structural-fed prototype 219.73ms across 198 prototype records with 21
     structural-fed records, 177 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 75 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.07x, structural sidecar 4.88x, selected
-    materialization 5.71x, and structural-fed 5.17x. These medians are gate
+    median were current 5.24x, structural sidecar 4.92x, selected
+    materialization 5.51x, and structural-fed 5.21x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an
