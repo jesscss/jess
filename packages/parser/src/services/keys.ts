@@ -2,12 +2,12 @@ import type { IslandProviderKey, ParserConfigKey } from './types.js';
 
 /** Serializes a provider key for registry lookup. */
 export function providerKeyString(key: IslandProviderKey): string {
-  return [
+  return JSON.stringify([
     key.language,
     key.islandKind,
     key.targetShape,
     stableConfigKey(key.parserConfigKey)
-  ].join('|');
+  ]);
 }
 
 /** Serializes a provider key plus source identity and span for request caches. */
@@ -17,12 +17,15 @@ export function requestCacheKey(
   start: number,
   end: number
 ): string {
-  return [
-    providerKeyString(key),
+  return JSON.stringify([
+    key.language,
+    key.islandKind,
+    key.targetShape,
+    stableConfigKey(key.parserConfigKey),
     String(sourceVersion),
-    String(start),
-    String(end)
-  ].join('|');
+    start,
+    end
+  ]);
 }
 
 /**

@@ -46,6 +46,28 @@ describe('IslandParsePlan', () => {
     expect(plan.counters.requestViews).toBe(1);
   });
 
+  test('request views round-trip delimiter-looking cache fields', () => {
+    const document = parseStructure(
+      // AUDIT: version? Needed because?
+      new SourceText('.foo { color: @brand; }', { version: 'draft|7' }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const island = document.islands('variable-reference')[0]!;
+    const id = plan.requestIsland(island, 'core|value', { mode: 'a|b' });
+
+    expect(plan.requestView(id)).toMatchObject({
+      id,
+      language: 'fixture-less',
+      islandKind: 'variable-reference',
+      targetShape: 'core|value',
+      parserConfigKey: { mode: 'a|b' },
+      sourceVersion: 'draft|7',
+      start: island.start,
+      end: island.end
+    });
+  });
+
   test('executes providers once and then serves cached records', () => {
     const document = parseStructure(
       new SourceText('.foo { color: @brand; }', { version: 1 }),
@@ -68,13 +90,13 @@ describe('IslandParsePlan', () => {
     const island = document.islands('variable-reference')[0]!;
     const id = plan.requestIsland(island, 'core-value', { mathMode: 'always' });
 
-    expect(plan.execute<string>(id)).toMatchObject({
+    expect(plan.execute(id)).toMatchObject({
       requestId: id,
       value: '@brand',
       diagnostics: [],
       fallbackFullTree: false
     });
-    expect(plan.execute<string>(id).value).toBe('@brand');
+    expect(plan.execute(id).value).toBe('@brand');
     expect(calls).toBe(1);
     expect(plan.counters).toMatchObject({
       cacheHits: 1,

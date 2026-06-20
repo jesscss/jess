@@ -27,17 +27,16 @@ export type IndexedMixin = {
   requestIds: readonly IslandParseRequestId[];
 };
 
-/** Extend candidate island queued for selector parsing. */
-export type IndexedExtendCandidate = {
+type IndexedIslandRequest = {
   island: RawIslandNode;
   requestId: IslandParseRequestId;
 };
 
+/** Extend candidate island queued for selector parsing. */
+export type IndexedExtendCandidate = IndexedIslandRequest;
+
 /** Value/reference island queued for target-shape parsing. */
-export type IndexedReference = {
-  island: RawIslandNode;
-  requestId: IslandParseRequestId;
-};
+export type IndexedReference = IndexedIslandRequest;
 
 /** Counters for separating structural index work from lazy island fills. */
 export type SemanticIndexCounters = {
@@ -72,9 +71,9 @@ export class SemanticIndexBuilder {
 
   #imports: IndexedImport[] | undefined;
   #variables: IndexedVariable[] | undefined;
-  #mixins: IndexedMixin[] | undefined;
-  #extends: IndexedExtendCandidate[] | undefined;
-  #references: IndexedReference[] | undefined;
+  #mixins = new Map<IslandTargetShape, IndexedMixin[]>();
+  #extends = new Map<IslandTargetShape, IndexedExtendCandidate[]>();
+  #references = new Map<IslandTargetShape, IndexedReference[]>();
 
   constructor(document: StructuralDocument, plan = new IslandParsePlan(document)) {
     this.document = document;
@@ -93,33 +92,48 @@ export class SemanticIndexBuilder {
 
   /** Returns mixin entries and request ids for richer signature parsing. */
   mixins(targetShape: IslandTargetShape = 'mixin-signature'): readonly IndexedMixin[] {
-    return (this.#mixins ??= this.#buildMixins(targetShape));
+    let mixins = this.#mixins.get(targetShape);
+    if (!mixins) {
+      mixins = this.#buildMixins(targetShape);
+      this.#mixins.set(targetShape, mixins);
+    }
+    return mixins;
   }
 
   /** Returns extend-candidate islands queued for lazy selector parsing. */
   extendCandidates(
     targetShape: IslandTargetShape = 'selector'
   ): readonly IndexedExtendCandidate[] {
-    return (this.#extends ??= this.#buildIslandRequests(
-      'extend-candidate',
-      targetShape,
-      'extendCandidateCount'
-    ));
+    let extendCandidates = this.#extends.get(targetShape);
+    if (!extendCandidates) {
+      extendCandidates = this.#buildIslandRequests(
+        'extend-candidate',
+        targetShape,
+        'extendCandidateCount'
+      );
+      this.#extends.set(targetShape, extendCandidates);
+    }
+    return extendCandidates;
   }
 
   /** Returns reference islands queued for lazy value/reference parsing. */
   references(targetShape: IslandTargetShape = 'value-reference'): readonly IndexedReference[] {
-    return (this.#references ??= this.#buildIslandRequests(
-      'variable-reference',
-      targetShape,
-      'referenceCount'
-    ));
+    let references = this.#references.get(targetShape);
+    if (!references) {
+      references = this.#buildIslandRequests(
+        'variable-reference',
+        targetShape,
+        'referenceCount'
+      );
+      this.#references.set(targetShape, references);
+    }
+    return references;
   }
 
   #buildImports(): IndexedImport[] {
     this.counters.structuralIndexBuilds++;
     const imports: IndexedImport[] = [];
-    walk(this.document.root, node => {
+    walk(this.document.root, (node) => {
       if (node.kind === 'import') {
         imports.push({
           node,
@@ -134,7 +148,7 @@ export class SemanticIndexBuilder {
   #buildVariables(): IndexedVariable[] {
     this.counters.structuralIndexBuilds++;
     const variables: IndexedVariable[] = [];
-    walk(this.document.root, node => {
+    walk(this.document.root, (node) => {
       if (node.kind === 'variable-declaration') {
         variables.push({
           node,
@@ -149,7 +163,7 @@ export class SemanticIndexBuilder {
   #buildMixins(targetShape: IslandTargetShape): IndexedMixin[] {
     this.counters.structuralIndexBuilds++;
     const mixins: IndexedMixin[] = [];
-    walk(this.document.root, node => {
+    walk(this.document.root, (node) => {
       if (node.kind === 'mixin-definition' || node.kind === 'mixin-call') {
         mixins.push({
           node,
@@ -162,16 +176,16 @@ export class SemanticIndexBuilder {
     return mixins;
   }
 
-  #buildIslandRequests<T extends IndexedExtendCandidate | IndexedReference>(
+  #buildIslandRequests(
     islandKind: IslandKind,
     targetShape: IslandTargetShape,
     countKey: 'extendCandidateCount' | 'referenceCount'
-  ): T[] {
+  ): IndexedIslandRequest[] {
     this.counters.lazyIndexFills++;
     const items = this.document.islands(islandKind).map(island => ({
       island,
       requestId: this.plan.requestIsland(island, targetShape)
-    })) as T[];
+    }));
     this.counters[countKey] = items.length;
     return items;
   }
@@ -200,9 +214,9 @@ function extractStringLiteral(text: string): string {
   const trimmed = text.trim();
   const quote = trimmed.charCodeAt(0);
   if (
-    trimmed.length >= 2 &&
-    (quote === Char.DoubleQuote || quote === Char.SingleQuote) &&
-    trimmed.charCodeAt(trimmed.length - 1) === quote
+    trimmed.length >= 2
+    && (quote === Char.DoubleQuote || quote === Char.SingleQuote)
+    && trimmed.charCodeAt(trimmed.length - 1) === quote
   ) {
     return trimmed.slice(1, -1);
   }

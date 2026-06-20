@@ -58,17 +58,11 @@ export class IslandParsePlan {
   #executions = new Map<string, IslandExecutionRecord>();
   #diagnostics = new Map<IslandParseRequestId, readonly ParserDiagnostic[]>();
   #visitorPlans = new Map<string, readonly VisitorMaterializationRule[]>();
-  #reusableContext: IslandExecutionContext;
+  #reusableContext: IslandExecutionContext | undefined;
 
   constructor(document: StructuralDocument, registry = new IslandParserRegistry()) {
     this.document = document;
     this.registry = registry;
-    this.#reusableContext = {
-      document,
-      island: document.islands()[0] ?? (undefined as never),
-      requestId: 0,
-      diagnostics: []
-    };
     for (const island of document.islands()) {
       const ownedIslands = this.#islandsByOwner.get(island.owner);
       if (ownedIslands) {
@@ -144,7 +138,19 @@ export class IslandParsePlan {
       throw new RangeError(`Unknown island parse request id ${id}.`);
     }
 
-    const request = decodeRequestCacheKey(cacheKey, id);
+    const providerKey = this.#providerKeys[id];
+    const island = this.#islandsByRequest[id];
+    if (!providerKey || !island) {
+      throw new RangeError(`No island parse request data found for ${id}.`);
+    }
+    const request: IslandParseRequest = {
+      ...providerKey,
+      id,
+      sourceVersion: String(this.document.source.version),
+      start: island.start,
+      end: island.end,
+      cacheKey
+    };
     this.#requests.set(id, request);
     this.counters.requestViews++;
     return request;
@@ -156,12 +162,12 @@ export class IslandParsePlan {
    * A missing provider is not an exceptional parse failure; it marks the request
    * as requiring a broader parser/materializer owned by the caller.
    */
-  execute<T = unknown>(id: IslandParseRequestId): IslandExecutionRecord<T> {
+  execute(id: IslandParseRequestId): IslandExecutionRecord {
     const request = this.requestView(id);
     const cached = this.#executions.get(request.cacheKey);
     if (cached) {
       this.counters.cacheHits++;
-      return cached as IslandExecutionRecord<T>;
+      return cached;
     }
 
     this.counters.cacheMisses++;
@@ -174,7 +180,7 @@ export class IslandParsePlan {
     const diagnostics: ParserDiagnostic[] = [];
 
     if (!provider) {
-      const record: IslandExecutionRecord<T> = {
+      const record: IslandExecutionRecord = {
         requestId: id,
         cacheKey: request.cacheKey,
         diagnostics,
@@ -186,6 +192,12 @@ export class IslandParsePlan {
       return record;
     }
 
+    this.#reusableContext ??= {
+      document: this.document,
+      island,
+      requestId: id,
+      diagnostics
+    };
     this.#reusableContext.document = this.document;
     this.#reusableContext.island = island;
     this.#reusableContext.requestId = id;
@@ -196,10 +208,10 @@ export class IslandParsePlan {
       diagnostics.push(...result.diagnostics);
     }
 
-    const record: IslandExecutionRecord<T> = {
+    const record: IslandExecutionRecord = {
       requestId: id,
       cacheKey: request.cacheKey,
-      value: result.value as T,
+      value: result.value,
       diagnostics,
       fallbackFullTree: result.fallbackFullTree ?? false
     };
@@ -362,45 +374,13 @@ function visitorShapeCacheKey(shape: VisitorShape): string {
       .sort((a, b) => (
         a.nodeKind === b.nodeKind
           ? (
-            a.targetShape === b.targetShape
-              ? a.islandKinds.join(',').localeCompare(b.islandKinds.join(','))
-              : a.targetShape.localeCompare(b.targetShape)
-          )
+              a.targetShape === b.targetShape
+                ? a.islandKinds.join(',').localeCompare(b.islandKinds.join(','))
+                : a.targetShape.localeCompare(b.targetShape)
+            )
           : a.nodeKind.localeCompare(b.nodeKind)
       )),
     nodeKinds: [...(shape.nodeKinds ?? [])].sort(),
     targetShape: shape.targetShape ?? 'visitor'
   });
-}
-
-/** Reconstructs a request view from the cache key used for deduplication. */
-function decodeRequestCacheKey(
-  cacheKey: string,
-  id: IslandParseRequestId
-): IslandParseRequest {
-  const [language, islandKind, targetShape, parserConfigKey, sourceVersion, start, end] =
-    cacheKey.split('|');
-
-  if (
-    language === undefined ||
-    islandKind === undefined ||
-    targetShape === undefined ||
-    sourceVersion === undefined ||
-    start === undefined ||
-    end === undefined
-  ) {
-    throw new RangeError(`Invalid island parse cache key ${cacheKey}.`);
-  }
-
-  return {
-    id,
-    language,
-    islandKind: islandKind as IslandParseRequest['islandKind'],
-    targetShape,
-    parserConfigKey,
-    sourceVersion,
-    start: Number(start),
-    end: Number(end),
-    cacheKey
-  };
 }

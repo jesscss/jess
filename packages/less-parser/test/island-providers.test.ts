@@ -8,6 +8,62 @@ import {
 } from '../src/index.js';
 
 describe('Less island providers', () => {
+  test('classifies Less variable references without promoting literal at-sign text', () => {
+    const document = parseLessStructure(
+      'fixture.less',
+      '.foo { content: "@media"; background: url("@asset"); color: @brand; escaped: \\@literal; --raw: @literal; }'
+    );
+
+    expect(document.islands('variable-reference').map(island =>
+      document.source.slice(island.start, island.end)
+    )).toEqual(['@brand', '@literal']);
+  });
+
+  test('classifies numeric Less variable references', () => {
+    const document = parseLessStructure(
+      'fixture.less',
+      '@1: red; .foo { color: @1; }'
+    );
+
+    expect(document.islands('variable-reference').map(island =>
+      document.source.slice(island.start, island.end)
+    )).toEqual(['@1']);
+  });
+
+  test('classifies variable references after URL slash text', () => {
+    const document = parseLessStructure(
+      'fixture.less',
+      '.foo { background: url(http://example.com) @brand; }'
+    );
+
+    expect(document.islands('variable-reference').some(island =>
+      document.source.slice(island.start, island.end).includes('@brand')
+    )).toBe(true);
+  });
+
+  test('classifies Less variable references in at-rule preludes without promoting literal at-sign text', () => {
+    const withVariable = parseLessStructure(
+      'fixture.less',
+      '@media @breakpoint { .foo { color: red; } }'
+    );
+    const withFeatureVariable = parseLessStructure(
+      'fixture.less',
+      '@media (min-width: @size) { .foo { color: red; } }'
+    );
+    const withLiteralAtSigns = parseLessStructure(
+      'fixture.less',
+      '@media "@screen" /* @comment */ { .foo { color: red; } }'
+    );
+
+    expect(withVariable.islands('variable-reference')).toHaveLength(1);
+    expect(withVariable.source.slice(
+      withVariable.islands('variable-reference')[0]!.start,
+      withVariable.islands('variable-reference')[0]!.end
+    )).toBe('@breakpoint');
+    expect(withFeatureVariable.islands('variable-reference')).toHaveLength(1);
+    expect(withLiteralAtSigns.islands('variable-reference')).toEqual([]);
+  });
+
   test('promotes Less selector/extend islands with config-aware keys', () => {
     const document = parseLessStructure('fixture.less', '.foo:extend(.bar) { color: red; }');
     const registry = new IslandParserRegistry();

@@ -3,7 +3,7 @@ import {
   IslandParsePlan,
   SemanticIndexBuilder,
   SourceText,
-  parseStructure,
+  parseStructure
 } from '../index.js';
 import { fixtureLessProfile, fixtureScssProfile } from './fixtures.js';
 
@@ -21,6 +21,9 @@ describe('SemanticIndexBuilder', () => {
     expect(index.imports()).toEqual([
       expect.objectContaining({ specifier: 'theme.css' })
     ]);
+    // AUDIT: this is fine as Less structure. Note that in the Jess AST, variables are not represented with the preceding `@`,
+    // nor are Sass variables represented with the preceding `$`.
+    // That doesn't mean this needs to change, I just wanted to note it as cautionary.
     expect(index.variables()).toEqual([
       expect.objectContaining({ name: '@brand' })
     ]);
@@ -47,13 +50,40 @@ describe('SemanticIndexBuilder', () => {
     expect(plan.counters.actualParses).toBe(0);
   });
 
+  test('keeps lazy index caches separated by target shape', () => {
+    const document = parseStructure(
+      '.mixin(@x) { color: @x; } .foo:extend(.bar) { color: @brand; .mixin(red); }',
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const index = new SemanticIndexBuilder(document, plan);
+
+    const mixinCore = index.mixins('core-mixin');
+    const mixinAdapter = index.mixins('adapter-mixin');
+    const extendCore = index.extendCandidates('core-selector');
+    const extendAdapter = index.extendCandidates('adapter-selector');
+    const referenceCore = index.references('core-value');
+    const referenceAdapter = index.references('adapter-value');
+
+    expect(mixinAdapter).not.toBe(mixinCore);
+    expect(extendAdapter).not.toBe(extendCore);
+    expect(referenceAdapter).not.toBe(referenceCore);
+    expect(plan.requestView(mixinCore[0]!.requestIds[0]!)).toMatchObject({ targetShape: 'core-mixin' });
+    expect(plan.requestView(mixinAdapter[0]!.requestIds[0]!)).toMatchObject({ targetShape: 'adapter-mixin' });
+    expect(plan.requestView(extendCore[0]!.requestId)).toMatchObject({ targetShape: 'core-selector' });
+    expect(plan.requestView(extendAdapter[0]!.requestId)).toMatchObject({ targetShape: 'adapter-selector' });
+    expect(plan.requestView(referenceCore[0]!.requestId)).toMatchObject({ targetShape: 'core-value' });
+    expect(plan.requestView(referenceAdapter[0]!.requestId)).toMatchObject({ targetShape: 'adapter-value' });
+    expect(plan.counters.actualParses).toBe(0);
+  });
+
   test('indexes Less extend candidates from selector/header islands lazily', () => {
     const document = parseStructure('.foo:extend(.bar) { color: red; }', fixtureLessProfile);
     const plan = new IslandParsePlan(document);
     const index = new SemanticIndexBuilder(document, plan);
-    const extends_ = index.extendCandidates();
+    const extendCandidates = index.extendCandidates();
 
-    expect(extends_).toEqual([
+    expect(extendCandidates).toEqual([
       expect.objectContaining({
         island: expect.objectContaining({
           islandKind: 'extend-candidate',
