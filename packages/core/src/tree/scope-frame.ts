@@ -635,10 +635,6 @@ export function assignScopeFrameVariable(
   if (hit.kind === 'miss' || hit.kind === 'uncovered') {
     return undefined;
   }
-  if (hit.kind === 'live') {
-    hit.cell.value = value;
-  } else {
-    hit.cell.value = value;
-  }
+  hit.cell.value = value;
   return hit;
 }

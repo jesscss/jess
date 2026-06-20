@@ -112,6 +112,42 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: binding-cell source-of-truth cut for `setDefined`.
+- Verdict: accepted as a binding cleanup plus correctness repair, not a speed
+  claim.
+  `setDefined` modeled paths now update the binding cell returned by
+  `lookupScopeFrameVariable(...)` / `assignScopeFrameVariable(...)` without a
+  second `Rules.varsByName` scan. The source AST mutation boundary from the
+  previous pass remains: evaluated replacements live in binding cells or
+  inserted runtime declarations, not authored declaration fields.
+- Architecture surface: `Rules.registerNode(...)` setDefined assignment,
+  `ScopeFrame` assignment helper, generated `$for` iteration frame coverage,
+  binding queue docs, and no parser surface.
+- Separation/duplication: deleted the `Rules.varsByName` sync helper because
+  the scope-frame lookup result carries the canonical cell to update for the
+  covered path. Sub-agent review caught the uncovered `$for` iteration-frame
+  case; that was fixed by marking generated iteration frames
+  declaration-covered so same-iteration reads stay on the frame chain instead
+  of reopening direct occurrence lookup.
+- Cumulative node weight: no new nodes, maps, sets, side tables, wrappers, or
+  retained state. Non-test `packages/core/src` line count moved from 55008 to
+  54991 in this slice.
+- New traversal: none added. The pass deletes the
+  `syncVarDeclarationBindingEntry(...)` reverse scan through a name bucket and
+  deletes a redundant live/declaration assignment branch in
+  `assignScopeFrameVariable(...)`.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: one private helper was deleted; one exported assignment
+  helper was simplified without changing its signature.
+- Metadata mutations: no new parent/source/frozen or descriptor mutation. The
+  remaining write is the existing binding-cell `value` write.
+- Review-flagged diff tokens: the diff contains only deletions in the runtime
+  binding path, one frame-coverage correction, plus docs. No added loop, array
+  helper, copy/materialization, descriptor mutation, or defensive runtime check.
+- Evidence: focused setDefined/control and scope-frame tests passed; non-test
+  `packages/core/src` line count moved from 55008 to 54991 for this slice.
+
 - Latest pass: scanner-first direct semantic fields, Rules inheritance cleanup,
   and callable namespace frame-chain repair.
 - Verdict: accepted as a correctness/architecture cleanup slice, not a speed

@@ -1590,6 +1590,18 @@ Required sub-slices:
   when no cell exists. Evaluated replacements must not mutate authored
   declaration fields. Focused tests must assert both rendered/read value and
   unchanged source declaration serialization.
+  Current evidence: modeled `setDefined` paths now update only the cell returned
+  by `lookupScopeFrameVariable(...)` or `assignScopeFrameVariable(...)`; the
+  duplicate `syncVarDeclarationBindingEntry(...)` scan over `Rules.varsByName`
+  was deleted. A sub-agent review caught that `$for` iteration frames had been
+  built as declaration-uncovered, causing same-iteration reads to fall back to
+  direct occurrence lookup after the cell write. The fix marks generated `$for`
+  iteration frames declaration-covered while registration still adds real local
+  declarations, so covered misses can continue to the parent frame instead of
+  reopening the direct lookup bridge. `assignScopeFrameVariable(...)` now writes
+  the returned cell directly instead of branching separately for live and
+  declaration hits. Non-test `packages/core/src` line count moved from 55008 to
+  54991 in this slice.
 - [ ] 87d. Direct lookup consolidation: fold direct variable/property
   occurrence lookup into the declaration binding layer, or document exact cold
   public API boundaries where direct occurrence remains necessary. Delete

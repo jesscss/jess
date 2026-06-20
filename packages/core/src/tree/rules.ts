@@ -143,24 +143,6 @@ type UncoveredCallableResult =
   | MixinEntry[]
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
-function syncVarDeclarationBindingEntry(declaration: VarDeclaration, value: Node): void {
-  const parent = declaration.parent;
-  if (!isNode(parent, N.Rules)) {
-    return;
-  }
-  const entries = parent.varsByName?.get(String(declaration.name.valueOf()));
-  if (!entries) {
-    return;
-  }
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const entry = entries[i]!;
-    if (entry.sourceNode === declaration) {
-      entry.cell.value = value;
-      return;
-    }
-  }
-}
-
 function isStyleImportRegistrationNode(node: Node): node is StyleImport {
   return node.type === 'StyleImport';
 }
@@ -693,8 +675,11 @@ export type RulesOptions = {
    *    }
    */
   rulesVisibility?: Record<string, RulesVisibility>;
+  // AUDIT: This is a suspcious LLM addition. I feel like this is a result of constructing
+  // incorrect mixin output.
   /** Current compatibility carrier for explicit generated mixin-output state. */
   mixinOutputSlot?: MixinOutputSlot;
+  // AUDIT: worth considering this one too.
   /**
    * Marks declaration-only Rules emitted from non-mixin call sites so post-eval
    * ordering can move them ahead of nested rulesets/at-rules without relying on
@@ -4205,10 +4190,6 @@ export class Rules<
               }
             }
             variableHit.cell.value = assignedValue;
-            const sourceNode = variableHit.sourceNode;
-            if (isNode(sourceNode, N.VarDeclaration)) {
-              syncVarDeclarationBindingEntry(sourceNode, assignedValue);
-            }
             return;
           }
           if (variableHit.kind === 'miss') {
@@ -4235,7 +4216,6 @@ export class Rules<
             }
           }
           if (isNode(result.parent, N.Rules) && result.parent._scopeFrame) {
-            syncVarDeclarationBindingEntry(result, assignedValue);
             assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
             return;
           }

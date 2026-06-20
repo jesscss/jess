@@ -399,7 +399,14 @@ async function createForIterationSurface(
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+  iterationRules.scopeFrame = buildScopeFrame(
+    undefined,
+    iterationRules,
+    parentFrame,
+    liveSlots,
+    undefined,
+    true
+  );
   attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
   return iterationRules.prepareRegistration(context);
 }
