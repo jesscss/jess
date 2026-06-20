@@ -1912,12 +1912,13 @@ storage.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
   selector, simple and flat literal declaration values, exact `!important`
   declaration flags on those values, simple root or ruleset-local `@media`
-  prelude/body shape, simple root `@layer` blocks with ordinary rule bodies, and
-  simple already-seen Less variable declaration/reference token detection with
-  zero legacy island parser executions. Hoisted/lazy variable references,
-  non-`@media`/root-`@layer` block at-rule families, complex/list/interpolated
-  selectors, and richer nested at-rule bodies remain canonical fallbacks until
-  their progressive materializers are proven.
+  prelude/body shape including ordinary nested rules, simple root `@layer`
+  blocks with ordinary rule bodies, and simple already-seen Less variable
+  declaration/reference token detection with zero legacy island parser
+  executions. Hoisted/lazy variable references, non-`@media`/root-`@layer` block
+  at-rule families, complex/list/interpolated selectors, and richer nested
+  at-rule bodies remain canonical fallbacks until their progressive
+  materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -1949,7 +1950,8 @@ storage.
   - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
     and raw-field core `AtRule` nodes for covered root and ruleset-local
-    `@media` success cases.
+    `@media` success cases, including ruleset-local `@media` blocks that contain
+    already-supported ordinary nested rules.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
   - Current limit: invisible progressive bookkeeping nodes are proven for
@@ -2044,12 +2046,13 @@ storage.
     and variable values crossing import/reference boundaries still fall back.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
-  when the prelude is scanner-native.
+  when the prelude is scanner-native, and support ruleset-local `@media` blocks
+  containing already-supported ordinary nested rules.
   - Current limit: raw `AtRule` semantic materialization is proven for the
-    scanner-native root `@media` subset and root `@layer` subset only. Nested
-    block at-rules still fall back while Less bubbling, reference/import
-    semantics, `@supports` conditions, and other at-rule families remain
-    unproven.
+    scanner-native root `@media`, ruleset-local `@media`, and root `@layer`
+    subsets only. Nested block at-rules still fall back while Less variables
+    inside nested `@media`, reference/import semantics, `@supports` conditions,
+    and other at-rule families remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,

@@ -1068,11 +1068,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '@layer utilities { .a { @brand: blue; color: @brand; } }\n',
-        reason: 'Less variable declarations are not in the root @layer structural-fed subset'
+        reason: 'Less variable declarations are not in this structural-fed subset'
       },
       {
         source: '@brand: blue;\n@layer utilities { .a { color: @brand; } }\n',
-        reason: 'Less variable references are not in the root @layer structural-fed subset'
+        reason: 'Less variable references are not in this structural-fed subset'
       }
     ];
 
@@ -1139,6 +1139,47 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
+  it('feeds nested @media blocks with ordinary nested rules through structural parse', async () => {
+    const source = '.a { @media screen { .b { color: blue; } } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('.b');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-media-rule.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'screen\'');
+    expect(types).toContain('rawSelector: \'.b\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(ProgressiveAtRule');
+    expect(types).not.toContain('name: (Any \'@media\')');
+    expect(types).not.toContain('prelude: (Any \'screen\')');
+  });
+
   it('falls back for richer nested @media bodies until those shapes are proven', async () => {
     const cases = [
       {
@@ -1150,8 +1191,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
         reason: 'unsupported at-rule child variable-declaration'
       },
       {
-        source: '.a { @media screen { .b { color: blue; } } }\n',
-        reason: 'unsupported at-rule child rule'
+        source: '.a { @media screen { .b { @brand: blue; color: @brand; } } }\n',
+        reason: 'Less variable declarations are not in this structural-fed subset'
+      },
+      {
+        source: '.a { @media screen { .b { @media print { .c { color: blue; } } } } }\n',
+        reason: 'unsupported rule child at-rule'
       }
     ];
 

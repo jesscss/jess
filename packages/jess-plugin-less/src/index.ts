@@ -760,12 +760,13 @@ function validateStructuralFedRule(
   document: StructuralDocument,
   rule: StructuralContainerNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariables = true
+  allowLessVariables = true,
+  allowAtRules = true
 ): string | undefined {
   const localVariables = new Map(variables);
   for (const child of rule.children) {
     if (child.kind === 'rule') {
-      const nestedReason = validateStructuralFedRule(document, child, localVariables, allowLessVariables);
+      const nestedReason = validateStructuralFedRule(document, child, localVariables, allowLessVariables, allowAtRules);
       if (nestedReason) {
         return nestedReason;
       }
@@ -773,7 +774,7 @@ function validateStructuralFedRule(
     }
     if (child.kind === 'variable-declaration') {
       if (!allowLessVariables) {
-        return 'Less variable declarations are not in the root @layer structural-fed subset';
+        return 'Less variable declarations are not in this structural-fed subset';
       }
       const variableReason = validateStructuralFedVariableDeclaration(document, child);
       if (variableReason) {
@@ -788,6 +789,9 @@ function validateStructuralFedRule(
       continue;
     }
     if (child.kind === 'at-rule') {
+      if (!allowAtRules) {
+        return `unsupported rule child ${child.kind}`;
+      }
       const atRuleReason = validateStructuralFedAtRule(document, child, localVariables, 'rule');
       if (atRuleReason) {
         return atRuleReason;
@@ -828,10 +832,16 @@ function validateStructuralFedAtRule(
   }
   for (const child of atRule.children) {
     if (child.kind === 'rule') {
-      if (parentKind !== 'root') {
+      if (parentKind !== 'root' && name !== '@media') {
         return `unsupported at-rule child ${child.kind}`;
       }
-      const reason = validateStructuralFedRule(document, child, variables, name !== '@layer');
+      const reason = validateStructuralFedRule(
+        document,
+        child,
+        variables,
+        parentKind === 'root' && name !== '@layer',
+        parentKind === 'root'
+      );
       if (reason) {
         return reason;
       }
@@ -854,7 +864,8 @@ function buildStructuralFedRuleset(
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariables = true
+  allowLessVariables = true,
+  allowAtRules = true
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   const selectorToken = readScannerNativeSimpleSelectorToken(plan, rule, selectorIsland);
@@ -866,7 +877,16 @@ function buildStructuralFedRuleset(
   const localVariables = new Map(variables);
   let progressiveNodes = 1;
   for (const child of rule.children) {
-    const builtChild = buildStructuralFedRuleChild(plan, child, ownerIslands, context, 'rule', localVariables, allowLessVariables);
+    const builtChild = buildStructuralFedRuleChild(
+      plan,
+      child,
+      ownerIslands,
+      context,
+      'rule',
+      localVariables,
+      allowLessVariables,
+      allowAtRules
+    );
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -919,10 +939,18 @@ function buildStructuralFedAtRule(
   let progressiveNodes = 1;
   for (const child of atRule.children) {
     if (child.kind === 'rule') {
-      if (parentKind !== 'root') {
+      if (parentKind !== 'root' && name !== '@media') {
         return { reason: `unsupported at-rule child ${child.kind}` };
       }
-      const builtChild = buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, name !== '@layer');
+      const builtChild = buildStructuralFedRuleset(
+        plan,
+        child,
+        ownerIslands,
+        context,
+        variables,
+        parentKind === 'root' && name !== '@layer',
+        parentKind === 'root'
+      );
       if ('reason' in builtChild) {
         return builtChild;
       }
@@ -958,12 +986,16 @@ function buildStructuralFedRuleChild(
   context: TreeContext,
   parentKind: 'at-rule' | 'rule',
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariables = true
+  allowLessVariables = true,
+  allowAtRules = true
 ): StructuralFedBuildResult | StructuralFedVariableBuildResult {
   if (child.kind === 'rule') {
-    return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, allowLessVariables);
+    return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, allowLessVariables, allowAtRules);
   }
   if (child.kind === 'at-rule') {
+    if (!allowAtRules) {
+      return { reason: `unsupported ${parentKind} child ${child.kind}` };
+    }
     if (parentKind === 'at-rule') {
       return { reason: `unsupported ${parentKind} child ${child.kind}` };
     }
@@ -971,7 +1003,7 @@ function buildStructuralFedRuleChild(
   }
   if (child.kind === 'variable-declaration') {
     if (!allowLessVariables) {
-      return { reason: 'Less variable declarations are not in the root @layer structural-fed subset' };
+      return { reason: 'Less variable declarations are not in this structural-fed subset' };
     }
     return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
   }
@@ -1011,7 +1043,7 @@ function validateStructuralFedDeclaration(
   }
   const scannerNativeValueText = valueParts?.valueText ?? valueText;
   if (looksLikeSimpleVariableReference(scannerNativeValueText) && !allowLessVariableReferences) {
-    return 'Less variable references are not in the root @layer structural-fed subset';
+    return 'Less variable references are not in this structural-fed subset';
   }
   if (looksLikeSimpleVariableReference(scannerNativeValueText) && !variables.has(scannerNativeValueText)) {
     return 'Less variable reference is outside the scanner-native structural-fed subset';
