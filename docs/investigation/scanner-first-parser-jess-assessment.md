@@ -1912,11 +1912,12 @@ storage.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
   selector, simple and flat literal declaration values, exact `!important`
   declaration flags on those values, simple root or ruleset-local `@media`
-  prelude/body shape, and simple already-seen Less variable declaration/reference
-  token detection with zero legacy island parser executions. Hoisted/lazy
-  variable references, non-`@media` block at-rule families,
-  complex/list/interpolated selectors, and richer nested at-rule bodies remain
-  canonical fallbacks until their progressive materializers are proven.
+  prelude/body shape, simple root `@layer` blocks with ordinary rule bodies, and
+  simple already-seen Less variable declaration/reference token detection with
+  zero legacy island parser executions. Hoisted/lazy variable references,
+  non-`@media`/root-`@layer` block at-rule families, complex/list/interpolated
+  selectors, and richer nested at-rule bodies remain canonical fallbacks until
+  their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -2011,8 +2012,14 @@ storage.
     child nodes, and materializes canonical `Any` name/prelude nodes only when
     semantic registration/eval requests at-rule header semantics. The current
     structural-fed Less prototype only emits those raw core `AtRule` nodes for
-    covered root `@media` blocks; other at-rule families remain unproven even
-    though the core raw storage primitive is not hard-coded to `@media`.
+    covered root `@media` and root `@layer` blocks; other at-rule families remain
+    unproven even though the core raw storage primitive is not hard-coded to
+    `@media`.
+  - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
+    body contains already-supported ordinary rules. Named layers with a
+    scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
+    render and serialize from raw at-rule header fields with zero selected island
+    parser executions.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or non-exact important-flag spelling.
@@ -2039,9 +2046,10 @@ storage.
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native.
   - Current limit: raw `AtRule` semantic materialization is proven for the
-    scanner-native root `@media` subset only. Nested block at-rules still fall
-    back while Less bubbling, reference/import semantics, and other at-rule
-    families remain unproven.
+    scanner-native root `@media` subset and root `@layer` subset only. Nested
+    block at-rules still fall back while Less bubbling, reference/import
+    semantics, `@supports` conditions, and other at-rule families remain
+    unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,

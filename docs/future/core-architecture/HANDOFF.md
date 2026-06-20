@@ -113,11 +113,11 @@ with `--no-verify` after the explicit gates pass.
   materializes only the currently proven scanner-native at-rule header storage,
   simple selector subset (`*`, tag, `.class`, `#id`), adjacent basic compound
   selector subset, simple/flat literal declaration value text, and declaration
-  exact `!important` flag text on demand. The current Less
-  structural-fed emitter uses raw core `AtRule` for root `@media` and
-  ruleset-local `@media` with scanner-native declaration bodies; nested block
-  at-rule families outside that shape remain outside this proof and still
-  require materializers or canonical fallback.
+  exact `!important` flag text on demand. The current Less structural-fed emitter
+  uses raw core `AtRule` for root `@media`, ruleset-local `@media` with
+  scanner-native declaration bodies, and root `@layer` with ordinary rule
+  bodies; nested block at-rule families outside that shape remain outside this
+  proof and still require materializers or canonical fallback.
 - New traversal: `packages/core/src/tree/declaration.ts`
   `Declaration.writeRawDeclarationSyntax(...)` loops over
   `rawValueSegments`. This is bounded to the raw segment count and replaces
@@ -132,7 +132,9 @@ with `--no-verify` after the explicit gates pass.
   are requested; direct raw render does not enter either loop.
   `AtRule.materializeRawHeaderForSemantics(...)` performs no traversal; it
   materializes one raw at-rule name and optional raw prelude string at
-  registration/eval boundaries.
+  registration/eval boundaries. Extending the structural-fed emitter to root
+  `@layer` reuses that existing raw at-rule storage and does not add render-time
+  traversal.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

@@ -1004,6 +1004,101 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
+  it('feeds root @layer blocks with ordinary rules through structural parse', async () => {
+    const cases = [
+      {
+        source: '@layer utilities { .a { color: blue; } }\n',
+        prelude: 'utilities'
+      },
+      {
+        source: '@layer { .a { color: blue; } }\n',
+        prelude: undefined
+      }
+    ];
+
+    for (const { source, prelude } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain('@layer');
+      expect(rendered).toContain('.a');
+      expect(rendered).toContain('color: blue');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 3,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/root-layer.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('(AtRule');
+      expect(types).toContain('rawName: \'@layer\'');
+      if (prelude) {
+        expect(types).toContain(`rawPrelude: '${prelude}'`);
+        expect(types).not.toContain(`prelude: (Any '${prelude}')`);
+      } else {
+        expect(types).not.toContain('rawPrelude');
+        expect(types).not.toContain('prelude: (');
+      }
+      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('rawName: \'color\'');
+      expect(types).not.toContain('(ProgressiveAtRule');
+      expect(types).not.toContain('name: (Any \'@layer\')');
+    }
+  });
+
+  it('falls back for root @layer shapes outside the structural-fed subset', async () => {
+    const cases = [
+      {
+        source: '@layer theme.utilities { .a { color: blue; } }\n',
+        reason: 'at-rule prelude is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '@layer utilities { .a { @brand: blue; color: @brand; } }\n',
+        reason: 'Less variable declarations are not in the root @layer structural-fed subset'
+      },
+      {
+        source: '@brand: blue;\n@layer utilities { .a { color: @brand; } }\n',
+        reason: 'Less variable references are not in the root @layer structural-fed subset'
+      }
+    ];
+
+    for (const { source, reason } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+    }
+  });
+
   it('feeds nested @media blocks with ordinary declarations through structural parse', async () => {
     const source = '.a { @media screen { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -1098,7 +1193,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media and root @layer block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
