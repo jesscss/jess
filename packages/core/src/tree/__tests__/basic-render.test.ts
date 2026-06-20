@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { rules, ruleset, decl, sel, el, spaced } from '../index.js';
+import { rules, ruleset, decl, sel, el, spaced, vardecl, ref } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { F_STATIC } from '../node.js';
@@ -64,6 +64,71 @@ describe('Basic Ruleset Rendering', () => {
         color: red;
       }
     `);
+  });
+
+  it('resolves a ruleset declaration from an earlier variable declaration', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.test')]),
+        rules: [
+          vardecl({ name: 'brand', value: spaced([el('red')]) }),
+          decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .test {
+        color: red;
+      }`
+    );
+  });
+
+  it('resolves a ruleset declaration from a later variable declaration', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.test')]),
+        rules: [
+          decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) }),
+          vardecl({ name: 'brand', value: spaced([el('red')]) })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .test {
+        color: red;
+      }`
+    );
+  });
+
+  it('resolves nested ruleset declarations from parent ruleset variables', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: [
+          vardecl({ name: 'brand', value: spaced([el('red')]) }),
+          ruleset({
+            selector: sel([el('.child')]),
+            rules: [
+              decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent .child {
+        color: red;
+      }`
+    );
   });
 
   it('renders plain static root rules without deriving an eval surface', () => {
