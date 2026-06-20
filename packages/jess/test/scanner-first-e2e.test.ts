@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
-import { serializeTypes as serializeRuntimeTypes } from '@jesscss/core';
+import { serializeTypes as serializeRuntimeTypes, TreeContext } from '@jesscss/core';
 import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
 import {
   createLanguageProfile,
@@ -1610,6 +1610,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
   it('skips structural-fed prototype work for import-scoped parse options', () => {
     const source = '.a { color: blue; }\n';
     const cases = [
+      { once: true },
       { reference: true },
       { multiple: true }
     ];
@@ -1811,6 +1812,133 @@ describe('scanner-first CSS/Less e2e probe', () => {
       actualParses: 0,
       requestedIslands: 0
     });
+  });
+
+  it('feeds simple Less imports through structural parse without canonical fallback', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-scanner-first-import-'));
+    tempDirs.push(dir);
+    const imported = path.join(dir, 'tokens.less');
+    const entry = path.join(dir, 'entry.less');
+    fs.writeFileSync(imported, '@brand: blue;\n.utility { display: block; }\n');
+    fs.writeFileSync(entry, '@import "tokens.less";\n.card { color: @brand; }\n');
+
+    const baseline = await new Compiler().render(entry);
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).render(entry);
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('.utility');
+    expect(rendered).toContain('.card');
+    expect(rendered).toContain('color: blue');
+    const importedPrototype = probePlugin.scannerFirstPrototypeResults.find(
+      result => result.filePath === fs.realpathSync.native(imported)
+    );
+    const entryPrototype = probePlugin.scannerFirstPrototypeResults.find(
+      result => result.filePath === entry
+    );
+    expect(importedPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(entryPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(entryPrototype?.requestsByIslandKind).toEqual({});
+    expect(entryPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse(entry, fs.readFileSync(entry, 'utf8'));
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(ProgressiveVariableDeclaration');
+    expect(types).toContain('rawSelector: \'.utility\'');
+    expect(types).toContain('rawSelector: \'.card\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('rawName: \'@import\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('falls back for repeated Less imports until de-dupe semantics are proven', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-scanner-first-import-repeat-'));
+    tempDirs.push(dir);
+    const imported = path.join(dir, 'tokens.less');
+    const entry = path.join(dir, 'entry.less');
+    fs.writeFileSync(imported, '.utility { display: block; }\n');
+    fs.writeFileSync(entry, '@import "tokens.less";\n@import "tokens.less";\n.card { color: blue; }\n');
+
+    const baseline = await new Compiler().render(entry);
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).render(entry);
+
+    expect(rendered).toBe(baseline);
+    const entryPrototype = probePlugin.scannerFirstPrototypeResults.find(result => result.filePath === entry);
+    expect(entryPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'multiple import statements require canonical import ordering and de-dupe semantics',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
+  it('falls back for Less import cycles instead of recursing through structural parse', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-scanner-first-import-cycle-'));
+    tempDirs.push(dir);
+    const a = path.join(dir, 'a.less');
+    const b = path.join(dir, 'b.less');
+    fs.writeFileSync(a, '@import "b.less";\n.a { color: blue; }\n');
+    fs.writeFileSync(b, '@import "a.less";\n.b { color: red; }\n');
+
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const source = fs.readFileSync(a, 'utf8');
+    const result = probePlugin.runScannerFirstPrototype(
+      a,
+      source,
+      new TreeContext({
+        file: {
+          name: path.basename(a),
+          path: path.dirname(a),
+          fullPath: a,
+          source
+        },
+        plugin: probePlugin
+      })
+    );
+
+    expect(result.tree).toBeUndefined();
+    expect(probePlugin.scannerFirstPrototypeResults.some(result =>
+      result.runtimeTreeSource === 'canonical-fallback'
+      && result.fallbackReason === 'repeated Less imports require canonical import de-dupe semantics'
+    )).toBe(true);
   });
 
   it('falls back for statement at-rules outside the structural-fed subset', async () => {

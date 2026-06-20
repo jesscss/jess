@@ -48,6 +48,7 @@ import {
 } from '@jesscss/parser';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
 
 export type ScannerFirstProbeResult = {
@@ -160,6 +161,25 @@ export class LessPlugin extends AbstractPlugin {
     this.parser = new Parser({
       mathMode: this.mathMode,
       leakyRules: this.leakyRules
+    });
+  }
+
+  private createTreeContext(filePath: string, source: string): TreeContext {
+    return new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        source: source
+      },
+      mathMode: this.mathMode,
+      unitMode: this.unitMode,
+      equalityMode: this.equalityMode,
+      plugin: this,
+      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
+      collapseNesting: this.collapseNesting,
+      leakyRules: this.leakyRules,
+      bubbleRootAtRules: this.bubbleRootAtRules
     });
   }
 
@@ -294,7 +314,8 @@ export class LessPlugin extends AbstractPlugin {
   runScannerFirstPrototype(
     filePath: string,
     source: string,
-    context: TreeContext
+    context: TreeContext,
+    importedLessPaths = new Set<string>()
   ): { tree?: Rules; result: ScannerFirstPrototypeResult } {
     const startedAt = nowMs();
     const structuralStartedAt = nowMs();
@@ -346,12 +367,19 @@ export class LessPlugin extends AbstractPlugin {
     if (plan.document.trivia.some(trivia => trivia.kind === 'block-comment' || trivia.kind === 'line-comment')) {
       return fallback('comments require canonical trivia preservation');
     }
+    if (countRootImportStatements(plan.document) > 1) {
+      return fallback('multiple import statements require canonical import ordering and de-dupe semantics');
+    }
 
     const rootVariables = collectStructuralFedScopeVariables(plan.document, plan.document.root.children, new Map());
     const rules: Node[] = [];
     const variables = rootVariables.variables;
     let progressiveNodes = 0;
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
+    const canonicalFilePath = canonicalScannerFirstPath(filePath);
+    if (canonicalFilePath) {
+      importedLessPaths.add(canonicalFilePath);
+    }
 
     for (const child of plan.document.root.children) {
       if (
@@ -364,12 +392,12 @@ export class LessPlugin extends AbstractPlugin {
         return fallback(`unsupported root node ${child.kind}`);
       }
       if (child.kind === 'import') {
-        const result = buildStructuralFedImportStatement(plan, child, context);
+        const result = this.buildStructuralFedImportStatement(plan, child, context, variables, importedLessPaths);
         if ('reason' in result) {
           return fallback(result.reason);
         }
-        rules.push(result.node);
-        progressiveNodes += result.progressiveNodes ?? 0;
+        rules.push(...result.rules);
+        progressiveNodes += result.progressiveNodes;
         continue;
       }
       if (child.kind === 'at-rule-statement') {
@@ -458,6 +486,66 @@ export class LessPlugin extends AbstractPlugin {
     return result;
   }
 
+  private buildStructuralFedImportStatement(
+    plan: IslandParsePlan,
+    child: StructuralStatementNode,
+    context: TreeContext,
+    variables: Map<string, ScannerNativeValueToken>,
+    importedLessPaths: Set<string>
+  ): StructuralFedImportBuildResult {
+    const lessPath = scannerNativeLessImportPath(plan.document, child);
+    if (!lessPath) {
+      const result = buildStructuralFedCssImportStatement(plan, child, context);
+      return 'reason' in result
+        ? result
+        : {
+            rules: [result.node],
+            progressiveNodes: result.progressiveNodes ?? 0
+          };
+    }
+
+    const currentFile = plan.document.source.filePath ?? context.file?.fullPath ?? '';
+    const currentDir = path.dirname(currentFile);
+    const resolvedPath = this.resolveScannerFirstImportPath(lessPath, currentDir);
+    if (!resolvedPath) {
+      return { reason: 'Less import path is outside the scanner-native structural-fed subset' };
+    }
+    if (importedLessPaths.has(resolvedPath)) {
+      return { reason: 'repeated Less imports require canonical import de-dupe semantics' };
+    }
+    importedLessPaths.add(resolvedPath);
+    const importedSource = readFileSync(resolvedPath, 'utf8');
+    const importedContext = this.createTreeContext(resolvedPath, importedSource);
+    const imported = this.runScannerFirstPrototype(resolvedPath, importedSource, importedContext, importedLessPaths);
+    if (!imported.tree) {
+      return { reason: imported.result.fallbackReason ?? 'imported Less file is outside the scanner-native structural-fed subset' };
+    }
+    const importedDocument = parseLessStructure(resolvedPath, importedSource);
+    const importedVariables = collectStructuralFedScopeVariables(
+      importedDocument,
+      importedDocument.root.children,
+      variables
+    );
+    for (const [name, value] of importedVariables.variables) {
+      variables.set(name, value);
+    }
+    return {
+      rules: imported.tree.rules,
+      progressiveNodes: imported.result.progressiveNodes ?? 0
+    };
+  }
+
+  private resolveScannerFirstImportPath(importPath: string, currentDir: string): string | undefined {
+    const searchPaths = readConfiguredSearchPaths(this.opts);
+    const candidates = this.resolve(this.expandImport(importPath, currentDir), currentDir, searchPaths) ?? [];
+    for (const candidate of candidates) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) {
+        return canonicalScannerFirstPath(candidate) ?? candidate;
+      }
+    }
+    return undefined;
+  }
+
   private _registerFunctions(tree: Rules) {
     const registeredNames: string[] = [];
     for (const [key, value] of Object.entries(lessFunctions)) {
@@ -544,22 +632,7 @@ export class LessPlugin extends AbstractPlugin {
       this.opts.scannerFirstProbe,
       parseOptions?.compilerOptions?.scannerFirstProbe
     );
-    const context = new TreeContext({
-      file: {
-        name: path.basename(filePath),
-        path: path.dirname(filePath),
-        fullPath: filePath,
-        source: source
-      },
-      mathMode: this.mathMode,
-      unitMode: this.unitMode,
-      equalityMode: this.equalityMode,
-      plugin: this,
-      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
-      collapseNesting: this.collapseNesting,
-      leakyRules: this.leakyRules,
-      bubbleRootAtRules: this.bubbleRootAtRules
-    });
+    const context = this.createTreeContext(filePath, source);
 
     const errors: ErrorDiagnostic[] = [];
     const warnings: WarningDiagnostic[] = [];
@@ -730,6 +803,11 @@ function shouldSkipStructuralFedPrototype(parseOptions: SafeParseOptions | undef
     importOptions?.reference === true
     || importOptions?._dedupe === true
     || importOptions?.multiple === true
+    || importOptions?.once === true
+    || importOptions?.inline === true
+    || importOptions?.optional === true
+    || importOptions?.postlude !== undefined
+    || importOptions?.type !== undefined
   );
 }
 
@@ -756,6 +834,16 @@ function indexIslandsByOwner(islands: readonly RawIslandNode[]): Map<object, Raw
   return byOwner;
 }
 
+function countRootImportStatements(document: StructuralDocument): number {
+  let count = 0;
+  for (const child of document.root.children) {
+    if (child.kind === 'import') {
+      count++;
+    }
+  }
+  return count;
+}
+
 function singleIsland(
   byOwner: Map<object, RawIslandNode[]>,
   owner: object,
@@ -780,6 +868,10 @@ type StructuralFedBuildResult =
 
 type StructuralFedVariableBuildResult =
   | { node: ProgressiveVariableDeclaration; name: string; valueToken: ScannerNativeValueToken; progressiveNodes: 1 }
+  | { reason: string };
+
+type StructuralFedImportBuildResult =
+  | { rules: Node[]; progressiveNodes: number }
   | { reason: string };
 
 function validateStructuralFedRule(
@@ -1110,7 +1202,7 @@ function buildStructuralFedAtRuleStatement(
   };
 }
 
-function buildStructuralFedImportStatement(
+function buildStructuralFedCssImportStatement(
   plan: IslandParsePlan,
   child: StructuralStatementNode,
   context: TreeContext
@@ -1678,6 +1770,8 @@ const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
 const QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;
+const EXACT_QUOTED_IMPORT_PATH_PATTERN =
+  /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')$/u;
 const URL_IMPORT_PATH_PATTERN =
   /^url\([ \t]*(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')[ \t]*\)(?:[ \t]+.+)?$/u;
 const SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE =
@@ -1728,6 +1822,27 @@ function scannerNativeCssImportPath(preludeText: string): string | undefined {
   return undefined;
 }
 
+function scannerNativeLessImportPath(
+  document: StructuralDocument,
+  child: StructuralStatementNode
+): string | undefined {
+  const name = structuralFieldText(document, child, 'name', 'import-name');
+  if (name !== '@import') {
+    return undefined;
+  }
+  const preludeText = structuralFieldText(document, child, 'prelude', 'prelude');
+  if (!preludeText || MULTILINE_VALUE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return undefined;
+  }
+  const quoted = EXACT_QUOTED_IMPORT_PATH_PATTERN.exec(preludeText);
+  const pathText = quoted?.groups?.double ?? quoted?.groups?.single;
+  if (!pathText || isCssImportPath(pathText)) {
+    return undefined;
+  }
+  const extension = path.extname(pathText).toLowerCase();
+  return extension === '' || extension === '.less' ? pathText : undefined;
+}
+
 function isScannerNativeCssImportPrelude(preludeText: string): boolean {
   if (
     MULTILINE_VALUE_PATTERN.test(preludeText)
@@ -1743,4 +1858,16 @@ function isScannerNativeCssImportPrelude(preludeText: string): boolean {
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {
   return SIMPLE_VARIABLE_REFERENCE_PATTERN.test(valueText);
+}
+
+function readConfiguredSearchPaths(options: LessPluginOptions): string[] {
+  const configured = (options as LessPluginOptions & {
+    paths?: string[];
+    searchPaths?: string[];
+  }).searchPaths ?? (options as LessPluginOptions & { paths?: string[] }).paths;
+  return Array.isArray(configured) ? configured : [];
+}
+
+function canonicalScannerFirstPath(filePath: string): string | undefined {
+  return filePath && existsSync(filePath) ? realpathSync.native(filePath) : filePath || undefined;
 }

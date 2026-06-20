@@ -33,7 +33,10 @@ prototype proves its storage. `OffsetKindRef` stands in for compact offset/kind
 metadata such as `valueOffsets`/`valueKinds`, a packed side table, or a measured
 equivalent. The packed side table is a first-class candidate because it can cover
 selector/name/prelude/value/body strings without per-node metadata arrays. It is
-not a wrapper node around every string.
+not a wrapper node around every string, and it should be owned by the structural
+document/source record rather than hidden in a `WeakMap`; hot-path parser,
+render, diagnostic, and JIT code should be able to access it directly without
+extra weak lookup machinery.
 
 ```ts
 type OffsetKindRef = unknown; // maps node fields/segment indexes to offsets/kinds
@@ -516,9 +519,19 @@ Direct behavior: resolve/load imported file, parse it into raw-field core nodes,
 and merge cheap bindings/rules according to Less import semantics.
 
 JIT triggers: import options, reference/inline/css/plugin imports, media
-wrapping, or imported-file constructs that demand richer parsing.
+wrapping, missing/unresolved files, package resolver behavior that is not
+covered by the current path resolver, import cycles, de-dupe semantics, or
+imported-file constructs that demand richer parsing.
 
-Current status: canonical fallback in structural-fed corpus.
+Current status: first thin structural-fed proof complete for exact quoted Less
+imports such as `@import "tokens.less";` when the imported file itself stays in
+the scanner-native subset. The prototype resolves and reads the imported file,
+parses it through the same structural-fed path, inlines its raw-field rules,
+merges cheap root variable bindings for later entry-file declarations, and
+asserts zero island requests / zero legacy parser executions for both the
+imported file and importing file. Import options, CSS-preserved imports, raw
+URL forms, reference/multiple/once behavior, unresolved files, and unsupported
+imported syntax remain outside this proof.
 
 ### LESS-009 Parent Scope Block
 

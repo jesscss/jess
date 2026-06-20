@@ -182,7 +182,8 @@ interface RawValueField {
 // Dense side table keyed by owning node, field name, and segment index.
 // This is attractive because one metadata table can cover selector, name,
 // prelude, value, and body strings without allocating arrays on every node.
-// The table stores typed/packed arrays, not an object per segment.
+// The table stores typed/packed arrays, not an object per segment. It should be
+// owned by the parsed document/source record, not hidden behind a WeakMap.
 type FieldRangeTable = unknown;
 ```
 
@@ -194,7 +195,10 @@ where a string came from." The chosen representation should be the tightest
 shape that preserves direct string access, cheap source ranges, and cheap
 segment-kind checks under measurement. The packed side table is a serious first
 prototype candidate, especially if simple per-node arrays create too many small
-arrays across large files.
+arrays across large files. Do not make that table a `WeakMap` by default; parser,
+render, diagnostic, and JIT code need a predictable document-owned metadata
+surface, and weak lookups should only be introduced if measurement proves they
+solve a real lifetime or memory problem.
 
 ### 3. Shared scanner/token classification
 
@@ -1931,13 +1935,15 @@ storage.
   token detection for already-seen and same-scope hoisted simple literal/raw
   values, plus one-step same-unit `+`/`-` arithmetic over scanner-native
   numbers/dimensions, plus scope-only `& { ... }` and bare `{ ... }` blocks that
-  map to raw `Rules` containers with zero legacy island parser executions.
+  map to raw `Rules` containers, plus exact quoted Less imports whose imported
+  file also stays in the scanner-native subset, with zero legacy island parser
+  executions.
   Dynamic/lazy variable references that need richer Less lookup semantics,
-  mixed-unit arithmetic/calc behavior, Less-resolving imports, Less import
-  options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
-  root-`@supports` block at-rule families, pseudo/attribute/interpolated
-  selectors, and richer nested at-rule bodies remain canonical fallbacks until
-  their progressive materializers are proven.
+  mixed-unit arithmetic/calc behavior, Less import options, reference/multiple/
+  once/de-dupe behavior, unresolved imports, raw HTTP `url(...)` imports,
+  non-`@media`/root-`@layer`/root-`@supports` block at-rule families,
+  pseudo/attribute/interpolated selectors, and richer nested at-rule bodies
+  remain canonical fallbacks until their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -2098,10 +2104,18 @@ storage.
     `@import` statements whose prelude is a quoted path or quoted `url(...)`
     plus optional media text. These render through the structural-fed Less path
     with zero legacy island parser executions and serialize with `rawName` /
-    `rawPrelude` instead of canonical `Any` header children. Less import
-    options, Less-resolving imports, and raw HTTP `url(...)` imports still fall
-    back canonically until import resolution and URL/comment ownership are
-    proven in the cheap path.
+    `rawPrelude` instead of canonical `Any` header children. Less import options
+    and raw HTTP `url(...)` imports still fall back canonically until option
+    semantics and URL/comment ownership are proven in the cheap path.
+  - [x] Extended the structural-fed import proof to exact quoted Less imports
+    such as `@import "tokens.less";` when the imported file itself stays in the
+    scanner-native subset. The prototype resolves and reads the imported file,
+    recursively builds its raw-field structural-fed tree, inlines those rules,
+    merges cheap root variable bindings into the importing file, and tests both
+    files for zero legacy island parser executions / zero full-tree fallback.
+    Import options, reference/multiple/once/de-dupe behavior, missing files,
+    import cycles, package-resolution edge cases, raw URL imports, media
+    wrapping, and unsupported imported syntax remain canonical fallbacks.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
@@ -2185,12 +2199,15 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 10 structural-fed, 73 canonical
-    fallback, 22 current expected-CSS failures, 22 structural expected-CSS
-    failures, zero requested/materialized islands, zero promoted bytes, and 20
-    progressive nodes constructed directly from structural fields.
-    Counts include imported/sub-rendered Less prototype records, so
-    structural-fed plus fallback records can exceed the top-level case count.
+  - Current audit snapshot: 64 files / 65 cases, 1 structural-fed prototype
+    record, 64 canonical fallback records, 22 current expected-CSS failures, 22
+    structural expected-CSS failures, zero requested/materialized islands, zero
+    promoted bytes, and zero progressive nodes from the upstream corpus. That is
+    expected for the current conservative subset: most included fixtures contain
+    comments, richer selectors/values, mixins, imports, or diagnostics that still
+    fall back canonically. Progressive render/serialize proof is covered by the
+    dedicated thin structure-target tests rather than inferred from this broad
+    upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
   parser/eval/render, structural sidecar full-render probe, selected
   materialization sidecar full-render probe, and structural-fed prototype over
