@@ -1981,7 +1981,7 @@ describe('Rules', () => {
           seen: three;
         `);
         expect(originalValue.value).toBe('one');
-        expect(declaration.value.valueOf()).toBe('three');
+        expect(declaration.value.valueOf()).toBe('one');
       });
 
       it('updates modeled setDefined live binding cells without direct occurrence crawl', () => {
@@ -2050,7 +2050,7 @@ describe('Rules', () => {
         }
 
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
-        expect(original.value.toString()).toBe('three');
+        expect(original.value.toString()).toBe('one');
       });
 
       it('updates parent-frame modeled setDefined declaration cells without direct occurrence crawl', () => {
@@ -2103,7 +2103,7 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
-        expect(original.value.toString()).toBe('three');
+        expect(original.value.toString()).toBe('one');
       });
 
       it('treats covered setDefined variable misses as authoritative without direct occurrence crawl', () => {
@@ -2285,7 +2285,7 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
-        expect(importedDecl.value.toString()).toBe('three');
+        expect(importedDecl.value.toString()).toBe('one');
       });
 
       it('leaves unmodeled imported setDefined assignment targets uncovered for direct fallback', () => {
@@ -2309,7 +2309,8 @@ describe('Rules', () => {
 
         child.registerNode(assignment, undefined, context);
 
-        expect(optionalDecl.value.toString()).toBe('three');
+        expect(optionalDecl.value.toString()).toBe('one');
+        expect(getVarWithContext(context, node, 'one')?.value.toString()).toBe('three');
       });
 
       it('leaves dynamic public imported setDefined assignment targets uncovered', () => {
@@ -2417,7 +2418,7 @@ describe('Rules', () => {
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
-        expect(publicDecl.value.toString()).toBe('three');
+        expect(publicDecl.value.toString()).toBe('two');
         expect(optionalDecl.value.toString()).toBe('one');
       });
 
@@ -2494,7 +2495,7 @@ describe('Rules', () => {
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
         expect(earlierDecl.value.toString()).toBe('one');
-        expect(laterDecl.value.toString()).toBe('three');
+        expect(laterDecl.value.toString()).toBe('two');
       });
 
       it('refreshes carried imported setDefined assignment summaries after late child registration', () => {
@@ -2585,7 +2586,7 @@ describe('Rules', () => {
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
-        expect(publicDecl.value.toString()).toBe('three');
+        expect(publicDecl.value.toString()).toBe('one');
       });
 
       it('does not allocate late setDefined assignment frame cells shadowed by current bindings', () => {
@@ -2614,7 +2615,8 @@ describe('Rules', () => {
 
         child.registerNode(assignment, undefined, context);
 
-        expect(parentDecl.value.toString()).toBe('three');
+        expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(parentDecl.value.toString()).toBe('root');
         expect(publicDecl.value.toString()).toBe('public');
       });
 
@@ -2648,7 +2650,8 @@ describe('Rules', () => {
         child.registerNode(assignment, undefined, context);
 
         expect(earlierDecl.value.toString()).toBe('earlier');
-        expect(laterDecl.value.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(laterDecl.value.toString()).toBe('later');
       });
 
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {

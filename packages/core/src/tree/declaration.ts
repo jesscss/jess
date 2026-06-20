@@ -50,7 +50,14 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
   return out;
 }
 
-function declarationLeadingMultilineIndent(value: Array<string | Node>): string | undefined {
+function declarationLeadingMultilineIndent(value: string | Array<string | Node>): string | undefined {
+  if (typeof value === 'string') {
+    const sourceIndent = /\n([ \t]*)\S/u.exec(value)?.[1];
+    if (sourceIndent !== undefined) {
+      return sourceIndent.startsWith('  ') ? sourceIndent.slice(2) : sourceIndent;
+    }
+    return value.includes('\n') ? '' : undefined;
+  }
   for (const segment of value) {
     if (typeof segment !== 'string') {
       return undefined;
@@ -496,17 +503,19 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
   return `${nameText}(${argText})`;
 };
 
+
+// AUDIT: This class and file is egregiously long. Cut aggressively.
 /**
  * A continuous collection of nodes.
  *
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<undefined, Opts> {
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationFieldValue | undefined, Opts> {
   static override childKeys = ['name', 'value', 'important'];
 
   name: DeclarationName;
-  declare readonly value: DeclarationFieldValue;
+  declare override value: DeclarationFieldValue;
   important: DeclarationImportant;
 
   override allowRuleRoot = true;
@@ -885,6 +894,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
+  // AUDIT: What the shit is this? Why isn't this handled by a regular array or sequence handling?
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
@@ -895,6 +905,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
+  // AUDIT: What the shit is this? Why isn't this handled by a List node?
   private renderCommaValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
@@ -974,21 +985,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     const name = typeof this.name === 'string' ? this.name : this.name.valueOf();
     w.add(name, this);
-    const value = isNode(this.value)
-      ? [this.value]
-      : typeof this.value === 'string'
-        ? [this.value]
-        : this.value;
-    const leadingMultilineIndent = declarationLeadingMultilineIndent(value);
-    w.add(leadingMultilineIndent === undefined ? ': ' : `:\n${leadingMultilineIndent}`);
-    for (const segment of value) {
-      if (typeof segment === 'string') {
-        w.add(
-          leadingMultilineIndent === undefined ? segment : declarationMultilineSegmentText(segment),
-          this
-        );
+    const value = this.value;
+    if (isNode(value)) {
+      w.add(': ');
+      value.writeSyntax(options);
+    } else {
+      const indent = declarationLeadingMultilineIndent(value);
+      w.add(indent === undefined ? ': ' : `:\n${indent}`);
+      if (typeof value === 'string') {
+        w.add(indent === undefined ? value : declarationMultilineSegmentText(value), this);
       } else {
-        segment.writeSyntax(options);
+        for (const segment of value) {
+          if (typeof segment === 'string') {
+            w.add(indent === undefined ? segment : declarationMultilineSegmentText(segment), this);
+          } else {
+            segment.writeSyntax(options);
+          }
+        }
       }
     }
     if (this.important === true) {

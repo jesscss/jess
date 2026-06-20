@@ -169,6 +169,36 @@ with `--no-verify` after the explicit gates pass.
   test/unit/transform/adapter.test.ts`; parser AST suites for css/less/scss;
   `pnpm --filter @jesscss/fns test -- --run src/__tests__/each.test.ts`; and
   `pnpm --filter jess test -- --run test/scanner-first-e2e.test.ts`.
+- Corrective amendment: removed the bad `syncDeclarationValueNode`
+  `Object.defineProperty` assignment machinery. `setDefined` updates live
+  binding cells rather than replacing authored declaration values; declaration
+  value mutation is reserved for progressive upgrade/materialization from
+  string-backed fields to semantic nodes. Declaration textual rendering now
+  caches the semantic `value` field and writes string, node, and mixed segment
+  values directly without allocating one-item arrays. This is a
+  simplification/correctness cleanup, not a speed claim.
+- Amendment review: [loop/traversal] the only loop is the existing direct
+  mixed declaration value segment walk when the field is already an array.
+  String and node values no longer allocate a one-item array just to render.
+  [helper/API surface] no new render helper is retained; the branch stays local
+  to declaration rendering. [metadata mutations] setDefined no longer mutates
+  declaration fields; no descriptor mutation is retained.
+- Amendment evidence: `git diff --check`; `pnpm --filter @jesscss/core test
+  -- --run src/tree/__tests__/declaration.test.ts
+  src/tree/__tests__/progressive-nodes.test.ts
+  src/tree/__tests__/rules.test.ts -t
+  "Declaration|declaration|setDefined|progressive|important|multiline"`.
+- Live-binding follow-up: this slice exposed that Rules still has parallel
+  binding and lookup systems rather than one cohesive runtime binding model:
+  source declaration occurrence lookup, scope-frame `currentBindingsByName`,
+  `assignmentBindingsByName`, legacy `varsByName`, property lookup, callable
+  lookup, and imported assignment summaries can each own part of the answer.
+  The target model is a single declaration-binding layer with stable source
+  nodes and mutable runtime cells; source AST fields may only mutate for
+  serialization-preserving progressive upgrades such as string-to-node
+  materialization. Evaluated replacements such as `setDefined` must live in
+  binding cells or inserted runtime declarations, not by changing the authored
+  declaration node's semantic fields.
 
 - Latest pass: scanner-first CSS transform function declaration proof.
 - Verdict: accepted as a narrow structural-fed correctness proof, not a speed

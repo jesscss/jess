@@ -143,16 +143,6 @@ type UncoveredCallableResult =
   | MixinEntry[]
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
-function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
-  Object.defineProperty(declaration, 'value', {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value
-  });
-  declaration.adopt(value);
-}
-
 function syncVarDeclarationBindingEntry(declaration: VarDeclaration, value: Node): void {
   const parent = declaration.parent;
   if (!isNode(parent, N.Rules)) {
@@ -4217,7 +4207,6 @@ export class Rules<
             variableHit.cell.value = assignedValue;
             const sourceNode = variableHit.sourceNode;
             if (isNode(sourceNode, N.VarDeclaration)) {
-              syncDeclarationValueNode(sourceNode, assignedValue);
               syncVarDeclarationBindingEntry(sourceNode, assignedValue);
             }
             return;
@@ -4245,12 +4234,11 @@ export class Rules<
               assignedValue = evaluatedValue;
             }
           }
-          if (isNode(result.parent, N.Rules)) {
-            syncDeclarationValueNode(result, assignedValue);
+          if (isNode(result.parent, N.Rules) && result.parent._scopeFrame) {
             syncVarDeclarationBindingEntry(result, assignedValue);
             assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
+            return;
           }
-          return;
         }
 
         // Find the Rules node that contains the found declaration
