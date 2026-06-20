@@ -899,6 +899,68 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
+  it('feeds conservative raw Less variable values through structural parse', async () => {
+    const cases = [
+      {
+        source: '@font: "Open Sans";\n.a { font-family: @font; }\n',
+        value: '"Open Sans"',
+        property: 'font-family',
+        declarationRuleIndex: 1,
+        progressiveNodes: 3
+      },
+      {
+        source: '@image: url(/assets/a}/b.png);\n.a { background: @image; }\n',
+        value: 'url(/assets/a}/b.png)',
+        property: 'background',
+        declarationRuleIndex: 1,
+        progressiveNodes: 3
+      },
+      {
+        source: '.a { @font: "Open Sans"; font-family: @font; .b { font-family: @font; } }\n',
+        value: '"Open Sans"',
+        property: 'font-family',
+        declarationRuleIndex: 0,
+        progressiveNodes: 5
+      }
+    ];
+
+    for (const { source, value, property, declarationRuleIndex, progressiveNodes } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(`${property}: ${value}`);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/raw-variable-value.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const treeTypes = serializeRuntimeTypes(parseResult.tree!);
+      expect(treeTypes).toContain('valueSegments:');
+      expect(treeTypes).toContain(`['${value}']`);
+      expect(treeTypes).not.toContain('valueNode: (');
+
+      const ruleTypes = serializeRuntimeTypes(parseResult.tree!.rules[declarationRuleIndex]);
+      expect(ruleTypes).toContain('rawValueSegments:');
+      expect(ruleTypes).toContain(`['${value}']`);
+      expect(ruleTypes).not.toContain('valueNode: (');
+    }
+  });
+
   it('falls back for Less variable aliases so lazy variable semantics stay canonical', async () => {
     const source = '@a: blue;\n@b: @a;\n@a: red;\n.x { color: @b; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -1382,6 +1444,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@brand: blue ! important;\n.a { color: @brand; }\n',
         reason: 'important variable declarations are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: hero;\n@path: "assets/@{brand}.png";\n.a { background: @path; }\n',
+        reason: 'variable declaration value is outside the scanner-native structural-fed subset'
       },
       {
         source: '@brand: blue;\n.a { --brand: @brand; }\n',

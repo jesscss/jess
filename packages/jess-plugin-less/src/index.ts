@@ -781,7 +781,7 @@ function validateStructuralFedRule(
         return variableReason;
       }
       const name = structuralFieldText(document, child, 'name', 'declaration-name')!;
-      const valueToken = structuralScannerNativeLiteralValueToken(document, child);
+      const valueToken = structuralScannerNativeVariableDeclarationValueToken(document, child);
       if (!valueToken) {
         return 'variable declaration value is outside the scanner-native structural-fed subset';
       }
@@ -1121,7 +1121,10 @@ function validateStructuralFedVariableDeclaration(
   if (looksLikeSimpleVariableReference(valueText)) {
     return 'Less variable declaration reference is outside the scanner-native structural-fed subset';
   }
-  if (!SIMPLE_LITERAL_VALUE_PATTERN.test(valueText)) {
+  if (
+    !SIMPLE_LITERAL_VALUE_PATTERN.test(valueText)
+    && !isConservativeRawScannerNativeValue(valueText)
+  ) {
     return 'variable declaration value is outside the scanner-native structural-fed subset';
   }
   return undefined;
@@ -1144,7 +1147,7 @@ function buildStructuralFedVariableDeclaration(
   if (!valueIsland) {
     return { reason: 'variable declaration value island missing' };
   }
-  const valueToken = readScannerNativeValueToken(plan, child, 'value', valueIsland);
+  const valueToken = readScannerNativeVariableDeclarationValueToken(plan, child, valueIsland);
   if (!valueToken) {
     return { reason: 'variable declaration value is outside the scanner-native structural-fed subset' };
   }
@@ -1156,6 +1159,42 @@ function buildStructuralFedVariableDeclaration(
     name,
     valueToken,
     progressiveNodes: 1
+  };
+}
+
+function readScannerNativeVariableDeclarationValueToken(
+  plan: IslandParsePlan,
+  owner: StructuralStatementNode,
+  island: RawIslandNode
+): ScannerNativeValueToken | undefined {
+  const range = structuralFieldRange(plan.document, owner, 'value', 'value');
+  if (!range || range.start !== island.start || range.end !== island.end) {
+    return undefined;
+  }
+  return structuralScannerNativeVariableDeclarationValueToken(plan.document, owner);
+}
+
+function structuralScannerNativeVariableDeclarationValueToken(
+  document: StructuralDocument,
+  owner: StructuralStatementNode
+): ScannerNativeValueToken | undefined {
+  const range = structuralFieldRange(document, owner, 'value', 'value');
+  if (!range) {
+    return undefined;
+  }
+  const valueText = document.source.text.slice(range.start, range.end);
+  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
+  if (literalMatch) {
+    return scannerNativeLiteralValueTokenFromMatch(valueText, range.start, range.end, literalMatch);
+  }
+  if (!isConservativeRawScannerNativeValue(valueText)) {
+    return undefined;
+  }
+  return {
+    kind: 'raw-value',
+    start: range.start,
+    end: range.end,
+    text: valueText
   };
 }
 
@@ -1248,22 +1287,6 @@ function readScannerNativeDeclarationValueToken(
       : undefined;
   }
   return structuralScannerNativeDeclarationValueToken(plan.document, owner);
-}
-
-function structuralScannerNativeLiteralValueToken(
-  document: StructuralDocument,
-  owner: StructuralStatementNode
-): ScannerNativeValueToken | undefined {
-  const range = structuralFieldRange(document, owner, 'value', 'value');
-  if (!range) {
-    return undefined;
-  }
-  const valueText = document.source.text.slice(range.start, range.end);
-  const match = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
-  if (!match) {
-    return undefined;
-  }
-  return scannerNativeLiteralValueTokenFromMatch(valueText, range.start, range.end, match);
 }
 
 function structuralScannerNativeDeclarationValueToken(

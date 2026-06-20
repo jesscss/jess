@@ -1911,8 +1911,8 @@ storage.
   subset.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
   selector, simple and flat literal declaration values, conservative quoted/url
-  declaration values, conservative raw custom property declarations, exact
-  `!important` declaration flags on non-custom values, simple root or
+  declaration and Less variable values, conservative raw custom property
+  declarations, exact `!important` declaration flags on non-custom values, simple root or
   ruleset-local `@media` prelude/body shape including ordinary nested rules,
   simple root `@layer` blocks with ordinary rule bodies, and simple already-seen
   Less variable declaration/reference token detection with zero legacy island
@@ -1944,11 +1944,13 @@ storage.
   - [x] Third thin proof: `ProgressiveVariableDeclaration` stores invisible
     string-backed Less variable declarations while the structural-fed builder
     resolves only already-seen simple `@ident` reads into raw declaration value
-    segments. Variable declaration values are literal-only in this proof; alias
-    declarations such as `@b: @a` fall back canonically so Less lazy lookup
-    semantics are not frozen into scanner-native strings. This proves zero
-    `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path without
-    claiming Less lazy/hoisted variable semantics.
+    segments. Variable declaration values are simple literals or the same
+    conservative raw quoted/url subset used by raw declaration values in this
+    proof; alias declarations such as `@b: @a` and interpolation-like raw strings
+    fall back canonically so Less lazy lookup semantics are not frozen into
+    scanner-native strings. This proves zero `VarDeclaration`/`Reference`/value
+    wrapper nodes for the narrow path without claiming Less lazy/hoisted variable
+    semantics.
   - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
     and raw-field core `AtRule` nodes for covered root and ruleset-local
@@ -2060,7 +2062,8 @@ storage.
   so they can run without canonical fallback.
   - Current limit: references that depend on Less lazy/hoisted lookup semantics,
     complex variable values, interpolation, arithmetic, functions, accessors,
-    and variable values crossing import/reference boundaries still fall back.
+    rich comma lists, comments, and variable values crossing import/reference
+    boundaries still fall back.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native, and support ruleset-local `@media` blocks
