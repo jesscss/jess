@@ -2123,14 +2123,14 @@ storage.
     wrapping, and unsupported imported syntax remain canonical fallbacks.
   - [x] Added the first structural-fed Less mixin proof for exact no-argument
     definitions and calls. The prototype indexes `.rounded()` from scanner text,
-    emits the current core `Mixin` plus `Call`/`Reference` surfaces, keeps the
-    mixin body declaration as a raw-field core `Declaration`, renders equal CSS,
-    and asserts zero island parser executions / zero full-tree fallback. The
-    registration path now reads raw declaration names for static invalidation
-    keys and only materializes declaration name/value nodes when registration or
-    eval demands semantic fields. Parameters, guards, namespaces, overload
-    resolution, variable-bearing mixin bodies, at-rules inside mixin bodies, and
-    richer call syntax remain canonical fallback.
+    emits the current core `Mixin` plus `Call`/`Reference` surfaces, keeps mixin
+    body declarations and nested ordinary rules as raw-field core nodes, renders
+    equal CSS, and asserts zero island parser executions / zero full-tree
+    fallback. The registration path now reads raw declaration names for static
+    invalidation keys and only materializes declaration name/value nodes when
+    registration or eval demands semantic fields. Parameters, guards,
+    namespaces, overload resolution, variable-bearing mixin bodies, at-rules
+    inside mixin bodies, and richer call syntax remain canonical fallback.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
