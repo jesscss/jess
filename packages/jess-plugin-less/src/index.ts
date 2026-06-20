@@ -1043,9 +1043,20 @@ function validateStructuralFedAtRule(
   if (prelude !== undefined && !isScannerNativeAtRulePrelude(name, prelude)) {
     return 'at-rule prelude is outside the scanner-native structural-fed subset';
   }
+  const { variables: localVariables } = collectStructuralFedScopeVariables(document, atRule.children, variables);
   for (const child of atRule.children) {
+    if (child.kind === 'variable-declaration') {
+      const variableReason = validateStructuralFedVariableDeclaration(document, child);
+      if (variableReason) {
+        return variableReason;
+      }
+      if (rootDeclarationBlockPrelude !== undefined) {
+        return 'Less variable declarations are not in this structural-fed subset';
+      }
+      continue;
+    }
     if (child.kind === 'at-rule') {
-      const reason = validateStructuralFedAtRule(document, child, variables, 'at-rule', mathMode);
+      const reason = validateStructuralFedAtRule(document, child, localVariables, 'at-rule', mathMode);
       if (reason) {
         return reason;
       }
@@ -1061,8 +1072,8 @@ function validateStructuralFedAtRule(
       const reason = validateStructuralFedRule(
         document,
         child,
-        variables,
-        parentKind === 'root' && name !== '@layer',
+        localVariables,
+        name !== '@layer',
         parentKind === 'root',
         mathMode
       );
@@ -1074,7 +1085,7 @@ function validateStructuralFedAtRule(
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
-    const declarationReason = validateStructuralFedDeclaration(document, child, variables, true, mathMode);
+    const declarationReason = validateStructuralFedDeclaration(document, child, localVariables, true, mathMode);
     if (declarationReason) {
       return declarationReason;
     }
@@ -1348,6 +1359,7 @@ function buildStructuralFedAtRule(
   }
 
   const rules: Node[] = [];
+  const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, atRule.children, variables);
   let progressiveNodes = 1;
   let triviaCursor = atRule.bodyStart;
   for (const child of atRule.children) {
@@ -1359,8 +1371,21 @@ function buildStructuralFedAtRule(
     progressiveNodes += comments.progressiveNodes;
     triviaCursor = child.end;
 
+    if (child.kind === 'variable-declaration') {
+      const builtChild = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
+      if ('reason' in builtChild) {
+        return builtChild;
+      }
+      if (rootDeclarationBlockPrelude !== undefined) {
+        return { reason: 'Less variable declarations are not in this structural-fed subset' };
+      }
+      localVariables.set(builtChild.name, builtChild.valueToken);
+      rules.push(builtChild.node);
+      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      continue;
+    }
     if (child.kind === 'at-rule') {
-      const builtChild = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, 'at-rule', mathMode);
+      const builtChild = buildStructuralFedAtRule(plan, child, ownerIslands, context, localVariables, 'at-rule', mathMode);
       if ('reason' in builtChild) {
         return builtChild;
       }
@@ -1380,8 +1405,8 @@ function buildStructuralFedAtRule(
         child,
         ownerIslands,
         context,
-        variables,
-        parentKind === 'root' && name !== '@layer',
+        localVariables,
+        name !== '@layer',
         parentKind === 'root',
         mathMode
       );
@@ -1395,7 +1420,7 @@ function buildStructuralFedAtRule(
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
       return { reason: `unsupported at-rule child ${child.kind}` };
     }
-    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, true, mathMode);
+    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, localVariables, true, mathMode);
     if ('reason' in builtChild) {
       return builtChild;
     }

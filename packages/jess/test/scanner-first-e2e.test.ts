@@ -2791,16 +2791,75 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for richer nested @media bodies until those shapes are proven', async () => {
+  it('feeds Less variable declarations inside supported at-rules through structural parse', async () => {
     const cases = [
       {
-        source: '.a { @media screen { @brand: blue; color: @brand; } }\n',
-        reason: 'unsupported at-rule child variable-declaration'
+        source: '@media screen { @brand: blue; .a { color: @brand; } }\n',
+        expectedAtRule: '@media screen',
+        expectedSelector: '.a'
       },
       {
-        source: '.a { @media screen { .b { @brand: blue; color: @brand; } } }\n',
-        reason: 'Less variable declarations are not in this structural-fed subset'
+        source: '.a { @media screen { @brand: blue; color: @brand; } }\n',
+        expectedAtRule: '@media screen',
+        expectedSelector: '.a'
       },
+      {
+        source: '.a { @media screen { @brand: blue; .b { color: @brand; } } }\n',
+        expectedAtRule: '@media screen',
+        expectedSelector: '.b'
+      },
+      {
+        source: '.a { @supports (display: grid) { @brand: blue; color: @brand; } }\n',
+        expectedAtRule: '@supports (display: grid)',
+        expectedSelector: '.a'
+      }
+    ];
+
+    for (const { source, expectedAtRule, expectedSelector } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(expectedAtRule);
+      expect(rendered).toContain(`${expectedSelector} {`);
+      expect(rendered).toContain('color: blue');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parsePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const parseResult = parsePlugin.safeParse('/virtual/at-rule-vars.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      expect(types).toContain('(ProgressiveVariableDeclaration');
+      expect(types).toContain('name: \'@brand\'');
+      expect(types).toContain('[\'blue\']');
+      expect(types).toContain('rawName: \'color\'');
+      expect(types).not.toContain('(VarDeclaration');
+      expect(types).not.toContain('(Reference [role=value]');
+      expect(types).not.toContain('valueNode: (Any \'blue\')');
+    }
+  });
+
+  it('falls back for richer nested @media bodies until those shapes are proven', async () => {
+    const cases = [
       {
         source: '.a { @media screen { .b { @media print { .c { color: blue; } } } } }\n',
         reason: 'unsupported rule child at-rule'
