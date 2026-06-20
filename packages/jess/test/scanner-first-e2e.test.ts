@@ -3598,6 +3598,54 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
+  it('feeds deprecated no-parens Less mixin calls through structural parse', async () => {
+    const source = '.rounded() { color: blue; }\n.a { .rounded; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/mixin-no-parens.less', source);
+    expect(parseResult.errors).toEqual([]);
+    expect(parseResult.warnings).toHaveLength(1);
+    expect(parseResult.warnings[0]).toMatchObject({
+      code: 'parse/deprecated',
+      message: 'Calling a mixin without parentheses is deprecated'
+    });
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Mixin');
+    expect(types).toContain('Any [role=name] \'.rounded\'');
+    expect(types).toContain('(Call');
+    expect(types).toContain('(Reference [role=name]');
+    expect(types).toContain('key: \'.rounded\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
   it('feeds root no-arg Less mixin calls through structural parse', async () => {
     const source = '.m() { .a { color: blue; } }\n.m();\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

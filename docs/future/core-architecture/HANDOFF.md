@@ -103,6 +103,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first deprecated no-parens mixin-call proof.
+- Verdict: accepted as a bounded Less mixin-call proof, not a performance claim.
+  The structural-fed path now admits only structural `mixin-call` nodes whose
+  name is a scanner-native class/id mixin name with optional empty parens.
+- New traversal/allocation: a warning collector walks the structural tree only
+  on successful structural-fed prototype output. It allocates warning
+  diagnostics only when a no-parens mixin call is present, and only then
+  materializes line/column data through the lazy source map.
+- New materialization: no eager selector/value materialization. The e2e proof
+  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
+  declaration value storage, and preservation of the canonical
+  `parse/deprecated` warning.
+- Helper/API surface: no exports and no compatibility shims. Namespaced
+  no-parens calls such as `#theme > .mixin;`, parameterized/guarded/important
+  calls, and property-accessor calls remain canonical fallback.
+- Metadata mutations: none added.
+- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
+  e2e suite, scanner-first Less corpus parity audit, Less plugin build, eslint,
+  `git diff --check`, and aggressive cutting review.
+
 - Latest pass: scanner-first complex-target `:extend(...)` proof.
 - Verdict: accepted as a bounded Less extend semantics proof, not a performance
   claim. The structural-fed path now admits cheap target-only complex selectors

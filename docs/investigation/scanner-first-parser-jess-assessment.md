@@ -2347,6 +2347,19 @@ storage.
     Namespaced calls, chained selectors, parameters, guarded calls, important
     calls, property-accessor calls, detached rulesets, and other richer mixin
     call signatures remain canonical fallbacks.
+- [x] Structural-fed prototype: support simple deprecated no-parens Less mixin
+  calls when the structural node is already classified as a mixin call and the
+  name is a scanner-native class/id mixin name.
+  - Proof target: `.rounded() { color: blue; } .a { .rounded; }` renders equal
+    CSS through the scanner-fed path, records zero full-tree fallback, zero
+    actual parses, zero requested islands, zero promoted bytes, serializes a
+    `Call`/`Reference` without eager selector/value wrappers, and preserves the
+    canonical `parse/deprecated` warning for calling a mixin without
+    parentheses.
+  - Current limit: namespaced calls such as `#theme > .mixin;`, chained
+    selectors, parameters, guarded calls, important calls, property-accessor
+    calls, detached rulesets, and other richer mixin call signatures remain
+    canonical fallbacks.
 - [x] Structural-fed prototype: support simple no-argument Less mixin body
   variable declarations and reads inside that same mixin body.
   - Proof target: root and ruleset-local no-argument mixins with `@brand:

@@ -102,6 +102,7 @@ export type LessPluginOptions = LessOptions & {
 export type ScannerFirstPrototypeResult = ScannerFirstProbeResult & {
   runtimeTreeSource: 'structural-fed' | 'canonical-fallback';
   fallbackReason?: string;
+  warnings?: WarningDiagnostic[];
   /**
    * Cheap progressive core nodes constructed directly from structural fields
    * instead of from canonical island materialization.
@@ -514,6 +515,7 @@ export class LessPlugin extends AbstractPlugin {
       cacheMisses: plan.counters.cacheMisses,
       fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
       progressiveNodes,
+      warnings: structuralFedDeprecationWarnings(plan.document, filePath, context),
       requestsByIslandKind: countRequestedIslandKinds(plan),
       requestsByOwnerKind: countRequestedOwnerKinds(plan),
       materializationMs,
@@ -694,6 +696,9 @@ export class LessPlugin extends AbstractPlugin {
         ) {
           const prototype = this.runScannerFirstPrototype(filePath, source, context);
           tree = prototype.tree;
+          if (prototype.result.runtimeTreeSource === 'structural-fed' && prototype.result.warnings) {
+            warnings.push(...prototype.result.warnings);
+          }
         } else {
           this.runScannerFirstProbe(filePath, source, scannerFirstProbe);
         }
@@ -947,6 +952,50 @@ function structuralFedBlockCommentsBetween(
     nodes,
     progressiveNodes: nodes.length
   };
+}
+
+function structuralFedDeprecationWarnings(
+  document: StructuralDocument,
+  filePath: string,
+  context: TreeContext
+): WarningDiagnostic[] | undefined {
+  const warnings: WarningDiagnostic[] = [];
+  collectStructuralFedDeprecationWarnings(document, document.root.children, filePath, context, warnings);
+  return warnings.length > 0 ? warnings : undefined;
+}
+
+function collectStructuralFedDeprecationWarnings(
+  document: StructuralDocument,
+  nodes: readonly StructuralNode[],
+  filePath: string,
+  context: TreeContext,
+  warnings: WarningDiagnostic[]
+): void {
+  for (const node of nodes) {
+    if (node.kind === 'mixin-call') {
+      const name = structuralFieldText(document, node, 'name', 'mixin-name');
+      if (name !== undefined && !name.includes('(') && scannerNativeNoArgMixinName(name)) {
+        const offset = Math.max(node.start, node.end - 1);
+        const position = document.source.offsetToLineColumn(offset);
+        warnings.push({
+          code: 'parse/deprecated',
+          phase: 'parse',
+          message: 'Calling a mixin without parentheses is deprecated',
+          reason: 'Calling a mixin without parentheses is deprecated',
+          fix: 'Update your code to use the recommended syntax.',
+          file: context.file,
+          filePath,
+          line: position.line,
+          column: position.column,
+          lines: extractRelevantLines(document.source.text, position.line)
+        });
+      }
+      continue;
+    }
+    if ('children' in node) {
+      collectStructuralFedDeprecationWarnings(document, node.children, filePath, context, warnings);
+    }
+  }
 }
 
 type StructuralFedBuildResult =
@@ -2630,7 +2679,7 @@ const CUSTOM_PROPERTY_NAME_PATTERN = /^--[-_a-zA-Z][\w-]*$/u;
 const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
-const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)\([ \t]*\)$/u;
+const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)(?:\([ \t]*\))?$/u;
 const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
   'lighten',
   'rgb'
