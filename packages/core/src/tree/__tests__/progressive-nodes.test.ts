@@ -588,9 +588,50 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
+  test('materializes raw-field pseudo selector atoms as string components only when semantic registration asks', () => {
+    const context = new Context();
+    for (const rawSelector of [':root', '.a:hover', '[data-kind]']) {
+      const node = ruleset({
+        selector: rawSelector,
+        rules: [
+          rawdecl({
+            name: 'color',
+            value: ['blue']
+          })
+        ]
+      });
+
+      expect(node.toTrimmedString()).toBe(`${rawSelector} {\n  color: blue;\n}\n`);
+      expect(node.selector).toBeUndefined();
+      expect(node.rawSelector).toBe(rawSelector);
+      expect(serializeTypes(node)).toContain(`rawSelector: '${rawSelector}'`);
+      void node.prepareRegistration(context);
+      expect(node.rawSelector).toBeUndefined();
+      const selector = node.selector;
+      expect(selector).toBeDefined();
+      expect(isNode(selector, N.CompoundSelector)).toBe(true);
+      if (!selector || !isNode(selector, N.CompoundSelector)) {
+        throw new Error(`Expected ${rawSelector} to materialize as a compound selector.`);
+      }
+      expect(selector.eval(context)).toBe(selector);
+      expect(selector.resolve(context)).toBe(selector);
+      expect(selector.value).toEqual(
+        rawSelector === '.a:hover'
+          ? ['.a', ':hover']
+          : [rawSelector]
+      );
+      const types = serializeTypes(node);
+      expect(types).toContain('(CompoundSelector');
+      expect(types).not.toContain('(PseudoSelector');
+      expect(types).not.toContain('(AttributeSelector');
+      expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('rawSelector');
+    }
+  });
+
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
-      selector: '.a:hover',
+      selector: ':hover(1)',
       rules: []
     })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
     expect(() => ruleset({

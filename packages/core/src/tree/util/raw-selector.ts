@@ -9,8 +9,9 @@
 
 const RAW_ATTRIBUTE_SELECTOR_SOURCE =
   String.raw`\[-?[-_a-zA-Z][\w-]*(?:[ \t]*[~|^$*]?=[ \t]*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|-?[_a-zA-Z][\w-]*))?(?:[ \t]+[is])?[ \t]*\]`;
+const RAW_PSEUDO_SELECTOR_SOURCE = String.raw`:{1,2}-?[_a-zA-Z][\w-]*`;
 const RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE =
-  String.raw`(?:[.#][-_a-zA-Z][\w-]*|${RAW_ATTRIBUTE_SELECTOR_SOURCE})`;
+  String.raw`(?:[.#][-_a-zA-Z][\w-]*|${RAW_PSEUDO_SELECTOR_SOURCE}|${RAW_ATTRIBUTE_SELECTOR_SOURCE})`;
 const RAW_SELECTOR_BRANCH_SOURCE =
   String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})*|(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})+)`;
 const RAW_COMPLEX_SELECTOR_SOURCE =
@@ -21,7 +22,7 @@ const RAW_SELECTOR_PATTERN =
 const RAW_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${RAW_SELECTOR_BRANCH_SOURCE}$`, 'u');
 const RAW_SIMPLE_SELECTOR_PATTERN =
-  new RegExp(String.raw`^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|${RAW_ATTRIBUTE_SELECTOR_SOURCE})$`, 'u');
+  new RegExp(String.raw`^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|${RAW_PSEUDO_SELECTOR_SOURCE}|${RAW_ATTRIBUTE_SELECTOR_SOURCE})$`, 'u');
 const RAW_EXTEND_TARGET_SELECTOR_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
 const RAW_EXTEND_TARGET_COMPLEX_SELECTOR_PATTERN =
   /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;

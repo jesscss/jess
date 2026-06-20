@@ -1652,6 +1652,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
       '.a.b',
       'button.primary',
       '.-utility.active',
+      ':root',
+      'button:hover',
+      'button:hover.active',
       '[data-kind]',
       'button[data-kind="primary"].active',
       'button[data-label="hello, world"].active'
@@ -1692,12 +1695,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(types).toContain('(Ruleset');
       expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('(PseudoSelector');
       expect(types).not.toContain('(AttributeSelector');
     }
   });
 
   it('feeds simple selector lists through structural parse', async () => {
-    const cases = ['.a, .b', '.a, button.primary', '.a, button[data-kind]', '.a, button[data-label="hello, world"]'];
+    const cases = ['.a, .b', '.a, button.primary', '.a, button:hover', '.a, button[data-kind]', '.a, button[data-label="hello, world"]'];
 
     for (const selector of cases) {
       const source = `${selector} { color: blue; }\n`;
@@ -1736,6 +1740,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(types).not.toContain('(SelectorList');
       expect(types).not.toContain('(BasicSelector');
       expect(types).not.toContain('(CompoundSelector');
+      expect(types).not.toContain('(PseudoSelector');
       expect(types).not.toContain('(AttributeSelector');
     }
   });
@@ -1744,6 +1749,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       '.a .b',
       'button > .icon.active',
+      '.a:hover > button.primary',
       '.a[data-kind] > button.primary',
       '.a[data-label="hello world"] > button.primary',
       '.a + .b',

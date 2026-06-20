@@ -1798,8 +1798,9 @@ progressive materializers are scanner-native.
     including existing trimmed selector-list constructor behavior.
   - Follow-up proof: evaluate whether selector payloads can stay string-backed
     even deeper into core semantics. Simple selectors such as `#id`, `.class`,
-    pseudo selectors without parens, and `*` may not need distinct node objects
-    until a visitor or extend operation demands them. Combinators may also be
+    pseudo selectors without parens, pseudo-elements without parens, and `*`
+    may not need distinct node objects until a visitor or extend operation
+    demands them. Combinators may also be
     string segments rather than `Combinator` nodes, yielding shapes like
     `CompoundSelector { value: ['#id', '.class'] }` and
     `ComplexSelector { value: ['#id', '>', '.class', '+', 'div'] }`. If exact
@@ -1821,9 +1822,10 @@ progressive materializers are scanner-native.
     key-set computation, raw ruleset semantic materialization, and scanner-fed
     adjacent compound/list/complex selector e2e render. A follow-up within the
     same proof admits simple raw attribute selector atoms such as `[data-kind]`
-    and `button[data-kind="primary"].active`; these remain string components
-    and do not allocate `AttributeSelector` nodes on the direct render path.
-    `Ruleset` visibility
+    and `button[data-kind="primary"].active`, plus no-argument pseudo atoms
+    such as `:root`, `button:hover`, and `.a::before`; these remain string
+    components and do not allocate `AttributeSelector` or `PseudoSelector` nodes
+    on the direct render path. `Ruleset` visibility
     clone checks skip raw string leaves because there is no selector node to
       clone or flag. Ordered selector lookup, ampersand substitution, and
       extend-match helpers now compare raw components through shared value text
@@ -1831,12 +1833,13 @@ progressive materializers are scanner-native.
     - Current limit: this is compound-only. `ComplexSelector` still owns
       combinator nodes, selector lists still own selector branch nodes, and
       visitor/source-map code is not taught to treat arbitrary strings as full
-      selector nodes. Rich pseudos such as `:hover`, `:is(...)`, attribute
-      selectors that require structured field equality, interpolation, and
-      newline-containing selectors remain outside this proof until admitted by
-      separate tests. Attribute visitor support is not assumed; the outcome may
-      be "no attribute visitor surface" if plugin research and Jess semantics do
-      not justify paying for structured fields or compatibility adapters.
+      selector nodes. Pseudo selectors with argument lists such as `:is(...)`,
+      attribute selectors that require structured field equality,
+      interpolation, and newline-containing selectors remain outside this proof
+      until admitted by separate tests. Attribute and pseudo leaf visitor
+      support is not assumed; the outcome may be "no leaf visitor surface" if
+      plugin research and Jess semantics do not justify paying for structured
+      fields or compatibility adapters.
   - Visitor research follow-up: survey public Less plugins that register
     visitors to determine which selector/value internals are actually observed
     in practice. Use that evidence before preserving visitor materialization for
@@ -2369,14 +2372,15 @@ storage.
     materializer for the requested field/span.
   - Current limit: raw `Ruleset` semantic materialization only covers the
     scanner-native simple selector subset (`*`, tag, `.class`, `#id`, simple
-    raw attribute atoms), adjacent basic compound selectors, cheap complex
-    selectors made from those parts with descendant, child, adjacent sibling, or
-    general sibling combinators, and comma-separated lists whose branches stay
-    inside those shapes, plus the narrow nested ampersand-pseudo branch
-    `&:focus` / `&::before`-style names. Other pseudo selectors, structured
-    attribute selector internals, interpolation, richer nested selectors, and
-    `:extend()` still need a real selector materializer or canonical fallback
-    before they count as completed scanner-first selector support.
+    raw attribute atoms, and no-argument pseudo atoms), adjacent basic compound
+    selectors, cheap complex selectors made from those parts with descendant,
+    child, adjacent sibling, or general sibling combinators, and comma-separated
+    lists whose branches stay inside those shapes, plus the narrow nested
+    ampersand-pseudo branch `&:focus` / `&::before`-style names. Pseudo
+    selectors with arguments, structured attribute selector internals,
+    interpolation, richer nested selectors, and `:extend()` still need a real
+    selector materializer or canonical fallback before they count as completed
+    scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain Less variable declarations and reads so already-seen
   values and same-scope hoisted simple literal/raw values can run without

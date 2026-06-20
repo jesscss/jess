@@ -115,7 +115,7 @@ function canMaterializeRawSimpleSelector(value: string): boolean {
 }
 
 function canMaterializeRawBasicSelector(value: string): boolean {
-  return canMaterializeRawSimpleSelector(value) && !value.startsWith('[');
+  return canMaterializeRawSimpleSelector(value) && !value.startsWith('[') && !value.startsWith(':');
 }
 
 function readRawAttributeSelector(value: string, start: number): { text: string; end: number } | undefined {
@@ -170,6 +170,19 @@ function readRawSelectorIdentifier(value: string, start: number): number {
   return end;
 }
 
+function readRawPseudoSelectorName(value: string, start: number): number {
+  const first = value[start];
+  const nameStart = first === '-' ? start + 1 : start;
+  if (!/[_a-zA-Z]/u.test(value[nameStart] ?? '')) {
+    return start;
+  }
+  let end = nameStart + 1;
+  while (isRawSelectorIdentifierPart(value[end])) {
+    end++;
+  }
+  return end;
+}
+
 function readRawCompoundSelectorPart(value: string, start: number): { text: string; end: number } | undefined {
   const first = value[start];
   if (first === '[') {
@@ -181,6 +194,11 @@ function readRawCompoundSelectorPart(value: string, start: number): { text: stri
   if (first === '.' || first === '#') {
     const end = readRawSelectorIdentifier(value, start + 1);
     return end > start + 1 ? { text: value.slice(start, end), end } : undefined;
+  }
+  if (first === ':') {
+    const nameStart = value[start + 1] === ':' ? start + 2 : start + 1;
+    const end = readRawPseudoSelectorName(value, nameStart);
+    return end > nameStart ? { text: value.slice(start, end), end } : undefined;
   }
   const end = readRawSelectorIdentifier(value, start);
   return end > start ? { text: value.slice(start, end), end } : undefined;
@@ -202,6 +220,7 @@ function splitRawCompoundSelector(value: string): string[] | undefined {
       !text.startsWith('.')
       && !text.startsWith('#')
       && !text.startsWith('[')
+      && !text.startsWith(':')
       && text !== '*'
       && parts.length > 0
     ) {

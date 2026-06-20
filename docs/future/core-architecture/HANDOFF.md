@@ -402,6 +402,25 @@ with `--no-verify` after the explicit gates pass.
   regex-only split because regex matching could not safely distinguish brackets
   and quoted values without either rejecting useful cheap atoms or allocating a
   richer parser surface.
+- Aggressive Cutting Self-Prosecution, scanner-first no-argument pseudo selector
+  atom proof: the raw selector classifier now admits a deliberately narrow
+  pseudo atom subset such as `:root`, `button:hover`, and `.a::before`.
+  Direct structural-fed render still writes the original `rawSelector` string
+  and does not allocate `PseudoSelector`, `BasicSelector`, or
+  selector-list/complex nodes. Cold semantic materialization splits pseudo
+  atoms as raw string components, not structured pseudo fields; the existing
+  `&:focus` / `&::before` branch remains the special case that materializes an
+  `Ampersand` plus `PseudoSelector` only when semantic registration demands
+  parent substitution. Pseudos with arguments such as `:is(...)`, interpolation,
+  comments, newlines, and richer selector grammar remain outside this proof.
+  Pseudo names use the existing ident-like non-bare-hyphen subset, so `:-` and
+  `::-` do not enter the structural-fed path. Single raw pseudo and attribute
+  atoms stay `CompoundSelector` surfaces across eval/resolve instead of
+  collapsing into `BasicSelector`, because `BasicSelector` would treat `:` and
+  `[` as tag-like starts.
+  Pseudo leaf visitor exposure is not promised and may explicitly stay
+  unsupported for this atom family unless plugin research or Jess semantics
+  proves a node/field surface is worth preserving.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

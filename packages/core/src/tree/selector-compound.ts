@@ -44,6 +44,10 @@ function materializeRawComponent(part: string, source: CompoundSelector): BasicS
   ).inherit(source);
 }
 
+function shouldKeepRawComponentCompoundSurface(part: string): boolean {
+  return part.startsWith(':') || part.startsWith('[');
+}
+
 function emitCompoundPart(
   part: CompoundSelectorComponent,
   options: ReturnType<typeof getPrintOptions>,
@@ -133,6 +137,11 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   private collapsedSelector(item: CompoundSelectorComponent, sourceValue: readonly CompoundSelectorComponent[]): Selector {
     if (isRawCompoundSelectorComponent(item)) {
+      if (shouldKeepRawComponentCompoundSurface(item)) {
+        return sourceValue.length === 1 && sourceValue[0] === item
+          ? this
+          : this.createEvaluatedComponentSurface([item], sourceValue);
+      }
       return materializeRawComponent(item, this);
     }
     const owned = ownCollapsedSourceChild(item, sourceValue, this);
