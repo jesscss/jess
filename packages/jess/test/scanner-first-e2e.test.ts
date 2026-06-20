@@ -1020,6 +1020,86 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds simple Less function values through progressive declaration segments', async () => {
+    const cases = [
+      {
+        source: '.a { color: lighten(#000, 10%); }\n',
+        renderedSnippet: 'color: #1a1a1a',
+        typeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '(Call',
+          'key: \'lighten\'',
+          '(Color',
+          'node: \'#000\'',
+          '(Dimension',
+          'number: 10',
+          'unit: \'%\''
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=property] \'color\')',
+          'valueNode:'
+        ]
+      },
+      {
+        source: '.a { color: rgb(10, 20, 30); }\n',
+        renderedSnippet: 'color: rgb(10, 20, 30)',
+        typeSnippets: [
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '(Call',
+          'key: \'rgb\'',
+          '(Num 10)',
+          '(Num 20)',
+          '(Num 30)'
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=property] \'color\')',
+          'valueNode:'
+        ]
+      }
+    ];
+
+    for (const { source, renderedSnippet, typeSnippets, forbiddenTypeSnippets } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(renderedSnippet);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/function-value.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      for (const snippet of typeSnippets) {
+        expect(types).toContain(snippet);
+      }
+      for (const snippet of forbiddenTypeSnippets) {
+        expect(types).not.toContain(snippet);
+      }
+    }
+  });
+
   it('feeds exact important declarations through structural parse without value materialization', async () => {
     const cases = [
       { property: 'color', value: 'blue' },
@@ -2493,6 +2573,30 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@brand: hero;\n.a { background: url(/@{brand}.png); }\n',
         reason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: #000;\n.a { color: lighten(@brand, 10%); }\n',
+        reason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@amount: 10%;\n.a { color: lighten(#000, @amount); }\n',
+        reason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { color: lighten(rgb(0, 0, 0), 10%); }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { color: color("red"); }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { color: lighten(#00000, 10%); }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { color: lighten(#0000000, 10%); }\n',
+        reason: 'declaration value is outside the scanner-native structural-fed subset'
       },
       {
         source: '.a { background: url(/assets/a,b.png); }\n',

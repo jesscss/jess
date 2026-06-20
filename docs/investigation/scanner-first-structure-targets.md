@@ -444,12 +444,20 @@ math-mode nuance still fall back canonically.
 Target structure: value segment list with one function-call string segment and
 `valueKind: "function-call"`.
 
-Direct behavior: no direct render; evaluating the value demands JIT parsing
-only that value field and its argument substructure.
+Direct behavior: exact literal-argument color function calls can be carried as
+one progressive declaration value segment containing a core `Call`; direct
+render/eval uses that segment without a full tree materialization or legacy
+island parser execution.
 
 JIT triggers: function call marker plus eval demand.
 
-Current status: canonical fallback.
+Current status: structural-fed prototype handles the simple literal color
+function calls currently proven by tests, `lighten(#000, 10%)` and
+`rgb(10, 20, 30)`, by creating only the needed `Call` / `Reference` / `List` /
+scalar argument nodes inside the raw declaration value segment. Function calls
+with variable arguments, nested calls, quoted arguments, comments,
+interpolation, unproven function names, or richer Less value grammar still fall
+back canonically.
 
 ### LESS-006 Mixin Definition And Call
 

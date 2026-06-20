@@ -8,10 +8,14 @@ import {
   Ruleset,
   AtRule,
   AtRuleStatement,
+  Color,
   Declaration,
+  Dimension,
   Mixin,
   Call,
   Reference,
+  List,
+  Num,
   Any,
   ProgressiveVariableDeclaration,
   Node,
@@ -1396,6 +1400,9 @@ function validateStructuralFedDeclaration(
   if (supportsScannerNativeArithmetic(mathMode) && resolveScannerNativeArithmeticValue(scannerNativeValueText, variables)) {
     return undefined;
   }
+  if (isScannerNativeFunctionCallValue(scannerNativeValueText)) {
+    return undefined;
+  }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
     return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
   }
@@ -1432,14 +1439,22 @@ function buildStructuralFedDeclaration(
   if (!valueIsland) {
     return { reason: 'declaration value island missing' };
   }
-  const valueToken = readScannerNativeDeclarationValueToken(plan, child, valueIsland, variables, allowLessVariableReferences, mathMode);
+  const valueToken = readScannerNativeDeclarationValueToken(
+    plan,
+    child,
+    valueIsland,
+    variables,
+    context,
+    allowLessVariableReferences,
+    mathMode
+  );
   if (!valueToken) {
     return { reason: 'declaration value is outside the scanner-native structural-fed subset' };
   }
   return {
     node: new Declaration({
       name,
-      value: [valueToken.text],
+      value: [valueToken.node ?? valueToken.text],
       important: valueToken.important
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
@@ -1557,12 +1572,14 @@ type ScannerNativeValueToken = {
     | 'dimension-or-number'
     | 'identifier'
     | 'flat-literal-list'
+    | 'function-call'
     | 'custom-property-raw'
     | 'raw-value'
     | 'raw-at-rule-prelude';
   start: number;
   end: number;
   text: string;
+  node?: Node;
   important?: string;
 };
 
@@ -1618,6 +1635,7 @@ function readScannerNativeDeclarationValueToken(
   owner: StructuralStatementNode,
   island: RawIslandNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
+  context: TreeContext,
   allowLessVariableReferences = true,
   mathMode: MathMode = 'parens-division'
 ): ScannerNativeValueToken | undefined {
@@ -1655,6 +1673,16 @@ function readScannerNativeDeclarationValueToken(
           end: range.end
         }
       : undefined;
+  }
+  const functionToken = scannerNativeFunctionValueToken(
+    plan.document,
+    range,
+    scannerNativeValueText,
+    context,
+    valueParts?.important
+  );
+  if (functionToken) {
+    return functionToken;
   }
   return structuralScannerNativeDeclarationValueToken(plan.document, owner);
 }
@@ -1778,6 +1806,162 @@ function structuralScannerNativeDeclarationValueToken(
   };
 }
 
+function isScannerNativeFunctionCallValue(valueText: string): boolean {
+  const parts = scannerNativeFunctionParts(valueText);
+  if (!parts) {
+    return false;
+  }
+  const args = splitScannerNativeFunctionArgs(parts.argsText, parts.argsStart);
+  return args.length > 0
+    && args.every(arg =>
+      scannerNativeFunctionArgKind(arg.text) !== undefined
+    );
+}
+
+function scannerNativeFunctionValueToken(
+  document: StructuralDocument,
+  range: FieldRange,
+  valueText: string,
+  context: TreeContext,
+  important?: string
+): ScannerNativeValueToken | undefined {
+  const parts = scannerNativeFunctionParts(valueText);
+  if (!parts) {
+    return undefined;
+  }
+  const args = splitScannerNativeFunctionArgs(parts.argsText, range.start + parts.argsStart);
+  if (args.length === 0) {
+    return undefined;
+  }
+  const argNodes: Node[] = [];
+  for (const arg of args) {
+    const node = scannerNativeFunctionArgNode(document, arg, context);
+    if (!node) {
+      return undefined;
+    }
+    argNodes.push(node);
+  }
+  const nameStart = range.start;
+  const nameEnd = range.start + parts.name.length;
+  const callEnd = range.start + valueText.length;
+  const name = new Reference(
+    parts.name,
+    { type: 'function', fallbackValue: true },
+    locationFromRange(document, nameStart, nameEnd),
+    context
+  );
+  const argsList = new List<Node>(
+    argNodes,
+    undefined,
+    locationFromRange(document, range.start + parts.argsStart, range.start + parts.argsEnd),
+    context
+  );
+
+  return {
+    kind: 'function-call',
+    start: range.start,
+    end: callEnd,
+    text: valueText,
+    node: new Call(
+      { name, args: argsList },
+      { silentFail: true },
+      locationFromRange(document, range.start, callEnd),
+      context
+    ),
+    important
+  };
+}
+
+function scannerNativeFunctionParts(valueText: string): {
+  name: string;
+  argsText: string;
+  argsStart: number;
+  argsEnd: number;
+} | undefined {
+  const match = SCANNER_NATIVE_FUNCTION_CALL_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const name = match.groups.name;
+  const argsText = match.groups.args;
+  if (!name || argsText === undefined || !SCANNER_NATIVE_FUNCTION_NAMES.has(name)) {
+    return undefined;
+  }
+  if (SCANNER_NATIVE_FUNCTION_UNSUPPORTED_ARGS_PATTERN.test(argsText)) {
+    return undefined;
+  }
+  const argsStart = name.length + 1;
+  return {
+    name,
+    argsText,
+    argsStart,
+    argsEnd: argsStart + argsText.length
+  };
+}
+
+function splitScannerNativeFunctionArgs(argsText: string, absoluteStart: number): Array<{
+  text: string;
+  start: number;
+  end: number;
+}> {
+  const args: Array<{ text: string; start: number; end: number }> = [];
+  let segmentStart = 0;
+  for (let i = 0; i <= argsText.length; i++) {
+    if (i !== argsText.length && argsText[i] !== ',') {
+      continue;
+    }
+    const raw = argsText.slice(segmentStart, i);
+    const leading = /^[ \t]*/u.exec(raw)?.[0].length ?? 0;
+    const trailing = /[ \t]*$/u.exec(raw)?.[0].length ?? 0;
+    const text = raw.slice(leading, raw.length - trailing);
+    if (text.length === 0) {
+      return [];
+    }
+    args.push({
+      text,
+      start: absoluteStart + segmentStart + leading,
+      end: absoluteStart + i - trailing
+    });
+    segmentStart = i + 1;
+  }
+  return args;
+}
+
+function scannerNativeFunctionArgKind(text: string): 'hex-color' | 'dimension' | 'number' | undefined {
+  if (SCANNER_NATIVE_HEX_COLOR_PATTERN.test(text)) {
+    return 'hex-color';
+  }
+  const numberMatch = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(text);
+  if (!numberMatch?.groups) {
+    return undefined;
+  }
+  return numberMatch.groups.unit ? 'dimension' : 'number';
+}
+
+function scannerNativeFunctionArgNode(
+  document: StructuralDocument,
+  arg: { text: string; start: number; end: number },
+  context: TreeContext
+): Node | undefined {
+  const kind = scannerNativeFunctionArgKind(arg.text);
+  const location = locationFromRange(document, arg.start, arg.end);
+  if (kind === 'hex-color') {
+    return new Color(arg.text, undefined, location, context);
+  }
+  const numberMatch = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(arg.text);
+  if (!numberMatch?.groups) {
+    return undefined;
+  }
+  const value = Number(numberMatch.groups.value);
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+  const unit = numberMatch.groups.unit;
+  return unit
+    ? new Dimension({ number: value, unit }, undefined, location, context)
+    : new Num(value, undefined, location, context);
+}
+
 function scannerNativeLiteralValueTokenFromMatch(
   text: string,
   start: number,
@@ -1884,6 +2068,13 @@ const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)\([ \t]*\)$/u;
+const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
+  'lighten',
+  'rgb'
+]);
+const SCANNER_NATIVE_FUNCTION_CALL_PATTERN = /^(?<name>[-_a-zA-Z][\w-]*)\((?<args>.*)\)$/u;
+const SCANNER_NATIVE_FUNCTION_UNSUPPORTED_ARGS_PATTERN = /[\r\n(){};"']|\/\*|\/\//u;
+const SCANNER_NATIVE_HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/u;
 const SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN =
   /^(?<value>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+)))(?<unit>%|[a-zA-Z]+)?$/u;
 const SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN =

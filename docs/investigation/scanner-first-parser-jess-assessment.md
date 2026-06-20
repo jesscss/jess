@@ -2038,8 +2038,20 @@ storage.
     The structural-fed Less path keeps the entire value as one raw string
     segment for direct render/serialization and still reports zero selected
     island parser executions. This is deliberately not a general value parser:
-    functions, comments, interpolation, arithmetic, rich comma lists, and mixed
-    variable/value streams remain outside the proven cheap subset.
+    comments, interpolation, rich comma lists, and mixed variable/value streams
+    remain outside the proven cheap subset.
+  - [x] Added a thin progressive declaration value proof for the simple literal
+    Less/CSS color functions currently proven by tests: `lighten(#000, 10%)`
+    and `rgb(10, 20, 30)`. The declaration still stores a raw-field payload, but
+    the single value segment can now be a core `Call` with `Reference`, `List`,
+    and scalar literal argument nodes when the function text is trivially
+    scanner-native. Render/eval tests assert output equality, raw selector/name
+    serialization, zero full-tree fallback, zero requested islands, zero legacy
+    parser executions, and zero promoted bytes.
+    - Current limit: this is not general Less value parsing. Function calls with
+      variable arguments, nested calls, quoted arguments, comments,
+      interpolation, unproven function names, or richer value grammar still fall
+      back canonically.
   - [x] Extended raw-field declaration transport to conservative quoted and
     URL-ish declaration values such as `content: "hello } world"`,
     `background: url(/assets/a}/b.png)`, and `font-family: "Open Sans",
