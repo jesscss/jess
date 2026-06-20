@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first docs/tooling review hardening.
+- Verdict: accepted as a docs/tooling guardrail pass, not a runtime or
+  performance claim. It records current scanner-first corpus evidence, reopens
+  cumulative `Rules` ownership as an audit item, and tightens the aggressive
+  cutting verifier so danger-token accounting must live in this latest pass
+  block instead of anywhere in historical prose.
+- Architecture surface: architecture documentation and review tooling only.
+  Runtime parser/eval/render code is not changed by this pass.
+- Separation/duplication: the docs identify `Rules` exact/prefix callable
+  traversal as the first DRY cleanup candidate, and the verifier now separates
+  latest-pass evidence from older self-prosecution entries.
+- Cumulative node weight: the new binding audit item records accumulated
+  `Rules` maps/caches as unresolved ownership work rather than accepting the
+  current node weight as architecture-complete.
+- New traversal: none in runtime code. The verifier scans only diff text and
+  the latest self-prosecution block.
+- New node/materialization: none.
+- Render path: no render/stringification path changed.
+- Helper/API surface: one private verifier extraction of the latest
+  self-prosecution block; no package exports or runtime APIs.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [array helper] is confined to verifier label
+  accounting over current diff findings; [generic defensive read] and
+  [side map/set] are documentation-only mentions of existing `Reflect`/Map/Set
+  audit targets, not new runtime reads or side maps.
+- Evidence: `git diff --check`, `node --check
+  scripts/verify-aggressive-cutting-review.mjs`,
+  `pnpm run verify:aggressive-cutting-review`, and sub-agent review of the
+  docs/tooling diff.
+
 - Latest pass: scanner-first deprecated no-parens mixin-call proof.
 - Verdict: accepted as a bounded Less mixin-call proof, not a performance claim.
   The structural-fed path now admits only structural `mixin-call` nodes whose

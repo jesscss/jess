@@ -1454,6 +1454,95 @@ files changed in this pass. The binding-owned queue and cluster inventory are
 closed; broad changed-baseline failures remain documented outside the binding
 lane.
 
+87. [ ] Audit cumulative `Rules` lookup/index ownership before adding more
+scanner-first or binding narrow cases. Scope: `packages/core/src/tree/rules.ts`
+line-range responsibility map, persistent `Map`/`Set` fields, scratch maps,
+scope-frame overlap, direct declaration lookup overlap, callable lookup overlap,
+mixin-output placement state, and cache/version invalidation paths. Goal:
+decide which state genuinely belongs on the canonical `Rules` child container
+and which state should move behind package-internal lookup/eval/render services
+without adding more hot-path side maps. Acceptance: a read-only audit records
+line ranges and classifies every persistent `Rules` map/cache field as
+canonical node state, scope-frame index, direct declaration lookup cache,
+callable lookup cache, render/eval orchestration, or cold public/debug state;
+each retained map has an ownership reason; at least one first cleanup slice is
+chosen with focused tests. Current evidence: `rules.ts` currently owns
+`functionsByName`, `varsByName`, `callableLookupCache`,
+`directDeclarationsByName`, `directDeclarationLookupCache`,
+`declarationLookupVersionsByName`, and `functionLookupVersionsByName`, while
+`ScopeFrame` also owns live/current binding maps, declaration buckets, callable
+buckets, assignment bindings, readonly sets, and miss-coverage flags. The
+problem is cumulative ownership fragmentation, not one isolated map. The
+existing aggressive-cutting verifier only scans the current diff and can pass
+with a self-prosecution block, so it did not prove the accumulated `Rules`
+shape was acceptable.
+
+Read-only sub-agent audit result:
+
+- P1: `Rules` combines canonical child ownership, scope-frame storage, lookup
+  indexes, namespace search, registration prep, source-order eval, extend
+  orchestration, import hoisting, declaration merge normalization, and
+  render/string output. That makes narrow-case fixes likely to become permanent
+  node policy.
+- P1: lookup state and lookup algorithms are interleaved. Cache fields may
+  legitimately live on the canonical `Rules` identity, but direct child
+  surfaces, callable namespace walking, fallback direct crawls, and declaration
+  lookup should not all be embedded as node methods.
+- P2: `findVisibleExactCallableRulesetPath(...)` and
+  `findVisibleCallableRulesetPrefixMatches(...)` duplicate parent/surface
+  traversal, import-boundary behavior, `visited` handling, `local`/`forward`
+  filtering, and child-entry descent. This is the first obvious DRY cleanup
+  candidate with semantic drift risk.
+- P2: registration/eval pipeline is a service hidden inside the node.
+  Registration prep, static-name classification, pending retries,
+  source-order eval, merge coalescing, readonly import checks, extend stack
+  setup, and eval cleanup should be split only in small proof-backed phases.
+- P2: render helper/state logic is split between top-level helpers and class
+  methods, and `getWriterTextSincePosition(...)` reaches into `OutputWriter`
+  internals with `Reflect.get(...)`.
+
+Responsibility map to preserve before edits:
+
+- `1-88`: imports and broad coupling.
+- `89-145`: render/resolve state and callable lookup result types.
+- `146-286`: declaration binding sync plus at-rule/import/declaration name
+  normalization.
+- `292-464`: render-to-string/buffer helpers and context restoration.
+- `466-657`: child-rules detection, surface scans, trivia helpers, visibility
+  types.
+- `882-1035`: `Rules` fields, lookup caches, clone/derive/reset state.
+- `1036-1293`: scope-frame creation, variable assignment surfaces, lookup
+  surface flags.
+- `1294-3388`: function binding, mixin/callable/declaration lookup, namespace
+  path lookup.
+- `3425-3976`: source serialization, braced rendering, render entrypoints.
+- `3977-4380`: collection/object API, `registerNode(...)`,
+  invalidation/versioning.
+- `4427-5666`: registration prep, pending identity/name resolution, context
+  snapshots, source-order eval, declaration merge normalization.
+- `5667-5864`: eval orchestration, extend processing, error restoration.
+- `5864-end`: public resolve path.
+
+Safe cleanup order:
+
+1. Unify exact/prefix callable traversal. Replace duplicated walkers with one
+   internal traversal helper that does not allocate generator/object state per
+   step. Gates: focused mixin/namespace tests plus existing callable lookup
+   tests.
+2. Extract render helpers only. Move render state/helper functions to a
+   stateless internal helper module while keeping `Rules.render(...)` and
+   `writeSyntax(...)` as the entrypoints. Gates: focused rules/render tests,
+   core build, aggressive-cutting review.
+3. Move direct child/declaration entry indexing algorithms beside
+   `direct-rules-lookup` or a sibling service while keeping cache fields on
+   `Rules` unless measurement or code-path evidence proves a better owner.
+4. Split registration prep in small phases: static/registerable classification,
+   static invalidation-key collection, then pending declaration-name retry.
+   Leave the outer eval/registration boundary intact until each phase is
+   proven.
+5. Delete fallback lookup paths only one semantic case at a time, with focused
+   red/green proof and no compatibility shim for accidental internal APIs.
+
 ## Latest Binding Baseline
 
 - `scope-lookup-stress.less` counter evidence improved from
@@ -1634,13 +1723,14 @@ lane.
 
 ## Remaining Work Clusters
 
-Current audit: all named binding / lookup / registryless architecture clusters
-above are closed or rejected with repo evidence. Do not reseed declaration,
-property, scope-frame/current-cell, callable namespace, reference-import,
+Current audit: historical named binding / lookup / registryless architecture
+clusters above are closed or rejected with repo evidence, but item 87 reopens
+the lane for cumulative `Rules` ownership. Do not reseed declaration, property,
+scope-frame/current-cell, callable namespace, reference-import,
 leaky/searchScope, reference-handle, or simple-read tasks from older prose
 unless new code evidence contradicts the checked items. The remaining open
-binding work is none: item 86 records the broad changed-baseline result and
-isolates the exact non-binding blockers.
+binding work is the `Rules` responsibility audit, not the old registry class
+deletion queue.
 
 Closed cluster map:
 
