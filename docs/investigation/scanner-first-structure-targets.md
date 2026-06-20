@@ -31,7 +31,9 @@ body segment has been promoted." Fields like `selector`, `prelude`, `sourceRef`,
 and `valueKind` are assertion facts/placeholders until the matching core-node
 prototype proves its storage. `OffsetKindRef` stands in for compact offset/kind
 metadata such as `valueOffsets`/`valueKinds`, a packed side table, or a measured
-equivalent; it is not a wrapper node around every string.
+equivalent. The packed side table is a first-class candidate because it can cover
+selector/name/prelude/value/body strings without per-node metadata arrays. It is
+not a wrapper node around every string.
 
 ```ts
 type OffsetKindRef = unknown; // maps node fields/segment indexes to offsets/kinds
@@ -545,8 +547,8 @@ Before a target graduates into an automated structure corpus case:
   strings have cheap offset/kind metadata by owning node/field/segment index
   where diagnostics, JIT parsing, source maps, or fast kind checks may need it;
 - compare candidate metadata shapes before freezing storage:
-  `valueOffsets`/`valueKinds` parallel arrays, a packed side table, or another
-  lower-allocation equivalent;
+  `valueOffsets`/`valueKinds` parallel arrays, a packed side table that stores
+  typed/dense metadata for many nodes, or another lower-allocation equivalent;
 - assert raw `.rules` string segments preserve ordering, source identity, and
   renderable boundaries without reparsing adjacent body text merely so traversal
   can walk the body;

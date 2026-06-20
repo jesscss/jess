@@ -180,6 +180,8 @@ interface RawValueField {
 }
 
 // Dense side table keyed by owning node, field name, and segment index.
+// This is attractive because one metadata table can cover selector, name,
+// prelude, value, and body strings without allocating arrays on every node.
 // The table stores typed/packed arrays, not an object per segment.
 type FieldRangeTable = unknown;
 ```
@@ -190,7 +192,9 @@ segment. The important allocation rule is not "never store strings"; it is "do
 not create extra wrapper nodes or duplicate parsed subtrees merely to remember
 where a string came from." The chosen representation should be the tightest
 shape that preserves direct string access, cheap source ranges, and cheap
-segment-kind checks under measurement.
+segment-kind checks under measurement. The packed side table is a serious first
+prototype candidate, especially if simple per-node arrays create too many small
+arrays across large files.
 
 ### 3. Shared scanner/token classification
 
