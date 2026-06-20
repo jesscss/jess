@@ -1917,8 +1917,8 @@ storage.
   progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
-  successful progressive-fed rules/declarations render without core
-  `Any`/selector wrapper nodes, while unsupported cases fall back to the
+  successful structural-fed rules/declarations render without eager selector or
+  value wrapper nodes, while unsupported cases fall back to the
   canonical parser.
 - [x] Seed structure-target examples for CSS/Less so minimal structural shape
   can be reasoned about before implementing more JIT parsing.
@@ -1944,9 +1944,10 @@ storage.
     `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path without
     claiming Less lazy/hoisted variable semantics.
   - [x] Structural-fed prototype now uses those progressive nodes for ordinary
-    rule/declaration/root `@media`/simple variable success cases and records
-    `progressiveNodes` so tests and corpus logs prove the cheap path was
-    actually used.
+    rule/root `@media`/simple variable success cases, and now uses raw-field
+    core `Declaration` nodes for covered declaration success cases. The
+    prototype still records `progressiveNodes` as the cheap structural-fed node
+    count so tests and corpus logs prove the cheap path was actually used.
   - Current limit: invisible progressive bookkeeping nodes are proven for
     normal render output. Full-render/debug surfaces may intentionally force
     invisible nodes, so any broader replacement must specify whether those
@@ -1969,6 +1970,11 @@ storage.
     semantic registration/eval, it materializes canonical name/value nodes on
     demand; that is the progressive-enhancement boundary, not the cheap render
     path.
+  - [x] Connected that proof to the structural-fed Less prototype for covered
+    declarations: `.a { color: blue; }` now parses into a progressive ruleset
+    shell containing a real core `Declaration` with raw `name` / `value`
+    payloads before semantic materialization. The render/e2e tests still prove
+    output equality with zero legacy island parser executions.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or important-flag spelling.

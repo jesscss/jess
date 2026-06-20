@@ -6,7 +6,7 @@ import {
   JsFunction,
   Rules,
   ProgressiveAtRule,
-  ProgressiveDeclaration,
+  Declaration,
   ProgressiveRuleset,
   ProgressiveVariableDeclaration,
   Node,
@@ -967,7 +967,7 @@ function buildStructuralFedDeclaration(
     return { reason: 'declaration value is outside the scanner-native structural-fed subset' };
   }
   return {
-    node: new ProgressiveDeclaration({
+    node: new Declaration({
       name,
       value: [valueToken.text]
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { serializeTypes as serializeRuntimeTypes } from '@jesscss/core';
 import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
 import { createLanguageProfile, parseStructure, type StructuralContainerNode } from '../../parser/src/index.js';
 
@@ -516,6 +517,39 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
     expect(probePlugin.lastScannerFirstProbe?.requestedIslands).toBe(0);
+  });
+
+  it('keeps structural-fed declarations as raw-field core declarations before semantic materialization', () => {
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const result = probePlugin.safeParse('/virtual/raw-declaration.less', '.a { color: blue; }\n');
+
+    expect(result.errors).toEqual([]);
+    expect(result.tree).toBeDefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 2,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const firstRule = result.tree!.rules[0];
+    expect(firstRule).toBeDefined();
+
+    const types = serializeRuntimeTypes(firstRule);
+    expect(types).toContain('(ProgressiveRuleset');
+    expect(types).toContain('(Declaration');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).toContain('rawValueSegments:\n          [\'blue\']');
+    expect(types).not.toContain('(ProgressiveDeclaration');
+    expect(types).not.toContain('name: (Any \'color\')');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
   it('feeds nested ordinary rules through structural parse and scanner-native materialization', async () => {
