@@ -8,6 +8,7 @@ import {
   Ruleset,
   AtRule,
   AtRuleStatement,
+  Comment,
   BasicSelector,
   Color,
   Declaration,
@@ -55,6 +56,8 @@ import {
   type ParseStructureOptions,
   type RawIslandNode,
   type StructuralContainerNode,
+  type StructuralDocument,
+  type StructuralNode,
   type StructuralStatementNode
 } from '@jesscss/parser';
 import path from 'node:path';
@@ -375,9 +378,6 @@ export class LessPlugin extends AbstractPlugin {
     if (plan.document.diagnostics.length > 0) {
       return fallback('structural diagnostics are present');
     }
-    if (plan.document.trivia.some(trivia => trivia.kind === 'block-comment')) {
-      return fallback('block comments require canonical trivia preservation');
-    }
     if (countRootImportStatements(plan.document) > 1) {
       return fallback('multiple import statements require canonical import ordering and de-dupe semantics');
     }
@@ -392,7 +392,16 @@ export class LessPlugin extends AbstractPlugin {
       importedLessPaths.add(canonicalFilePath);
     }
 
+    let triviaCursor = plan.document.root.bodyStart;
     for (const child of plan.document.root.children) {
+      const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
+      if ('reason' in comments) {
+        return fallback(comments.reason);
+      }
+      rules.push(...comments.nodes);
+      progressiveNodes += comments.progressiveNodes;
+      triviaCursor = child.end;
+
       if (
         child.kind !== 'rule'
         && child.kind !== 'at-rule'
@@ -468,6 +477,12 @@ export class LessPlugin extends AbstractPlugin {
       rules.push(result.node);
       progressiveNodes += result.progressiveNodes ?? 0;
     }
+    const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, plan.document.root.end, undefined, context);
+    if ('reason' in trailingComments) {
+      return fallback(trailingComments.reason);
+    }
+    rules.push(...trailingComments.nodes);
+    progressiveNodes += trailingComments.progressiveNodes;
 
     const tree = new Rules(
       rules,
@@ -883,6 +898,45 @@ function singleIsland(
   return match;
 }
 
+type StructuralFedCommentBuildResult =
+  | { nodes: Comment[]; progressiveNodes: number }
+  | { reason: string };
+
+function structuralFedBlockCommentsBetween(
+  document: StructuralDocument,
+  start: number,
+  end: number,
+  next: StructuralNode | undefined,
+  context: TreeContext
+): StructuralFedCommentBuildResult {
+  const nodes: Comment[] = [];
+  for (const trivia of document.trivia) {
+    if (trivia.kind !== 'block-comment' || trivia.start < start || trivia.end > end) {
+      continue;
+    }
+    if ('closed' in trivia && trivia.closed === false) {
+      return { reason: 'unterminated block comments require canonical trivia preservation' };
+    }
+    if (next) {
+      const commentEnd = document.source.offsetToLineColumn(Math.max(trivia.start, trivia.end - 1));
+      const nextStart = document.source.offsetToLineColumn(next.start);
+      if (commentEnd.line === nextStart.line) {
+        return { reason: 'inline block comments require canonical trivia preservation' };
+      }
+    }
+    nodes.push(new Comment(
+      document.source.slice(trivia.start, trivia.end),
+      undefined,
+      locationFromRange(document, trivia.start, trivia.end),
+      context
+    ));
+  }
+  return {
+    nodes,
+    progressiveNodes: nodes.length
+  };
+}
+
 type StructuralFedBuildResult =
   | { node: Node; progressiveNodes?: number }
   | { reason: string };
@@ -1102,7 +1156,16 @@ function buildStructuralFedRuleset(
     rules.push(extendSelector.node);
     progressiveNodes++;
   }
+  let triviaCursor = rule.bodyStart;
   for (const child of rule.children) {
+    const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
+    if ('reason' in comments) {
+      return comments;
+    }
+    rules.push(...comments.nodes);
+    progressiveNodes += comments.progressiveNodes;
+    triviaCursor = child.end;
+
     const builtChild = buildStructuralFedRuleChild(
       plan,
       child,
@@ -1123,6 +1186,12 @@ function buildStructuralFedRuleset(
     rules.push(builtChild.node);
     progressiveNodes += builtChild.progressiveNodes ?? 0;
   }
+  const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, rule.end, undefined, context);
+  if ('reason' in trailingComments) {
+    return trailingComments;
+  }
+  rules.push(...trailingComments.nodes);
+  progressiveNodes += trailingComments.progressiveNodes;
 
   if (scopeOnly) {
     return {
@@ -1166,7 +1235,16 @@ function buildStructuralFedMixinDefinition(
 
   const rules: Node[] = [];
   let progressiveNodes = 1;
+  let triviaCursor = mixinDefinition.bodyStart;
   for (const child of mixinDefinition.children) {
+    const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
+    if ('reason' in comments) {
+      return comments;
+    }
+    rules.push(...comments.nodes);
+    progressiveNodes += comments.progressiveNodes;
+    triviaCursor = child.end;
+
     const builtChild = buildStructuralFedRuleChild(
       plan,
       child,
@@ -1184,6 +1262,12 @@ function buildStructuralFedMixinDefinition(
     rules.push(builtChild.node);
     progressiveNodes += builtChild.progressiveNodes ?? 0;
   }
+  const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, mixinDefinition.end, undefined, context);
+  if ('reason' in trailingComments) {
+    return trailingComments;
+  }
+  rules.push(...trailingComments.nodes);
+  progressiveNodes += trailingComments.progressiveNodes;
 
   return {
     node: new Mixin({
@@ -1252,7 +1336,16 @@ function buildStructuralFedAtRule(
 
   const rules: Node[] = [];
   let progressiveNodes = 1;
+  let triviaCursor = atRule.bodyStart;
   for (const child of atRule.children) {
+    const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
+    if ('reason' in comments) {
+      return comments;
+    }
+    rules.push(...comments.nodes);
+    progressiveNodes += comments.progressiveNodes;
+    triviaCursor = child.end;
+
     if (child.kind === 'rule') {
       if (rootDeclarationBlockPrelude !== undefined) {
         return { reason: `unsupported at-rule child ${child.kind}` };
@@ -1287,6 +1380,12 @@ function buildStructuralFedAtRule(
     rules.push(builtChild.node);
     progressiveNodes += builtChild.progressiveNodes ?? 0;
   }
+  const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, atRule.end, undefined, context);
+  if ('reason' in trailingComments) {
+    return trailingComments;
+  }
+  rules.push(...trailingComments.nodes);
+  progressiveNodes += trailingComments.progressiveNodes;
 
   return {
     node: new AtRule({

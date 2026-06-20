@@ -1260,8 +1260,57 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for block comments until structural comment preservation is proven', async () => {
-    const source = '/* keep */\n.a { color: blue; }\n';
+  it('feeds standalone block comments through structural parse as comment nodes', async () => {
+    const cases = [
+      {
+        source: '/* keep */\n.a { color: blue; }\n',
+        progressiveNodes: 3
+      },
+      {
+        source: '.a {\n  /* keep */\n  color: blue;\n}\n',
+        progressiveNodes: 3
+      },
+      {
+        source: '@media screen {\n  /* keep */\n  .a { color: blue; }\n}\n',
+        progressiveNodes: 4
+      }
+    ];
+
+    for (const { source, progressiveNodes } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain('/* keep */');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/block-comment.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      expect(types).toContain('(Comment \'/* keep */\')');
+      expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('valueNode: (Any \'blue\')');
+    }
+  });
+
+  it('falls back for inline block comments until exact placement is proven', async () => {
+    const source = '/* keep */ .a { color: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -1276,7 +1325,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('/* keep */');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'block comments require canonical trivia preservation',
+      fallbackReason: 'inline block comments require canonical trivia preservation',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
