@@ -1198,7 +1198,13 @@ function validateStructuralFedAtRule(
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
-    const declarationReason = validateStructuralFedDeclaration(document, child, localVariables, true, mathMode);
+    const declarationReason = validateStructuralFedDeclaration(
+      document,
+      child,
+      localVariables,
+      rootDeclarationBlockPrelude === undefined,
+      mathMode
+    );
     if (declarationReason) {
       return declarationReason;
     }
@@ -1588,7 +1594,15 @@ function buildStructuralFedAtRule(
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
       return { reason: `unsupported at-rule child ${child.kind}` };
     }
-    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, localVariables, true, mathMode);
+    const builtChild = buildStructuralFedDeclaration(
+      plan,
+      child,
+      ownerIslands,
+      context,
+      localVariables,
+      rootDeclarationBlockPrelude === undefined,
+      mathMode
+    );
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -2845,10 +2859,18 @@ interface ScannerNativeFunctionPolicy {
 }
 
 const SCANNER_NATIVE_FUNCTION_POLICIES: Record<string, ScannerNativeFunctionPolicy> = {
-  darken: {},
-  lighten: {},
-  rgb: {},
-  rgba: {},
+  darken: {
+    argumentKindsByPosition: [['hex-color'], ['dimension']]
+  },
+  lighten: {
+    argumentKindsByPosition: [['hex-color'], ['dimension']]
+  },
+  rgb: {
+    argumentKindsByPosition: [['number'], ['number'], ['number']]
+  },
+  rgba: {
+    argumentKindsByPosition: [['number'], ['number'], ['number'], ['dimension']]
+  },
   scaleX: {
     argumentKindsByPosition: [['number']]
   }

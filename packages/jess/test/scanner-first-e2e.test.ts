@@ -1450,7 +1450,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for scaleX function values outside the scanner-native boundary', async () => {
+  it('falls back for function values outside the scanner-native boundary', async () => {
     const cases = [
       '.a { transform: scaleX(1, 2); }\n',
       '.a { transform: scaleX(1px); }\n',
@@ -1458,7 +1458,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
       '@x: 1;\n.a { transform: scaleX(@x); }\n',
       '.a { transform: scaleX(calc(1)); }\n',
       '.a { transform: scaleX("1"); }\n',
-      '.a { transform: scaleX(/* nope */ 1); }\n'
+      '.a { transform: scaleX(/* nope */ 1); }\n',
+      '.a { color: rgb(1); }\n',
+      '.a { color: rgba(10, 20, 30, 0.5); }\n',
+      '.a { color: lighten(1); }\n',
+      '.a { color: darken(#fff); }\n'
     ];
 
     for (const source of cases) {
@@ -3159,7 +3163,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         expect(types).toContain(`prelude: '${prelude}'`);
         expect(types).not.toContain(`prelude: (Any '${prelude}')`);
       } else {
-    expect(types).not.toContain('prelude: (Any');
+        expect(types).not.toContain('prelude: (Any');
         expect(types).not.toContain('prelude: (');
       }
       expect(types).toContain('selector: \'.a\'');
@@ -3781,6 +3785,30 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('selector: \'.a\'');
     expect(types).not.toContain('prelude: (Any');
     expect(types).not.toContain('value: (Any');
+  });
+
+  it('falls back for Less variable references inside root declaration-block at-rules until proven', async () => {
+    const source = '@family: demo;\n@font-face { font-family: @family; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'Less variable references are not in this structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
   });
 
   it('feeds root CSS declaration-block at-rules through structural parse', async () => {

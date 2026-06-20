@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { serializeTypes } from '@jesscss/core';
 import {
   cssIslandParsePlan,
+  looksLikeCssSelector,
   parseCssStructure
 } from '../src/index.js';
 
@@ -19,8 +20,12 @@ describe('CSS structural services', () => {
     const id = plan.requestIsland(plan.document.islands('selector')[0]!, 'css-selector');
     const record = plan.execute(id);
 
-    expect(serializeTypes(record.value)).toContainString("(BasicSelector '.foo')");
+    expect(serializeTypes(record.value)).toContainString('(BasicSelector \'.foo\')');
     expect(record.fallbackFullTree).toBe(false);
     expect(plan.counters.actualParses).toBe(1);
+  });
+
+  test('does not classify SCSS placeholder selectors as CSS selectors', () => {
+    expect(looksLikeCssSelector('%placeholder')).toBe(false);
   });
 });

@@ -3045,16 +3045,21 @@ This slice is intentionally downstream of Slice 8. Do not touch SCSS/Jess
 parser packages for scanner-first provider work until the CSS/Less e2e
 prototype has successful compile/eval/render evidence.
 
-- [x] Add SCSS selector/value/control island providers only for constructs with
+- [ ] Add SCSS selector/value/control island providers only for constructs with
   tests.
-- [x] Add Jess expression/control/module-at-rule island providers only for
+- [ ] Add Jess expression/control/module-at-rule island providers only for
   existing smoke coverage.
 - [x] Do not introduce a broad `.jess` syntax corpus in this slice.
-- [x] Add materialization-boundary tests for each covered promoted shape.
-- [x] Performance guard: provider entrypoints do not silently parse sibling
+- [ ] Add materialization-boundary tests for each covered promoted shape.
+- [ ] Performance guard: provider entrypoints do not silently parse sibling
   islands.
-- [x] Verification: existing SCSS/Jess parser tests pass.
-- [x] Verification: `pnpm run verify:package-exports`.
+- [ ] Verification: existing SCSS/Jess parser tests pass.
+- [ ] Verification: `pnpm run verify:package-exports`.
+
+Note: earlier experimental SCSS/Jess provider-entrypoint smoke work exists on
+this branch, but Slice 9b is not complete and must not be treated as the active
+implementation lane until Slice 8's CSS/Less corpus-plus-benchmark gate is
+green.
 
 ### Slice 9: Plugin And Visitor Integration
 

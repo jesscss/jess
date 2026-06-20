@@ -1,6 +1,5 @@
 import {
   createLanguageProfile,
-  pushIfMissing,
   type DeclarationNameKind,
   type IslandClassificationContext,
   type IslandKind,
@@ -15,7 +14,7 @@ export const cssProfile: LanguageProfile = createLanguageProfile({
   atRuleClassifiers: {
     charset: 'charset',
     container: 'container',
-    'font-face': 'font-face',
+    ['font-face']: 'font-face',
     import: 'import',
     keyframes: 'keyframes',
     media: 'media',
@@ -73,13 +72,12 @@ export function classifyCssIsland(
 /** Conservative selector heuristic used before the full CSS parser runs. */
 export function looksLikeCssSelector(text: string): boolean {
   return (
-    text.includes('&') ||
-    text.startsWith('.') ||
-    text.startsWith('#') ||
-    text.startsWith('[') ||
-    text.startsWith(':') ||
-    text.startsWith('%') ||
-    CSS_SELECTOR_START_PATTERN.test(text)
+    text.includes('&')
+    || text.startsWith('.')
+    || text.startsWith('#')
+    || text.startsWith('[')
+    || text.startsWith(':')
+    || CSS_SELECTOR_START_PATTERN.test(text)
   );
 }
 

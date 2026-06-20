@@ -28,15 +28,23 @@ describe('declaration', () => {
   it('should parse custom property declaration with generic function value', () => {
     const { errors, tree } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Sequence');
-    expect(tree?.value.value.value?.[0]?.type).toBe('Call');
+    if (tree?.type !== 'CustomDeclaration') {
+      throw new Error('Expected custom declaration node');
+    }
+    const value = tree.value;
+    expect(isNode(value, N.Sequence)).toBe(true);
+    expect(isNode(isNode(value, N.Sequence) ? value.value[0] : undefined, N.Call)).toBe(true);
   });
 
   it('should parse custom property declaration with if() as a structured call value', () => {
     const { errors, tree } = parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Sequence');
-    expect(tree?.value.value.value?.[0]?.type).toBe('Call');
+    if (tree?.type !== 'CustomDeclaration') {
+      throw new Error('Expected custom declaration node');
+    }
+    const value = tree.value;
+    expect(isNode(value, N.Sequence)).toBe(true);
+    expect(isNode(isNode(value, N.Sequence) ? value.value[0] : undefined, N.Call)).toBe(true);
   });
 
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
@@ -60,7 +68,10 @@ describe('declaration', () => {
   it('should parse legacy IE filter declarations as structured interpolated values', () => {
     const { errors, tree } = parse('filter: progid:DXImageTransform.Microsoft.Alpha(opacity=@fat)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Interpolated');
+    if (!tree || !isNode(tree, N.Declaration)) {
+      throw new Error('Expected declaration node');
+    }
+    expect(isNode(tree.value, N.Interpolated)).toBe(true);
   });
 
   it('normalizes Less property merge "+:" to the list-merge assign form', () => {
