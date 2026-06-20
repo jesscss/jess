@@ -1773,13 +1773,43 @@ its claims.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 6 structural-fed, 59 canonical
+  - Current audit snapshot: 64 files / 65 cases, 15 structural-fed, 87 canonical
     fallback, 22 current expected-CSS failures, 22 structural expected-CSS
-    failures, 70 requested/materialized islands, 1,385 promoted bytes.
+    failures, 97 requested/materialized islands, 1,604 promoted bytes. Counts
+    include imported/sub-rendered Less prototype records, so structural-fed plus
+    fallback records can exceed the top-level case count.
 - [ ] Less corpus benchmark gate: benchmark current parser, structural-only
   sidecar, selected-materialization sidecar, and structural-fed prototype over
   the included upstream Less fixture set before treating CSS/Less as ready for
   SCSS/Jess widening.
+  - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
+    and four modes. It asserts output parity and records full scanner-first
+    instrumentation across entry files and imported/sub-rendered Less files.
+  - [ ] Promote the smoke audit to a defensible regression gate with repeated
+    samples, warmup or order control, setup/render separation where feasible,
+    and explicit overhead thresholds before treating the performance gate as
+    complete.
+  - Current smoke snapshot over the same 64 files / 65 cases, including
+    imported/sub-rendered Less probe records: current parser 236.71ms,
+    structural-only sidecar 234.27ms across 102 probe records,
+    selected-materialization sidecar 262.34ms across 102 probe records with
+    1,797 requested/materialized islands and 50,108 promoted bytes, and
+    structural-fed prototype 240.63ms across 102 prototype records with 15
+    structural-fed cases, 87 canonical fallbacks, 97 requested/materialized
+    islands, and 1,604 promoted bytes. These wall-clock numbers are single-run
+    orientation data, not a performance regression threshold.
+  - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an
+    additional smoke input. The selected-materialization sidecar originally
+    changed output by leaking sidecar parse trivia/source-root state into the
+    canonical render path; island materialization now reuses the plugin-owned
+    Less parser but passes a fresh throwaway `TreeContext` per island parse;
+    structural-fed insertion detaches materialized island trivia before adopting
+    nodes into the canonical output tree. Latest one-off smoke: current
+    450.40ms, structural-only 357.69ms, selected-materialization 407.06ms with
+    5,900 island parses / 81,083 promoted bytes, and structural-fed 313.51ms
+    with three canonical fallbacks
+    for comment-preservation. All four modes produced equal CSS. These are
+    orientation numbers only, not regression thresholds.
 - [ ] CSS-owned compiler performance guard: add this only if a CSS compiler
   plugin/activation path exists; current compiler e2e timing coverage renders
   CSS-shaped fixtures through the Less-compatible compiler path.

@@ -160,8 +160,9 @@ export class LessPlugin extends AbstractPlugin {
    * Describes the structural parser capabilities owned by this plugin.
    *
    * The plugin, not `@jesscss/parser`, binds Less syntax to `.less` files and
-   * wires the Less parser instance into island providers. `safeParse` remains
-   * the compiler entrypoint; this capability is for staged structural consumers.
+   * wires its Less parser instance into island providers. `safeParse` remains
+   * the compiler entrypoint; this capability is for staged structural
+   * consumers.
    */
   structuralActivation(): LanguageActivation {
     return {
@@ -191,6 +192,8 @@ export class LessPlugin extends AbstractPlugin {
    *
    * Providers reuse this plugin's parser instance and parser options so JIT
    * materialization observes the same option-sensitive shape as `safeParse`.
+   * Each island parse receives its own throwaway tree context so sidecar
+   * trivia/source-root state cannot leak into the canonical compiler parse.
    */
   islandParsePlan(
     filePath: string,
@@ -877,7 +880,7 @@ function buildStructuralFedRuleset(
 
   return {
     node: new Ruleset({
-      selector: selectorRecord.value,
+      selector: detachMaterializedIsland(selectorRecord.value),
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
   };
@@ -923,7 +926,7 @@ function buildStructuralFedAtRule(
         locationFromRange(plan.document, atRule.headerStart, atRule.headerStart + nameText.length),
         context
       ),
-      prelude: preludeRecord?.value,
+      prelude: preludeRecord ? detachMaterializedIsland(preludeRecord.value) : undefined,
       rules
     }, { nestable: true }, locationFromRange(plan.document, atRule.start, atRule.end), context)
   };
@@ -976,7 +979,7 @@ function buildStructuralFedDeclaration(
   return {
     node: new Declaration({
       name: new Any(name, { role: 'property' }, locationFromRange(plan.document, child.nameStart, child.nameEnd), context),
-      value: valueRecord.value
+      value: detachMaterializedIsland(valueRecord.value)
     }, { assign: ':' }, locationFromRange(plan.document, child.start, child.end), context)
   };
 }
@@ -1011,9 +1014,13 @@ function buildStructuralFedVariableDeclaration(
         locationFromRange(plan.document, child.nameStart, child.nameEnd),
         context
       ),
-      value: valueRecord.value
+      value: detachMaterializedIsland(valueRecord.value)
     }, undefined, locationFromRange(plan.document, child.start, child.end), context)
   };
+}
+
+function detachMaterializedIsland<T extends Node>(node: T): T {
+  return node.detachTrivia(true);
 }
 
 function locationFromRange(

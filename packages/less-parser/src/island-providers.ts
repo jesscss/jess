@@ -1,3 +1,4 @@
+import { TreeContext } from '@jesscss/core';
 import {
   createParserDiagnostic,
   providerKey,
@@ -27,8 +28,9 @@ export type LessIslandTargetShape =
  *
  * Parser config participates in the provider key because Less parse shape can
  * change with options such as math mode, leaky rules, and expression wrapping.
- * The caller may pass an existing parser instance so plugin activation can
- * reuse the parser it already owns for `safeParse`.
+ * Island parses must pass their own throwaway tree context so parser-owned
+ * trivia and source-root state cannot leak into the canonical file context that
+ * renders after the sidecar probe.
  */
 export function registerLessIslandProviders(
   registry: IslandParserRegistry,
@@ -97,7 +99,7 @@ function parseLessSource(
   rule: LessRules,
   source: string
 ): IslandParseResult {
-  const result = parser.parse(source, rule);
+  const result = parser.parse(source, rule, { context: new TreeContext() });
   return {
     value: result.tree,
     diagnostics: [
