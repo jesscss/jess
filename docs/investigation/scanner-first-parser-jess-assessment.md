@@ -1945,7 +1945,7 @@ storage.
     claiming Less lazy/hoisted variable semantics.
   - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
-    while root `@media` still uses the temporary progressive at-rule wrapper.
+    and raw-field core `AtRule` nodes for covered root `@media` success cases.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
   - Current limit: invisible progressive bookkeeping nodes are proven for
@@ -1983,6 +1983,14 @@ storage.
     Less prototype now emits those raw core `Ruleset` nodes for covered
     ordinary rules, and e2e tests assert the raw selector/declaration shape
     before semantic materialization.
+  - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
+    constructor can store raw scanner-native at-keyword/prelude strings, renders
+    and serializes them as `rawName` / `rawPrelude` without canonical header
+    child nodes, and materializes canonical `Any` name/prelude nodes only when
+    semantic registration/eval requests at-rule header semantics. The current
+    structural-fed Less prototype only emits those raw core `AtRule` nodes for
+    covered root `@media` blocks; other at-rule families remain unproven even
+    though the core raw storage primitive is not hard-coded to `@media`.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or important-flag spelling.
@@ -2004,8 +2012,10 @@ storage.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native.
-  - Current limit: nested block at-rules still fall back while Less bubbling,
-    reference/import semantics, and other at-rule families remain unproven.
+  - Current limit: raw `AtRule` semantic materialization is proven for the
+    scanner-native root `@media` subset only. Nested block at-rules still fall
+    back while Less bubbling, reference/import semantics, and other at-rule
+    families remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,

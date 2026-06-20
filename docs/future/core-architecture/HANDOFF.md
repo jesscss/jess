@@ -103,17 +103,18 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: scanner-first raw-field ruleset/declaration proof.
+- Latest pass: scanner-first raw-field at-rule/ruleset/declaration proof.
 - Verdict: deferred. This pass intentionally adds a tiny raw-field construction
   surface for scanner-first parser evidence, not a production migration or
-  speed claim. It proves real core `Ruleset` and `Declaration` nodes can
-  render/serialize raw selector/name/value payloads without allocating
-  canonical selector/name/value child nodes on the direct render path. Semantic
-  registration/eval materializes only the currently proven scanner-native
-  simple selector subset (`*`, tag, `.class`, `#id`) and declaration parts on
-  demand. Compound, complex, list, interpolated, nested, and `:extend()`
-  selectors remain outside this proof and still require a selector
-  materializer or canonical fallback.
+  speed claim. It proves real core `AtRule`, `Ruleset`, and `Declaration`
+  nodes can render/serialize raw at-rule header, selector, declaration name,
+  and declaration value payloads without allocating canonical header/selector/
+  value child nodes on the direct render path. Semantic registration/eval
+  materializes only the currently proven scanner-native at-rule header storage,
+  simple selector subset (`*`, tag, `.class`, `#id`), and declaration parts on
+  demand. The current Less structural-fed emitter only uses raw core `AtRule`
+  for root `@media`; nested block at-rules and other at-rule families remain
+  outside this proof and still require materializers or canonical fallback.
 - New traversal: `packages/core/src/tree/declaration.ts`
   `Declaration.writeRawDeclarationSyntax(...)` loops over
   `rawValueSegments`. This is bounded to the raw segment count and replaces
@@ -122,50 +123,55 @@ with `--no-verify` after the explicit gates pass.
   segments only when semantic registration needs to turn mixed raw segments into
   a reachable canonical value container. `Ruleset.materializeRawSelectorForSemantics(...)`
   performs no traversal; it validates and materializes one raw simple selector
-  string at registration/eval boundaries. `progressive-block-render.ts`
-  scans/slices detached block lines only for the temporary mixed progressive
-  wrapper path where a progressive `@media` owns real core block children; it is
-  not part of the raw core `Ruleset` direct render path and must be removed when
-  root `@media` is represented by normal core at-rule nodes.
+  string at registration/eval boundaries. `AtRule.materializeRawHeaderForSemantics(...)`
+  performs no traversal; it materializes one raw at-rule name and optional raw
+  prelude string at registration/eval boundaries.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Focused tests add
   normal `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
   constructs one `BasicSelector` only when a raw ruleset crosses into
   semantic registration/eval; direct raw render keeps `selector` undefined and
-  uses `rawSelector`.
+  uses `rawSelector`. `packages/core/src/tree/at-rule.ts` constructs `Any`
+  header nodes only when a raw at-rule crosses into semantic registration/eval;
+  direct raw render keeps `name` / `prelude` undefined and uses `rawName` /
+  `rawPrelude`.
 - Review-flagged array helper: `segments.map(...)` appears only in the semantic
   materialization fallback for mixed raw string/Node segments, where it creates
   the reachable canonical sequence payload. Direct raw render does not use this
-  helper. `packages/core/src/tree/util/progressive-block-render.ts` creates a
-  detached `OutputWriter` only for temporary progressive containers embedding
-  real core block children, so indentation remains correct while the prototype
-  still mixes progressive `@media` wrappers with raw core `Ruleset` children.
-  Its line array/map normalization is accepted only as that bridge, not as a
-  general render strategy.
+  helper. `packages/core/src/tree/util/progressive-block-render.ts` remains
+  limited to earlier standalone progressive proof nodes; the structural-fed
+  root `@media` path now uses raw core `AtRule` and does not rely on that
+  detached writer bridge.
 - Review-flagged diff tokens: the raw declaration value type includes an array
   of string/Node segments. The array is caller-owned input for the explicit
   proof path; raw core rulesets still use the existing `rules: Node[]` body
   surface and do not reintroduce a nested `Rules` wrapper.
-- New node/materialization: one explicit core `Declaration` via `rawdecl(...)`
-  and one raw-selector core `Ruleset` path. No `Any`, `Reference`, selector, or
-  value wrapper nodes are created for raw selector/name/value payloads during
-  direct render. If semantic registration/eval asks for canonical parts,
+- New node/materialization: one explicit core `Declaration` via `rawdecl(...)`,
+  one raw-selector core `Ruleset` path, and one raw-header core `AtRule` path.
+  No `Any`, `Reference`, selector, header, or value wrapper nodes are created
+  for raw at-rule header/selector/name/value payloads during direct render. If
+  semantic registration/eval asks for canonical parts,
   `Declaration.materializeRawDeclarationParts(...)` creates the canonical
   `Any` name/value/important nodes at that boundary and hides raw segment
   children from `childKeys` serialization/traversal so the canonical value is
   not also exposed through `rawValueSegments`. `Ruleset` creates a
   `BasicSelector` only for the proven raw simple-selector subset at
-  registration/eval boundaries.
+  registration/eval boundaries. `AtRule` creates canonical `Any` name/prelude
+  nodes only for the proven raw root `@media` subset at registration/eval
+  boundaries.
 - Render path: raw declarations stringify directly in
   `writeRawDeclarationSyntax(...)` and `render(...)`; raw rulesets write
-  `rawSelector` directly in the ordinary `Ruleset` render/serialize path. They
-  do not resolve into canonical selector/value nodes just to print.
+  `rawSelector` directly in the ordinary `Ruleset` render/serialize path; raw
+  at-rules write `rawName` / `rawPrelude` directly in the ordinary `AtRule`
+  render/serialize path. They do not resolve into canonical header/selector/
+  value nodes just to print.
 - Helper/API surface: public experimental `rawdecl(...)` plus
   `RawDeclarationValue`, exported through the existing core declaration
-  entrypoint, and `RawRulesetValue` through the existing `ruleset(...)`
-  constructor type. This is deliberate API surface for scanner-first proof code
-  and remains separate from ordinary canonical selector construction.
+  entrypoint, `RawRulesetValue` through the existing `ruleset(...)` constructor
+  type, and `RawAtRuleValue` through the existing `atrule(...)` constructor
+  type. This is deliberate API surface for scanner-first proof code and remains
+  separate from ordinary canonical construction.
 - Metadata mutations: none added.
 - Parent/adoption mutations: `Declaration.materializeRawDeclarationParts(...)`
   adopts the materialized name/value/important nodes when the raw declaration
@@ -173,18 +179,23 @@ with `--no-verify` after the explicit gates pass.
   invariant at the materialization boundary. `Ruleset.materializeRawSelectorForSemantics(...)`
   adopts the created `BasicSelector` and moves it into the canonical `selector`
   slot while clearing `rawSelector`, so subsequent traversal sees one selector
-  representation, not both.
+  representation, not both. `AtRule.materializeRawHeaderForSemantics(...)`
+  adopts created `Any` header nodes and moves them into canonical `name` /
+  `prelude` slots while clearing `rawName` / `rawPrelude`, so subsequent
+  traversal sees one header representation, not both.
 - Routine error control: none added. The new `TypeError` sites are construction
   and invariant guards for invalid raw selector input or impossible raw/canonical
   callable-copy state, not expected misses or branch control.
 - Allocation changes: adds raw fields on `Declaration` instances for the proof
-  path and one optional raw selector string on `Ruleset`; avoids
-  selector/name/value child node allocation for direct render and defers
-  canonical node allocation until semantic registration/eval. No speed claim
-  until the structural-fed path is benchmarked under corpus gates.
+  path, one optional raw selector string on `Ruleset`, and raw header strings on
+  `AtRule`; avoids at-rule header/selector/name/value child node allocation for
+  direct render and defers canonical node allocation until semantic
+  registration/eval. No speed claim until the structural-fed path is benchmarked
+  under corpus gates.
 - Evidence: focused `progressive-nodes.test.ts` passed with raw declaration
-  and raw ruleset serialize/render/materialization assertions; focused
-  `ruleset.test.ts` and `declaration.test.ts` passed; `pnpm --filter
+  raw ruleset, and raw at-rule serialize/render/materialization assertions;
+  focused `at-rule.test.ts`, `ruleset.test.ts`, and `declaration.test.ts`
+  passed; `pnpm --filter
   @jesscss/core build`, `pnpm --filter @jesscss/plugin-less build`, scanner-first
   e2e, Less corpus parity, `pnpm run verify:package-exports`, and
   `git diff --check` passed. The broad `@jesscss/core` suite

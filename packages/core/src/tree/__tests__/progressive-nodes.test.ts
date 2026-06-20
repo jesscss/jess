@@ -8,6 +8,7 @@ import {
   ProgressiveRuleset,
   ProgressiveVariableDeclaration,
   any,
+  atrule,
   progressiveatrule,
   progressivedecl,
   progressiveruleset,
@@ -387,6 +388,77 @@ describe('progressive scanner-first proof nodes', () => {
       selector: '.a .b',
       rules: []
     })).toThrow('Raw ruleset selector is outside the scanner-native simple selector subset.');
+  });
+
+  test('renders raw-field core at-rules without name or prelude child nodes', () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        ruleset({
+          selector: '.a',
+          rules: [
+            rawdecl({
+              name: 'color',
+              value: ['blue']
+            })
+          ]
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@media');
+    expect(node.prelude).toBeUndefined();
+    expect(node.rawPrelude).toBe('screen');
+    expect(serializeTypes(node)).toBeString(`
+      (AtRule
+        rawName: '@media'
+        rawPrelude: 'screen'
+        rules:
+          [
+            (Ruleset
+              rawSelector: '.a'
+              rules:
+                [
+                  (Declaration
+                    rawName: 'color'
+                    rawValueSegments:
+                      ['blue']
+                  )
+                ]
+            )
+          ]
+      )
+    `);
+  });
+
+  test('materializes raw-field core at-rule headers only when semantic registration asks', () => {
+    const context = new Context();
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        ruleset({
+          selector: '.a',
+          rules: []
+        })
+      ]
+    });
+
+    expect(node.name).toBeUndefined();
+    expect(node.rawName).toBe('@media');
+    void node.prepareRegistration(context);
+    expect(node.rawName).toBeUndefined();
+    expect(node.rawPrelude).toBeUndefined();
+    expect(node.name).toBeDefined();
+    expect(node.prelude).toBeDefined();
+    const types = serializeTypes(node);
+    expect(types).toContain('(Any [role=atkeyword] \'@media\')');
+    expect(types).toContain('prelude:\n    (Any \'screen\')');
+    expect(types).not.toContain('rawName');
+    expect(types).not.toContain('rawPrelude');
   });
 
   test('materializes raw-field core declarations only when semantic registration asks', () => {

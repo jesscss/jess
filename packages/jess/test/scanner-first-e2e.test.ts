@@ -864,6 +864,18 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
     expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/media.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'screen\'');
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).not.toContain('(ProgressiveAtRule');
+    expect(types).not.toContain('name: (Any \'@media\')');
+    expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
   it('falls back for nested block at-rules until progressive at-rule bodies are proven', async () => {

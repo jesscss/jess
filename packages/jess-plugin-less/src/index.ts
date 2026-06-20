@@ -6,7 +6,7 @@ import {
   JsFunction,
   Rules,
   Ruleset,
-  ProgressiveAtRule,
+  AtRule,
   Declaration,
   ProgressiveVariableDeclaration,
   Node,
@@ -915,7 +915,7 @@ function buildStructuralFedAtRule(
   }
 
   return {
-    node: new ProgressiveAtRule({
+    node: new AtRule({
       name,
       prelude: preludeToken.text,
       rules
