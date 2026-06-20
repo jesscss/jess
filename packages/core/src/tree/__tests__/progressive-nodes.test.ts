@@ -469,10 +469,10 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field descendant complex selectors only when semantic registration asks', () => {
+  test('materializes raw-field complex selectors only when semantic registration asks', () => {
     const context = new Context();
     const node = ruleset({
-      selector: '.a button.primary',
+      selector: '.a > button.primary',
       rules: [
         rawdecl({
           name: 'color',
@@ -481,15 +481,15 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a button.primary {\n  color: blue;\n}\n');
+    expect(node.toTrimmedString()).toBe('.a > button.primary {\n  color: blue;\n}\n');
     expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a button.primary');
-    expect(serializeTypes(node)).toContain('rawSelector: \'.a button.primary\'');
+    expect(node.rawSelector).toBe('.a > button.primary');
+    expect(serializeTypes(node)).toContain('rawSelector: \'.a > button.primary\'');
     void node.prepareRegistration(context);
     expect(node.rawSelector).toBeUndefined();
     const selector = node.selector;
     if (!selector || !isNode(selector, N.ComplexSelector)) {
-      throw new Error('Expected raw descendant selector materialization to create a ComplexSelector.');
+      throw new Error('Expected raw complex selector materialization to create a ComplexSelector.');
     }
     expect(selector.parent).toBe(node);
     expect(selector.value[0]!.parent).toBe(selector);
@@ -497,7 +497,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(selector.value[2]!.parent).toBe(selector);
     const types = serializeTypes(node);
     expect(types).toContain('(ComplexSelector');
-    expect(types).toContain('(Combinator \' \')');
+    expect(types).toContain('(Combinator \'>\')');
     expect(types).toContain('(BasicSelector \'.a\')');
     expect(types).toContain('(CompoundSelector');
     expect(types).toContain('(BasicSelector \'button\')');
@@ -505,10 +505,10 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field selector lists with descendant branches only when semantic registration asks', () => {
+  test('materializes raw-field selector lists with complex branches only when semantic registration asks', () => {
     const context = new Context();
     const node = ruleset({
-      selector: '.a .b, .c',
+      selector: '.a > .b, .c + .d',
       rules: [
         rawdecl({
           name: 'color',
@@ -517,9 +517,9 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a .b, .c {\n  color: blue;\n}\n');
+    expect(node.toTrimmedString()).toBe('.a > .b, .c + .d {\n  color: blue;\n}\n');
     expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a .b, .c');
+    expect(node.rawSelector).toBe('.a > .b, .c + .d');
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
@@ -531,13 +531,14 @@ describe('progressive scanner-first proof nodes', () => {
     const types = serializeTypes(node);
     expect(types).toContain('(SelectorList');
     expect(types).toContain('(ComplexSelector');
-    expect(types).toContain('(Combinator \' \')');
+    expect(types).toContain('(Combinator \'>\')');
+    expect(types).toContain('(Combinator \'+\')');
     expect(types).not.toContain('rawSelector');
   });
 
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
-      selector: '.a > .b',
+      selector: '.a:hover',
       rules: []
     })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
   });

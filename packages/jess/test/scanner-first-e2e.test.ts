@@ -1077,8 +1077,8 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('feeds descendant complex selectors through structural parse', async () => {
-    const cases = ['.a .b', 'button .icon.active', '.a .b, .c'];
+  it('feeds cheap complex selectors through structural parse', async () => {
+    const cases = ['.a .b', 'button > .icon.active', '.a + .b', '.a ~ .b', '.a > .b, .c + .d'];
 
     for (const selector of cases) {
       const source = `${selector} { color: blue; }\n`;
@@ -1105,7 +1105,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
       expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
 
-      const parseResult = probePlugin.safeParse('/virtual/descendant-selector.less', source);
+      const parseResult = probePlugin.safeParse('/virtual/complex-selector.less', source);
       expect(parseResult.errors).toEqual([]);
       const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
       expect(types).toContain('(Ruleset');

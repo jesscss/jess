@@ -222,9 +222,10 @@ selector component positions.
 Current status: structural-fed prototype handles comma-separated lists whose
 branches are already in the scanner-native selector subset, such as `.a, .b`,
 `.a, button.primary`, and `.a .b, .c`, without island parser requests.
-Descendant-only complex branches whose parts stay in the cheap subset are
-covered; non-descendant combinators, pseudos, attributes, comments,
-interpolation, nested selectors, and `:extend()` remain outside this proof.
+Cheap complex branches whose parts stay in the cheap subset and use descendant,
+child, adjacent sibling, or general sibling combinators are covered; pseudos,
+attributes, comments, interpolation, nested selectors, and `:extend()` remain
+outside this proof.
 
 ### CSS-005 Nested Ampersand Selector
 
@@ -244,10 +245,11 @@ parent merging.
 
 JIT triggers: `&` in selector text.
 
-Current status: structural-fed prototype handles descendant-only chains whose
+Current status: structural-fed prototype handles cheap complex chains whose
 parts are already in the scanner-native simple/adjacent compound selector
-subset, such as `.a .b` and `button .icon.active`, without island parser
-requests. Non-descendant combinators, pseudos, attributes, comments,
+subset and whose combinators are descendant, child, adjacent sibling, or
+general sibling, such as `.a .b`, `button > .icon.active`, `.a + .b`, and
+`.a ~ .b`, without island parser requests. Pseudos, attributes, comments,
 interpolation, nested selectors, and `:extend()` remain outside this proof.
 
 ### CSS-006 Custom Property Raw Value

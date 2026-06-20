@@ -64,6 +64,8 @@ export type RawRulesetValue = {
   rules: Node[];
 };
 
+type RawComplexSelectorPart = string | ' ' | '>' | '+' | '~';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -138,7 +140,7 @@ function splitRawSelectorList(value: string): string[] | undefined {
       selector.length === 0
       || (
         !isMaterializableRawSelectorBranch(selector)
-        && splitRawDescendantComplexSelector(selector) === undefined
+        && splitRawComplexSelector(selector) === undefined
       )
     ) {
       return undefined;
@@ -152,27 +154,63 @@ function isMaterializableRawSelectorBranch(value: string): boolean {
   return canMaterializeRawSimpleSelector(value) || splitRawCompoundSelector(value) !== undefined;
 }
 
-function splitRawDescendantComplexSelector(value: string): string[] | undefined {
-  if (!/[ \t]/u.test(value) || /[\r\n]/u.test(value)) {
+function readRawSelectorBranch(value: string, start: number): { text: string; end: number } | undefined {
+  let end = start;
+  while (end < value.length && !/[ \t>+~]/u.test(value[end]!)) {
+    end++;
+  }
+  if (end === start) {
     return undefined;
   }
-  const branches = value.trim().split(/[ \t]+/u);
-  if (branches.length < 2) {
+  const text = value.slice(start, end);
+  return isMaterializableRawSelectorBranch(text) ? { text, end } : undefined;
+}
+
+function splitRawComplexSelector(value: string): RawComplexSelectorPart[] | undefined {
+  if (value.trim() !== value || !/[ \t>+~]/u.test(value) || /[\r\n]/u.test(value)) {
     return undefined;
   }
-  for (const branch of branches) {
-    if (!isMaterializableRawSelectorBranch(branch)) {
+  const parts: RawComplexSelectorPart[] = [];
+  let offset = 0;
+  let selectorCount = 0;
+  while (offset < value.length) {
+    while (/[ \t]/u.test(value[offset] ?? '')) {
+      offset++;
+    }
+    const branch = readRawSelectorBranch(value, offset);
+    if (!branch) {
       return undefined;
     }
+    parts.push(branch.text);
+    selectorCount++;
+    offset = branch.end;
+    let whitespace = 0;
+    while (/[ \t]/u.test(value[offset] ?? '')) {
+      offset++;
+      whitespace++;
+    }
+    if (offset >= value.length) {
+      break;
+    }
+    const combinator = value[offset];
+    if (combinator === '>' || combinator === '+' || combinator === '~') {
+      parts.push(combinator);
+      offset++;
+      continue;
+    }
+    if (whitespace === 0) {
+      return undefined;
+    }
+    parts.push(' ');
   }
-  return branches;
+  return selectorCount > 1 ? parts : undefined;
 }
 
 function canMaterializeRawSelector(value: string): boolean {
   return (
     canMaterializeRawSimpleSelector(value)
     || splitRawCompoundSelector(value) !== undefined
-    || splitRawDescendantComplexSelector(value) !== undefined
+    || splitRawComplexSelector(value) !== undefined
     || splitRawSelectorList(value) !== undefined
   );
 }
@@ -325,8 +363,8 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       selector = SelectorList.create(
         selectorList.map(part => this.materializeRawSelectorListBranch(part))
       ).inherit(this);
-    } else if (splitRawDescendantComplexSelector(rawSelector)) {
-      selector = this.materializeRawDescendantComplexSelector(rawSelector).inherit(this);
+    } else if (splitRawComplexSelector(rawSelector)) {
+      selector = this.materializeRawComplexSelector(rawSelector).inherit(this);
     } else {
       selector = this.materializeRawSelectorBranch(rawSelector);
     }
@@ -338,8 +376,8 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
   }
 
   private materializeRawSelectorListBranch(rawSelector: string): Selector {
-    return splitRawDescendantComplexSelector(rawSelector)
-      ? this.materializeRawDescendantComplexSelector(rawSelector)
+    return splitRawComplexSelector(rawSelector)
+      ? this.materializeRawComplexSelector(rawSelector)
       : this.materializeRawSelectorBranch(rawSelector);
   }
 
@@ -360,17 +398,18 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     return CompoundSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
-  private materializeRawDescendantComplexSelector(rawSelector: string): ComplexSelector {
-    const parts = splitRawDescendantComplexSelector(rawSelector);
+  private materializeRawComplexSelector(rawSelector: string): ComplexSelector {
+    const parts = splitRawComplexSelector(rawSelector);
     if (!parts) {
       throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
     }
     const components: ComplexSelectorComponent[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      if (i > 0) {
-        components.push(Combinator.create(' '));
+    for (const part of parts) {
+      if (part === ' ' || part === '>' || part === '+' || part === '~') {
+        components.push(Combinator.create(part));
+      } else {
+        components.push(this.materializeRawSelectorBranch(part));
       }
-      components.push(this.materializeRawSelectorBranch(parts[i]!));
     }
     return ComplexSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
