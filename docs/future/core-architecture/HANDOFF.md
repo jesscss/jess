@@ -103,6 +103,63 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first raw-field declaration proof.
+- Verdict: deferred. This pass intentionally adds a tiny raw-field construction
+  surface for scanner-first parser evidence, not a production migration or
+  speed claim. It proves a real core `Declaration` can render/serialize raw
+  name/value segments without allocating canonical name/value child nodes on the
+  direct render path, while semantic registration materializes those parts on
+  demand. Ruleset raw selector materialization remains unproven because the current
+  `Ruleset` registration path immediately evaluates selector nodes.
+- New traversal: `packages/core/src/tree/declaration.ts`
+  `Declaration.writeRawDeclarationSyntax(...)` loops over
+  `rawValueSegments`. This is bounded to the raw segment count and replaces
+  would-be wrapper nodes on the proof path; it is not on canonical declarations.
+  `Declaration.materializeRawDeclarationParts(...)` also loops over raw
+  segments only when semantic registration needs to turn mixed raw segments into
+  a reachable canonical value container.
+- Review-flagged allocations:
+  `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
+  construction of one `Declaration` for scanner-first tests. Focused tests add
+  normal `new Context()` render setup. No hidden selector/value nodes are
+  created by the raw declaration proof.
+- Review-flagged array helper: `segments.map(...)` appears only in the semantic
+  materialization fallback for mixed raw string/Node segments, where it creates
+  the reachable canonical sequence payload. Direct raw render does not use this
+  helper.
+- Review-flagged diff tokens: the raw declaration value type includes an array
+  of string/Node segments. The array is caller-owned input for the explicit
+  proof path; it is not introduced into current parser output or default
+  declaration construction.
+- New node/materialization: one explicit core `Declaration` via `rawdecl(...)`.
+  No `Any`, `Reference`, selector, or value wrapper nodes are created for raw
+  name/value payloads during direct render. If semantic registration/eval asks
+  for canonical parts, `Declaration.materializeRawDeclarationParts(...)`
+  creates the canonical `Any` name/value/important nodes at that boundary and
+  hides raw segment children from `childKeys` serialization/traversal so the
+  canonical value is not also exposed through `rawValueSegments`.
+- Render path: raw declarations stringify directly in
+  `writeRawDeclarationSyntax(...)` and `render(...)`; they do not resolve into
+  canonical value nodes just to print.
+- Helper/API surface: public experimental `rawdecl(...)` plus
+  `RawDeclarationValue`, exported through the existing core declaration
+  entrypoint. This is deliberate API surface for scanner-first proof code and
+  remains separate from ordinary `decl(...)`.
+- Metadata mutations: none added.
+- Parent/adoption mutations: `Declaration.materializeRawDeclarationParts(...)`
+  adopts the materialized name/value/important nodes when the raw declaration
+  crosses into semantic registration/eval, preserving the normal parent/child
+  invariant at the materialization boundary.
+- Routine error control: none added.
+- Allocation changes: adds raw fields on `Declaration` instances for the proof
+  path; avoids name/value child node allocation for direct render and defers
+  canonical node allocation until semantic registration. No speed claim until a
+  structural-fed path uses it under corpus/benchmark gates.
+- Evidence: focused `progressive-nodes.test.ts` passed with raw declaration
+  serialize/render assertions; `pnpm --filter @jesscss/core build`,
+  `pnpm run verify:package-exports`, and `git diff --check` passed. The broad
+  `@jesscss/core` suite still has unrelated architecture-lane failures in this
+  worktree and is not used as proof for this slice.
 - Latest pass: scanner-first parser prototype AST-shape cleanup, visitor
   traversal planning, and TS7 declaration stabilization.
 - Verdict: accepted as a prototype-enabling shape cut, not a completed

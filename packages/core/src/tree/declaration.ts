@@ -106,6 +106,12 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
   important?: Any<'flag'>;
 };
 
+export type RawDeclarationValue = {
+  name: string;
+  value: Array<string | Node>;
+  important?: boolean | string;
+};
+
 type DeclarationEvalState = {
   output: Node;
   name?: DeclarationValue['name'];
@@ -461,25 +467,39 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  static override childKeys = ['name', 'valueNode', 'important'];
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue | RawDeclarationValue, Opts> {
+  static override childKeys = ['name', 'valueNode', 'rawName', 'rawValueSegments', 'important', 'rawImportant'];
 
-  readonly name: DeclarationValue['name'];
-  readonly valueNode: DeclarationValue['value'];
-  readonly important: DeclarationValue['important'];
+  name!: DeclarationValue['name'];
+  valueNode!: DeclarationValue['value'];
+  important: DeclarationValue['important'];
+  readonly rawName: string | undefined;
+  private readonly _rawValueSegments: Array<string | Node> | undefined;
+
+  get rawValueSegments(): Array<string | Node> | undefined {
+    return this.name === undefined ? this._rawValueSegments : undefined;
+  }
+
+  readonly rawImportant: boolean | string | undefined;
 
   override allowRuleRoot = true;
 
   constructor(
-    value: DeclarationValue,
+    value: DeclarationValue | RawDeclarationValue,
     options?: Opts,
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location, treeContext);
-    this.name = value.name;
-    this.valueNode = value.value;
-    this.important = value.important;
+    if (isRawDeclarationValue(value)) {
+      this.rawName = value.name;
+      this._rawValueSegments = value.value;
+      this.rawImportant = value.important;
+    } else {
+      this.name = value.name;
+      this.valueNode = value.value;
+      this.important = value.important;
+    }
   }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
@@ -540,6 +560,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private derive(): this {
+    this.materializeRawDeclarationParts();
     return this.withParts({
       name: this.copyNameForDerived(this.name),
       value: this.copyValueForDerived(this.valueNode),
@@ -554,6 +575,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   deriveWithParts(parts: Partial<DeclarationValue>): this {
+    this.materializeRawDeclarationParts();
     const node = this.withParts({
       name: parts.name === undefined
         ? this.copyNameForDerived(this.name)
@@ -608,6 +630,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
+    if (this.isRawDeclaration()) {
+      return true;
+    }
     return this.valueRequiresSemi(this.valueNode);
   }
 
@@ -770,7 +795,73 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override toTrimmedString(options?: PrintOptions) {
+    if (this.isRawDeclaration()) {
+      options = getPrintOptions(options);
+      const w = options.writer!;
+      const position = w.position();
+      this.writeRawDeclarationSyntax(options);
+      return getWriterTextSincePosition(w, position);
+    }
     return this.declTrimmedString(options);
+  }
+
+  private isRawDeclaration(): boolean {
+    return this.rawName !== undefined;
+  }
+
+  private materializeRawDeclarationParts(): void {
+    if (!this.isRawDeclaration() || this.name !== undefined) {
+      return;
+    }
+    const name = any(this.rawName!, { role: 'property' });
+    const segments = this._rawValueSegments ?? [];
+    let value: Node;
+    if (segments.length === 1 && segments[0] instanceof Node) {
+      value = segments[0];
+    } else if (segments.some(segment => segment instanceof Node)) {
+      value = spaced(segments.map(segment => (
+        typeof segment === 'string' ? any(segment) : segment
+      )));
+    } else {
+      let text = '';
+      for (const segment of segments) {
+        text += segment;
+      }
+      value = any(text);
+    }
+    const important = this.rawImportant === undefined || this.rawImportant === false
+      ? undefined
+      : any(this.rawImportant === true ? '!important' : this.rawImportant, { role: 'flag' });
+    this.name = name;
+    this.valueNode = value;
+    this.important = important;
+    this.adopt(name);
+    this.adopt(value);
+    if (important) {
+      this.adopt(important);
+    }
+  }
+
+  private writeRawDeclarationSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
+    if (!this.isRawDeclaration()) {
+      return false;
+    }
+    const w = options.writer!;
+    w.add(this.rawName!, this);
+    w.add(': ');
+    for (const segment of this._rawValueSegments ?? []) {
+      if (typeof segment === 'string') {
+        w.add(segment, this);
+      } else {
+        segment.writeSyntax(options);
+      }
+    }
+    if (this.rawImportant === true) {
+      w.add(' !important', this);
+    } else if (typeof this.rawImportant === 'string') {
+      w.add(` ${this.rawImportant}`, this);
+    }
+    return true;
   }
 
   private writeDirectSyntheticScalarSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
@@ -802,6 +893,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    if (this.writeRawDeclarationSyntax(options)) {
+      return;
+    }
     if (this.writeDirectSyntheticScalarSyntax(options)) {
       return;
     }
@@ -830,6 +924,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.isRawDeclaration()) {
+      const prepared = prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
+      this.writeRawDeclarationSyntax(prepared);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, prepared.writer.toString())
+        : prepared.writer.toString();
+    }
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
       return isThenable(state)
@@ -1181,6 +1282,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private createRegistrationState(
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
+    this.materializeRawDeclarationParts();
     if (options.reuseCanonical === true) {
       return {
         name: this.name,
@@ -1196,6 +1298,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
+    this.materializeRawDeclarationParts();
     return {
       name: this.name,
       value: this.valueNode,
@@ -1282,7 +1385,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             type,
             fallbackValue: new Nil(),
             excludedDeclarations,
-            filter: n => {
+            filter: (n) => {
               const source = n.sourceNode ?? n;
               return n !== outputNode
                 && n !== this
@@ -1333,7 +1436,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               fallbackValue: new Nil(),
               excludedDeclarations,
               // Prevent self-referential reads while normalizing copied/prepared nodes.
-              filter: n => {
+              filter: (n) => {
                 const source = n.sourceNode ?? n;
                 return n !== outputNode
                   && n !== this
@@ -1412,6 +1515,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
+    this.materializeRawDeclarationParts();
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
       return {
@@ -1570,6 +1674,10 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
+function isRawDeclarationValue(value: DeclarationValue | RawDeclarationValue): value is RawDeclarationValue {
+  return typeof value.name === 'string' && Array.isArray(value.value);
+}
+
 function isDeclarationValue(
   value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> }
 ): value is DeclarationValue {
@@ -1590,3 +1698,18 @@ export const decl = (
   }
   return new Declaration(value, options, location);
 };
+
+/**
+ * Creates a raw-field declaration prototype node.
+ *
+ * This is an experimental scanner-first construction path: the declaration is
+ * still a core `Declaration`, but its name and value payload remain string/Node
+ * segments until a later materialization stage asks for canonical name/value
+ * nodes. It is intentionally explicit so existing parser-created declarations
+ * keep their canonical node shape.
+ */
+export const rawdecl = (
+  value: RawDeclarationValue,
+  options?: DeclarationOptions,
+  location?: LocationInfo
+) => new Declaration(value, options, location);

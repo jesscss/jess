@@ -2,14 +2,18 @@ import { describe, expect, test } from 'vitest';
 import { Context } from '../../context.js';
 import {
   N,
+  Declaration,
   ProgressiveAtRule,
   ProgressiveDeclaration,
   ProgressiveRuleset,
   ProgressiveVariableDeclaration,
+  any,
   progressiveatrule,
   progressivedecl,
   progressiveruleset,
-  progressivevardecl
+  progressivevardecl,
+  rawdecl,
+  rules
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -222,5 +226,127 @@ describe('progressive scanner-first proof nodes', () => {
 
     expect(node.render(context, buffer)).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
     expect(buffer.segments).toEqual(['@media screen {\n  .a {\n    color: blue;\n  }\n}\n']);
+  });
+
+  test('renders raw-field core declarations without name or value child nodes', () => {
+    const declaration = rawdecl({
+      name: 'color',
+      value: ['blue']
+    });
+
+    expect(declaration).toBeInstanceOf(Declaration);
+    expect(declaration.toTrimmedString()).toBe('color: blue');
+    expect(declaration.name).toBeUndefined();
+    expect(declaration.valueNode).toBeUndefined();
+    expect(declaration.rawName).toBe('color');
+    expect(declaration.rawValueSegments).toEqual(['blue']);
+    expect(serializeTypes(declaration)).toBeString(`
+      (Declaration
+        rawName: 'color'
+        rawValueSegments:
+          ['blue']
+      )
+    `);
+  });
+
+  test('writes raw-field core declaration render output without allocating value wrappers', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const declaration = rawdecl({
+      name: 'width',
+      value: ['calc(', '100%', ' - ', '1px', ')'],
+      important: true
+    });
+
+    expect(declaration.render(context, buffer)).toBe('width: calc(100% - 1px) !important');
+    expect(buffer.segments).toEqual(['width: calc(100% - 1px) !important']);
+  });
+
+  test('parents explicit raw-field declaration node segments without value wrapper allocation', () => {
+    const segment = any('100%');
+    const declaration = rawdecl({
+      name: 'width',
+      value: ['calc(', segment, ' - 1px)']
+    });
+
+    expect(segment.parent).toBe(declaration);
+    expect(declaration.valueNode).toBeUndefined();
+    expect(declaration.toTrimmedString()).toBe('width: calc(100% - 1px)');
+    expect(serializeTypes(declaration)).toBeString(`
+      (Declaration
+        rawName: 'width'
+        rawValueSegments:
+          ['calc(', Any, ' - 1px)']
+      )
+    `);
+  });
+
+  test('materializes explicit raw-field declaration node segments when semantic registration asks', () => {
+    const context = new Context();
+    const segment = any('100%');
+    const declaration = rawdecl({
+      name: 'width',
+      value: [segment]
+    });
+
+    void declaration.prepareRegistration(context);
+    expect(declaration.valueNode).toBe(segment);
+    expect(declaration.valueNode.parent).toBe(declaration);
+    expect(declaration.rawValueSegments).toBeUndefined();
+    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
+  });
+
+  test('materializes mixed raw-field segments into a reachable value container', () => {
+    const context = new Context();
+    const segment = any('100%');
+    const declaration = rawdecl({
+      name: 'width',
+      value: ['calc(', segment, ' - 1px)']
+    });
+
+    void declaration.prepareRegistration(context);
+    expect(isNode(declaration.valueNode, N.Sequence)).toBe(true);
+    expect(segment.parent).toBe(declaration.valueNode);
+    expect(declaration.rawValueSegments).toBeUndefined();
+    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
+    expect(serializeTypes(declaration)).toContain('(Sequence');
+  });
+
+  test('renders raw-field core declarations through existing rule containers', () => {
+    const rootDeclaration = rawdecl({
+      name: 'color',
+      value: ['blue']
+    });
+    const progressiveDeclaration = rawdecl({
+      name: 'color',
+      value: ['blue']
+    });
+    const root = rules([rootDeclaration]);
+    const progressive = progressiveruleset({
+      selector: '.a',
+      rules: [progressiveDeclaration]
+    });
+
+    expect(root.toTrimmedString()).toBe('color: blue;');
+    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+  });
+
+  test('materializes raw-field core declarations only when semantic registration asks', () => {
+    const context = new Context();
+    const declaration = rawdecl({
+      name: 'color',
+      value: ['blue']
+    });
+
+    expect(declaration.name).toBeUndefined();
+    expect(declaration.valueNode).toBeUndefined();
+    void declaration.prepareRegistration(context);
+    expect(declaration.name).toBeDefined();
+    expect(declaration.valueNode).toBeDefined();
+    expect(declaration.name.parent).toBe(declaration);
+    expect(declaration.valueNode.parent).toBe(declaration);
+    expect(declaration.toTrimmedString()).toBe('color: blue');
+    expect(serializeTypes(declaration)).toContain('(Any [role=property] \'color\')');
+    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
   });
 });

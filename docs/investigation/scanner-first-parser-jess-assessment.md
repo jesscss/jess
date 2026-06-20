@@ -1961,6 +1961,25 @@ storage.
   from those string segments, maintain per-field/per-segment offsets separately,
   and assert no selector/value child nodes are created until a typed accessor or
   richer feature requests them.
+  - [x] Added the first raw-field core `Declaration` proof through explicit
+    `rawdecl(...)`: it creates a real `Declaration` instance with `rawName` and
+    `rawValueSegments`, renders/serializes string segments, and leaves
+    canonical `name` / `valueNode` undefined so no hidden name/value child nodes
+    are allocated for the direct render proof path. If the declaration enters
+    semantic registration/eval, it materializes canonical name/value nodes on
+    demand; that is the progressive-enhancement boundary, not the cheap render
+    path.
+  - Current limit: this proves wrapper avoidance and direct render for normalized
+    declaration syntax, not exact source-token preservation for alternate
+    assignment spacing, semicolon trivia, or important-flag spelling.
+  - Current limit: semantic materialization preserves an existing single `Node`
+    segment as the canonical value and turns mixed string/`Node` segments into a
+    reachable sequence container. Rich mixed segment semantics still need a
+    broader segment-to-node policy before they can be used as a broad eval path.
+  - Current limit: raw `Ruleset` is not yet proven. The current `Ruleset`
+    registration path immediately evaluates selector nodes, so accepting a raw
+    selector string requires a selector materialization/accessor boundary rather
+    than simply widening the constructor type.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain already-seen Less variable declarations and reads
   so they can run without canonical fallback.

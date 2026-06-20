@@ -94,6 +94,9 @@ export class ProgressiveRuleset extends Node<ProgressiveRulesetValue> {
       }
       writer.add(childIndent, rule);
       rule.writeSyntax(options);
+      if (rule.requiredSemi === true && !writer.endsWith(';')) {
+        writer.add(';');
+      }
       if (!writer.endsWith('\n')) {
         writer.add('\n');
       }
@@ -117,7 +120,7 @@ export class ProgressiveRuleset extends Node<ProgressiveRulesetValue> {
         writer.add(rule, this);
       } else {
         rule.writeSyntax(options);
-        if (rule instanceof ProgressiveDeclaration) {
+        if (rule instanceof ProgressiveDeclaration || rule.requiredSemi === true) {
           writer.add(';');
         }
       }
