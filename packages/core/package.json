@@ -16,6 +16,12 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./internal/raw-selector": {
+      "types": "./lib/tree/util/raw-selector.d.ts",
+      "source": "./src/tree/util/raw-selector.ts",
+      "import": "./lib/internal/raw-selector.js",
+      "require": "./lib/internal/raw-selector.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -2862,19 +2862,22 @@ storage.
 
 Current broad-parser gate snapshot, 2026-06-20:
 
-- `pnpm --filter @jesscss/parser test` passes: 8 files, 112 tests, including source/line-map,
+- `pnpm --filter @jesscss/parser test` passes: 8 files, 127 tests, including source/line-map,
   scanner recovery, no built-in language profile exports, semantic index,
   services, structural parsing, and checked-in plus upstream Less test-data
   corpus gates.
 - `pnpm --filter @jesscss/css-parser test` passes: 11 files, 114 tests,
   including island-provider materialization boundaries and the CSS parser
   benchmark fixture.
-- `pnpm --filter @jesscss/less-parser test` passes: 27 files, 423 tests,
+- `pnpm --filter @jesscss/less-parser test` passes: 27 files, 426 tests,
   including the Less fixture-backed parser corpus and the classified
   serializer-baseline updates.
 - `pnpm --filter @jesscss/jess-parser test` passes: 5 files, 161 tests. The
   test tree validator now skips metadata/root pointers such as `_sourceRoot`
-  while still checking owned child parentage.
+  while still checking owned child parentage. Jess module at-rule island
+  providers reconstruct the owning statement from structural owner name offsets
+  before invoking the Jess grammar rule; the shared `at-rule-prelude` island
+  remains a prelude slice and does not force sibling island parsing.
 - `pnpm --filter @jesscss/core build`, focused core
   `control`/`ruleset`/`node-render-buffer` tests, `@jesscss/fns build`,
   `@jesscss/fns test`, `@jesscss/css-parser build`, `@jesscss/less-parser
@@ -2888,7 +2891,7 @@ Current broad-parser gate snapshot, 2026-06-20:
   `.value`, and control-node shape changes, plus package-owned SCSS
   selector/value/control island providers with selected-island materialization
   counters.
-- `pnpm --filter @jesscss/plugin-scss test` passes: 2 files, 4 tests,
+- `pnpm --filter @jesscss/plugin-scss test` passes: 2 files, 8 tests,
   including plugin-owned structural activation and island-plan wiring.
 - `pnpm vitest run packages/core/src/__tests__/jess-error.test.ts
   packages/jess/test/scanner-first-e2e.test.ts` passes, including the

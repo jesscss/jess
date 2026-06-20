@@ -25,10 +25,6 @@ import {
   Any,
   ProgressiveVariableDeclaration,
   Node,
-  isScannerNativeRawSelector,
-  isScannerNativeRawSelectorBranch,
-  isScannerNativeRawExtendTargetSelector,
-  isScannerNativeRawComplexExtendTargetSelector,
   getErrorFromParser,
   toDiagnostic,
   extractRelevantLines,
@@ -38,6 +34,12 @@ import {
   type ErrorDiagnostic,
   type WarningDiagnostic
 } from '@jesscss/core';
+import {
+  isScannerNativeRawComplexExtendTargetSelector,
+  isScannerNativeRawExtendTargetSelector,
+  isScannerNativeRawSelector,
+  isScannerNativeRawSelectorBranch
+} from '@jesscss/core/internal/raw-selector';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
 import {

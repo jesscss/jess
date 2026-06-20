@@ -3,7 +3,8 @@ import {
   providerKey,
   type IslandExecutionContext,
   type IslandParserRegistry,
-  type IslandParseResult
+  type IslandParseResult,
+  type StructuralNode
 } from '@jesscss/parser';
 import { JessParser, type JessRules } from './jessParser.js';
 
@@ -67,7 +68,7 @@ function parseJessModuleAtRuleIsland(
   context: IslandExecutionContext,
   parser: JessParser
 ): IslandParseResult {
-  const source = ensureSemicolon(context.document.source.slice(context.island.start, context.island.end).trimStart());
+  const source = ensureSemicolon(jessModuleAtRuleStatementSource(context));
   if (source.startsWith('@-compose')) {
     return parseJessSource(context, parser, 'jessComposeAtRule', source);
   }
@@ -89,6 +90,24 @@ function parseJessModuleAtRuleIsland(
       })
     ]
   };
+}
+
+function jessModuleAtRuleStatementSource(context: IslandExecutionContext): string {
+  const islandText = context.document.source.slice(context.island.start, context.island.end).trimStart();
+  const owner = context.island.owner;
+  if (isStatementWithName(owner)) {
+    const name = context.document.source.slice(owner.nameStart, owner.nameEnd).trim();
+    if (name.startsWith('@-')) {
+      return `${name} ${islandText}`;
+    }
+  }
+  return islandText;
+}
+
+function isStatementWithName(
+  node: StructuralNode
+): node is StructuralNode & { nameStart: number; nameEnd: number } {
+  return 'nameStart' in node && 'nameEnd' in node;
 }
 
 function parseJessSource(

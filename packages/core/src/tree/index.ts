@@ -84,7 +84,6 @@ export * from './interpolated.js';
 export * from './selector-interpolated.js';
 export * from './default-guard.js';
 export * from './rest.js';
-export * from './util/raw-selector.js';
 export * from './url.js';
 
 // Patch Selector.compare after all exports to avoid circular dependency

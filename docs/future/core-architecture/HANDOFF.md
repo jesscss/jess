@@ -647,6 +647,33 @@ with `--no-verify` after the explicit gates pass.
   zero promoted bytes, and 71 progressive nodes across the included 64-file /
   65-case upstream Less corpus.
 
+- Latest pass: scanner-first internal raw-selector export and Jess module
+  at-rule island owner reconstruction.
+- Verdict: accepted as a package-boundary and provider-correctness fix, not a
+  speed claim. Raw selector admission helpers no longer ride the public core
+  barrel; the Less plugin imports the explicitly internal scanner-first
+  subpath. Jess module at-rule islands reconstruct only the owning at-rule
+  statement from structural `nameStart`/`nameEnd` offsets before dispatching to
+  the existing Jess parser rule, because the shared structural island is the
+  prelude slice rather than the whole statement.
+- New traversal: none added. The Jess provider reads one owner node already on
+  the island execution context and slices the existing source text.
+- New node/materialization: none added. The provider still returns the existing
+  Jess parser result only when a Jess module at-rule island is explicitly
+  requested.
+- Render path: unchanged.
+- Helper/API surface: `@jesscss/core/internal/raw-selector` is an intentionally
+  internal scanner-first subpath used by the Less plugin. The public core tree
+  barrel no longer exports those helpers as general core API.
+- Metadata mutations: none.
+- Evidence: `pnpm --filter @jesscss/core build`; `pnpm run
+  verify:package-exports`; `pnpm --filter @jesscss/jess-parser test --
+  test/island-providers.test.ts`; `pnpm --filter @jesscss/jess-parser test`;
+  `pnpm --filter @jesscss/jess-parser build`; `pnpm --filter jess test -- --run
+  test/scanner-first-e2e.test.ts`; `JESS_SCANNER_FIRST_CORPUS_DETAILS=1 pnpm
+  --filter jess test -- --run test/scanner-first-less-corpus.test.ts -t
+  "matches current compiler output"`; and `git diff --check` pass.
+
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
   still-open `Mixin` row. Static direct mixin output and ruleset-as-mixin
