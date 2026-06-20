@@ -210,7 +210,7 @@ function getDirectDeclarationBucket(
   }
 
   let bucket: Declaration[] | undefined;
-  const value = scope.value;
+  const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (!isNode(node, N.Declaration | N.VarDeclaration)) {
@@ -724,6 +724,9 @@ function findDeclarationLookupWithStrategy(
 
   while (rules) {
     if (firstVisitedRules === rules || secondVisitedRules === rules || visitedParents?.has(rules)) {
+      if (searchingFallback) {
+        break;
+      }
       throw new Error(searchingFallback
         ? 'Circular fallback frame chain detected in direct declaration lookup'
         : 'Circular parent chain detected in direct declaration lookup');

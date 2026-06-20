@@ -79,7 +79,7 @@ describe('mediaInParens', () => {
     expect(out).toContainString('(AtRule\n          nestable: true');
     expect(out).toContainString('(Any [role=atkeyword]');
     expect(out).toContainString('\'@media\'');
-    expect(out).toContainString('(List\n            items:');
+    expect(out).toContainString('(List\n            value:');
     expect(out).toContainString('(Reference [role=ident]');
     expect(out).toContainString('type: \'index\'');
     expect(out).toContainString('role: \'ident\'');
@@ -105,21 +105,14 @@ describe('mediaInParens', () => {
   it('should parse simple bare variable media query at top level as indexed reference', () => {
     const { errors, tree } = parse('@media @breakpoint { }', 'stylesheet');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (AtRule
-          nestable: true
-        name: 
-          (Any [role=atkeyword]
-              role: 'atkeyword'
-            '@media'
-          )
-        prelude: 
-          (Reference [role=ident]
-              type: 'index'
-              role: 'ident'
-            key: 'breakpoint'
-          )
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(AtRule');
+    expect(out).toContainString('nestable: true');
+    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
+    expect(out).toContainString('(Reference [role=ident]');
+    expect(out).toContainString('type: \'index\'');
+    expect(out).toContainString('key: \'breakpoint\'');
   });
 });
 

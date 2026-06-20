@@ -1,6 +1,7 @@
 import type { Ampersand } from './ampersand.js';
 import type { Any, Anonymous, Keyword } from './any.js';
 import type { AtRule } from './at-rule.js';
+import type { AtRuleStatement } from './at-rule-statement.js';
 import type { Call } from './call.js';
 import type { Declaration } from './declaration.js';
 import type { Dimension } from './dimension.js';
@@ -76,6 +77,7 @@ export interface NToNode {
   [N.Collection]: Collection;
   [N.Ruleset]: Ruleset;
   [N.AtRule]: AtRule;
+  [N.AtRuleStatement]: AtRuleStatement;
   [N.Reference]: Reference;
   [N.Comment]: Comment;
   [N.JsFunction]: JsFunction;
@@ -89,6 +91,7 @@ export type Nodes = {
   Anonymous: typeof Anonymous;
   Keyword: typeof Keyword;
   AtRule: typeof AtRule;
+  AtRuleStatement: typeof AtRuleStatement;
   Call: typeof Call;
   Comment: typeof Comment;
   Declaration: typeof Declaration;

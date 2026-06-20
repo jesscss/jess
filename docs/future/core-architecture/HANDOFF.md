@@ -103,6 +103,88 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first parser prototype AST-shape cleanup, visitor
+  traversal planning, and TS7 declaration stabilization.
+- Verdict: accepted as a prototype-enabling shape cut, not a completed
+  runtime-performance win. `Ruleset`, block-bearing `AtRule`, `Mixin`, and
+  control nodes now use inherited `Rules` body behavior with `.rules: Node[]`
+  at the container, while `AtRuleStatement` owns statement-form at-rules. The
+  pass removes accidental nested body wrappers and arbitrary single-payload
+  names where this slice reaches them, and rejects compatibility aliases for
+  the removed names. No speed claim.
+- New traversal: provider and semantic-index loops in the scanner-first parser
+  are bounded scans over source structure or selected island plans. They are
+  cold/prototype planning surfaces, not eval/render loops. `IslandParsePlan`
+  now has a traversal-time visitor request helper that scans the already
+  planned visitor rules for the reached structural node and requests only that
+  node's owned islands; tests assert the helper does not execute providers or
+  promote siblings. Core changes keep existing body iteration patterns on
+  `Node[]` after removing nested `Rules` wrappers. The collapsed serializer
+  adds one bounded look-ahead only when a disabled reference-mode `Rules`
+  wrapper is reached, so it can decide whether to preserve the already-written
+  current frame for later renderable siblings or roll back an otherwise empty
+  frame. Added loops in tests are fixture construction/assertion only.
+- New node/materialization: `AtRuleStatement` is a new semantic node for
+  statement-form at-rules so block-bearing `AtRule` can inherit `Rules`
+  without lying about imports/charsets. Structural-fed e2e materializes only
+  selected selector/value islands for the bounded CSS/Less subset and records
+  canonical fallback for unsupported syntax. SCSS/Jess provider tests promote
+  only selected selector/value/control/module-at-rule islands and assert
+  promoted-byte counters without full-tree fallback. Test-only node
+  construction is fixture setup.
+- Render path: the pass must not materialize children merely to stringify.
+  Focused e2e tests prove plain rules and structurally handled declarations
+  render equal while selected islands remain unrequested unless needed. Control
+  render tests cover selected `$if`/`$for`/`$while` output through direct render
+  surfaces. Review follow-up fixed disabled reference-mode wrappers under
+  `collapseNesting`: hidden terminal wrappers stay invisible, hidden wrappers
+  followed by renderable siblings no longer leave declarations under the prior
+  sibling frame, and leading block trivia remains printable.
+- Helper/API surface: `DefinedFunction` is an exported type-only name for
+  TypeScript 7 declaration emit. It preserves the existing rich callable type
+  surface instead of widening `defineFunction(...)` to a bare runtime function.
+  Parser service helpers are prototype package surfaces with JSDoc and
+  counters; they are not core eval/render helpers. SCSS/Jess provider
+  entrypoints stay package-owned, and visitor method-table planning derives
+  structural island interests without importing core visitor classes. The
+  visitor planner now carries exact per-method materialization rules so
+  `visitDeclaration` and `visitRuleset` do not cross-product all requested
+  island kinds across every parent node kind; repeated plans reuse the cached
+  rule array and report cache hits. The traversal request helper reports
+  visitor traversal requests, materialized node requests, promoted island
+  requests, adapter-node requests, replacement requests, and fallback
+  full-tree materializations without importing compiler node classes.
+- Metadata mutations: constructor adoption now reflects the direct body-array
+  ownership model. A `Rules` instance passed where a body array is required is
+  invalid; there is no compatibility conversion from old nested body wrappers.
+  The Jess parser tree validator skips metadata/root pointers while continuing
+  to verify owned child parentage. Review follow-up fixed lingering
+  inherited-`Rules` assumptions: `toObject()` descends only through direct
+  plain `Rules` wrappers, and array namespace callable lookup now passes
+  `searchParents: false` into scope-frame lookup.
+- Routine error control: scanner/parser recovery records diagnostics instead
+  of allocating thrown `Error` objects for ordinary parse misses. Test-only
+  throws remain as assertions.
+- Allocation changes: intended reduction is one less nested `Rules` wrapper for
+  inherited containers and no alias objects for removed field names. Remaining
+  object count and speed claims are shelved until benchmark/profile evidence.
+- Evidence: `git diff --check`; `pnpm run verify:aggressive-cutting-review`;
+  `pnpm --filter @jesscss/core build`; focused core
+  `control`/`define-function`/`define-function-split-sequence` tests;
+  `pnpm --filter @jesscss/fns build`; `pnpm --filter @jesscss/fns test`;
+  `pnpm --filter @jesscss/parser test`; `pnpm --filter @jesscss/css-parser
+  test`; `pnpm --filter @jesscss/less-parser test`; `pnpm --filter
+  @jesscss/scss-parser test`; `pnpm --filter @jesscss/scss-parser build`;
+  `pnpm --filter @jesscss/jess-parser test`; `pnpm --filter
+  @jesscss/jess-parser build`; `pnpm --filter @jesscss/plugin-less build`;
+  `pnpm --filter @jesscss/plugin-less test`; `pnpm --filter
+  @jesscss/plugin-scss build`; `pnpm --filter @jesscss/plugin-scss test`;
+  `pnpm run verify:package-exports`; and the focused scanner-first e2e/Jess
+  diagnostic pair all pass in this worktree. Latest focused checks also cover
+  `toObject()` plain wrapper descent, array namespace `searchParents: false`,
+  disabled reference-wrapper collapse/trivia behavior, repeated reference
+  imports, parser visitor traversal counters, and plugin structural activation.
+
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
   still-open `Mixin` row. Static direct mixin output and ruleset-as-mixin

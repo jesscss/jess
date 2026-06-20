@@ -9,9 +9,9 @@ describe('callable eval helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callerRules = rules([]);
@@ -34,9 +34,9 @@ describe('callable eval helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     context.rulesContext = rules([]);
 

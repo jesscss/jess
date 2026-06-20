@@ -54,7 +54,7 @@ describe('Selector Productions', () => {
           name: ':host'
           arg:
             (CompoundSelector
-              components:
+              value:
                 [
                   (BasicSelector '.sel')
                   (BasicSelector '.a')
@@ -67,7 +67,7 @@ describe('Selector Productions', () => {
           name: ':host-context'
           arg:
             (CompoundSelector
-              components:
+              value:
                 [
                   (BasicSelector '.sel')
                   (BasicSelector '.b')
@@ -89,7 +89,7 @@ describe('Selector Productions', () => {
           name: ':unknown'
           arg:
             (Sequence
-              items:
+              value:
                 [
                   (Any '.sel')
                   (Any '.a')

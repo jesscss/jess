@@ -88,7 +88,7 @@ function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): s
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.items.length
+    args?.value.length
     && isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
     && name.options.mixinRulesetCallHasArgs !== true
@@ -239,8 +239,8 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       const sep = node.options?.sep ?? ',';
       const joiner = sep === '/' ? ' / ' : `${sep} `;
       let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownRenderedCallText(node.items[i]!);
+      for (let i = 0; i < node.value.length; i++) {
+        const text = getKnownRenderedCallText(node.value[i]!);
         if (text === undefined) {
           return undefined;
         }
@@ -256,8 +256,8 @@ function getKnownRenderedCallText(node: Node): string | undefined {
         return undefined;
       }
       let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownRenderedCallText(node.items[i]!);
+      for (let i = 0; i < node.value.length; i++) {
+        const text = getKnownRenderedCallText(node.value[i]!);
         if (text === undefined) {
           return undefined;
         }
@@ -294,8 +294,8 @@ function getKnownRenderedCallText(node: Node): string | undefined {
     default:
       if (node.constructor === QueryCondition) {
         let out = '';
-        for (let i = 0; i < node.items.length; i++) {
-          const text = getKnownRenderedCallText(node.items[i]!);
+        for (let i = 0; i < node.value.length; i++) {
+          const text = getKnownRenderedCallText(node.value[i]!);
           if (text === undefined) {
             return undefined;
           }
@@ -365,8 +365,8 @@ function getKnownSourceCallText(node: Node): string | undefined {
       const sep = node.options?.sep ?? ',';
       const joiner = sep === '/' ? ' / ' : `${sep} `;
       let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownSourceCallText(node.items[i]!);
+      for (let i = 0; i < node.value.length; i++) {
+        const text = getKnownSourceCallText(node.value[i]!);
         if (text === undefined) {
           return undefined;
         }
@@ -382,8 +382,8 @@ function getKnownSourceCallText(node: Node): string | undefined {
         return undefined;
       }
       let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownSourceCallText(node.items[i]!);
+      for (let i = 0; i < node.value.length; i++) {
+        const text = getKnownSourceCallText(node.value[i]!);
         if (text === undefined) {
           return undefined;
         }
@@ -420,8 +420,8 @@ function getKnownSourceCallText(node: Node): string | undefined {
     default:
       if (node.constructor === QueryCondition) {
         let out = '';
-        for (let i = 0; i < node.items.length; i++) {
-          const text = getKnownSourceCallText(node.items[i]!);
+        for (let i = 0; i < node.value.length; i++) {
+          const text = getKnownSourceCallText(node.value[i]!);
           if (text === undefined) {
             return undefined;
           }
@@ -488,12 +488,12 @@ export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlaceme
 
 export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.items[index];
+  return placement?.sourceArgs.value[index];
 }
 
 export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.items[index];
+  const sourceArg = placement?.sourceArgs.value[index];
   if (!placement || !sourceArg) {
     return undefined;
   }
@@ -610,7 +610,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const ownResults = options?.ownResults ?? true;
-    const source = nodes.items;
+    const source = nodes.value;
     const out = new Array<Node>(source.length);
     let changed = false;
     const evalImmediate = (node: Node): Node => {
@@ -826,7 +826,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.items)
+              ? await callWithContext(context, fn, ...state.args.value)
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
@@ -895,7 +895,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.items)
+        ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
       return this.finalizeCallResult(context, result, { ownOutput });
     });
@@ -943,12 +943,12 @@ export class Call extends Node<CallValue, CallOptions> {
     textState?: CallRenderTextState,
     renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<void> {
-    if (!args || args.items.length === 0) {
+    if (!args || args.value.length === 0) {
       return;
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const rawArgs = args.items;
+    const rawArgs = args.value;
     const last = rawArgs.length - 1;
     const findNextArgIndex = (start: number): number => {
       let i = start;
@@ -1221,7 +1221,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (
       typeof name === 'string'
-      && (!args || args.items.length === 0)
+      && (!args || args.value.length === 0)
       && !contentNode
     ) {
       const out = `${name}()${this._options?.markImportant ? ' !important' : ''}`;
@@ -1386,7 +1386,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   ? (
                       isMetadataFunction
                         ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.items)
+                        : await callWithContext(context, fn, ...state.args.value)
                     )
                   : await callWithContext(context, fn);
               } catch (error) {
@@ -1428,7 +1428,7 @@ export class Call extends Node<CallValue, CallOptions> {
               evaluatedName.parent = sourceParent;
             }
           }
-          if (state.args && state.args.items.length > 0) {
+          if (state.args && state.args.value.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
@@ -1536,7 +1536,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    if ((!this.args || this.args.items.length === 0) && !this.contentNode && typeof this.name === 'string') {
+    if ((!this.args || this.args.value.length === 0) && !this.contentNode && typeof this.name === 'string') {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
@@ -1547,11 +1547,11 @@ export class Call extends Node<CallValue, CallOptions> {
         : getKnownSourceCallText(this.name);
       if (nameText !== undefined) {
         let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
-        if (this.args?.items.length) {
+        if (this.args?.value.length) {
           const sep = this.args.options?.sep ?? ',';
           const joiner = sep === '/' ? ' / ' : `${sep} `;
-          for (let i = 0; i < this.args.items.length; i++) {
-            const text = getKnownSourceCallText(this.args.items[i]!);
+          for (let i = 0; i < this.args.value.length; i++) {
+            const text = getKnownSourceCallText(this.args.value[i]!);
             if (text === undefined) {
               out = '';
               break;
@@ -1605,12 +1605,12 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add('?');
     }
     w.add('(');
-    if (args && args.items.length > 0) {
+    if (args && args.value.length > 0) {
       if (directSource) {
         const sep = args.options?.sep ?? ',';
         const joiner = sep === '/' ? ' / ' : `${sep} `;
-        for (let i = 0; i < args.items.length; i++) {
-          const arg = args.items[i]!;
+        for (let i = 0; i < args.value.length; i++) {
+          const arg = args.value[i]!;
           if (i > 0) {
             w.add(joiner);
           }
@@ -1622,11 +1622,11 @@ export class Call extends Node<CallValue, CallOptions> {
           arg.writeSyntax(options);
         }
       } else {
-        let arg = args.items[0]!;
+        let arg = args.value[0]!;
         emitCallArgSyntax(arg, options);
-        for (let i = 1; i < args.items.length; i++) {
+        for (let i = 1; i < args.value.length; i++) {
           const prev = arg;
-          arg = args.items[i]!;
+          arg = args.value[i]!;
           emitCallArgSeparator(prev, arg, options, args.options?.sep ?? ',');
           emitCallArgSyntax(arg, options, true);
         }
@@ -1798,7 +1798,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
-      if (args && args.items.length > 0) {
+      if (args && args.value.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       return this.runAsCaller(context, async () => {
@@ -1862,7 +1862,7 @@ export class Call extends Node<CallValue, CallOptions> {
               ? (
                   shouldPassListArgs
                     ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.items)
+                    : callWithContext(context, callable, ...callArgs.value)
                 )
               : callWithContext(context, callable)
           );
@@ -1902,10 +1902,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.items[0], N.Dimension)) {
-          return evaluatedArgs.items[0]!;
+        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
+          return evaluatedArgs.value[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.items[0]!);
+          return new Paren(evaluatedArgs.value[0]!);
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);

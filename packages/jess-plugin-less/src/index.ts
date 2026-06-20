@@ -843,16 +843,10 @@ function buildStructuralFedRuleset(
     }, { assign: ':' }, locationFromRange(plan.document, child.start, child.end), context));
   }
 
-  const body = new Rules(
-    rules,
-    undefined,
-    locationFromRange(plan.document, rule.start, rule.end),
-    context
-  );
   return {
     node: new Ruleset({
       selector: selectorRecord.value,
-      rules: body
+      rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
   };
 }

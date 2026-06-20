@@ -303,7 +303,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueSyntax(value.items, prepared, ',');
+    const out = renderListValueSyntax(value.value, prepared, ',');
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -332,7 +332,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         if (this._options?.escaped) {
           if (value instanceof List && value.options?.sep === ';') {
-            return new Any(renderListValueSyntax(value.items, {}, ','));
+            return new Any(renderListValueSyntax(value.value, {}, ','));
           }
           return value;
         }

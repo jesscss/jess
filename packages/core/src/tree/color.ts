@@ -157,6 +157,9 @@ export class Color extends Node<ColorData, ColorOptions> {
       const { number, unit } = value;
       return unit ? [number, unit] : number;
     }
+    if (isNode(value) && value.type === 'Num') {
+      return value.number as number;
+    }
     if (isChannelTuple(value)) {
       return value;
     }
@@ -598,8 +601,9 @@ export class Color extends Node<ColorData, ColorOptions> {
     let newColorValues: [number, number, number];
 	    let newAlpha = this._alpha;
 
-	    if (isNode(b, N.Dimension)) {
-	      const { number: bVal, unit: bUnit } = b;
+	    if (isNode(b, N.Dimension) || b.type === 'Num') {
+	      const { number: bVal } = b;
+      const bUnit = isNode(b, N.Dimension) ? b.unit : '';
       const unitMode = context?.opts?.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {

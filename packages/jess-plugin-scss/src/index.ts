@@ -11,7 +11,20 @@ import {
   extractRelevantLines,
   type Rules
 } from '@jesscss/core';
-import { Parser } from '@jesscss/scss-parser';
+import {
+  Parser,
+  parseScssStructure,
+  registerScssIslandProviders,
+  scssIslandParsePlan,
+  scssProfile
+} from '@jesscss/scss-parser';
+import {
+  IslandParsePlan,
+  IslandParserRegistry,
+  type LanguageActivation,
+  type ParseStructureOptions,
+  type StructuralDocument
+} from '@jesscss/parser';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';
@@ -58,6 +71,43 @@ export class ScssPlugin extends AbstractPlugin {
   expandImport(importPath: string) {
     // Keep import expansion in sync with the language service.
     return expandScssImportCandidates(importPath);
+  }
+
+  /**
+   * Describes the structural parser capabilities owned by this plugin.
+   *
+   * The plugin binds SCSS syntax to `.scss` files and reuses its parser
+   * instance for island materialization. `safeParse` remains the compiler
+   * entrypoint until the scanner-first path is explicitly promoted.
+   */
+  structuralActivation(): LanguageActivation {
+    return {
+      name: this.name,
+      profile: scssProfile,
+      supportedExtensions: this.supportedExtensions,
+      configureIslandProviders: registry => {
+        registerScssIslandProviders(registry, this.parser);
+      }
+    };
+  }
+
+  /**
+   * Runs the shared structural parser with SCSS profile metadata and file-path
+   * preserving source text. This returns structural nodes and raw islands only;
+   * it does not build canonical compiler nodes.
+   */
+  structureParse(filePath: string, source: string, options?: ParseStructureOptions): StructuralDocument {
+    return parseScssStructure(filePath, source, options);
+  }
+
+  /**
+   * Creates a demand-driven island parse plan for SCSS source.
+   *
+   * Providers reuse this plugin's parser instance so JIT materialization
+   * observes the same grammar surface as `safeParse`.
+   */
+  islandParsePlan(filePath: string, source: string, registry = new IslandParserRegistry()): IslandParsePlan {
+    return scssIslandParsePlan(filePath, source, registry, this.parser);
   }
 
   safeParse(filePath: string, source: string, parseOptions?: PluginParseOptions): ISafeParseResult {

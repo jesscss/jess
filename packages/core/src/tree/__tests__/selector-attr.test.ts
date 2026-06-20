@@ -179,9 +179,9 @@ describe('Attribute Selector', () => {
           op: '=',
           value: any('@{attr-data}')
         }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       })
     ]);
 
@@ -200,7 +200,7 @@ describe('Attribute Selector', () => {
       mixin({
         name: any('.emit'),
         params: list([any('name', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'attr-data',
             value: ref({ key: 'name' }, { type: 'variable' })
@@ -211,29 +211,29 @@ describe('Attribute Selector', () => {
               op: '=',
               value: any('@{attr-data}')
             }),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.one'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.emit' }, { type: 'mixin' }),
             args: list([any('foo')])
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.two'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.emit' }, { type: 'mixin' }),
             args: list([any('bar')])
           })
-        ])
+        ]
       })
     ]);
     context.root = node;

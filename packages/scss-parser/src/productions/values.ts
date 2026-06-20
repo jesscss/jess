@@ -49,6 +49,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type ProductionRule = (ctx?: RuleContext) => any;
 
 type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
 type AltContext = (ctx?: RuleContext) => Alt;
@@ -284,7 +285,7 @@ function consumeScssVarFlags($: P) {
   return { sawDefault, sawGlobal };
 }
 
-export function scssNestedPropertyCollection(this: P, T: TokenMap) {
+export function scssNestedPropertyCollection(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -322,7 +323,7 @@ export function scssNestedPropertyCollection(this: P, T: TokenMap) {
   };
 }
 
-export function scssIdentValue(this: P, T: TokenMap) {
+export function scssIdentValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -469,7 +470,7 @@ function getScssValueAlts($: P, T: TokenMap, ctx: RuleContext = {}): Alt {
   ];
 }
 
-export function expressionValue(this: P, T: TokenMap) {
+export function expressionValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -492,7 +493,7 @@ export function expressionValue(this: P, T: TokenMap) {
   };
 }
 
-export function expressionProduct(this: P, T: TokenMap) {
+export function expressionProduct(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -522,7 +523,7 @@ export function expressionProduct(this: P, T: TokenMap) {
   };
 }
 
-export function expressionSum(this: P, T: TokenMap) {
+export function expressionSum(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -564,7 +565,7 @@ export function expressionSum(this: P, T: TokenMap) {
   };
 }
 
-export function functionCallArgs(this: P, T: TokenMap) {
+export function functionCallArgs(this: P, T: TokenMap): ProductionRule {
   const $ = this;
 
   const parseCallArgument = (ctx: RuleContext = {}) => {
@@ -669,7 +670,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
   };
 }
 
-export function parenValue(this: P, T: TokenMap) {
+export function parenValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const parseAsExpression = (ctx.preferExpressionInParens ?? false) && looksLikeIsolatedParenExpression($, T);
@@ -711,9 +712,9 @@ export function parenValue(this: P, T: TokenMap) {
       (ctx.preferExpressionInParens ?? false)
       && isNode(value, N.List)
       && value.options?.sep === '/'
-      && (value as List).items.length === 2
+      && (value as List).value.length === 2
     ) {
-      const [left, right] = (value as List).items;
+      const [left, right] = (value as List).value;
       const exprCtx: RuleContext = {
         ...ctx,
         wrapInExpression: true,
@@ -733,7 +734,7 @@ export function parenValue(this: P, T: TokenMap) {
   };
 }
 
-export function squareValue(this: P, T: TokenMap) {
+export function squareValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -768,7 +769,7 @@ export function squareValue(this: P, T: TokenMap) {
  * Override CSS `value` to add SCSS interpolation, map literals, and
  * module-qualified references.
  */
-export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
+export function value(this: P, T: TokenMap, valueAlt?: AltContext): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -800,7 +801,7 @@ export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
  * Override CSS functionCall to desugar module-qualified calls like `ns.fn(...)`.
  * We return an Expression(Call(Reference(ns.fn))) to match Less-style outer wrapping.
  */
-export function functionCall(this: P, T: TokenMap) {
+export function functionCall(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const node = cssFunctionCall.call($, $.T)(ctx) as unknown as Call;
@@ -822,7 +823,7 @@ export function functionCall(this: P, T: TokenMap) {
     const { name, args } = call.value;
 
     if (typeof name === 'string' && name === 'selector.parse') {
-      const argValues = isNode(args, N.List) ? (args as List).items : [];
+      const argValues = isNode(args, N.List) ? (args as List).value : [];
       const firstArg = argValues[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
@@ -879,7 +880,7 @@ export function functionCall(this: P, T: TokenMap) {
 /**
  * Override CSS `string` to add SCSS string interpolation support.
  */
-export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
+export function string(this: P, T: TokenMap, stringAlt?: AltContext): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const parseSingleQuoted = () => {
@@ -943,7 +944,7 @@ export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
  * Parses a Sass map literal: `("k": v, ...)` into a Jess `Collection`.
  * (Only the map form is supported in this milestone; list literals come later.)
  */
-export function scssMapLiteral(this: P, T: TokenMap) {
+export function scssMapLiteral(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -990,7 +991,7 @@ export function scssMapLiteral(this: P, T: TokenMap) {
  *  - `$var: ...` SCSS variable declarations
  *  - Interpolated declaration names: `foo-#{$bar}: ...`
  */
-export function declaration(this: P, T: TokenMap, alt?: AltContext) {
+export function declaration(this: P, T: TokenMap, alt?: AltContext): ProductionRule {
   const $ = this;
   const looksLikeInterpolatedDeclName = () => {
     for (let i = 1; i < 64; i++) {

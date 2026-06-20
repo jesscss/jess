@@ -38,18 +38,18 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -67,21 +67,21 @@ describe('Extend Roots Registry', () => {
     it('invalidates ruleset cache so valueOf reflects new selector after extend', async () => {
       const targetRuleset = ruleset({
         selector: sellist([sel([el('.base')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('red')]) })
-        ])
+        ]
       });
 
       const node = rules([
         targetRuleset,
         ruleset({
           selector: sellist([sel([el('.ext')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base'),
               flag: ExtendFlag.Exact
             })
-          ])
+          ]
         })
       ]);
 
@@ -104,9 +104,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'margin', value: spaced([any('5px')]) })
-          ])
+          ]
         })
       ]));
 
@@ -118,12 +118,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -146,18 +146,18 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]));
 
@@ -191,7 +191,7 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([])
+          rules: []
         })
       ]));
 
@@ -199,9 +199,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported2Path, rules([
         ruleset({
           selector: sellist([sel([el('.base2')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'padding', value: spaced([any('10px')]) })
-          ])
+          ]
         })
       ]));
 
@@ -220,12 +220,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -249,21 +249,21 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]));
 
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         style({
           path: quoted(any('imported.jess'))
@@ -295,9 +295,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'height', value: spaced([any('200px')]) })
-          ])
+          ]
         })
       ]));
 
@@ -310,12 +310,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -339,9 +339,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'opacity', value: spaced([any('0.5')]) })
-          ])
+          ]
         })
       ]));
 
@@ -364,12 +364,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -393,9 +393,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -403,18 +403,18 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(imported2Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) })
-          ])
+          ]
         })
       ]));
 
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('green')]) })
-          ])
+          ]
         }),
         style({
           path: quoted(any('imported1.jess'))
@@ -430,12 +430,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('yellow')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -466,12 +466,12 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) }),
             extend({
               target: el('.nonexistent')
             })
-          ])
+          ]
         })
       ]);
 
@@ -496,9 +496,9 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -511,12 +511,12 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -541,24 +541,24 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         atrule({
           name: any('@media'),
           prelude: any('(min-width: 600px)'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'background-color', value: spaced([any('blue')]) }),
                 extend({
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -587,24 +587,24 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         atrule({
           name: any('@container'),
           prelude: any('(min-width: 600px)'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'background-color', value: spaced([any('blue')]) }),
                 extend({
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -632,24 +632,24 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         atrule({
           name: any('@supports'),
           prelude: any('(display: grid)'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'background-color', value: spaced([any('blue')]) }),
                 extend({
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -678,23 +678,23 @@ describe('Extend Roots Registry', () => {
         atrule({
           name: any('@media'),
           prelude: any('(min-width: 600px)'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'font-size', value: spaced([any('16px')]) })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'background-color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -719,32 +719,32 @@ describe('Extend Roots Registry', () => {
         atrule({
           name: any('@media'),
           prelude: any('(min-width: 600px)'),
-          rules: rules([
+          rules: [
             atrule({
               name: any('@supports'),
               prelude: any('(display: grid)'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.base')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'grid-template-columns', value: spaced([any('1fr 1fr')]) })
-                  ])
+                  ]
                 })
-              ])
+              ]
             }, {
 
             }),
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'display', value: spaced([any('block')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -773,31 +773,31 @@ describe('Extend Roots Registry', () => {
         atrule({
           name: any('@layer'),
           prelude: any('one'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'font-size', value: spaced([any('16px')]) })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         comment('/* second layer */'),
         atrule({
           name: any('@layer'),
           prelude: any('one'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: spaced([any('blue')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -826,31 +826,31 @@ describe('Extend Roots Registry', () => {
         atrule({
           name: any('@layer'),
           // No prelude = anonymous
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.base')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'font-size', value: spaced([any('16px')]) })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         comment('/* second anonymous layer */'),
         atrule({
           name: any('@layer'),
           // No prelude = anonymous
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: spaced([any('green')]) }),
                 extend({
                   selector: sel([el('.child')]),
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -872,38 +872,38 @@ describe('Extend Roots Registry', () => {
         atrule({
           name: any('@layer'),
           prelude: any('one'),
-          rules: rules([
+          rules: [
             atrule({
               name: any('@layer'),
               prelude: any('two'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.base')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'z-index', value: spaced([any('10')]) })
-                  ])
+                  ]
                 })
-              ])
+              ]
             }, {
 
             })
-          ])
+          ]
         }),
         comment('/* second layer with same name */'),
         atrule({
           name: any('@layer'),
           prelude: any('one.two'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.child')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'width', value: spaced([any('100px')]) }),
                 extend({
                   target: el('.base')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -934,16 +934,16 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({
               name: any('color'),
               value: any('red')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             }),
@@ -951,7 +951,7 @@ describe('Extend Roots Registry', () => {
               name: any('background'),
               value: any('blue')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -974,12 +974,12 @@ describe('Extend Roots Registry', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({
               name: any('color'),
               value: any('red')
             })
-          ])
+          ]
         })
       ]));
 
@@ -992,7 +992,7 @@ describe('Extend Roots Registry', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             }),
@@ -1000,7 +1000,7 @@ describe('Extend Roots Registry', () => {
               name: any('background'),
               value: any('blue')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);

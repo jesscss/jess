@@ -9,8 +9,9 @@ import { looksLikeScssComparison } from './helpers.js';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type ProductionRule = (ctx?: RuleContext) => any;
 
-export function scssCondition(this: P, T: TokenMap) {
+export function scssCondition(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     ctx.allowComma = true;
@@ -22,7 +23,7 @@ export function scssCondition(this: P, T: TokenMap) {
  * 'or' expression — handles `or` keyword and comma-separated conditions
  * (comma is allowed in @if for historical media-query-style syntax).
  */
-export function scssConditionOr(this: P, T: TokenMap) {
+export function scssConditionOr(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -62,7 +63,7 @@ export function scssConditionOr(this: P, T: TokenMap) {
 /**
  * 'and' expression — handles `and` keyword with optional `not` prefix.
  */
-export function scssConditionAnd(this: P, T: TokenMap) {
+export function scssConditionAnd(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let left: Node | undefined;
@@ -111,7 +112,7 @@ export function scssConditionAnd(this: P, T: TokenMap) {
  * A single condition term: either a parenthesized sub-expression,
  * a comparison, or a bare value.
  */
-export function scssConditionInParens(this: P, T: TokenMap) {
+export function scssConditionInParens(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext) => {
     $.startRule();
@@ -146,7 +147,7 @@ export function scssConditionInParens(this: P, T: TokenMap) {
  * The inner content of a parenthesized condition — a comparison,
  * a bare value, or a nested or-expression.
  */
-export function scssConditionInner(this: P, T: TokenMap) {
+export function scssConditionInner(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => $.OR([
     { ALT: () => $.SUBRULE($.scssComparison, { ARGS: [ctx] }) },
@@ -164,7 +165,7 @@ export function scssConditionInner(this: P, T: TokenMap) {
 /**
  * Comparison expression — parses `$a == $b`, `$a != $b`, `$a > 10`, etc.
  */
-export function scssComparison(this: P, T: TokenMap) {
+export function scssComparison(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let left = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;

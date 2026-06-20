@@ -18,6 +18,7 @@ import {
   Call,
   Quoted,
   AtRule,
+  AtRuleStatement,
   Interpolated,
   InterpolatedSelector,
   AttributeSelector,
@@ -171,7 +172,7 @@ function findDisallowedExtendSelector(selector: Selector, allowed?: readonly Ext
     return undefined;
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.selectors) {
+    for (const item of selector.value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -283,7 +284,7 @@ function mergeExtends(
       if (!(target instanceof SelectorList)) {
         nextTarget = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        nextTarget = new SelectorList([...target.selectors, ext.target], undefined, location, context);
+        nextTarget = new SelectorList([...target.value, ext.target], undefined, location, context);
       }
       currentNode = new Extend({
         selector,
@@ -331,10 +332,10 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (node instanceof List) {
-    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
   }
   if (node instanceof Sequence) {
-    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -348,10 +349,10 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false;
   }
   if (node instanceof List) {
-    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   if (node instanceof Sequence) {
-    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -381,7 +382,7 @@ export function relativeSelector(this: P, T: TokenMap) {
               ? node.selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            const nodes = [combinator, ...targetNode.components] as ComplexSelectorValue;
+            const nodes = [combinator, ...targetNode.value] as ComplexSelectorValue;
             const complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
               const location = node.location.length === 6
@@ -950,7 +951,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     }
 
     // If anonToken exists, it's an anonymous mixin with (optional) parameters, return as Mixin
-    return new Mixin({ params, rules }, undefined, $.endRule(), $.context);
+    return new Mixin({ params, rules: rules.rules }, undefined, $.endRule(), $.context);
   };
 }
 
@@ -1041,7 +1042,7 @@ export function importAtRule(this: P, T: TokenMap) {
       let location = $.endRule();
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
-        const atRule = new AtRule({
+        const atRule = new AtRuleStatement({
           name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
           prelude: prelude
         }, undefined, location, $.context);

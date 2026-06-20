@@ -2,8 +2,9 @@ import { describe, test } from 'vitest';
 import { CssParser } from '../src/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const bootstrap = fs.readFileSync(
   path.join(testData, 'tests-config/3rd-party/bootstrap4.css'),
   'utf8'

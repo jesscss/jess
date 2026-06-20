@@ -118,14 +118,13 @@ describe('QueryCondition', () => {
     expect(node.toTrimmedString()).toBe('screen and $mode');
   });
 
-  it('inherits the sequence direct child field', () => {
+  it('inherits canonical sequence value', () => {
     const first = any('screen');
     const second = any('(color)');
     const node = query([first, second]);
 
-    expect(node.items).toEqual([first, second]);
-    expect(node.items).toBe(node.value);
-    expect(QueryCondition.childKeys).toEqual(['items']);
+    expect(node.value).toEqual([first, second]);
+    expect(QueryCondition.childKeys).toEqual(['value']);
   });
 
   it('writes empty query-condition syntax without writer readback', () => {

@@ -418,6 +418,9 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
+      '@jesscss/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
@@ -524,6 +527,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser

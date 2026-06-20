@@ -38,9 +38,7 @@ function emitSelectorListItem(
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  static override childKeys = ['selectors'] as const;
-
-  readonly selectors: Selector[];
+  static override childKeys = ['value'] as const;
 
   constructor(
     value: Selector[],
@@ -50,7 +48,6 @@ export class SelectorList extends Selector<Selector[]> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.selectors = value;
   }
 
   private ownSelector(item: Selector): Selector {
@@ -61,7 +58,7 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.selectors): SelectorList {
+  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.value): SelectorList {
     const ownedValue = new Array<Selector>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
@@ -101,30 +98,30 @@ export class SelectorList extends Selector<Selector[]> {
     let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
     const value: Selector[] = [];
-    for (const item of this.selectors) {
+    for (const item of this.value) {
       if (isNode(item, N.PseudoSelector) && item.name === ':is') {
         const arg = item.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.selectors);
+          value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
-        const only = item.components[0]!;
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
         if (isNode(only, N.PseudoSelector) && only.name === ':is') {
           const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.selectors);
+            value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
-        const only = item.components[0]!;
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
         if (isNode(only, N.PseudoSelector) && only.name === ':is') {
           const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.selectors);
+            value.push(...arg.value);
             continue;
           }
         }
@@ -176,7 +173,7 @@ export class SelectorList extends Selector<Selector[]> {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const value = this.selectors;
+    const value = this.value;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     for (const selector of value) {
@@ -193,7 +190,7 @@ export class SelectorList extends Selector<Selector[]> {
 
   /** Normalize selectors on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
-    if (this.selectors.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -204,7 +201,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    const value = this.selectors;
+    const value = this.value;
     if (value.length === 0) {
       return '';
     }
@@ -249,7 +246,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {
-    const currentValue = this.selectors;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Selector>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
@@ -267,7 +264,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[]> {
-    const currentValue = this.selectors;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Selector>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
@@ -289,7 +286,7 @@ export class SelectorList extends Selector<Selector[]> {
     evaluatedValue: Selector[],
     start: number
   ): MaybePromise<Selector[]> {
-    const currentValue = this.selectors;
+    const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const item = currentValue[i]!;
       const out = resolve ? item.resolve(context) : item.eval(context);
@@ -305,7 +302,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   private finalizeEvaluatedSelectors(evaluatedValue: Selector[], evaluated: boolean): Node {
-    const currentValue = this.selectors;
+    const currentValue = this.value;
     const flattened: Selector[] = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       this.appendFlattenedSelector(evaluatedValue[i]!, flattened);
@@ -336,26 +333,26 @@ export class SelectorList extends Selector<Selector[]> {
     if (isNode(item, N.PseudoSelector) && item.name === ':is') {
       const arg = item.arg;
       if (arg && isNode(arg, N.SelectorList)) {
-        this.appendSelectorListValue(arg.selectors, flattened);
+        this.appendSelectorListValue(arg.value, flattened);
         return;
       }
     }
-    if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
-      const only = item.components[0]!;
+    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is') {
         const arg = only.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.selectors, flattened);
+          this.appendSelectorListValue(arg.value, flattened);
           return;
         }
       }
     }
-    if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
-      const only = item.components[0]!;
+    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is') {
         const arg = only.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.selectors, flattened);
+          this.appendSelectorListValue(arg.value, flattened);
           return;
         }
       }

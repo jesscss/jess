@@ -62,12 +62,12 @@ async function scenario1(N: number) {
   const node = rules([
     ruleset({
       selector: sellist([sel([el('.base')])]),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     }),
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
-        rules: rules([extend({ target: el('.base') })])
+        rules: [extend({ target: el('.base') })]
       })
     )
   ]);
@@ -82,12 +82,12 @@ async function scenario2(N: number) {
   const node = rules([
     ruleset({
       selector: sellist([sel([compound([el('.base'), el('.variant')])])]),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     }),
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
-        rules: rules([extend({ target: el('.base'), all: true })])
+        rules: [extend({ target: el('.base'), all: true })]
       })
     )
   ]);
@@ -116,12 +116,12 @@ async function scenario3(N: number) {
   const node = rules([
     ruleset({
       selector: sellist([sel([targetSel])]),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     }),
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
-        rules: rules([extend({ target: el('.a0'), all: true })])
+        rules: [extend({ target: el('.a0'), all: true })]
       })
     )
   ]);
@@ -138,13 +138,13 @@ async function scenario4(N: number) {
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.target-${i}`)])]),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ),
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.ext-${i}`)])]),
-        rules: rules([extend({ target: el(`.target-${i}`) })])
+        rules: [extend({ target: el(`.target-${i}`) })]
       })
     )
   ]);

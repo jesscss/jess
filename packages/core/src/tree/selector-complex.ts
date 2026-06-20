@@ -49,9 +49,7 @@ function isComplexSelectorComponent(part: Node): part is ComplexSelectorComponen
  * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  static override childKeys = ['components'] as const;
-
-  readonly components: ComplexSelectorValue;
+  static override childKeys = ['value'] as const;
 
   constructor(
     value: ComplexSelectorValue,
@@ -61,7 +59,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.components = value;
   }
 
   private ownComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {
@@ -74,7 +71,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   private withComponents(
     value: ComplexSelectorValue,
-    sourceValue: readonly ComplexSelectorComponent[] = this.components
+    sourceValue: readonly ComplexSelectorComponent[] = this.value
   ): this {
     const ownedValue = new Array<ComplexSelectorComponent>(value.length);
     let hoistToRoot = false;
@@ -126,7 +123,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    let { components } = this;
+    let components = this.value;
     let length = components.length;
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
@@ -186,7 +183,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private renderComplexSyntax(options?: PrintOptions): string {
-    if (this.components.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     options = getPrintOptions(options);
@@ -205,8 +202,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let value = this._valueOf;
     if (value === undefined) {
       value = '';
-      for (let i = 0; i < this.components.length; i++) {
-        value += String(this.components[i]!.valueOf());
+      for (let i = 0; i < this.value.length; i++) {
+        value += String(this.value[i]!.valueOf());
       }
       this._valueOf = value;
     }
@@ -218,7 +215,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const { components } = this;
+    const components = this.value;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     let requiredKeySet = library.getBitset();
@@ -271,7 +268,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private evaluateComponentsSync(context: Context, resolve: boolean): Node[] {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Node>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const component = currentValue[i]!;
@@ -289,7 +286,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Node[]> {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Node>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const component = currentValue[i]!;
@@ -311,7 +308,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     evaluatedValue: Node[],
     start: number
   ): MaybePromise<Node[]> {
-    const currentValue = this.components;
+    const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const component = currentValue[i]!;
       const out = resolve ? component.resolve(context) : component.eval(context);
@@ -331,7 +328,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private finalizeComponents(context: Context, evaluatedValue: Node[], evaluated: boolean): Node {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const value = this.compactSelectorParts(context, evaluatedValue);
     this.compactCombinators(value);
     if (value.length === 0) {
@@ -367,7 +364,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
       throw new TypeError('Expected selector result');
     }
-    const collapsed = this.collapsedComponent(only, this.components);
+    const collapsed = this.collapsedComponent(only, this.value);
     if (this.hoistToRoot) {
       collapsed.hoistToRoot = true;
     }

@@ -93,7 +93,7 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
     return true;
   }
   if (isNode(node, N.ComplexSelector) || isNode(node, N.CompoundSelector)) {
-    return node.components.length === 1 && isNode(node.components[0], N.Ampersand);
+    return node.value.length === 1 && isNode(node.value[0], N.Ampersand);
   }
   return false;
 };
@@ -218,10 +218,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.selectors;
+    return baseSelector.arg.value;
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.selectors;
+    return baseSelector.value;
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
@@ -371,7 +371,7 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
 
 function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
   if (isNode(selector, N.SelectorList)) {
-    const sourceItems = selector.selectors;
+    const sourceItems = selector.value;
     const items = new Array<Selector>(sourceItems.length);
     for (let i = 0; i < sourceItems.length; i++) {
       const item = sourceItems[i]!;
@@ -388,8 +388,8 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const component = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const component = selector.value[i]!;
       if (isNode(component, N.Combinator)) {
         continue;
       }
@@ -397,7 +397,7 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (!result.appended) {
         continue;
       }
-      const sourceComponents = selector.components;
+      const sourceComponents = selector.value;
       const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
       for (let j = 0; j < sourceComponents.length; j++) {
         components[j] = j === i
@@ -413,10 +413,10 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const part = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const part = selector.value[i]!;
       const result = appendSimpleSelector(part, appendValue);
-      const sourceParts = selector.components;
+      const sourceParts = selector.value;
       const parts = new Array<SimpleSelector>(sourceParts.length);
       for (let j = 0; j < sourceParts.length; j++) {
         parts[j] = j === i ? result.selector : ownSelectorForAppend(sourceParts[j]!);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { any, num, rules } from '../../index.js';
+import { any, decl, el, N, num, rules, ruleset } from '../../index.js';
+import { isNode } from '../is-node.js';
 import { serializeTypes } from '../serialize-types.js';
 
 describe('serializeTypes', () => {
@@ -19,5 +20,13 @@ describe('serializeTypes', () => {
 
     expect(serializeTypes(root)).toContain('(Rules');
     expect(serializeTypes(root)).toContain('(Rules …)');
+  });
+
+  it('does not treat rule containers as Rules by concrete ancestor bit', () => {
+    const body = [decl({ name: 'color', value: any('red') })];
+    const node = ruleset({ selector: el('.a'), rules: body });
+
+    expect(isNode(node, N.Ruleset)).toBe(true);
+    expect(isNode(node, N.Rules)).toBe(false);
   });
 });

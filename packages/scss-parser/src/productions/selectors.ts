@@ -18,6 +18,7 @@ import { toNameInterpolationReplacement } from './helpers.js';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type ProductionRule = (ctx?: RuleContext) => any;
 
 type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
 type AltContext = (ctx?: RuleContext) => Alt;
@@ -25,7 +26,7 @@ type AltContext = (ctx?: RuleContext) => Alt;
 /**
  * Override CSS `simpleSelector` to add placeholder selector support (`%foo`).
  */
-export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
+export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     selectorAlt ??= (ctx: RuleContext = {}) => [
@@ -61,7 +62,7 @@ export function simpleSelector(this: P, T: TokenMap, selectorAlt?: AltContext) {
 /**
  * Override CSS `main` to allow root-level SCSS variable declarations (`$x: ...;`).
  */
-export function main(this: P, T: TokenMap, alt?: AltContext) {
+export function main(this: P, T: TokenMap, alt?: AltContext): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const isRootVarDeclarationStart = () => $.LA(1).tokenType === $.T.DollarVariable;
@@ -129,7 +130,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
  * Override CSS `declarationList` so `PlainIdent`-started property names route
  * to declarations instead of being treated as nested qualified rules.
  */
-export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
+export function declarationList(this: P, T: TokenMap, alt?: AltContext): ProductionRule {
   const $ = this;
   const isInterpolatedDeclarationStart = () => {
     if ($.LA(1).tokenType !== $.T.InterpolationStart) {
@@ -209,7 +210,7 @@ export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
  *
  * Example: `.foo-#{$bar}` becomes an `Interpolated` selector value.
  */
-export function compoundSelector(this: P, T: TokenMap) {
+export function compoundSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -300,7 +301,7 @@ export function compoundSelector(this: P, T: TokenMap) {
  *
  * Example: `foo-#{$bar}` becomes an `Interpolated` node.
  */
-export function layerName(this: P, T: TokenMap) {
+export function layerName(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();

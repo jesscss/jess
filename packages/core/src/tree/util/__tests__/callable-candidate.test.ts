@@ -8,12 +8,13 @@ describe('callable candidate helpers', () => {
     const sharedRules = rules([]);
     const plainRuleset = ruleset({
       selector: el('.plain'),
-      rules: sharedRules
+      rules: []
     });
+    plainRuleset.sourceNode = sharedRules;
     const sharedCallable = callableRulesEntry({ rules: sharedRules });
     const defaultCallable = callableRulesEntry({
       guard: condition([defaultguard()]),
-      rules: rules([])
+      rules: []
     });
 
     const prepared = prepareCallableEvalCandidates({
@@ -30,9 +31,9 @@ describe('callable candidate helpers', () => {
   it('skips ruleset candidates that recurse to the caller key', () => {
     const recursiveRuleset = ruleset({
       selector: el('.loop'),
-      rules: rules([
+      rules: [
         call({ name: ref({ key: '.loop' }, { type: 'mixin' }) })
-      ])
+      ]
     });
     const caller = call({ name: ref({ key: '.loop' }, { type: 'mixin' }) });
 

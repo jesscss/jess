@@ -168,16 +168,16 @@ describe('Sass advanced list functions', () => {
       expect(result.length).toBe(2);
       expect(result.options?.sep).toBe(',');
 
-      const first = result.items[0] as List;
+      const first = result.value[0] as List;
       expect(first).toBeInstanceOf(List);
       expect(first.length).toBe(2);
-      expect((first.items[0] as Num).valueOf()).toBe(1);
-      expect((first.items[1] as Num).valueOf()).toBe(10);
+      expect((first.value[0] as Num).valueOf()).toBe(1);
+      expect((first.value[1] as Num).valueOf()).toBe(10);
 
-      const second = result.items[1] as List;
+      const second = result.value[1] as List;
       expect(second.length).toBe(2);
-      expect((second.items[0] as Num).valueOf()).toBe(2);
-      expect((second.items[1] as Num).valueOf()).toBe(20);
+      expect((second.value[0] as Num).valueOf()).toBe(2);
+      expect((second.value[1] as Num).valueOf()).toBe(20);
     });
 
     it('zips three lists', () => {
@@ -187,11 +187,11 @@ describe('Sass advanced list functions', () => {
       const result = zip(list1, list2, list3);
       expect(result.length).toBe(2);
 
-      const first = result.items[0] as List;
+      const first = result.value[0] as List;
       expect(first.length).toBe(3);
-      expect((first.items[0] as Num).valueOf()).toBe(1);
-      expect((first.items[1] as Num).valueOf()).toBe(10);
-      expect((first.items[2] as Num).valueOf()).toBe(100);
+      expect((first.value[0] as Num).valueOf()).toBe(1);
+      expect((first.value[1] as Num).valueOf()).toBe(10);
+      expect((first.value[2] as Num).valueOf()).toBe(100);
     });
 
     it('stops when shortest list ends', () => {
@@ -211,7 +211,7 @@ describe('Sass advanced list functions', () => {
       const result = zip(new Any('a'), new Any('b'));
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(1);
-      const first = result.items[0] as List;
+      const first = result.value[0] as List;
       expect(first.length).toBe(2);
     });
   });

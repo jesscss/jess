@@ -203,27 +203,27 @@ describe('Combinator Preservation in Extensions', () => {
       // Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
       const nestedExt9 = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const root = rules([
         ruleset({
           selector: el('.ext8'),
-          rules: rules([nestedExt9])
+          rules: [nestedExt9]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
       const ext8Ruleset = evald.value[0];
-      const nestedRuleset = ext8Ruleset?.value?.rules?.value?.[0];
+      const nestedRuleset = ext8Ruleset?.value?.rules?.[0];
       const nestedSel = nestedRuleset?.value?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
@@ -235,16 +235,16 @@ describe('Combinator Preservation in Extensions', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.zoo'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('>'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
@@ -264,40 +264,40 @@ describe('Combinator Preservation in Extensions', () => {
           sel([el('.ext8'), co('+'), el('.ext9')]),
           sel([el('.ext8'), co('>'), el('.ext9')])
         ]),
-        rules: ruleset1Body
+        rules: ruleset1Body.rules
       });
       const nestedRuleset = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const ext8Body = rules([nestedRuleset]);
-      const ext8Ruleset = ruleset({ selector: el('.ext8'), rules: ext8Body });
+      const ext8Ruleset = ruleset({ selector: el('.ext8'), rules: ext8Body.rules });
       const root = rules([
         ruleset1,
         ext8Ruleset,
         ruleset({
           selector: el('.buu'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co(' '), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
       const firstRuleset = evald.value[0];
-      const nested = evald.value[1]?.value?.rules?.value?.[0];
+      const nested = evald.value[1]?.value?.rules?.[0];
       expect(firstRuleset?.value?.selector?.valueOf()).toContain('.zap');
       const nestedSel = nested?.value?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');

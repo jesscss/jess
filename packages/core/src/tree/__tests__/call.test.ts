@@ -975,9 +975,9 @@ describe('Call', () => {
   it('renders dynamic mixin names without calling public eval state', async () => {
     const mixinDef = mixin({
       name: any('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const root = rules([mixinDef]);
     context.root = root;
@@ -1004,9 +1004,9 @@ describe('Call', () => {
   it('renders dynamic ruleset names without calling public eval state', async () => {
     const mixinRuleset = ruleset({
       selector: el('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('blue') })
-      ])
+      ]
     });
     const root = rules([mixinRuleset]);
     context.root = root;
@@ -1033,9 +1033,9 @@ describe('Call', () => {
   it('renders dynamic mixin collection names without calling public eval state', async () => {
     const mixinDef = mixin({
       name: any('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('green') })
-      ])
+      ]
     });
     const root = rules([mixinDef]);
     context.root = root;
@@ -1063,9 +1063,9 @@ describe('Call', () => {
   it('renders dynamic callable array names without calling public eval state', async () => {
     const mixinDef = mixin({
       name: any('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('purple') })
-      ])
+      ]
     });
     const root = rules([mixinDef]);
     context.root = root;
@@ -1092,9 +1092,9 @@ describe('Call', () => {
   it('renders dynamic call alias names without calling public eval state', async () => {
     const mixinDef = mixin({
       name: any('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('orange') })
-      ])
+      ]
     });
     const root = rules([mixinDef]);
     context.root = root;
@@ -1124,9 +1124,9 @@ describe('Call', () => {
   it('renders silent-fail dynamic callable failures without owning a fallback call', async () => {
     const mixinDef = mixin({
       name: any('.theme'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref('missing-color', { type: 'variable' }) })
-      ])
+      ]
     });
     const root = rules([mixinDef]);
     context.root = root;
@@ -1527,7 +1527,7 @@ describe('Call', () => {
     expect(rule.makeImportant(root)).toBe(root);
 
     const topReplacement = root.rules[0];
-    const nestedReplacement = nestedRules.value[0];
+    const nestedReplacement = nestedRules.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
     expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);
@@ -2314,7 +2314,7 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('ok');
       expect(CountingSequence.constructedCopies).toBe(1);
       expect(rawArg).not.toBe(originalValue);
-      expect(rawArg instanceof Sequence ? rawArg.items[0] : undefined).toBe(originalLeaf);
+      expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
       expect(rawArg?.parent?.parent).toBe(rule);
       expect(originalValue.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
@@ -2673,7 +2673,7 @@ describe('Call', () => {
         'echo',
         async function(this: { rawArgs: List }) {
           const value = this.rawArgs.value[0];
-          return any(isNode(value, N.Sequence) && value.items[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+          return any(isNode(value, N.Sequence) && value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
         },
         { params: [{ name: 'value', type: Sequence }] }
       )
@@ -3281,10 +3281,10 @@ describe('Call', () => {
       }),
       ruleset({
         selector: el('.use-theme'),
-        rules: rules([
+        rules: [
           vardecl({ name: 'mode', value: any('dark') }),
           call({ name: ref('themeBlock', { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
 
@@ -3304,10 +3304,10 @@ describe('Call', () => {
       }),
       ruleset({
         selector: el('.use-theme'),
-        rules: rules([
+        rules: [
           vardecl({ name: 'mode', value: any('dark') }),
           call({ name: ref('themeBlock', { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
 

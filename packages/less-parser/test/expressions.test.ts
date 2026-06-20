@@ -40,7 +40,7 @@ describe('expressionProduct', () => {
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('valueNode:');
     expect(out).toContainString('(List\n        sep: \'/\'');
-    expect(out).toContainString('items:');
+    expect(out).toContainString('value:');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'foo\'');
     expect(out).toContainString('(Num 2)');

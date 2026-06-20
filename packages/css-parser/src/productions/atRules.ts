@@ -122,7 +122,7 @@ export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, location, this.context);
     }
   };
@@ -768,7 +768,7 @@ export function pageAtRule(this: C, T: TokenMap) {
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: selector.length ? new List(selector, undefined, $.getLocationFromNodes(selector), this.context) : undefined,
-        rules
+        rules: rules.rules
       }, undefined, location, this.context);
     }
   };
@@ -815,7 +815,7 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
       let location = $.endRule();
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
-        rules
+        rules: rules.rules
       }, undefined, location, this.context);
     }
   };
@@ -843,7 +843,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
         name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
         prelude: preludeNode ? preludeNode : undefined,
         // Include isolated comments inside the keyframes body
-        rules
+        rules: rules.rules
       }, undefined, $.endRule(), this.context);
     }
   };
@@ -953,7 +953,7 @@ export function containerAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule)
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
     }
   };
@@ -1496,7 +1496,7 @@ export function scopeAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
     }
   };
@@ -1517,7 +1517,7 @@ export function documentAtRule(this: C, T: TokenMap) {
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
-        rules
+        rules: rules.rules
       }, undefined, $.endRule(), this.context);
     }
   };

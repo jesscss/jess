@@ -47,11 +47,11 @@ describe('value', () => {
 
     expect(errors.length).toBe(0);
     const ruleset = tree.value[0]!;
-    const eachNode = ruleset.rules.value[0]!;
+    const eachNode = ruleset.rules[0]!;
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['value', 'key', 'index']);
-    expect(eachNode.rules.value).toHaveLength(1);
+    expect(eachNode.rules).toHaveLength(1);
   });
 
   it('preserves explicit each() callback params in the For pattern', () => {

@@ -18,9 +18,9 @@ describe('callable special-case helper', () => {
     const callerRules = rules([]);
     const candidate = ruleset({
       selector: el('.candidate'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const root = rules([
       candidate,
@@ -141,9 +141,9 @@ describe('callable special-case helper', () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
       name: any('.button'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const result = await evaluateCallableSpecialCaseCandidate({

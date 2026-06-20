@@ -6,7 +6,7 @@ import { assertValidTree } from './assert-valid-tree.js';
 const parser = new Parser();
 
 function firstRuleDeclValue(tree: any) {
-  return tree?.value?.[0]?.value?.rules?.value?.[0]?.value?.value;
+  return tree?.rules?.[0]?.rules?.[0]?.valueNode;
 }
 
 describe('scss-parser (ast serialize)', () => {
@@ -20,11 +20,10 @@ describe('scss-parser (ast serialize)', () => {
         selector:
           (BasicSelector '.a')
         rules:
-          (Rules
-            [
-              (Declaration
-                name:
-                  (Any [role=property] 'color')
+          [
+            (Declaration
+              name:
+                (Any [role=property] 'color')
       `);
   });
 
@@ -35,17 +34,18 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Collection
-        [
+        rules:
+          [
           (Declaration
             name:
               (Any [role=property] 'regular')
-            value:
+            valueNode:
               (Num 400)
           )
           (Declaration
             name:
               (Any [role=property] 'medium')
-            value:
+            valueNode:
               (Num 500)
           )
         ]
@@ -280,7 +280,8 @@ describe('scss-parser (ast serialize)', () => {
       (JsImport
         path:
           (Quoted
-            (Any [role=any] '#sass/map')
+            value:
+              (Any [role=any] '#sass/map')
           )
       `);
   });
@@ -480,17 +481,18 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
-            target: 
+            target:
               (Reference
                 key: 'ns'
               )
             key: 'foo'
           )
-        args: 
+        args:
           (List
-            [
+            value:
+              [
               (Reference
                 key: 'x'
               )

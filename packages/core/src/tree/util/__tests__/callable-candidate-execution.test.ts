@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
 import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
-import { createCallableOuterRules } from '../callable-surface.js';
+import {
+  createCallableOuterRules,
+  createOwnedCallableRulesSurface,
+  createUnlockedCallableRulesSurface
+} from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableLiveSlots } from '../callable-live-slots.js';
 import { matchCallableParams } from '../callable-param-match.js';
@@ -15,9 +19,9 @@ describe('callable candidate execution helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callSiteRules = rules([]);
@@ -36,8 +40,8 @@ describe('callable candidate execution helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo: bindingInfo,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
-      createUnlockedRules: sourceRules => sourceRules.derive(),
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();
@@ -68,9 +72,9 @@ describe('callable candidate execution helper', () => {
 
     const candidate = mixin({
       name: any('.button'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ]),
+      ],
       guard: dynamicGuard
     });
     const definitionParent = rules([candidate]);
@@ -82,8 +86,8 @@ describe('callable candidate execution helper', () => {
       candidate,
       callSiteRules,
       leakyRules: true,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
-      createUnlockedRules: sourceRules => sourceRules.derive(),
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();

@@ -31,7 +31,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
-  rules: Rules;
+  rules: Node[];
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -76,11 +76,11 @@ export type MixinOptions = {
  *
  * @todo - Even though we allow a selector as a name.
  */
-export class Mixin extends Node<MixinValue, MixinOptions> {
+export class Mixin extends Rules<MixinValue, MixinOptions> {
   static override childKeys = ['name', 'params', 'rules', 'guard'] as const;
 
   readonly name: MixinValue['name'];
-  readonly rules: Rules;
+  declare readonly rules: Node[];
   readonly params: MixinValue['params'];
   readonly guard: MixinValue['guard'];
 
@@ -93,10 +93,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
-    super(value, options, location);
-    this._treeContext = treeContext;
+    if (!Array.isArray(value.rules)) {
+      throw new TypeError('Mixin requires rules to be a Node array.');
+    }
+    super(value, options, location, treeContext, value.rules);
     this.name = value.name;
-    this.rules = value.rules;
     this.params = value.params;
     this.guard = value.guard;
     this.removeFlag(F_VISIBLE);
@@ -112,12 +113,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     throw new TypeError('Expected mixin name copy');
   }
 
-  private ownRules(value: Rules): Rules {
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
-    if (owned instanceof Rules) {
-      return owned;
+  private ownRules(value: Node[]): Node[] {
+    const owned = new Array<Node>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      const copied = copyWithReusableLeaves(value[i]!);
+      if (!(copied instanceof Node)) {
+        throw new TypeError('Expected mixin rule copy to remain a node');
+      }
+      owned[i] = copied;
     }
-    throw new TypeError('Expected mixin rules copy');
+    return owned;
   }
 
   private ownParams(value: List<Node> | undefined): List<Node> | undefined {
@@ -210,7 +215,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       w.add(' ');
     }
     // Emit rules directly into shared writer; do not re-add return value
-    rules.writeBraced(options);
+    this.writeBraced(options);
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {
@@ -224,7 +229,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Mixins should NOT prepare their body rules during initial registration.
     // Body rules are prepared/evaluated when the mixin is called.
     let node: Mixin = this;
-    let { name, rules } = node;
+    let { name } = node;
     if (name && name instanceof Interpolated) {
       node = this.deriveMixin({
         name: this.name,
@@ -233,10 +238,9 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
         guard: this.guard
       });
       name = node.name;
-      rules = node.rules;
     }
     node.registrationPrepared = true;
-    this._prepareMixinBodyVisibility(rules, context);
+    this._prepareMixinBodyVisibility(node, context);
     return this._prepareMixinNameIdentity(node, name, context);
   }
 

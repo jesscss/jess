@@ -47,7 +47,7 @@ describe('mixinArgList', () => {
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
     expect(out).toContainString('(List\n          sep: \',\'');
-    expect(out).toContainString('items:');
+    expect(out).toContainString('value:');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
@@ -62,7 +62,7 @@ describe('mixinArgList', () => {
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
     expect(out).toContainString('(List\n          sep: \';\'');
-    expect(out).toContainString('items:');
+    expect(out).toContainString('value:');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');

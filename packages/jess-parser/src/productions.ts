@@ -141,7 +141,7 @@ export function jessMixinDefinition(this: P, T: TokenMap) {
       const selectorValue = selector.valueOf();
       const name = typeof selectorValue === 'string' ? selectorValue : String(selectorValue);
       return new Mixin(
-        { name: new Any(name, { role: 'name' }), params: Array.isArray(params) ? new List(params) : (params ?? new List([])), rules, guard },
+        { name: new Any(name, { role: 'name' }), params: Array.isArray(params) ? new List(params) : (params ?? new List([])), rules: rules.rules, guard },
         undefined,
         loc,
         $.context
@@ -434,10 +434,9 @@ export function jessConditional(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
       return new If({
-        branches: [
-          { condition, rules: thenRules },
-          ...(elseRules ? [{ rules: elseRules }] : [])
-        ]
+        condition,
+        rules: thenRules.rules,
+        else: elseRules
       }, undefined, loc, $.context);
     }
   };

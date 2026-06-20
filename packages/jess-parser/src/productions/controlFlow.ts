@@ -15,6 +15,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type Production<T = unknown> = (ctx?: RuleContext) => T | undefined;
 
 function expectNode(value: unknown): Node {
   if (isNode(value)) {
@@ -133,7 +134,7 @@ function looksLikeComparison($: P) {
 /**
  * Condition in parens: `(comparison)` → Condition, or `(expr)` → Condition([expr])
  */
-export function jessConditionInParens(this: P, _T: TokenMap) {
+export function jessConditionInParens(this: P, _T: TokenMap): Production<Node> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -169,7 +170,7 @@ export function jessConditionInParens(this: P, _T: TokenMap) {
 /**
  * `$if (cond) { rules } [$else if (cond) { rules }]* [$else { rules }]`
  */
-export function jessIfStatement(this: P, _T: TokenMap) {
+export function jessIfStatement(this: P, _T: TokenMap): Production<If | Rules> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -214,12 +215,15 @@ export function jessIfStatement(this: P, _T: TokenMap) {
     }
     const resolvedConditions = conditions.map(condition => expectNode(condition));
     const resolvedBodies = bodies.map(body => expectRules(body));
-    return new If({
-      branches: [
-        ...resolvedConditions.map((condition, index) => ({ condition, rules: resolvedBodies[index]! })),
-        ...(elseBranch ? [{ rules: expectRules(elseBranch) }] : [])
-      ]
-    }, undefined, loc, $.context);
+    let elseNode: If | Rules | undefined = elseBranch ? expectRules(elseBranch) : undefined;
+    for (let index = resolvedConditions.length - 1; index >= 0; index--) {
+      elseNode = new If({
+        condition: resolvedConditions[index]!,
+        rules: resolvedBodies[index]!.rules,
+        else: elseNode
+      }, undefined, loc, $.context);
+    }
+    return elseNode;
   };
 }
 
@@ -243,7 +247,7 @@ export function jessWhileStatement(this: P, _T: TokenMap) {
     }
     return new While({
       condition: expectNode(conditionValue),
-      rules: expectRules(rulesValue)
+      rules: expectRules(rulesValue).rules
     }, undefined, loc, $.context);
   };
 }
@@ -287,7 +291,7 @@ export function jessForStatement(this: P, _T: TokenMap) {
     return new For({
       pattern: { kind: 'single', value: vars },
       iterable: { kind: 'node', value: iterable },
-      rules
+      rules: rules.rules
     }, undefined, loc, $.context);
   };
 }

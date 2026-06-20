@@ -75,12 +75,12 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: rules([extend({ target: el('.base') })])
+            rules: [extend({ target: el('.base') })]
           })
         )
       ]);
@@ -302,13 +302,13 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
         // One target with a compound selector
         ruleset({
           selector: sellist([sel([compound([el('.base'), el('.variant')])])]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         // N children extending .base (partial)
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: rules([extend({ target: el('.base'), all: true })])
+            rules: [extend({ target: el('.base'), all: true })]
           })
         )
       ]);

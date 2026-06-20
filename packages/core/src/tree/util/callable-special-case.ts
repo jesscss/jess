@@ -48,7 +48,7 @@ export async function evaluateCallableSpecialCaseCandidate({
       return { handled: true };
     }
 
-    const sourceRules = getRootSourceRules(candidate.rules);
+    const sourceRules = getRootSourceRules(candidate);
     let rules = createOwnedRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
     let needsCallerPlacementDuringEval = false;

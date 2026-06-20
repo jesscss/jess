@@ -103,10 +103,10 @@ export function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
 
 export function getMixinEntryRules(entry: MixinEntry): Rules {
   if (isNode(entry, N.Mixin)) {
-    return entry.rules;
+    return entry;
   }
   if (isNode(entry, N.Ruleset)) {
-    return entry.rules;
+    return entry;
   }
   return entry.value.rules;
 }

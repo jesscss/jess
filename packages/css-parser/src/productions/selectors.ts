@@ -54,7 +54,7 @@ export function stylesheet(this: C, T: TokenMap): StylesheetRule {
   };
 }
 
-export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
+export function main(this: C, T: TokenMap, alt?: AltContext | Alt): SelectorRule {
   let $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
@@ -141,7 +141,7 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
 
       const ruleset = new Ruleset({
         selector,
-        rules
+        rules: rules.rules
       }, undefined, location, this.context);
       return ruleset;
     }
@@ -603,7 +603,7 @@ export function relativeSelector(this: C, T: TokenMap) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
               complex.adopt(combinator);
-              complex.components.unshift(combinator);
+              complex.value.unshift(combinator);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -720,7 +720,7 @@ export function selectorList(this: C, T: TokenMap) {
   };
 }
 
-export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
+export function declarationList(this: C, T: TokenMap, alt?: AltContext): SelectorRule {
   const $ = this;
   const shouldTryQualifiedRule = () => $.shouldTryQualifiedRuleInDeclarationList();
   /** * Declarations ***/

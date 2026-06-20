@@ -263,14 +263,14 @@ describe('OOM stress: full eval pipeline', () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.base')])]),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       }),
       ...Array.from({ length: N }, (_, i) =>
         ruleset({
           selector: sellist([sel([el(`.child-${i}`)])]),
-          rules: rules([
+          rules: [
             extend({ target: el('.base') })
-          ])
+          ]
         })
       )
     ]);
@@ -299,14 +299,14 @@ describe('OOM stress: full eval pipeline', () => {
       ...Array.from({ length: N }, (_, i) =>
         ruleset({
           selector: sellist([sel([el(`.base-${i}`)])]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ),
       // 50 children, each extending a different base
       ...Array.from({ length: N }, (_, i) =>
         ruleset({
           selector: sellist([sel([el(`.child-${i}`)])]),
-          rules: rules([extend({ target: el(`.base-${i}`) })])
+          rules: [extend({ target: el(`.base-${i}`) })]
         })
       )
     ]);
@@ -334,18 +334,18 @@ describe('OOM stress: full eval pipeline', () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([compoundTarget])]),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       }),
       ruleset({
         selector: sellist([sel([el('.c')])]),
-        rules: rules([
+        rules: [
           extend({
             target: compound([
               is(sellist([el('.a1'), el('.a2'), el('.a3')])),
               is(sellist([el('.b1'), el('.b2'), el('.b3')]))
             ])
           })
-        ])
+        ]
       })
     ]);
 

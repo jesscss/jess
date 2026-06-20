@@ -1125,7 +1125,7 @@ describe('Declaration', () => {
     ) {
       if (renderState?.mergeAdapter) {
         sawMergeAdapter = true;
-        expect(renderState.mergeAdapter).not.toHaveProperty('value');
+        expect(renderState.mergeAdapter).not.toHaveProperty('items');
       }
       return originalWriteDeclarationValueSyntax.call(this, valueParts, options, renderState);
     });
@@ -1206,7 +1206,7 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
       kind: 'list',
-      items: [value.value[1], value.value[2].value[0]]
+      value: [value.value[1], value.value[2].value[0]]
     });
   });
 
@@ -1215,7 +1215,7 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
       kind: 'space',
-      items: [value.value[1], value.value[2].value[0]]
+      value: [value.value[1], value.value[2].value[0]]
     });
   });
 
@@ -1374,16 +1374,16 @@ describe('Declaration', () => {
     const node = rules([
       mixin({
         name: any('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
@@ -1391,7 +1391,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1407,17 +1407,17 @@ describe('Declaration', () => {
     const node = rules([
       mixin({
         name: any('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)'),
             important
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
@@ -1425,7 +1425,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1439,7 +1439,7 @@ describe('Declaration', () => {
     if (!(elevated instanceof Ruleset)) {
       throw new TypeError('Expected ruleset output');
     }
-    const emitted = elevated.rules.flatRules(true).find(rule => rule instanceof Declaration);
+    const emitted = elevated.flatRules(true).find(rule => rule instanceof Declaration);
     expect(emitted).toBeInstanceOf(Declaration);
     if (!(emitted instanceof Declaration)) {
       throw new TypeError('Expected declaration output');
@@ -1451,16 +1451,16 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin-ruleset' })
           }),
@@ -1468,11 +1468,11 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-floating'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-elevated' }, { type: 'mixin-ruleset' })
           }),
@@ -1480,7 +1480,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 10px 20px rgba(0, 0, 0, 0.15)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1607,17 +1607,17 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('nav'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               decl({ name: any('padding'), value: any('10px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('8px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('6px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('4px') }, { assign: AssignmentType.MergeSequence })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -1635,10 +1635,10 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('aside'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               forNode({
                 pattern: {
                   kind: 'single',
@@ -1656,13 +1656,13 @@ describe('Declaration', () => {
                     any('40px')
                   ])
                 },
-                rules: rules([
+                rules: [
                   decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -1680,10 +1680,10 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('aside'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               forNode({
                 pattern: {
                   kind: 'tuple',
@@ -1702,16 +1702,16 @@ describe('Declaration', () => {
                     num(4)
                   ])
                 },
-                rules: rules([
+                rules: [
                   decl({
                     name: any('padding'),
                     value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
                   }, { assign: AssignmentType.MergeSequence })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 

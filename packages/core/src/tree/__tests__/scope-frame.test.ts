@@ -251,10 +251,23 @@ describe('ScopeFrame variable facade', () => {
     expect(hit.kind).toBe('miss');
   });
 
+  it('treats fallback frame revisits as covered misses', async () => {
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.fallbackFrame = frame;
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
+
   it('separates unconsumed callable candidates from child-surface uncertainty', () => {
     const namespace = mixin({
       name: any('.namespace'),
-      rules: rules([decl({ name: 'color', value: any('blue') })])
+      rules: [decl({ name: 'color', value: any('blue') })]
     });
     const frame = buildScopeFrame(
       undefined,

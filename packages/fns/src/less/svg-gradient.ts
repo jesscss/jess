@@ -7,10 +7,10 @@ function flattenSingle(node: Node): Node {
     node = node.node!;
   }
   while (
-    (node instanceof Sequence && node.items.length === 1)
-    || (node instanceof List && node.items.length === 1)
+    (node instanceof Sequence && node.value.length === 1)
+    || (node instanceof List && node.value.length === 1)
   ) {
-    node = node instanceof List ? node.items[0]! : node.items[0]!;
+    node = node instanceof List ? node.value[0]! : node.value[0]!;
     while (node instanceof Paren) {
       node = node.node!;
     }
@@ -23,16 +23,16 @@ function maybeGradientStop(node: Node): GradientStop | undefined {
   if (node instanceof Color) {
     return { color: node };
   }
-  if (node instanceof List && node.items.length === 2) {
-    const first = flattenSingle(node.items[0]!);
-    const second = flattenSingle(node.items[1]!);
+  if (node instanceof List && node.value.length === 2) {
+    const first = flattenSingle(node.value[0]!);
+    const second = flattenSingle(node.value[1]!);
     if (first instanceof Color && second instanceof Dimension) {
       return { color: first, position: second };
     }
   }
-  if (node instanceof Sequence && node.items.length === 2) {
-    const first = flattenSingle(node.items[0]!);
-    const second = flattenSingle(node.items[1]!);
+  if (node instanceof Sequence && node.value.length === 2) {
+    const first = flattenSingle(node.value[0]!);
+    const second = flattenSingle(node.value[1]!);
     if (first instanceof Color && second instanceof Dimension) {
       return { color: first, position: second };
     }
@@ -49,11 +49,11 @@ function collectStops(nodes: Node[], out: GradientStop[]): void {
       continue;
     }
     if (node instanceof List) {
-      collectStops(node.items, out);
+      collectStops(node.value, out);
       continue;
     }
     if (node instanceof Sequence) {
-      collectStops(node.items, out);
+      collectStops(node.value, out);
       continue;
     }
     throw new Error('svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list');
@@ -109,12 +109,12 @@ const svgGradient = defineFunction(
         normalized = await normalized.node!.eval(this.context);
       }
       if (normalized instanceof Sequence) {
-        const items = await Promise.all(normalized.items.map(item => normalizeNode(item)));
+        const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
         const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
         return new Sequence(items, normalized.options, loc).inherit(normalized);
       }
       if (normalized instanceof List) {
-        const items = await Promise.all(normalized.items.map(item => normalizeNode(item)));
+        const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
         const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
         return new List(items, normalized.options, loc).inherit(normalized);
       }

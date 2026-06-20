@@ -137,10 +137,10 @@ describe('scss-parser (baseline)', () => {
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
-      const ifNode = root.value.find(n => n.type === 'If');
+      const ifNode = root.rules.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
       if (ifNode && ifNode.type === 'If') {
-        const cond = ifNode.branches[0]?.condition;
+        const cond = ifNode.condition;
         expect(cond && isNode(cond, N.Paren)).toBe(true);
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.node instanceof Condition).toBe(true);
@@ -166,10 +166,10 @@ describe('scss-parser (baseline)', () => {
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
-      const ifNode = root.value.find(n => n.type === 'If');
+      const ifNode = root.rules.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
       if (ifNode && ifNode.type === 'If') {
-        const cond = ifNode.branches[0]?.condition;
+        const cond = ifNode.condition;
         expect(cond && isNode(cond, N.Paren)).toBe(true);
         if (cond && isNode(cond, N.Paren)) {
           expect(cond.node instanceof Condition).toBe(true);
@@ -250,13 +250,13 @@ describe('scss-parser (baseline)', () => {
     // Structural assertion: the call should not be wrapped in Expression
     expect(isNode(result.tree, N.Rules)).toBe(true);
     if (isNode(result.tree, N.Rules)) {
-      const ruleset = result.tree.value.find(n => isNode(n, N.Ruleset));
+      const ruleset = result.tree.rules.find(n => isNode(n, N.Ruleset));
       expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
       if (ruleset && isNode(ruleset, N.Ruleset)) {
-        const decl = ruleset.rules?.value.find(n => isNode(n, N.Declaration));
+        const decl = ruleset.rules.find(n => isNode(n, N.Declaration));
         expect(decl && isNode(decl, N.Declaration)).toBe(true);
         if (decl && isNode(decl, N.Declaration)) {
-          const val = decl.value.value;
+          const val = decl.valueNode;
           expect(isNode(val, N.Call)).toBe(true);
           if (isNode(val, N.Call)) {
             expect(isNode(val.name, N.Reference)).toBe(true);
@@ -328,10 +328,10 @@ describe('scss-parser (baseline)', () => {
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
-      const ruleset = root.value.find(n => n.type === 'Ruleset');
+      const ruleset = root.rules.find(n => n.type === 'Ruleset');
       expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
       if (ruleset && isNode(ruleset, N.Ruleset)) {
-        const imp = ruleset.rules?.value.find(n => n.type === 'StyleImport');
+        const imp = ruleset.rules.find(n => n.type === 'StyleImport');
         expect(imp && imp.type === 'StyleImport').toBe(true);
         if (imp && imp.type === 'StyleImport') {
           expect(imp.options.type).toBe('import');
@@ -351,9 +351,9 @@ describe('scss-parser (baseline)', () => {
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
-      const atRule = root.value.find(n => n.type === 'AtRule');
-      expect(atRule && atRule.type === 'AtRule').toBe(true);
-      expect(root.value.some(n => n.type === 'StyleImport')).toBe(false);
+      const atRule = root.rules.find(n => n.type === 'AtRuleStatement');
+      expect(atRule && atRule.type === 'AtRuleStatement').toBe(true);
+      expect(root.rules.some(n => n.type === 'StyleImport')).toBe(false);
     }
     assertValidTree(result.tree);
   });
@@ -498,10 +498,10 @@ describe('scss-parser (baseline)', () => {
     expect(serializeTypes(result.tree)).toContainString('\\foo');
     expect(isNode(result.tree, N.Rules)).toBe(true);
     if (isNode(result.tree, N.Rules)) {
-      const ruleset = result.tree.value.find(n => isNode(n, N.Ruleset));
+      const ruleset = result.tree.rules.find(n => isNode(n, N.Ruleset));
       expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
       if (ruleset && isNode(ruleset, N.Ruleset)) {
-        const extend = ruleset.rules.value.find(n => isNode(n, N.Extend));
+        const extend = ruleset.rules.find(n => isNode(n, N.Extend));
         expect(extend && isNode(extend, N.Extend)).toBe(true);
         if (extend && isNode(extend, N.Extend)) {
           expect(extend.namespace).toBe('*');
@@ -576,16 +576,17 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
-            target: 
+            target:
               (Reference
                 key: 'ns'
               )
             key: 'foo'
           )
-        args: 
+        args:
           (List
+            value:
             [
               (Reference
                 key: 'x'
@@ -683,7 +684,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const out = normalizeOutput(result.tree.toString());
-    expect(out).toContain('$for ( $ a of $list)');
+    expect(out).toContain('$for ($a of $list)');
     assertValidTree(result.tree);
   });
 
@@ -696,7 +697,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(result.tree.toString())).toContain('$for ([ $ a, $ b] of $list)');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ([$a, $b] of $list)');
     assertValidTree(result.tree);
   });
 
@@ -709,7 +710,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(result.tree.toString())).toContain('$for ( $ i of 1 to 3)');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ($i of 1 to 3)');
     assertValidTree(result.tree);
   });
 
@@ -722,7 +723,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(result.tree.toString())).toContain('$for ( $ i of 1 to <3)');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ($i of 1 to <3)');
     assertValidTree(result.tree);
   });
 

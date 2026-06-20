@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CssParser } from '../src/index.js';
 import { invalidCSSOutput, notSameSerialized } from '@jesscss/shared';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const cssParser = new CssParser({ legacyMode: true });
 
 describe('Less CSS output - valid cases', () => {

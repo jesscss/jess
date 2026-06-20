@@ -26,3 +26,7 @@ export function isPlainStaticRuleLeaf(node: Node): boolean {
 export function canRenderStaticRulesDirectly(rules: StaticRulesLike): boolean {
   return rules.hasFlag(F_STATIC) && rules.rules.every(isPlainStaticRuleLeaf);
 }
+
+export function canRenderStaticRuleArrayDirectly(rules: readonly Node[]): boolean {
+  return rules.every(isPlainStaticRuleLeaf);
+}

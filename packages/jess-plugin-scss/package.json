@@ -29,13 +29,14 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "@jesscss/style-resolver": "workspace:*"
   },

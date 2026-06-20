@@ -54,6 +54,17 @@ export function pushCallableOutputRules(
   }
 }
 
+function compareCallableOutputPosition(a: Rules, b: Rules): number {
+  if (
+    a.parent === b.parent
+    && a.index !== undefined
+    && b.index !== undefined
+  ) {
+    return a.index - b.index;
+  }
+  return comparePosition(a, b);
+}
+
 export async function finalizeCallableEvalOutput({
   context,
   state,
@@ -83,7 +94,7 @@ export async function finalizeCallableEvalOutput({
     }
     pushCallableOutputRules(state, defaultExecution.outputs);
   }
-  state.outputRules.sort(comparePosition);
+  state.outputRules.sort(compareCallableOutputPosition);
   return finalizeCallableOutput({
     state,
     restrictMixinOutputLookup,
@@ -111,6 +122,15 @@ export function finalizeCallableOutput({
 
   if (state.outputRules.length === 1) {
     const output = state.outputRules[0]!;
+    output.options = {
+      ...output.options,
+      rulesVisibility: {
+        Ruleset: 'public',
+        Declaration: 'public',
+        VarDeclaration: 'public',
+        Mixin: 'public'
+      }
+    };
     attachMixinOutputSlot(
       output,
       resolveSingleOutputSourceRules(output),

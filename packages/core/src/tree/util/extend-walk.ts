@@ -118,11 +118,11 @@ function decomposeFind(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
     const positions: Selector[][] = [];
     const combinators: string[] = [];
-    for (const comp of find.components) {
+    for (const comp of find.value) {
       if (comp instanceof Combinator) {
         combinators.push(comp.value);
       } else if (comp instanceof CompoundSelector) {
-        positions.push([...comp.components]);
+        positions.push([...comp.value]);
       } else if (isSelectorNode(comp)) {
         positions.push([comp]);
       }
@@ -131,7 +131,7 @@ function decomposeFind(find: Selector): FindSpec {
   }
   if (isNode(find, N.CompoundSelector)) {
     return {
-      positions: [[...find.components]],
+      positions: [[...find.value]],
       combinators: [],
       original: find
     };
@@ -175,18 +175,18 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
 }
 
 function areCompoundsEquivalent(a: CompoundSelector, b: CompoundSelector): boolean {
-  if (a.components.length !== b.components.length) {
+  if (a.value.length !== b.value.length) {
     return false;
   }
   if (a.valueOf() === b.valueOf()) {
     return true;
   }
-  const used = new Uint8Array(b.components.length);
-  for (const aComp of a.components) {
+  const used = new Uint8Array(b.value.length);
+  for (const aComp of a.value) {
     const aVal = aComp.valueOf();
     let found = false;
-    for (let j = 0; j < b.components.length; j++) {
-      if (!used[j] && b.components[j]!.valueOf() === aVal) {
+    for (let j = 0; j < b.value.length; j++) {
+      if (!used[j] && b.value[j]!.valueOf() === aVal) {
         used[j] = 1;
         found = true;
         break;
@@ -200,15 +200,15 @@ function areCompoundsEquivalent(a: CompoundSelector, b: CompoundSelector): boole
 }
 
 function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
-  if (a.components.length !== b.components.length) {
+  if (a.value.length !== b.value.length) {
     return false;
   }
   if (a.valueOf() === b.valueOf()) {
     return true;
   }
-  for (let i = 0; i < a.components.length; i++) {
-    const ac = a.components[i]!;
-    const bc = b.components[i]!;
+  for (let i = 0; i < a.value.length; i++) {
+    const ac = a.value[i]!;
+    const bc = b.value[i]!;
     if (isNode(ac, N.Combinator) !== isNode(bc, N.Combinator)) {
       return false;
     }
@@ -247,7 +247,7 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
  */
 function tailOf(sel: Selector): Selector {
   if (sel instanceof ComplexSelector) {
-    const comps = sel.components;
+    const comps = sel.value;
     for (let i = comps.length - 1; i >= 0; i--) {
       const comp = comps[i];
       if (comp && !(comp instanceof Combinator) && isSelectorNode(comp)) {
@@ -280,7 +280,7 @@ function positionSimpleMatches(find: Selector, target: Selector): boolean {
       return false;
     }
     if (isNode(arg, N.SelectorList)) {
-      return arg.selectors.some(
+      return arg.value.some(
         (alt: Selector) => positionSimpleMatches(tailOf(alt), target)
       );
     }
@@ -294,7 +294,7 @@ function positionSimpleMatches(find: Selector, target: Selector): boolean {
       return false;
     }
     if (isNode(arg, N.SelectorList)) {
-      return arg.selectors.some(
+      return arg.value.some(
         (alt: Selector) => positionSimpleMatches(find, tailOf(alt))
       );
     }
@@ -439,7 +439,7 @@ export function canUseWalkAndConsume(target: Selector, find: Selector, hasParent
 
 export function extendWithNeedsConflictValidation(extendWith: Selector): boolean {
   if (isNode(extendWith, N.CompoundSelector)) {
-    return extendWith.components.some(
+    return extendWith.value.some(
       child => hasSelectorIdentityFlag(child) && (child.isTag || child.isId)
     );
   }
@@ -454,13 +454,13 @@ function containsAmpersand(sel: Selector): boolean {
     return true;
   }
   if (sel instanceof SelectorList) {
-    return sel.selectors.some(child => containsAmpersand(child));
+    return sel.value.some(child => containsAmpersand(child));
   }
   if (sel instanceof CompoundSelector) {
-    return sel.components.some(child => containsAmpersand(child));
+    return sel.value.some(child => containsAmpersand(child));
   }
   if (sel instanceof ComplexSelector) {
-    return sel.components.some(child => isSelectorNode(child) && containsAmpersand(child));
+    return sel.value.some(child => isSelectorNode(child) && containsAmpersand(child));
   }
   if (sel instanceof PseudoSelector) {
     const arg = selectorArgOf(sel);
@@ -560,7 +560,7 @@ function walkSelectorList(
   partial: boolean,
   _ctx: WalkContext
 ): Selector {
-  const items = list.selectors;
+  const items = list.value;
   const originals: Selector[] = [];
   const appended: Selector[] = [];
   let anyChanged = false;
@@ -579,7 +579,7 @@ function walkSelectorList(
     if (extended === item) {
       originals.push(item);
     } else if (isNode(extended, N.SelectorList)) {
-      const extItems = extended.selectors;
+      const extItems = extended.value;
       const first = extItems[0]!;
       first.addFlag(F_EXTENDED);
       // Parity with the non-batched extend path (extend.ts `wrapMatchInIs`),
@@ -628,7 +628,7 @@ function walkComplexSelector(
   }
 
   // Single-position find: walk each component individually
-  const components = complex.components;
+  const components = complex.value;
   let anyChanged = false;
   const newComponents = [...components];
 
@@ -679,7 +679,7 @@ function walkCompoundSelector(
   }
 
   // Single-simple: walk individual components (recurses into :is())
-  const components = compound.components;
+  const components = compound.value;
   let anyChanged = false;
   const newComponents = [...components];
 
@@ -717,7 +717,7 @@ function consumeSimplesFromCompound(
   spec: FindSpec,
   extendWith: Selector
 ): Selector {
-  const targetComps = compound.components;
+  const targetComps = compound.value;
   const findSimples = spec.positions[0]!;
 
   const matchIndices = consumeSimples(targetComps, findSimples);
@@ -754,7 +754,7 @@ function consumePositionsFromComplex(
   partial: boolean,
   _ctx: WalkContext
 ): Selector {
-  const targetComps = complex.components;
+  const targetComps = complex.value;
   const start = findSubsequence(targetComps, spec);
   if (start < 0) {
     return complex;
@@ -844,7 +844,7 @@ function walkPseudoTailAware(
   ctx: WalkContext
 ): Selector {
   if (isNode(arg, N.SelectorList)) {
-    const items = arg.selectors;
+    const items = arg.value;
     let anyChanged = false;
     const originals: Selector[] = [];
     const appended: Selector[] = [];
@@ -856,7 +856,7 @@ function walkPseudoTailAware(
         originals.push(alt);
       } else if (isNode(extended, N.SelectorList)) {
         // Decompose: first item stays in position, rest appended at end
-        const extItems = extended.selectors;
+        const extItems = extended.value;
         originals.push(extItems[0]!);
         for (let j = 1; j < extItems.length; j++) {
           appended.push(extItems[j]!);
@@ -925,7 +925,7 @@ function walkAlternativeTailAware(
   }
 
   // Complex alternative: only walk the tail
-  const comps = alt.components;
+  const comps = alt.value;
   let tailIdx = -1;
   for (let i = comps.length - 1; i >= 0; i--) {
     if (!isNode(comps[i], N.Combinator)) {
@@ -996,7 +996,7 @@ function extractIsArgs(selector: Selector): Selector[] {
       return [selector];
     }
     if (isNode(arg, N.SelectorList)) {
-      return arg.selectors;
+      return arg.value;
     }
     return [arg];
   }
@@ -1017,7 +1017,7 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
   if (isNode(matched, N.PseudoSelector) && matched.name === ':is' && matched.arg) {
     const matchedArg = selectorArgOf(matched);
     const existing = matchedArg && isNode(matchedArg, N.SelectorList)
-      ? matchedArg.selectors
+      ? matchedArg.value
       : matchedArg ? [matchedArg] : [];
 
     const existingVals = new Set(existing.map(s => s.valueOf()));
@@ -1056,15 +1056,15 @@ function parentContainsTarget(parent: Selector, target: Selector): boolean {
     return true;
   }
   if (isNode(parent, N.SelectorList)) {
-    return parent.selectors.some(item => parentContainsTarget(item, target));
+    return parent.value.some(item => parentContainsTarget(item, target));
   }
   if (isNode(parent, N.ComplexSelector)) {
-    return parent.components.some(comp =>
+    return parent.value.some(comp =>
       !isNode(comp, N.Combinator) && isSelectorNode(comp) && parentContainsTarget(comp, target)
     );
   }
   if (isNode(parent, N.CompoundSelector)) {
-    return parent.components.some(comp => parentContainsTarget(comp, target));
+    return parent.value.some(comp => parentContainsTarget(comp, target));
   }
   return false;
 }
@@ -1137,12 +1137,12 @@ function wouldMatchNode(
   }
 
   if (isNode(node, N.SelectorList)) {
-    for (let i = 0; i < node.selectors.length; i++) {
-      const result = wouldMatchNode(node.selectors[i]!, spec, extendWith, partial, {
+    for (let i = 0; i < node.value.length; i++) {
+      const result = wouldMatchNode(node.value[i]!, spec, extendWith, partial, {
         isRoot: false,
         parentType: 'SelectorList',
         hasContentBefore: i > 0,
-        hasContentAfter: i < node.selectors.length - 1
+        hasContentAfter: i < node.value.length - 1
       }, parentSelector);
       if (result) {
         return result;
@@ -1162,8 +1162,8 @@ function wouldMatchNode(
       }
       return false;
     }
-    for (let i = 0; i < node.components.length; i++) {
-      const comp = node.components[i]!;
+    for (let i = 0; i < node.value.length; i++) {
+      const comp = node.value[i]!;
       if (isNode(comp, N.Combinator)) {
         continue;
       }
@@ -1171,7 +1171,7 @@ function wouldMatchNode(
         isRoot: false,
         parentType: 'ComplexSelector',
         hasContentBefore: i > 0,
-        hasContentAfter: i < node.components.length - 1
+        hasContentAfter: i < node.value.length - 1
       });
       if (result) {
         return result;
@@ -1199,13 +1199,13 @@ function wouldMatchNode(
     if (isMultiSimple(spec) && partial) {
       return wouldSimplesMatch(node, spec) ? 'local' : false;
     }
-    for (let i = 0; i < node.components.length; i++) {
-      const comp = node.components[i]!;
+    for (let i = 0; i < node.value.length; i++) {
+      const comp = node.value[i]!;
       const result = wouldMatchNode(comp, spec, extendWith, partial, {
         isRoot: false,
         parentType: 'CompoundSelector',
         hasContentBefore: i > 0,
-        hasContentAfter: i < node.components.length - 1
+        hasContentAfter: i < node.value.length - 1
       });
       if (result) {
         return result;
@@ -1280,7 +1280,7 @@ function wouldMatchPseudoTailAware(
         hasContentAfter: false
       });
     }
-    const comps = alt.components;
+    const comps = alt.value;
     for (let i = comps.length - 1; i >= 0; i--) {
       if (!isNode(comps[i], N.Combinator)) {
         return wouldMatchNode(comps[i]!, spec, extendWith, partial, {
@@ -1295,7 +1295,7 @@ function wouldMatchPseudoTailAware(
   };
 
   if (isNode(arg, N.SelectorList)) {
-    for (const alt of (arg as SelectorList).selectors) {
+    for (const alt of (arg as SelectorList).value) {
       const result = checkAlt(alt as Selector);
       if (result) {
         return result;
@@ -1307,7 +1307,7 @@ function wouldMatchPseudoTailAware(
 }
 
 function wouldSimplesMatch(target: CompoundSelector, spec: FindSpec): boolean {
-  return consumeSimples(target.components, spec.positions[0]!) !== null;
+  return consumeSimples(target.value, spec.positions[0]!) !== null;
 }
 
 /**
@@ -1325,20 +1325,20 @@ function wouldMatchWithParent(
   parentSelector: Selector
 ): boolean {
   const parentItems: Selector[] = isNode(parentSelector, N.SelectorList)
-    ? (parentSelector as SelectorList).selectors
+    ? (parentSelector as SelectorList).value
     : [parentSelector];
   const childItems: Selector[] = isNode(child, N.SelectorList)
-    ? (child as SelectorList).selectors
+    ? (child as SelectorList).value
     : [child];
 
   const spaceComb = Combinator.create(' ');
   for (const pItem of parentItems) {
     const parentComps = isNode(pItem, N.ComplexSelector)
-      ? (pItem as ComplexSelector).components
+      ? (pItem as ComplexSelector).value
       : [pItem];
     for (const cItem of childItems) {
       const childComps = isNode(cItem, N.ComplexSelector)
-        ? (cItem as ComplexSelector).components
+        ? (cItem as ComplexSelector).value
         : [cItem];
       const virtualComps: any[] = [...parentComps, spaceComb, ...childComps];
       const start = findSubsequence(virtualComps, spec);
@@ -1363,13 +1363,13 @@ function wouldSubsequenceMatch(
   spec: FindSpec,
   partial: boolean
 ): boolean {
-  const start = findSubsequence(target.components, spec);
+  const start = findSubsequence(target.value, spec);
   if (start < 0) {
     return false;
   }
   if (!partial) {
     const findLen = spec.positions.length + spec.combinators.length;
-    return start === 0 && findLen === target.components.length;
+    return start === 0 && findLen === target.value.length;
   }
   return true;
 }

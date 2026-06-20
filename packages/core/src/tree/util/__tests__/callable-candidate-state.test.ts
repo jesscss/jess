@@ -13,9 +13,9 @@ describe('callable candidate state helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     definitionParent.adopt(candidate);
     callSiteRules.getScopeFrame();
@@ -38,8 +38,8 @@ describe('callable candidate state helper', () => {
       getRootSourceRules: rulesNode => rulesNode
     });
 
-    expect(state.sourceRules).toBe(candidate.rules);
-    expect(state.rules).not.toBe(candidate.rules);
+    expect(state.sourceRules).toBe(candidate);
+    expect(state.rules).not.toBe(candidate);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('public');
     expect(state.rules.parent).toBe(candidate.parent);
     expect(state.paramBindings).toHaveLength(1);

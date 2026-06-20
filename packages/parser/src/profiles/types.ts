@@ -69,6 +69,7 @@ export type RuleHeaderKind =
  */
 export type IslandKind =
   | 'at-rule-prelude'
+  | 'control-condition'
   | 'declaration-value'
   | 'extend-candidate'
   | 'interpolation'

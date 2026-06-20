@@ -45,9 +45,7 @@ function emitCompoundPart(
 }
 
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  static override childKeys = ['components'] as const;
-
-  readonly components: SimpleSelector[];
+  static override childKeys = ['value'] as const;
 
   constructor(
     value: SimpleSelector[],
@@ -57,7 +55,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.components = value;
   }
 
   private ownSelector(item: Selector): Selector {
@@ -68,7 +65,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return owned;
   }
 
-  private withComponents(value: SimpleSelector[], sourceValue: readonly SimpleSelector[] = this.components): this {
+  private withComponents(value: SimpleSelector[], sourceValue: readonly SimpleSelector[] = this.value): this {
     const ownedValue = new Array<SimpleSelector>(value.length);
     let hoistToRoot = false;
     for (let i = 0; i < value.length; i++) {
@@ -112,7 +109,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    const value = this.components;
+    const value = this.value;
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
@@ -122,7 +119,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
-    if (this.components.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -137,7 +134,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const value = this.components;
+    const value = this.value;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     let requiredKeySet = library.getBitset();
@@ -158,8 +155,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
-      for (let i = 0; i < this.components.length; i++) {
-        const component = String(this.components[i]!.valueOf());
+      for (let i = 0; i < this.value.length; i++) {
+        const component = String(this.value[i]!.valueOf());
         if (!nonElementRegex.test(component)) {
           elementSelectors.push(component);
         } else {
@@ -208,7 +205,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil> {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
@@ -226,7 +223,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil>> {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
@@ -248,7 +245,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     evaluatedValue: Array<Selector | Nil>,
     start: number
   ): MaybePromise<Array<Selector | Nil>> {
-    const currentValue = this.components;
+    const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const item = currentValue[i]!;
       const out = resolve ? item.resolve(context) : item.eval(context);
@@ -264,7 +261,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private finalizeComponents(evaluatedValue: Array<Selector | Nil>, evaluated: boolean): Node {
-    const currentValue = this.components;
+    const currentValue = this.value;
     const value: SimpleSelector[] = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       const item = evaluatedValue[i]!;

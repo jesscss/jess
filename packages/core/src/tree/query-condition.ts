@@ -35,9 +35,9 @@ function getKnownQueryConditionSourceText(node: Node): string | undefined {
       return typeof node.node === 'string' ? node.node : undefined;
     default:
       if (node.constructor === QueryCondition) {
-        const parts = new Array(node.items.length);
-        for (let i = 0; i < node.items.length; i++) {
-          const text = getKnownQueryConditionSourceText(node.items[i]!);
+        const parts = new Array(node.value.length);
+        for (let i = 0; i < node.value.length; i++) {
+          const text = getKnownQueryConditionSourceText(node.value[i]!);
           if (text === undefined) {
             return undefined;
           }
@@ -113,7 +113,7 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  static override childKeys = ['items'] as const;
+  static override childKeys = ['value'] as const;
 
   /**
    * Fast-path only node classes whose source syntax writer is known to be
@@ -349,11 +349,11 @@ export class QueryCondition extends Sequence {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.writeQueryConditionSyntax(this.items, options);
+    this.writeQueryConditionSyntax(this.value, options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    if (this.items.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -390,7 +390,7 @@ export class QueryCondition extends Sequence {
       if (directText !== undefined) {
         if (buffer) {
           if (sharesWriter) {
-            this.writeQueryConditionSyntax(this.items, prepared);
+            this.writeQueryConditionSyntax(this.value, prepared);
             return directText;
           }
           return writeRenderText(buffer, directText);
@@ -399,13 +399,13 @@ export class QueryCondition extends Sequence {
         return directText;
       }
       const position = prepared.writer.position();
-      this.writeQueryConditionSyntax(this.items, prepared);
+      this.writeQueryConditionSyntax(this.value, prepared);
       const rendered = getWriterTextSincePosition(prepared.writer, position);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;
     }
-    const rendered = this.renderQueryConditionSyntax(this.items, prepared, context);
+    const rendered = this.renderQueryConditionSyntax(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
         ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))

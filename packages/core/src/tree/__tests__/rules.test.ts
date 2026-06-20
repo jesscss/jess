@@ -22,7 +22,7 @@ import {
   interpolated,
   type Declaration,
   type Selector,
-  atrule
+  atrulestatement
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { DeclarationFindOptions } from '../util/lookup-utils.js';
@@ -110,13 +110,33 @@ describe('Rules', () => {
     context.id = 'testing';
   });
 
-  it('exposes constructor-owned rules as the direct child field', () => {
+  it('stores owned rules on canonical rules field', () => {
     const child = decl({ name: 'color', value: any('red') });
     const node = rules([child]);
 
     expect(node.rules).toBe(node.value);
     expect(node.rules[0]).toBe(child);
     expect(node.constructor.childKeys).toEqual(['rules']);
+  });
+
+  it('toObject only descends through plain Rules wrappers', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') }),
+      ruleset({
+        selector: el('.nested'),
+        rules: [
+          decl({ name: 'color', value: any('nested') })
+        ]
+      }),
+      rules([
+        decl({ name: 'background', value: any('blue') })
+      ])
+    ]);
+
+    expect(node.toObject()).toEqual({
+      color: 'red',
+      background: 'blue'
+    });
   });
 
   it.skip('assigns position linearly for nested rules', async () => {
@@ -437,7 +457,7 @@ describe('Rules', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -467,7 +487,7 @@ describe('Rules', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -487,7 +507,7 @@ describe('Rules', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -506,7 +526,7 @@ describe('Rules', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -618,7 +638,7 @@ describe('Rules', () => {
     const writer = new WholeBufferCountingWriter();
     const charset = any('@charset "utf-8";', { role: 'charset' });
     let charsetSawActiveWriter = false;
-    const importRule = atrule({
+    const importRule = atrulestatement({
       name: any('@import', { role: 'atkeyword' }),
       prelude: quoted(any('theme.css'))
     });
@@ -723,21 +743,21 @@ describe('Rules', () => {
     const root = rules([
       ruleset({
         selector: any('.a'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([10, 'px']) })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.b'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([20, 'px']) })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.c'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([30, 'px']) })
-        ])
+        ]
       })
     ]);
 
@@ -760,15 +780,15 @@ describe('Rules', () => {
     const root = rules([
       ruleset({
         selector: any('.same'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.same'),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       })
     ]);
 
@@ -801,6 +821,334 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
         expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
+      });
+
+      it('reads variables declared earlier in the same ruleset body', async () => {
+        const node = rules([
+          ruleset({
+            selector: el('.box'),
+            rules: [
+              vardecl({ name: 'tone', value: any('red') }),
+              decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .box {
+            color: red;
+          }
+        `);
+      });
+
+      it('prefers same-ruleset variables over parent rules variables', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.box'),
+            rules: [
+              vardecl({ name: 'tone', value: any('inner') }),
+              decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .box {
+            color: inner;
+          }
+        `);
+      });
+
+      it('keeps sibling ruleset variable declarations isolated by ruleset body', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.first'),
+            rules: [
+              decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+            ]
+          }),
+          ruleset({
+            selector: el('.second'),
+            rules: [
+              vardecl({ name: 'tone', value: any('second') }),
+              decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+            ]
+          }),
+          ruleset({
+            selector: el('.third'),
+            rules: [
+              decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .first {
+            color: root;
+          }
+          .second {
+            color: second;
+          }
+          .third {
+            color: root;
+          }
+        `);
+      });
+
+      it('uses ruleset source order for current and snapshot variable reads', async () => {
+        const currentRef = ref({ key: 'tone' }, { type: 'variable' });
+        const snapshotRef = ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' });
+        const node = rules([
+          ruleset({
+            selector: el('.box'),
+            rules: [
+              vardecl({ name: 'tone', value: any('red') }),
+              decl({ name: 'current-before', value: currentRef }),
+              decl({ name: 'snapshot-before', value: snapshotRef }),
+              vardecl({ name: 'tone', value: any('blue') }),
+              decl({ name: 'current-after', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+              decl({ name: 'snapshot-after', value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' }) })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .box {
+            current-before: blue;
+            snapshot-before: red;
+            current-after: blue;
+            snapshot-after: blue;
+          }
+        `);
+      });
+
+      it('lets nested rulesets inherit variables from the nearest ruleset parent', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.outer'),
+            rules: [
+              vardecl({ name: 'tone', value: any('outer') }),
+              ruleset({
+                selector: el('.inner'),
+                rules: [
+                  decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                ]
+              })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .outer {
+            .inner {
+              color: outer;
+            }
+          }
+        `);
+      });
+
+      it('keeps nested sibling rulesets isolated inside the parent ruleset body', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.outer'),
+            rules: [
+              vardecl({ name: 'tone', value: any('outer') }),
+              ruleset({
+                selector: el('.first'),
+                rules: [
+                  decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                ]
+              }),
+              ruleset({
+                selector: el('.second'),
+                rules: [
+                  vardecl({ name: 'tone', value: any('second') }),
+                  decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                ]
+              }),
+              ruleset({
+                selector: el('.third'),
+                rules: [
+                  decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                ]
+              })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .outer {
+            .first {
+              color: outer;
+            }
+            .second {
+              color: second;
+            }
+            .third {
+              color: outer;
+            }
+          }
+        `);
+      });
+
+      it('uses parent variables for nested snapshot reads before local declarations', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.outer'),
+            rules: [
+              vardecl({ name: 'tone', value: any('outer') }),
+              ruleset({
+                selector: el('.inner'),
+                rules: [
+                  decl({ name: 'current-before', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+                  decl({
+                    name: 'snapshot-before',
+                    value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' })
+                  }),
+                  vardecl({ name: 'tone', value: any('inner') }),
+                  decl({ name: 'current-after', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+                  decl({
+                    name: 'snapshot-after',
+                    value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' })
+                  })
+                ]
+              })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .outer {
+            .inner {
+              current-before: inner;
+              snapshot-before: outer;
+              current-after: inner;
+              snapshot-after: inner;
+            }
+          }
+        `);
+      });
+
+      it('uses rulesets as scope frames without making them document source roots', () => {
+        const colorDecl = decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) });
+        const childRuleset = ruleset({
+          selector: el('.box'),
+          rules: [
+            vardecl({ name: 'tone', value: any('red') }),
+            colorDecl
+          ]
+        });
+        const node = rules([childRuleset]);
+
+        const rootFrame = node.getScopeFrame(undefined, false);
+        const childFrame = childRuleset.getScopeFrame(undefined, false);
+
+        expect(colorDecl.parent).toBe(childRuleset);
+        expect(childFrame.rulesNode).toBe(childRuleset);
+        expect(childFrame.parent).toBe(rootFrame);
+        expect(colorDecl.sourceRoot).toBe(node);
+      });
+
+      it('finds parent variables through direct nested ruleset lookup', async () => {
+        const childRuleset = ruleset({
+          selector: el('.inner'),
+          rules: []
+        });
+        const parentRuleset = ruleset({
+          selector: el('.outer'),
+          rules: [
+            vardecl({ name: 'tone', value: any('outer') }),
+            childRuleset
+          ]
+        });
+        const node = await rules([parentRuleset]).eval(context);
+        const evaluatedParent = expectRulesNode(node.rules[0]);
+        const evaluatedChild = expectRulesNode(evaluatedParent.rules[1]);
+
+        expect(getVar(evaluatedChild, 'tone')?.toTrimmedString()).toBe('$tone: outer');
+      });
+
+      it('keeps nested current and snapshot reads explicit when parent variable appears after the child', async () => {
+        const node = rules([
+          ruleset({
+            selector: el('.outer'),
+            rules: [
+              ruleset({
+                selector: el('.inner'),
+                rules: [
+                  decl({ name: 'current', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+                  decl({
+                    name: 'snapshot',
+                    value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' })
+                  })
+                ]
+              }),
+              vardecl({ name: 'tone', value: any('outer') })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .outer {
+            .inner {
+              current: outer;
+              snapshot: outer;
+            }
+          }
+        `);
+      });
+
+      it('keeps nearest scope reads stable through rulesets nested two levels deep', async () => {
+        const node = rules([
+          vardecl({ name: 'tone', value: any('root') }),
+          ruleset({
+            selector: el('.outer'),
+            rules: [
+              vardecl({ name: 'tone', value: any('outer-before') }),
+              ruleset({
+                selector: el('.middle'),
+                rules: [
+                  ruleset({
+                    selector: el('.inner'),
+                    rules: [
+                      decl({ name: 'current-before', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+                      decl({
+                        name: 'snapshot-before',
+                        value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' })
+                      }),
+                      vardecl({ name: 'tone', value: any('inner') }),
+                      decl({ name: 'current-after', value: ref({ key: 'tone' }, { type: 'variable' }) }),
+                      decl({
+                        name: 'snapshot-after',
+                        value: ref({ key: 'tone' }, { type: 'variable', readMode: 'snapshot' })
+                      })
+                    ]
+                  }),
+                  vardecl({ name: 'tone', value: any('middle-after') })
+                ]
+              }),
+              vardecl({ name: 'tone', value: any('outer-after') })
+            ]
+          })
+        ]);
+
+        expect(await renderNodeToString(node, context)).toBeString(`
+          .outer {
+            .middle {
+              .inner {
+                current-before: inner;
+                snapshot-before: middle-after;
+                current-after: inner;
+                snapshot-after: inner;
+              }
+            }
+          }
+        `);
       });
 
       it('findAnyDeclaration picks VarDeclaration or Declaration by source order', async () => {
@@ -1199,20 +1547,20 @@ describe('Rules', () => {
           vardecl({ name: 'z', value: any('transparent') }),
           ruleset({
             selector: el('.scope1'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'z', value: any('black') }),
               ruleset({
                 selector: el('.scope2'),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: el('.scope3'),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'border-color', value: ref('z', { type: 'variable' }) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
         ]);
 
@@ -1230,7 +1578,7 @@ describe('Rules', () => {
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        const scope3Rules = scope3.rules;
+        const scope3Rules = scope3;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
@@ -1301,9 +1649,9 @@ describe('Rules', () => {
         let root = rules([
           ruleset({
             selector: el('.grid'),
-            rules: rules([
+            rules: [
               decl({ name: 'total-width', value: ref('total-width', { type: 'variable' }) })
-            ])
+            ]
           }),
           vardecl({ name: 'base', value: any('1') }),
           vardecl({ name: 'column-width', value: any('6em') }),
@@ -1438,35 +1786,35 @@ describe('Rules', () => {
           // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
             name: any('my-mixin'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'live' }) })
-            ], { rulesVisibility: { VarDeclaration: 'optional' } })
+            ]
           }),
 
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({
             selector: sellist([sel([el('.box')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           }),
 
           // .box2 sets the variable with !global (setDefined)
           ruleset({
             selector: sellist([sel([el('.box2')])]),
-            rules: rules([
+            rules: [
               vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
-            ])
+            ]
           }),
 
           // .box3 uses the variable directly and includes the mixin (both should be blue)
           ruleset({
             selector: sellist([sel([el('.box3')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
 
@@ -1479,7 +1827,7 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via direct rules.
-        let boxRules = boxRuleset.rules;
+        let boxRules = boxRuleset;
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
@@ -1504,7 +1852,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
-        expect(boxMixinRules.value.length).toBeGreaterThan(0);
+        expect(boxMixinRules.rules.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
         expect(boxMixinDecl.toTrimmedString()).toBe('color: red');
 
@@ -1513,7 +1861,7 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.rules;
+        let box3Rules = box3Ruleset;
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
@@ -1536,7 +1884,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;
-        expect(box3MixinRules.value.length).toBeGreaterThan(0);
+        expect(box3MixinRules.rules.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With explicit live-binding syntax, the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
@@ -1634,7 +1982,7 @@ describe('Rules', () => {
         Object.defineProperty(node, 'value', {
           configurable: true,
           get() {
-            throw new Error('setDefined current-cell path should not crawl Rules.value');
+            throw new Error('setDefined current-cell path should not crawl Rules.rules');
           }
         });
 
@@ -1667,7 +2015,7 @@ describe('Rules', () => {
         Object.defineProperty(node, 'value', {
           configurable: true,
           get() {
-            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.value');
+            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.rules');
           }
         });
 
@@ -1706,7 +2054,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.value');
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.rules');
             }
           }
         });
@@ -1714,7 +2062,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.value');
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.rules');
             }
           }
         });
@@ -1750,7 +2098,7 @@ describe('Rules', () => {
         Object.defineProperty(node, 'value', {
           configurable: true,
           get() {
-            throw new Error('covered setDefined variable miss should not crawl Rules.value');
+            throw new Error('covered setDefined variable miss should not crawl Rules.rules');
           }
         });
 
@@ -1807,7 +2155,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl parent Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
@@ -1815,7 +2163,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl imported Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl imported Rules.rules');
             }
           }
         });
@@ -1823,7 +2171,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl child Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -1875,7 +2223,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl parent Rules.value');
+              throw new Error('writable imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
@@ -1883,7 +2231,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl imported Rules.value');
+              throw new Error('writable imported setDefined path should not crawl imported Rules.rules');
             }
           }
         });
@@ -1891,7 +2239,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl child Rules.value');
+              throw new Error('writable imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -1986,14 +2334,14 @@ describe('Rules', () => {
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
         const originalOptionalValue = optional.value;
-        const originalPublicValue = publicRules.value;
+        const originalPublicValue = publicRules.rules;
         const originalChildValue = child.value;
 
         Object.defineProperties(node, {
           value: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl parent Rules.value');
+              throw new Error('public imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
@@ -2001,7 +2349,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl optional Rules.value');
+              throw new Error('public imported setDefined path should not crawl optional Rules.rules');
             }
           }
         });
@@ -2009,7 +2357,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl public Rules.value');
+              throw new Error('public imported setDefined path should not crawl public Rules.rules');
             }
           }
         });
@@ -2017,7 +2365,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl child Rules.value');
+              throw new Error('public imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2075,14 +2423,14 @@ describe('Rules', () => {
         const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
-        const originalPublicValue = publicRules.value;
+        const originalPublicValue = publicRules.rules;
         const originalChildValue = child.value;
 
         Object.defineProperties(node, {
           value: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl parent Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl parent Rules.rules');
             }
           }
         });
@@ -2090,7 +2438,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl public Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl public Rules.rules');
             }
           }
         });
@@ -2098,7 +2446,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl child Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2144,14 +2492,14 @@ describe('Rules', () => {
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
         const publicDecl = vardecl({ name: 'one', value: any('one') });
-        const originalPublicRegistrationValue = publicRules.value;
+        const originalPublicRegistrationValue = publicRules.rules;
         publicRules.adopt(publicDecl);
         publicRules.rules.push(publicDecl);
         Object.defineProperties(publicRules, {
           value: {
             configurable: true,
             get() {
-              throw new Error('late child registration should not rebuild public Rules.value');
+              throw new Error('late child registration should not rebuild public Rules.rules');
             }
           }
         });
@@ -2167,14 +2515,14 @@ describe('Rules', () => {
         const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
         const originalParentValue = node.value;
-        const originalPublicValue = publicRules.value;
+        const originalPublicValue = publicRules.rules;
         const originalChildValue = child.value;
 
         Object.defineProperties(node, {
           value: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl parent Rules.value');
+              throw new Error('late carried setDefined path should not crawl parent Rules.rules');
             }
           }
         });
@@ -2182,7 +2530,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl public Rules.value');
+              throw new Error('late carried setDefined path should not crawl public Rules.rules');
             }
           }
         });
@@ -2190,7 +2538,7 @@ describe('Rules', () => {
           value: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl child Rules.value');
+              throw new Error('late carried setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2327,7 +2675,7 @@ describe('Rules', () => {
         Object.defineProperty(node, 'value', {
           configurable: true,
           get() {
-            throw new Error('readonly setDefined live-cell path should not crawl Rules.value');
+            throw new Error('readonly setDefined live-cell path should not crawl Rules.rules');
           }
         });
 
@@ -2496,9 +2844,9 @@ describe('Rules', () => {
   //     let node = rules([
   //       ruleset({
   //         selector: el('.foo'),
-  //         rules: rules([
+  //         rules: [
   //           decl({ name: 'foo', value: any('bar') })
-  //         ])
+  //         ]
   //       })
   //     ]);
   //     node = await node.eval(context);
@@ -2511,12 +2859,12 @@ describe('Rules', () => {
     let node = rules([
       ruleset({
         selector: sellist([sel([el('.collapse')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
           rules([
             decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
           ])
-        ])
+        ]
       })
     ]);
     let evald = await node.eval(context);

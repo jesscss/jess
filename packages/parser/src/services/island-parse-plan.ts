@@ -39,7 +39,14 @@ export class IslandParsePlan {
     promotedBytes: 0,
     fallbackFullTreeMaterializations: 0,
     structuralOnlyQueries: 0,
-    visitorPlans: 0
+    visitorPlans: 0,
+    visitorPlanCacheHits: 0,
+    visitorPlanCacheMisses: 0,
+    visitorTraversalRequests: 0,
+    visitorMaterializedNodeRequests: 0,
+    visitorPromotedIslandRequests: 0,
+    visitorAdapterNodeRequests: 0,
+    visitorReplacementRequests: 0
   };
 
   #requestIds = new Map<string, IslandParseRequestId>();
@@ -50,6 +57,7 @@ export class IslandParsePlan {
   #requests = new Map<IslandParseRequestId, IslandParseRequest>();
   #executions = new Map<string, IslandExecutionRecord>();
   #diagnostics = new Map<IslandParseRequestId, readonly ParserDiagnostic[]>();
+  #visitorPlans = new Map<string, readonly VisitorMaterializationRule[]>();
   #reusableContext: IslandExecutionContext;
 
   constructor(document: StructuralDocument, registry = new IslandParserRegistry()) {
@@ -215,6 +223,19 @@ export class IslandParsePlan {
    */
   planVisitor(shape: VisitorShape): readonly VisitorMaterializationRule[] {
     this.counters.visitorPlans++;
+    const cacheKey = visitorShapeCacheKey(shape);
+    const cached = this.#visitorPlans.get(cacheKey);
+    if (cached) {
+      this.counters.visitorPlanCacheHits++;
+      return cached;
+    }
+
+    this.counters.visitorPlanCacheMisses++;
+    if (shape.materializationRules) {
+      this.#visitorPlans.set(cacheKey, shape.materializationRules);
+      return shape.materializationRules;
+    }
+
     const nodeKinds = shape.nodeKinds ?? [];
     const islandKinds = shape.islandKinds ?? [];
     const targetShape = shape.targetShape ?? 'visitor';
@@ -228,7 +249,83 @@ export class IslandParsePlan {
       rules.push({ nodeKind: 'raw-island', islandKinds, targetShape });
     }
 
+    this.#visitorPlans.set(cacheKey, rules);
     return rules;
+  }
+
+  /**
+   * Requests only the islands a planned visitor can observe at one node.
+   *
+   * Traversal owns when this is called; the plan only maps the reached
+   * structural node to matching island requests. This keeps broad visitors
+   * demand-driven: a generic `visit()` may produce broad rules, but unrelated
+   * sibling islands are not promoted until traversal reaches their owner.
+   */
+  requestVisitorNode(
+    node: StructuralNode,
+    rules: readonly VisitorMaterializationRule[]
+  ): readonly IslandParseRequestId[] {
+    this.counters.visitorTraversalRequests++;
+    let ids: IslandParseRequestId[] | undefined;
+    let requestedAdapterNode = false;
+
+    for (const rule of rules) {
+      if (rule.nodeKind !== node.kind) {
+        continue;
+      }
+      const ruleIds = this.#requestVisitorRuleNode(node, rule);
+      if (ruleIds.length === 0) {
+        continue;
+      }
+      ids ??= [];
+      for (const id of ruleIds) {
+        if (!ids.includes(id)) {
+          ids.push(id);
+        }
+      }
+      requestedAdapterNode ||= rule.targetShape.includes('adapter');
+    }
+
+    if (!ids?.length) {
+      return [];
+    }
+
+    this.counters.visitorMaterializedNodeRequests++;
+    this.counters.visitorPromotedIslandRequests += ids.length;
+    if (requestedAdapterNode) {
+      this.counters.visitorAdapterNodeRequests++;
+    }
+    return ids;
+  }
+
+  #requestVisitorRuleNode(
+    node: StructuralNode,
+    rule: VisitorMaterializationRule
+  ): readonly IslandParseRequestId[] {
+    const islandKinds = rule.islandKinds ?? [];
+    if (islandKinds.length === 0) {
+      return [];
+    }
+    if (node.kind === 'raw-island') {
+      return islandKinds.includes(node.islandKind)
+        ? [this.requestIsland(node, rule.targetShape)]
+        : [];
+    }
+
+    const ownedIslands = this.#islandsByOwner.get(node);
+    if (!ownedIslands?.length) {
+      return [];
+    }
+
+    let ids: IslandParseRequestId[] | undefined;
+    for (const island of ownedIslands) {
+      if (!islandKinds.includes(island.islandKind)) {
+        continue;
+      }
+      ids ??= [];
+      ids.push(this.requestIsland(island, rule.targetShape));
+    }
+    return ids ?? [];
   }
 
   #providerKey(
@@ -251,6 +348,29 @@ export class IslandParsePlan {
     }
     return island;
   }
+}
+
+function visitorShapeCacheKey(shape: VisitorShape): string {
+  return JSON.stringify({
+    islandKinds: [...(shape.islandKinds ?? [])].sort(),
+    materializationRules: [...(shape.materializationRules ?? [])]
+      .map(rule => ({
+        islandKinds: [...(rule.islandKinds ?? [])].sort(),
+        nodeKind: rule.nodeKind,
+        targetShape: rule.targetShape
+      }))
+      .sort((a, b) => (
+        a.nodeKind === b.nodeKind
+          ? (
+            a.targetShape === b.targetShape
+              ? a.islandKinds.join(',').localeCompare(b.islandKinds.join(','))
+              : a.targetShape.localeCompare(b.targetShape)
+          )
+          : a.nodeKind.localeCompare(b.nodeKind)
+      )),
+    nodeKinds: [...(shape.nodeKinds ?? [])].sort(),
+    targetShape: shape.targetShape ?? 'visitor'
+  });
 }
 
 /** Reconstructs a request view from the cache key used for deduplication. */

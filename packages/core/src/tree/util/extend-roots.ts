@@ -64,6 +64,9 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.parent;
+  if (isRulesetValue(parentRules)) {
+    return parentRules;
+  }
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
@@ -516,13 +519,23 @@ function isInstructionVisibleForRoot(
   if (!instruction.extendRoot) {
     return false;
   }
+  const sameRootSurface = (
+    instruction.extendRoot === rootRules
+    || instruction.extendRoot.sourceNode === rootRules
+    || rootRules.sourceNode === instruction.extendRoot
+    || (
+      instruction.extendRoot.sourceNode !== instruction.extendRoot
+      && instruction.extendRoot.sourceNode === rootRules.sourceNode
+    )
+    || haveSameRuleChildSources(instruction.extendRoot, rootRules)
+  );
   if (instruction.fromReferenceScope === true) {
     return false;
   }
-  if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
+  if (context.extendRoots.isProtectedRoot(rootRules) && !sameRootSurface) {
     return false;
   }
-  if (instruction.extendRoot === rootRules) {
+  if (sameRootSurface) {
     return true;
   }
   if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
@@ -533,6 +546,26 @@ function isInstructionVisibleForRoot(
     : context.extendRoots.getVisibleRoots(instruction.extendRoot);
   return visibleRoots.has(rootRules);
 }
+
+function haveSameRuleChildSources(left: Rules, right: Rules): boolean {
+  if (left.rules.length !== right.rules.length || left.rules.length === 0) {
+    return false;
+  }
+  for (let i = 0; i < left.rules.length; i++) {
+    const leftChild = left.rules[i]!;
+    const rightChild = right.rules[i]!;
+    if (
+      leftChild !== rightChild
+      && leftChild.sourceNode !== rightChild
+      && rightChild.sourceNode !== leftChild
+      && leftChild.sourceNode !== rightChild.sourceNode
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 
 export function processExtends(context: Context): void {
   try {
@@ -572,7 +605,7 @@ export function processExtends(context: Context): void {
         fromReferenceScope: fromReferenceScope === true
       };
       if (!partial && isNode(target, N.SelectorList)) {
-        return target.selectors.map((item) => {
+        return target.value.map((item) => {
           item.keySetLibrary ??= context.selectorBits;
           return {
             ...base,
@@ -586,7 +619,6 @@ export function processExtends(context: Context): void {
         target
       }];
     });
-
     if (!instructions.length) {
       return;
     }
@@ -748,7 +780,7 @@ export function processExtends(context: Context): void {
           // concerns separate lets the reference-mode compose filter
           // distinguish "original, untouched" from "added by extend".
           if (selector instanceof SelectorList) {
-            for (const item of selector.selectors) {
+            for (const item of selector.value) {
               item.addFlag(F_VISIBLE);
             }
           } else {
@@ -931,13 +963,13 @@ export function processExtends(context: Context): void {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
             if (applyInput instanceof SelectorList) {
-              for (const item of applyInput.selectors) {
+              for (const item of applyInput.value) {
                 previousValues.add(item.valueOf());
               }
             } else {
               previousValues.add(applyInput.valueOf());
             }
-            for (const item of newSelector.selectors) {
+            for (const item of newSelector.value) {
               if (!previousValues.has(item.valueOf())) {
                 item.addFlag(F_EXTENDED);
               }

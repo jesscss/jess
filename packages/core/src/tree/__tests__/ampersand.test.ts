@@ -41,30 +41,30 @@ describe('Ampersand', () => {
         el('.one'),
         el('.two')
       ]),
-      rules: rules([
+      rules: [
         decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
         ruleset({
           selector: compound(selectors),
-          rules: rules([
+          rules: [
             decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
-          ])
+          ]
         })
-      ])
+      ]
     })
   ]);
 
   let wrapAmpList = (selectors: Selector[]) => rules([
     ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
         ruleset({
           selector: sellist(selectors),
-          rules: rules([
+          rules: [
             decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
-          ])
+          ]
         })
-      ])
+      ]
     })
   ]);
 
@@ -131,7 +131,7 @@ describe('Ampersand', () => {
   it('resolves framed ampersands without touching render state', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     const node = amp('-bar');
@@ -147,7 +147,7 @@ describe('Ampersand', () => {
   it('resolves appended framed ampersands without dead selector string snapshots', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     frame.selector.toTrimmedString = () => {
@@ -163,7 +163,7 @@ describe('Ampersand', () => {
   it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     const sourceSelector = frame.selector;
@@ -199,7 +199,7 @@ describe('Ampersand', () => {
   it('derives basic selector merge templates without public string transport', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     const originalToTrimmedString = BasicSelector.prototype.toTrimmedString;
@@ -224,11 +224,11 @@ describe('Ampersand', () => {
     ]);
     const frame = ruleset({
       selector: parentSelector,
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
-    const originalMap = parentSelector.selectors.map;
-    Object.defineProperty(parentSelector.selectors, 'map', {
+    const originalMap = parentSelector.value.map;
+    Object.defineProperty(parentSelector.value, 'map', {
       configurable: true,
       value: () => {
         throw new Error('Ampersand selector-list append should not map source selectors');
@@ -247,7 +247,7 @@ describe('Ampersand', () => {
         .two
       `);
     } finally {
-      Object.defineProperty(parentSelector.selectors, 'map', {
+      Object.defineProperty(parentSelector.value, 'map', {
         configurable: true,
         writable: true,
         value: originalMap
@@ -258,7 +258,7 @@ describe('Ampersand', () => {
   it('derives appended framed complex selectors without reparenting source selector children', async () => {
     const frame = ruleset({
       selector: sel([el('.foo'), co(' '), el('.bar')]),
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     const sourceSelector = frame.selector;
@@ -285,14 +285,14 @@ describe('Ampersand', () => {
     const node = rules([
       ruleset({
         selector: parentSelector,
-        rules: rules([
+        rules: [
           ruleset({
             selector: nestedSelector,
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -317,23 +317,23 @@ describe('Ampersand', () => {
     const node = rules([
       ruleset({
         selector: parentSelector,
-        rules: rules([
+        rules: [
           ruleset({
             selector: nestedSelector,
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.theme'),
-        rules: rules([
+        rules: [
           extend({
             target: el('.button-primary'),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       })
     ]);
 
@@ -365,7 +365,7 @@ describe('Ampersand', () => {
     try {
       const frame = ruleset({
         selector: sel([el('.foo')]),
-        rules: rules([])
+        rules: []
       });
       context.rulesetFrames.push(frame);
       const node = amp();
@@ -530,12 +530,12 @@ describe('Ampersand', () => {
           sel([el('banana')]),
           sel([el('pear')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sel([amp('.fruit-quoted-&')]),
-            rules: rules([decl({ name: 'content', value: any('"Quoted"') })])
+            rules: [decl({ name: 'content', value: any('"Quoted"') })]
           })
-        ])
+        ]
       })
     ]);
     context = new Context({ collapseNesting: true });
@@ -556,13 +556,13 @@ describe('Ampersand', () => {
     const sourceChildren = [...sourceSelector.value];
     const frame = ruleset({
       selector: sourceSelector,
-      rules: rules([])
+      rules: []
     });
     context.rulesetFrames.push(frame);
     let publicStringCalls = 0;
-    const originals = new Array<(typeof sourceSelector.selectors)[number]['toTrimmedString']>(sourceSelector.selectors.length);
-    for (let index = 0; index < sourceSelector.selectors.length; index++) {
-      const selector = sourceSelector.selectors[index]!;
+    const originals = new Array<(typeof sourceSelector.value)[number]['toTrimmedString']>(sourceSelector.value.length);
+    for (let index = 0; index < sourceSelector.value.length; index++) {
+      const selector = sourceSelector.value[index]!;
       originals[index] = selector.toTrimmedString;
       selector.toTrimmedString = function countPublicStringTransport(
         this: typeof selector,
@@ -574,8 +574,8 @@ describe('Ampersand', () => {
     }
 
     const resolved = await amp('&-theme').resolve(context);
-    for (let index = 0; index < sourceSelector.selectors.length; index++) {
-      sourceSelector.selectors[index]!.toTrimmedString = originals[index]!;
+    for (let index = 0; index < sourceSelector.value.length; index++) {
+      sourceSelector.value[index]!.toTrimmedString = originals[index]!;
     }
 
     expect(resolved).toBeInstanceOf(Selector);
@@ -606,12 +606,12 @@ describe('Ampersand', () => {
           sel([el('.one')]),
           sel([el('.two')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sel([amp('.fruit-&')]),
-            rules: rules([decl({ name: 'color', value: any('red') })])
+            rules: [decl({ name: 'color', value: any('red') })]
           })
-        ])
+        ]
       })
     ]);
     context = new Context({ collapseNesting: true });
@@ -658,12 +658,12 @@ describe('Ampersand', () => {
     const node = rules([
       ruleset({
         selector: sel([el('*'), co(' '), el('b')]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), attr({ name: 'e' })]),
-            rules: rules([decl({ name: 'f', value: any('g') })])
+            rules: [decl({ name: 'f', value: any('g') })]
           })
-        ])
+        ]
       })
     ]);
     context = new Context({ collapseNesting: true });
@@ -682,15 +682,15 @@ describe('Ampersand', () => {
             value: any('foo')
           })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
           ruleset({
             selector: sel([amp('-1')]),
-            rules: rules([
+            rules: [
               decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
     await expect(async () => await node.eval(context)).rejects.toThrow('Cannot append "-1" to this type of selector');

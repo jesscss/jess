@@ -29,12 +29,12 @@ import {
  * $each(list, iterate);
  */
 export async function eachImplementation(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const mixinRules = mixin instanceof Rules ? mixin : mixin.rules;
+    const mixinRules = mixin.rules;
     let keys: [string, string, string] = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
       const { params } = mixin;
       if (params) {
-        let paramList = params.items;
+        let paramList = params.value;
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();

@@ -39,11 +39,11 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
-  if (!hasExplicitAlpha || !rawArgs?.items?.length) {
+  if (!hasExplicitAlpha || !rawArgs?.value?.length) {
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectRawDimensions(rawArgs.items, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);

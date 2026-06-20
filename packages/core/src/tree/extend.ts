@@ -150,7 +150,11 @@ export class Extend extends Node<ExtendValue> {
     // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
     // Don't convert non-ampersand selectors to ampersand - they should be used as-is
     // Get current extend root from registry stack
-    const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    let extendRoot = context.extendRoots.getCurrentExtendRoot();
+    const placementRoot = currentFrame?.parent;
+    if (placementRoot?.type === 'Rules') {
+      extendRoot = placementRoot as Rules;
+    }
     if (!extendRoot) {
       return undefined;
     }
@@ -327,7 +331,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node;
       const parts: ComplexSelectorComponent[] = [];
-      for (const part of complex.components) {
+      for (const part of complex.value) {
         if (isNode(part, N.Ampersand)) {
           const amp = part;
           if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -339,7 +343,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.selectors.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
@@ -355,7 +359,7 @@ function materializeImplicitAmpersands(
 
     if (isNode(node, N.SelectorList)) {
       return attachSelectorBitLibrary(
-        SelectorList.create(node.selectors.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
         library
       );
     }
@@ -383,14 +387,14 @@ function hasMaterializableImplicitAmpersand(
     }
 
     if (isNode(node, N.ComplexSelector)) {
-      return node.components.some(part => (
+      return node.value.some(part => (
         !isNode(part, N.Combinator)
         && visit(part)
       ));
     }
 
     if (isNode(node, N.SelectorList)) {
-      return node.selectors.some(item => visit(item as Selector));
+      return node.value.some(item => visit(item as Selector));
     }
 
     return false;

@@ -91,12 +91,12 @@ describe('Mixin Recursion Detection', () => {
             '>',
             num(0)
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.item'),
-              rules: rules([
+              rules: [
                 decl({ name: 'width', value: ref({ key: 'i' }, { type: 'variable' }) })
-              ])
+              ]
             }),
             call({
               name: ref({ key: '.generate' }, { type: 'mixin' }),
@@ -108,18 +108,18 @@ describe('Mixin Recursion Detection', () => {
                 ])
               ])
             })
-          ])
+          ]
         });
         const root = rules([
           recursiveMixin,
           ruleset({
             selector: el('.out'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.generate' }, { type: 'mixin' }),
                 args: list([num(8)])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -146,22 +146,22 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([decl({ name: 'color', value: any('red') })])
+            rules: [decl({ name: 'color', value: any('red') })]
           })
-        ])
+        ]
       });
       const outputRuleset = ruleset({
         selector: el('.output'),
-        rules: rules([
+        rules: [
           call({
             name: ref({
               key: compound([el('.foo'), el('.bar')])
             }, { type: 'mixin-ruleset' })
           })
-        ])
+        ]
       });
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
@@ -185,17 +185,17 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: compound([el('.foo'), el('.bar')]),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       });
       const outputRuleset = ruleset({
         selector: el('.output'),
-        rules: rules([
+        rules: [
           call({
             name: ref({
               key: compound([el('.foo'), el('.bar')])
             }, { type: 'mixin-ruleset' })
           })
-        ])
+        ]
       });
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
@@ -221,22 +221,22 @@ describe('Mixin Recursion Detection', () => {
       // }
       const containerRuleset = ruleset({
         selector: el('.container'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.foo'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: el('.bar'),
-                rules: rules([decl({ name: 'color', value: any('blue') })])
+                rules: [decl({ name: 'color', value: any('blue') })]
               })
-            ])
+            ]
           }),
           call({
             name: ref({
               key: compound([el('.foo'), el('.bar')])
             }, { type: 'mixin-ruleset' })
           })
-        ])
+        ]
       });
       const root = rules([containerRuleset]);
       context.root = root;
@@ -262,22 +262,22 @@ describe('Mixin Recursion Detection', () => {
       // }
       const containerRuleset = ruleset({
         selector: el('.container'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.foo'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: el('.bar'),
-                rules: rules([decl({ name: 'color', value: any('blue') })])
+                rules: [decl({ name: 'color', value: any('blue') })]
               })
-            ])
+            ]
           }),
           call({
             name: ref({
               key: compound([el('.container'), el('.foo'), el('.bar')])
             }, { type: 'mixin-ruleset' })
           })
-        ])
+        ]
       });
       const root = rules([containerRuleset]);
       context.root = root;
@@ -303,17 +303,17 @@ describe('Mixin Recursion Detection', () => {
       // .container.foo();
       const containerRuleset = ruleset({
         selector: el('.container'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.foo'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: el('.bar'),
-                rules: rules([decl({ name: 'color', value: any('blue') })])
+                rules: [decl({ name: 'color', value: any('blue') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
       const outputRuleset = call({
         name: ref({
@@ -344,19 +344,19 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({
                   key: ['.foo', '.bar']
                 }, { type: 'mixin-ruleset' })
               }),
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([fooRuleset]);
@@ -374,15 +374,15 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.foo' }, { type: 'mixin-ruleset' }) }),
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([fooRuleset]);
@@ -397,9 +397,9 @@ describe('Mixin Recursion Detection', () => {
       // }
       const clearfixRuleset = ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const root = rules([clearfixRuleset]);
@@ -423,28 +423,28 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset1 = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.foo.bar' }, { type: 'mixin-ruleset' }) }),
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const fooRuleset2 = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.foo.bar' }, { type: 'mixin-ruleset' }) }),
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([fooRuleset1, fooRuleset2]);
@@ -462,16 +462,16 @@ describe('Mixin Recursion Detection', () => {
       // }
       const aRuleset = ruleset({
         selector: el('.a'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.b' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const bRuleset = ruleset({
         selector: el('.b'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.a' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const root = rules([aRuleset, bRuleset]);
@@ -480,9 +480,9 @@ describe('Mixin Recursion Detection', () => {
       // When .a is called, it calls .b, which would call .a again - should fail
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.a' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const rootWithCall = rules([aRuleset, bRuleset, testRuleset]);
@@ -505,21 +505,21 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.bar'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: ['.foo', '.foo'] }, { type: 'mixin-ruleset' }) }),
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.foo'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([fooRuleset]);
@@ -546,16 +546,16 @@ describe('Mixin Recursion Detection', () => {
       // }
       const fooRuleset = ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.bar' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const barRuleset = ruleset({
         selector: el('.bar'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       });
 
       const root = rules([fooRuleset, barRuleset]);
@@ -588,31 +588,31 @@ describe('Mixin Recursion Detection', () => {
       // The first .clearfix ruleset is the mixin definition that can be called
       const clearfixMixin = ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           new Comment('// .clearfix', { lineComment: true })
-        ])
+        ]
       });
 
       // These rulesets call .clearfix() - they should find the first one, not themselves
       const clearfixRuleset1 = ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const clearfixRuleset2 = ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const clearfixRuleset3 = ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.clearfix' }, { type: 'mixin-ruleset' }) })
-        ])
+        ]
       });
 
       const root = rules([clearfixMixin, clearfixRuleset1, clearfixRuleset2, clearfixRuleset3]);

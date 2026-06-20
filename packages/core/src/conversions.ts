@@ -253,11 +253,11 @@ export const splitSequence = (): PreprocessParams => {
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
-    for (let i = 0; i < sequence.items.length; i++) {
-      const item = sequence.items[i]!;
+    for (let i = 0; i < sequence.value.length; i++) {
+      const item = sequence.value[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === sequence.items.length - 1 && item instanceof Operation) {
+      if (i === sequence.value.length - 1 && item instanceof Operation) {
         const [left, , right] = item.value;
         // Add the left operand
         splitArgs.push(left);

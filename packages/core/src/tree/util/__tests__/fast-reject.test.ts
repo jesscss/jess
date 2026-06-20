@@ -123,7 +123,7 @@ describe('Fast-reject in selectorMatch', () => {
   test('evalContext-aware matcher can drive selector compare consumers when context is provided', () => {
     const parent = ruleset({
       selector: el('.alpha'),
-      rules: rules([])
+      rules: []
     });
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
@@ -164,7 +164,7 @@ describe('Fast-reject in selectorMatch', () => {
     const contextB = new Context();
     const parent = ruleset({
       selector: el('.alpha'),
-      rules: rules([])
+      rules: []
     });
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;

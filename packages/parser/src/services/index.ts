@@ -7,6 +7,13 @@ export {
 export { IslandParserRegistry, providerKey } from './registry.js';
 export { SemanticIndexBuilder } from './semantic-index.js';
 export {
+  VisitorMethodTableCache,
+  deriveVisitorMethodTable,
+  visitorShapeFromMethods,
+  type VisitorMethodTable,
+  type VisitorMethodTableCacheStats
+} from './visitor-shape.js';
+export {
   providerKeyString,
   requestCacheKey,
   stableConfigKey

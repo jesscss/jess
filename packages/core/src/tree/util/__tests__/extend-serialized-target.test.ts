@@ -23,30 +23,30 @@ describe('extend serialized target repro', () => {
           compound([el('.replace'), el('.replace')]),
           sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+            rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: rules([
+        rules: [
           extend({
             target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.effected'),
-        rules: rules([
+        rules: [
           extend({
             target: el('.c'),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       })
     ]);
 

@@ -28,13 +28,13 @@ whether that payload is one child node, one token-like value, or one homogeneous
 list of children, the default shape should be `.value`. Alternate child names
 such as `left`/`right`, `name`/`value`, `selector`/`rules`, or
 `guard`/`body` are justified when the node has multiple distinct roles.
-Current names such as `List.items`, `Sequence.items`,
+Legacy names such as `List.items`, `Sequence.items`,
 `CompoundSelector.components`, and `Declaration.valueNode` should be treated as
-existing compatibility facts and migration candidates, not as names to preserve
-by default. Scanner-first work should not invent more arbitrary list-field
-names, and the implementation plan should include a deliberate audit of where
-existing single-payload node fields can collapse back to `.value` without
-breaking user-visible behavior.
+shape debt and migration candidates, not as names to preserve by default.
+Scanner-first work should not invent more arbitrary list-field names, and the
+implementation plan should include a deliberate audit of where existing
+single-payload node fields can collapse back to `.value` without breaking
+user-visible behavior.
 
 The best near-term shape is staged:
 
@@ -67,7 +67,7 @@ the end of a long pass to mark completed work.
 - [ ] Slice 7: CSS and Less island provider entrypoints
 - [ ] Slice 8: CSS and Less e2e compiler/eval prototype
 - [ ] Slice 9: plugin and visitor integration
-- [ ] Slice 9b: SCSS and Jess island provider entrypoints after CSS/Less e2e
+- [x] Slice 9b: SCSS and Jess island provider entrypoints after CSS/Less e2e
 - [ ] Slice 10: language-service consumer
 - [ ] Slice 11: compiler opt-in experiment
 
@@ -267,6 +267,74 @@ scanner-first replacement should evaluate whether that payload can become
 `.value` as part of an intentional AST cleanup. Serializer updates for today's
 field names are only a way to classify current behavior; they should not
 freeze those names into the next parser architecture.
+
+The first cleanup rule is concrete: single-payload collection nodes should use
+`.value` as their storage and traversal surface. Old names such as `.items`,
+`.components`, and `.selectors` should be migrated at callsites, not preserved
+as compatibility aliases. `Rules` is the exception because `.rules` is the
+semantic body contract for rule containers, not an old list alias.
+
+`Rules` needs a separate design decision. Today `Ruleset`, `AtRule`, and
+`Mixin` each own a `rules: Rules` node, so the child body is a node wrapper
+whose own payload is another array. That shape is suspicious for scanner-first
+and runtime work because it adds one more object and one more parent boundary
+around a block body. The alternative to investigate is making `Rules` a base
+class or shared superclass for rule-container behavior. In that model,
+`Ruleset`, `AtRule`, and `Mixin` can inherit rules-container behavior and own
+`rules: Node[]` directly as their body array, instead of owning `rules: Rules`.
+That keeps `.rules` as the meaningful semantic body field on multi-role nodes,
+but removes the nested wrapper node.
+
+`Rules` should also be understood as a transparent body surface, not as
+"whatever prints braces." A stylesheet-root `Rules` serializes as a document.
+A plain `Rules` produced by eval, a detached ruleset call, or a transparent
+body/grouping block should serialize its child flow directly when it appears
+inside another rules array. Braces belong to the enclosing block container
+serialization context (`Ruleset`, block-bearing at-rule, or a future explicit
+braced grouping node), not to every `Rules` instance by default. That keeps
+plain runtime `Rules` useful as an output surface without reintroducing a
+wrapper whose only job is to print `{}`.
+
+In that model:
+
+- `Ruleset.rules` is a `Node[]` body array inherited from the `Rules` base
+  behavior, while selector and guard remain separate role fields.
+  `AtRuleStatement` owns statement-form at-rules such as `@charset` and
+  `@import`; block-bearing `AtRule` inherits from `Rules` and owns
+  `rules: Node[]`.
+- `Mixin.rules` is a `Node[]` body array, while name/params/guard remain
+  separate role fields.
+- `If`, `For`, and `While` inherit from `Rules` for their active body arrays.
+  `If.rules` is the then-body array; `If.else` is an optional alternate
+  execution surface (`If` for else-if chains, plain `Rules` for final else).
+  There should be no separate `IfBranch`/branch-wrapper AST node.
+- Root stylesheets may still need a concrete `Rules` or `Stylesheet` node, but
+  nested block bodies do not automatically need a second `Rules` node wrapper.
+
+This should be investigated as an object-reduction and API-simplification
+slice, not mixed into parser materialization casually. The migration must prove
+that scope frames, lookup, extend bubbling, import/reference boundaries, render
+ordering, and parent/source ownership still have a clear owner when the nested
+`Rules` wrapper disappears.
+
+Transparent Less/Jess bodies should be named and modeled by their semantics,
+not by accidental selector syntax. Less source such as:
+
+```less
+.a {
+  & {
+    color: blue;
+  }
+}
+```
+
+should be normalized to a transparent body/scope concept for the nested block,
+not treated as a meaningful `&` selector wrapper. At root, `& {}` is not a
+valid ampersand selector context and should not be made valid by synthesizing
+a selector. Conditional transparent bodies should be represented by control
+nodes such as `$if` or `$when`; unconditional grouping can use a plain `Rules`
+output surface or a dedicated transparent-block node only if the runtime needs
+an explicit scope boundary.
 
 ### 4. Error tolerance must not mean silent semantic repair
 
@@ -1411,9 +1479,9 @@ Goal: make CSS/Less/SCSS/Jess classification data-driven and DRY.
   tests.
 - [x] Move `lessProfile` to `@jesscss/less-parser` with Less structural service
   tests.
-- [ ] Add `scssProfile` in `@jesscss/scss-parser` or the SCSS/Jess parser
+- [x] Add `scssProfile` in `@jesscss/scss-parser` or the SCSS/Jess parser
   package when SCSS parser alpha shape is ready.
-- [ ] Add final Jess-native profile only after SCSS alpha establishes the
+- [x] Add final Jess-native profile only after SCSS alpha establishes the
   base language shape.
 - [x] Test parser substrate profile extensibility with fixture profiles rather
   than exported CSS/Less/SCSS/Jess built-ins.
@@ -1561,7 +1629,7 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 - [x] Verification: `pnpm --filter @jesscss/css-parser build`.
 - [x] Verification: `pnpm --filter @jesscss/less-parser build`.
 - [x] Verification: explicit finite CSS parser unit subset passes.
-- [ ] Verification: existing Less parser tests pass.
+- [x] Verification: existing Less parser tests pass.
 - [x] Verification: `pnpm run verify:package-exports`.
 
 ### Slice 8: CSS And Less E2E Compiler/Eval Prototype
@@ -1607,6 +1675,11 @@ its claims.
   (`items`, `components`, `valueNode`, and similar names) and decide which can
   collapse to `.value` before scanner-first shapes are treated as replacement
   architecture.
+- [x] Prototype a `Rules` wrapper reduction design: determine whether nested
+  `Ruleset`/`AtRule`/`Mixin` can inherit rules-container behavior so their
+  `.rules` field is a `Node[]` body array instead of a nested `Rules` node,
+  while preserving scope frames, lookup, extend, import/reference boundaries,
+  render ordering, and parent/source ownership.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   selected-island parsing, fallback full-tree parsing, or the existing parser
   path.
@@ -1645,53 +1718,42 @@ its claims.
   CSS parser gates are documented separately from scanner-first work.
 - [x] Verification: expanded Less parser unit and fixture-backed subset passes,
   including the Less at-rule fixture and Less parser corpus tests.
-- [ ] Verification: full Less parser package tests pass once
+- [x] Verification: full Less parser package tests pass once
   `test/ast-serialize.test.ts` serializer-baseline drift is classified.
 
-Current broad-parser gate snapshot, 2026-06-19:
+Current broad-parser gate snapshot, 2026-06-20:
 
-- The explicit finite CSS parser unit subset passed with:
-  `pnpm --filter @jesscss/css-parser test -- --run test/strings.test.ts
-  test/content-assist.test.ts test/nested-pseudo.test.ts
-  test/debug-errors.test.ts test/structural.test.ts test/container.test.ts
-  test/css-files.test.ts test/island-providers.test.ts`. Earlier
-  `test/container.test.ts` failures were stale serializer expectations for
-  `QueryCondition.childKeys = ['items']`, not scanner-first parser behavior.
-  The broad `pnpm --filter @jesscss/css-parser test -- --run` command also
-  includes `test/ast-serialize.test.ts`, the `test/perf.test.ts` benchmark, and
-  the broader `test/less-output.test.ts` Less CSS-output corpus gate. A focused
-  `test/ast-serialize.test.ts` run produced no test results within the agent's
-  30-second command window and was stopped for separate investigation, so the
-  documented green CSS gate here is the explicit file list above.
-- Focused Less parser classification removed stale serializer expectations for
-  current child-field output such as `Declaration.valueNode`, list `items`,
-  `CompoundSelector.components`, `Sequence.items`, `Condition.left/right`, and
-  mixin-call `Reference` names. This is compatibility classification only; it
-  is not an endorsement of arbitrary `.items`/`.components`/`.valueNode`
-  naming for nodes whose payload could simply be `.value`.
-  A bounded behavior fix restored parsed `default()` guard `hasDefault`
-  detection by walking canonical node children instead of legacy `data`
-  shapes, sequence trivia now preserves comment-only adjacency without adding
-  synthetic whitespace, and Less parser tests now resolve the shared
-  `@less/test-data` corpus from isolated worktrees. The expanded Less parser
-  subset passed with:
-  `pnpm --filter @jesscss/less-parser test -- --run
-  test/island-providers.test.ts test/at-rules.test.ts test/declaration.test.ts
-  test/expressions.test.ts test/selectors.test.ts test/mixins.test.ts
-  test/guards.test.ts test/functions.test.ts test/math-value.test.ts
-  test/values.test.ts test/variables.test.ts test/stylesheet.test.ts`,
-  reporting 182 passed tests across 12 files. The broader Less parser corpus
-  command `pnpm --filter @jesscss/less-parser test -- --run
-  test/error-parsing.test.ts test/less-unit-tests.test.ts` also passed,
-  reporting 92 passed tests.
-- `pnpm --filter @jesscss/less-parser test -- --run` now reports
-  368 passed and 55 failed tests across 27 files. The remaining failures are
-  all in `test/ast-serialize.test.ts`; no other Less parser test file failed
-  in that broad package run.
-- Focused scanner-first gates remain green: `@jesscss/parser` tests,
-  CSS/Less island-provider tests, `@jesscss/plugin-less` structural activation
-  test, `jess` scanner-first e2e tests, package builds, and package export
-  verification.
+- `pnpm --filter @jesscss/parser test` passes: 8 files, 112 tests, including source/line-map,
+  scanner recovery, no built-in language profile exports, semantic index,
+  services, structural parsing, and checked-in plus upstream Less test-data
+  corpus gates.
+- `pnpm --filter @jesscss/css-parser test` passes: 11 files, 114 tests,
+  including island-provider materialization boundaries and the CSS parser
+  benchmark fixture.
+- `pnpm --filter @jesscss/less-parser test` passes: 27 files, 423 tests,
+  including the Less fixture-backed parser corpus and the classified
+  serializer-baseline updates.
+- `pnpm --filter @jesscss/jess-parser test` passes: 5 files, 161 tests. The
+  test tree validator now skips metadata/root pointers such as `_sourceRoot`
+  while still checking owned child parentage.
+- `pnpm --filter @jesscss/core build`, focused core
+  `control`/`ruleset`/`node-render-buffer` tests, `@jesscss/fns build`,
+  `@jesscss/fns test`, `@jesscss/css-parser build`, `@jesscss/less-parser
+  build`, `@jesscss/scss-parser build`, `@jesscss/plugin-less build`,
+  `@jesscss/plugin-scss build`, and `@jesscss/jess-parser build` pass.
+  `defineFunction` now emits declarations through a named `DefinedFunction`
+  return type so TypeScript 7 RC declaration output does not erase the richer
+  positional/record call surface.
+- `pnpm --filter @jesscss/scss-parser test` passes: 5 files, 210 tests. This
+  verifies SCSS parser drift after the `Rules` inheritance, `AtRuleStatement`,
+  `.value`, and control-node shape changes, plus package-owned SCSS
+  selector/value/control island providers with selected-island materialization
+  counters.
+- `pnpm --filter @jesscss/plugin-scss test` passes: 2 files, 4 tests,
+  including plugin-owned structural activation and island-plan wiring.
+- `pnpm vitest run packages/core/src/__tests__/jess-error.test.ts
+  packages/jess/test/scanner-first-e2e.test.ts` passes, including the
+  structural-fed prototype path after the `Ruleset.rules: Node[]` migration.
 
 ### Slice 9b: SCSS And Jess Island Provider Entrypoints
 
@@ -1702,16 +1764,16 @@ This slice is intentionally downstream of Slice 8. Do not touch SCSS/Jess
 parser packages for scanner-first provider work until the CSS/Less e2e
 prototype has successful compile/eval/render evidence.
 
-- [ ] Add SCSS selector/value/control island providers only for constructs with
+- [x] Add SCSS selector/value/control island providers only for constructs with
   tests.
-- [ ] Add Jess expression/control/module-at-rule island providers only for
+- [x] Add Jess expression/control/module-at-rule island providers only for
   existing smoke coverage.
-- [ ] Do not introduce a broad `.jess` syntax corpus in this slice.
-- [ ] Add materialization-boundary tests for each covered promoted shape.
-- [ ] Performance guard: provider entrypoints do not silently parse sibling
+- [x] Do not introduce a broad `.jess` syntax corpus in this slice.
+- [x] Add materialization-boundary tests for each covered promoted shape.
+- [x] Performance guard: provider entrypoints do not silently parse sibling
   islands.
-- [ ] Verification: existing SCSS/Jess parser tests pass.
-- [ ] Verification: `pnpm run verify:package-exports`.
+- [x] Verification: existing SCSS/Jess parser tests pass.
+- [x] Verification: `pnpm run verify:package-exports`.
 
 ### Slice 9: Plugin And Visitor Integration
 
@@ -1723,11 +1785,11 @@ visitor APIs.
 - [x] Keep `safeParse(filePath, source)` as the default compiler entrypoint.
 - [x] Let `@jesscss/plugin-less` own `.less` activation while reusing
   `@jesscss/less-parser` profile and island providers.
-- [ ] Let `@jesscss/plugin-scss` own activation while reusing package-owned
+- [x] Let `@jesscss/plugin-scss` own activation while reusing package-owned
   SCSS profile and covered SCSS parse services.
-- [ ] Map Less-compatible visitor methods to traversal-driven
+- [x] Map Less-compatible visitor methods to traversal-driven
   Less-adapter-shaped island parse requests.
-- [ ] Ensure Less-compat visitors receive adapter-shaped nodes as traversal
+- [x] Ensure Less-compat visitors receive adapter-shaped nodes as traversal
   reaches them.
 - [ ] Ensure structural-only consumers use `StructuralDocument`, not
   `Node.accept`.
@@ -1736,20 +1798,27 @@ visitor APIs.
 - [x] Add JSDoc for plugin activation helpers and why `safeParse` remains the
   default compiler entrypoint.
 - [x] Test that plugins implementing only `safeParse` continue to work.
-- [ ] Test generic, typed, replacing, selector, declaration/value, at-rule, and
+- [x] Add parser-service visitor method-table analysis that derives structural
+  node/island request shapes from registered typed or generic visitor methods
+  without executing providers.
+- [x] Cache visitor method tables and report cache hits/misses for repeated
+  visitor planning.
+- [x] Test generic, typed, replacing, selector, declaration/value, at-rule, and
   Less-compatible visitors.
-- [ ] Cache visitor method tables and avoid allocating fresh request arrays on
+- [x] Cache visitor method tables and avoid allocating fresh request arrays on
   repeated traversal.
-- [ ] Performance guard: visitor tests report traversal requests, materialized
+- [x] Performance guard: visitor tests report traversal requests, materialized
   node count, promoted island count, adapter-node requests, replacements, and
   fallback full-tree count.
-- [ ] Performance guard: visitor tests report method-table cache hits and
+- [x] Performance guard: visitor tests report method-table cache hits and
   traversal request-array allocation counts.
-- [ ] Verification: existing plugin tests pass.
+- [x] Verification: existing plugin tests pass.
 - [x] Verification: `pnpm --filter @jesscss/plugin-less test --
   test/structural-activation.test.ts`.
 - [x] Verification: `pnpm --filter @jesscss/plugin-less build`.
-- [ ] Verification: `pnpm run verify:package-exports`.
+- [x] Verification: `pnpm --filter @jesscss/plugin-scss test`.
+- [x] Verification: `pnpm --filter @jesscss/plugin-scss build`.
+- [x] Verification: `pnpm run verify:package-exports`.
 
 ### Slice 10: Language-Service Consumer
 

@@ -9,6 +9,10 @@ import {
   providerKey,
   stableConfigKey
 } from '../index.js';
+import {
+  VisitorMethodTableCache,
+  visitorShapeFromMethods
+} from '../index.js';
 import { fixtureLessProfile, fixtureProfile } from './fixtures.js';
 
 describe('IslandParsePlan', () => {
@@ -160,9 +164,339 @@ describe('IslandParsePlan', () => {
     ]);
     expect(plan.counters).toMatchObject({
       visitorPlans: 1,
+      visitorPlanCacheMisses: 1,
       actualParses: 0,
       fallbackFullTreeMaterializations: 0
     });
+  });
+
+  test('visitor method analysis narrows typed visitors without materialization', () => {
+    const document = parseStructure(
+      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const visitor = {
+      ruleset() {},
+      declaration() {},
+      reference() {}
+    };
+    const shape = visitorShapeFromMethods(visitor, 'less-adapter-node');
+    const rules = plan.planVisitor(shape);
+
+    expect(shape).toMatchObject({
+      nodeKinds: expect.arrayContaining(['rule', 'declaration', 'variable-declaration']),
+      islandKinds: expect.arrayContaining(['selector', 'declaration-value', 'variable-reference']),
+      targetShape: 'less-adapter-node'
+    });
+    expect(rules.length).toBeGreaterThan(0);
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 1,
+      visitorPlanCacheMisses: 1,
+      actualParses: 0,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
+  test('Less-compatible visitor method names map to structural requests', () => {
+    const document = parseStructure(
+      new SourceText('@media screen { .foo { color: @brand; } }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    class LessStyleVisitor {
+      visitRuleset() {}
+      visitDeclaration() {}
+      visitVariable() {}
+      visitDirective() {}
+    }
+
+    const shape = visitorShapeFromMethods(new LessStyleVisitor(), 'less-adapter-node');
+    const rules = plan.planVisitor(shape);
+
+    expect(shape).toMatchObject({
+      nodeKinds: expect.arrayContaining(['rule', 'declaration', 'variable-declaration', 'at-rule', 'import']),
+      islandKinds: expect.arrayContaining(['selector', 'declaration-value', 'variable-reference', 'at-rule-prelude']),
+      targetShape: 'less-adapter-node'
+    });
+    expect(rules).toEqual(expect.arrayContaining([
+      {
+        nodeKind: 'rule',
+        islandKinds: ['selector'],
+        targetShape: 'less-adapter-node'
+      },
+      {
+        nodeKind: 'declaration',
+        islandKinds: ['declaration-value'],
+        targetShape: 'less-adapter-node'
+      },
+      {
+        nodeKind: 'declaration',
+        islandKinds: ['variable-reference'],
+        targetShape: 'less-adapter-node'
+      },
+      {
+        nodeKind: 'variable-declaration',
+        islandKinds: ['variable-reference'],
+        targetShape: 'less-adapter-node'
+      }
+    ]));
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 1,
+      visitorPlanCacheMisses: 1,
+      actualParses: 0,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
+  test('visitor traversal requests only materialize islands owned by the reached node', () => {
+    const document = parseStructure(
+      new SourceText('@media screen { .foo { color: @brand; } }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const shape = visitorShapeFromMethods({
+      visitRuleset() {},
+      visitDeclaration() {},
+      visitVariable() {},
+      visitDirective() {}
+    }, 'less-adapter-node');
+    const rules = plan.planVisitor(shape);
+    const mediaRule = document.root.children[0]!;
+    if (!('children' in mediaRule)) {
+      throw new Error('Expected @media to own a rule body.');
+    }
+    const rulesetNode = mediaRule.children.find(child => child.kind === 'rule')!;
+    if (!('children' in rulesetNode)) {
+      throw new Error('Expected nested ruleset to own declarations.');
+    }
+    const declarationNode = rulesetNode.children.find(child => child.kind === 'declaration')!;
+
+    expect(plan.requestVisitorNode(mediaRule, rules)).toHaveLength(1);
+    expect(plan.requestVisitorNode(rulesetNode, rules)).toHaveLength(1);
+    expect(plan.requestVisitorNode(declarationNode, rules)).toHaveLength(2);
+    expect(plan.requestVisitorNode(document.root, rules)).toEqual([]);
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 1,
+      visitorTraversalRequests: 4,
+      visitorMaterializedNodeRequests: 3,
+      visitorPromotedIslandRequests: 4,
+      visitorAdapterNodeRequests: 3,
+      actualParses: 0,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
+  test('generic visitor traversal remains demand-driven at the reached node', () => {
+    const document = parseStructure(
+      new SourceText('.foo:extend(.bar) { color: @brand; } .unused { width: 1px; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const rules = plan.planVisitor(visitorShapeFromMethods({ visit() {} }, 'less-adapter-node'));
+    const firstRule = document.root.children[0]!;
+    const secondRule = document.root.children[1]!;
+    if (!('children' in firstRule) || !('children' in secondRule)) {
+      throw new Error('Expected both rulesets to own declarations.');
+    }
+    const firstDeclaration = firstRule.children.find(child => child.kind === 'declaration')!;
+    const secondDeclaration = secondRule.children.find(child => child.kind === 'declaration')!;
+
+    const firstRuleIds = plan.requestVisitorNode(firstRule, rules);
+    const firstDeclarationIds = plan.requestVisitorNode(firstDeclaration, rules);
+
+    expect(firstRuleIds).toHaveLength(2);
+    expect(firstDeclarationIds).toHaveLength(2);
+    expect(plan.counters.requestIds).toBe(4);
+    expect(plan.counters.actualParses).toBe(0);
+
+    plan.requestVisitorNode(secondRule, rules);
+    plan.requestVisitorNode(secondDeclaration, rules);
+
+    expect(plan.counters).toMatchObject({
+      visitorTraversalRequests: 4,
+      visitorMaterializedNodeRequests: 4,
+      visitorPromotedIslandRequests: 6,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
+  test('Less legacy visitor aliases do not widen beyond their requested islands', () => {
+    const document = parseStructure(
+      new SourceText('.foo { width: 1px; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const shape = visitorShapeFromMethods({
+      visitElement() {},
+      visitRule() {}
+    }, 'less-adapter-node');
+
+    expect(shape.nodeKinds).toEqual(expect.arrayContaining(['rule', 'declaration']));
+    expect(shape.islandKinds).toEqual(expect.arrayContaining(['selector', 'declaration-value']));
+    expect(shape.islandKinds).not.toContain('at-rule-prelude');
+    expect(shape.islandKinds).not.toContain('mixin-call');
+    expect(plan.planVisitor(shape)).toEqual(expect.arrayContaining([
+      {
+        nodeKind: 'rule',
+        islandKinds: ['selector'],
+        targetShape: 'less-adapter-node'
+      },
+      {
+        nodeKind: 'declaration',
+        islandKinds: ['declaration-value'],
+        targetShape: 'less-adapter-node'
+      }
+    ]));
+    expect(plan.counters.actualParses).toBe(0);
+  });
+
+  test('replacing visitors still plan from typed methods instead of broad fallback', () => {
+    const document = parseStructure(
+      new SourceText('.foo { color: red; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const shape = visitorShapeFromMethods({
+      isReplacing: true,
+      visitDeclaration() {}
+    }, 'less-adapter-node');
+
+    expect(shape.nodeKinds).toEqual(['declaration']);
+    expect(shape.islandKinds).toEqual(['declaration-value']);
+    expect(plan.planVisitor(shape)).toEqual([
+      {
+        nodeKind: 'declaration',
+        islandKinds: ['declaration-value'],
+        targetShape: 'less-adapter-node'
+      }
+    ]);
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 1,
+      actualParses: 0,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
+  test('visitorShapeFromMethods reuses cached method-table arrays for repeated visitors', () => {
+    const visitor = {
+      visitRuleset() {},
+      visitDeclaration() {}
+    };
+
+    const first = visitorShapeFromMethods(visitor, 'less-adapter-node');
+    const second = visitorShapeFromMethods(visitor, 'less-adapter-node');
+
+    expect(second.nodeKinds).toBe(first.nodeKinds);
+    expect(second.islandKinds).toBe(first.islandKinds);
+    expect(second.materializationRules).toBe(first.materializationRules);
+  });
+
+  test('visitor planning reuses cached rule arrays for equivalent shapes', () => {
+    const document = parseStructure(
+      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const first = plan.planVisitor({
+      nodeKinds: ['declaration', 'rule'],
+      islandKinds: ['variable-reference', 'selector'],
+      targetShape: 'less-adapter-node'
+    });
+    const second = plan.planVisitor({
+      nodeKinds: ['rule', 'declaration'],
+      islandKinds: ['selector', 'variable-reference'],
+      targetShape: 'less-adapter-node'
+    });
+
+    expect(second).toBe(first);
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 2,
+      visitorPlanCacheHits: 1,
+      visitorPlanCacheMisses: 1,
+      actualParses: 0
+    });
+  });
+
+  test('visitor planning cache canonicalizes reordered materialization rules', () => {
+    const document = parseStructure(
+      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const declarationRule = {
+      nodeKind: 'declaration' as const,
+      islandKinds: ['declaration-value'] as const,
+      targetShape: 'less-adapter-node'
+    };
+    const referenceRule = {
+      nodeKind: 'declaration' as const,
+      islandKinds: ['variable-reference'] as const,
+      targetShape: 'less-adapter-node'
+    };
+    const first = plan.planVisitor({
+      materializationRules: [declarationRule, referenceRule],
+      targetShape: 'less-adapter-node'
+    });
+    const second = plan.planVisitor({
+      materializationRules: [referenceRule, declarationRule],
+      targetShape: 'less-adapter-node'
+    });
+
+    expect(second).toBe(first);
+    expect(plan.counters).toMatchObject({
+      visitorPlans: 2,
+      visitorPlanCacheHits: 1,
+      visitorPlanCacheMisses: 1,
+      actualParses: 0
+    });
+  });
+
+  test('generic visit method plans broad observation but still does not execute providers', () => {
+    const document = parseStructure(
+      new SourceText('.foo:extend(.bar) { color: @brand; }', { version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+    const shape = visitorShapeFromMethods({ visit() {} }, 'less-adapter-node');
+
+    expect(shape.islandKinds).toEqual(expect.arrayContaining([
+      'selector',
+      'declaration-value',
+      'extend-candidate',
+      'variable-reference'
+    ]));
+    expect(plan.planVisitor(shape)).not.toEqual([]);
+    expect(plan.counters.actualParses).toBe(0);
+  });
+
+  test('visitor method table cache avoids repeated method scans', () => {
+    class TypedVisitor {
+      ruleset() {}
+      declaration() {}
+    }
+    const visitor = new TypedVisitor();
+    const cache = new VisitorMethodTableCache();
+
+    const first = cache.get(visitor, 'less-adapter-node');
+    const second = cache.get(visitor, 'less-adapter-node');
+
+    expect(second).toBe(first);
+    expect(first.methodNames).toEqual(['declaration', 'ruleset']);
+    expect(cache.stats()).toEqual({ hits: 1, misses: 1 });
+  });
+
+  test('visitor method table cache separates target shapes for one visitor', () => {
+    const visitor = { declaration() {} };
+    const cache = new VisitorMethodTableCache();
+
+    const lessTable = cache.get(visitor, 'less-adapter-node');
+    const scssTable = cache.get(visitor, 'scss-adapter-node');
+
+    expect(lessTable.targetShape).toBe('less-adapter-node');
+    expect(scssTable.targetShape).toBe('scss-adapter-node');
+    expect(scssTable).not.toBe(lessTable);
+    expect(cache.stats()).toEqual({ hits: 0, misses: 2 });
   });
 
   test('structural-only requestNode queries report zero materialization', () => {

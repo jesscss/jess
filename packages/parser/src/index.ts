@@ -109,11 +109,14 @@ export {
   IslandParserRegistry,
   LanguageActivationRegistry,
   SemanticIndexBuilder,
+  VisitorMethodTableCache,
+  deriveVisitorMethodTable,
   normalizeExtension,
   providerKey,
   providerKeyString,
   requestCacheKey,
   stableConfigKey,
+  visitorShapeFromMethods,
   type IslandExecutionContext,
   type IslandExecutionRecord,
   type IslandParseCounters,
@@ -131,6 +134,8 @@ export {
   type LanguageActivation,
   type ParserConfigKey,
   type SemanticIndexCounters,
+  type VisitorMethodTable,
+  type VisitorMethodTableCacheStats,
   type VisitorMaterializationRule,
   type VisitorShape
 } from './services/index.js';

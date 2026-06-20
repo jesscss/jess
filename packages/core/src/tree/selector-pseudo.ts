@@ -96,7 +96,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         attachSelectorBitLibrary(selectorArg, this.keySetLibrary);
       }
       const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
-        && (!isNode(selectorArg, N.SelectorList) || selectorArg.selectors.length === 1);
+        && (!isNode(selectorArg, N.SelectorList) || selectorArg.value.length === 1);
       if (omitGeneratedWrapper) {
         selectorArg.toString(options);
         return w.getSince(mark);
@@ -142,9 +142,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (isNode(arg, N.SelectorList)) {
           const omitGeneratedWrapper = this.generated
             && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.selectors.length === 1;
+            && arg.value.length === 1;
           this._requiredKeySet = omitGeneratedWrapper
-            ? arg.selectors[0]!.requiredKeySet
+            ? arg.value[0]!.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;

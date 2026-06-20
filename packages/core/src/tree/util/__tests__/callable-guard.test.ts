@@ -20,7 +20,7 @@ describe('callable guard helpers', () => {
       hasDefault: false,
       candidateGuard: dynamicGuard,
       paramBindingsLength: 0,
-      rules: rules([]),
+      rules: [],
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
@@ -28,7 +28,7 @@ describe('callable guard helpers', () => {
       hasDefault: true,
       candidateGuard: dynamicGuard,
       paramBindingsLength: 0,
-      rules: rules([]),
+      rules: [],
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
@@ -38,7 +38,7 @@ describe('callable guard helpers', () => {
       hasDefault: false,
       candidateGuard: staticGuard,
       paramBindingsLength: 0,
-      rules: rules([]),
+      rules: [],
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });

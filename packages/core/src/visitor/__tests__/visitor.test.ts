@@ -22,7 +22,7 @@ describe('Visitor Pattern', () => {
       };
 
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null, rules: rules([declaration]) });
+      const rs = ruleset({ selector: null, rules: [declaration] });
 
       rs.accept(visitor);
 
@@ -69,7 +69,7 @@ describe('Visitor Pattern', () => {
 
       const decl1 = decl({ name: 'color', value: any('red') });
       const decl2 = decl({ name: 'background', value: any('blue') });
-      const rs = ruleset({ selector: null, rules: rules([decl1, decl2]) });
+      const rs = ruleset({ selector: null, rules: [decl1, decl2] });
 
       rs.accept(visitor);
 
@@ -96,7 +96,7 @@ describe('Visitor Pattern', () => {
 
       const visitor = new TestVisitor();
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null, rules: rules([declaration]) });
+      const rs = ruleset({ selector: null, rules: [declaration] });
 
       visitor.visit(rs);
 
@@ -120,7 +120,7 @@ describe('Visitor Pattern', () => {
         }
       };
 
-      const rs = ruleset({ selector: null, rules: rules([]) });
+      const rs = ruleset({ selector: null, rules: [] });
       const visitorInstance = new (class extends Visitor {
         visit(n: any) {
           return super.visit(n);

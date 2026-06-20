@@ -33,7 +33,7 @@ export function getListItems(node: Node): ListItems | undefined {
   if (!container) {
     return undefined;
   }
-  return container.items;
+  return container.value;
 }
 
 export function isBracketedList(node: Node): boolean {
@@ -64,8 +64,8 @@ export function getListSeparator(node: Node): ',' | ';' | '/' | ' ' {
 }
 
 export function coerceListItems(node: Node): ListItems {
-  if (node instanceof List && node.length === 1 && node.items[0] instanceof Sequence) {
-    return node.items[0].items;
+  if (node instanceof List && node.length === 1 && node.value[0] instanceof Sequence) {
+    return node.value[0].value;
   }
   return getListItems(node) ?? [node];
 }

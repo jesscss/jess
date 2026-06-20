@@ -110,9 +110,9 @@ describe('Mixin', () => {
   it('resolves mixin definitions without touching render state', async () => {
     const node = mixin({
       name: any('.button'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const resolved = await node.resolve(context);
@@ -135,9 +135,9 @@ describe('Mixin', () => {
       name,
       params,
       guard,
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     name.toString = () => {
       throw new Error('Mixin.writeSyntax should not stringify the name publicly');
@@ -169,7 +169,7 @@ describe('Mixin', () => {
     };
     const node = mixin({
       name: any('.button'),
-      rules: body
+      rules: body.rules
     });
 
     expect(node.toTrimmedString()).toBe('.button() {\n\n}');
@@ -180,7 +180,7 @@ describe('Mixin', () => {
     const body = rules([bodyDecl]);
     const node = mixin({
       name: any('.button'),
-      rules: body
+      rules: body.rules
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -224,17 +224,17 @@ describe('Mixin', () => {
       // Create a mixin definition: .my-mixin() { color: red; }
       const mixinDef = mixin({
         name: any('.my-mixin'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -253,22 +253,22 @@ describe('Mixin', () => {
     it('emits direct comment children for each mixin output placement', async () => {
       const mixinDef = mixin({
         name: any('.commented'),
-        rules: rules([
+        rules: [
           comment('/**/'),
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
       const firstRuleset = ruleset({
         selector: el('.first'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const secondRuleset = ruleset({
         selector: el('.second'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const root = rules([mixinDef, firstRuleset, secondRuleset]);
       context.root = root;
@@ -289,18 +289,18 @@ describe('Mixin', () => {
     it('emits repeated direct declarations for each mixin output placement', async () => {
       const mixinDef = mixin({
         name: any('.repeat'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) }),
             call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -318,27 +318,26 @@ describe('Mixin', () => {
     it('keeps static direct mixin output placements source-backed without moving source children', async () => {
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
-      const mixinBody = rules([sourceDecl]);
       const mixinDef = mixin({
         name: any('.static-direct'),
-        rules: mixinBody
+        rules: [sourceDecl]
       });
-      const callerRules = rules([]);
+      const callerRuleset = ruleset({
+        selector: el('.use'),
+        rules: []
+      });
       const root = rules([
         mixinDef,
-        ruleset({
-          selector: el('.use'),
-          rules: callerRules
-        })
+        callerRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = callerRuleset;
 
       const firstCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
-      callerRules.adopt(firstCall);
+      callerRuleset.adopt(firstCall);
       const firstResult = await firstCall.eval(context);
       const secondCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
-      callerRules.adopt(secondCall);
+      callerRuleset.adopt(secondCall);
       const secondResult = await secondCall.eval(context);
 
       expect(firstResult).toBeInstanceOf(RulesClass);
@@ -356,9 +355,9 @@ describe('Mixin', () => {
       expect(getMixinOutputSourceChild(secondResult, secondDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(firstResult, sourceDecl)).toBe(firstDecl);
       expect(getMixinOutputChildForSource(secondResult, sourceDecl)).toBe(secondDecl);
-      expect(firstDecl?.parent).toBe(mixinBody);
-      expect(secondDecl?.parent).toBe(mixinBody);
-      expect(sourceDecl.parent).toBe(mixinBody);
+      expect(firstDecl?.parent).toBe(mixinDef);
+      expect(secondDecl?.parent).toBe(mixinDef);
+      expect(sourceDecl.parent).toBe(mixinDef);
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(firstDecl?.type).toBe('Declaration');
       expect(secondDecl?.type).toBe('Declaration');
@@ -388,13 +387,13 @@ describe('Mixin', () => {
           vardecl({ name: 'accent', value: any('red') }),
           mixin({
             name: any('.commented'),
-            rules: mixinBody
+            rules: mixinBody.rules
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -413,17 +412,17 @@ describe('Mixin', () => {
       // Create a ruleset that can be used as a mixin: .my-mixin { color: red; }
       const mixinRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) }) // Use 'mixin-ruleset' to find both Mixins and Rulesets
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -458,24 +457,24 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        const callerRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           ruleset({
             selector: el('.my-mixin'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          callerRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = callerRuleset;
 
         const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
-        callerRules.adopt(mixinCall);
+        callerRuleset.adopt(mixinCall);
         const css = await renderNodeToString(root, context, { context });
 
         expect(css).toContain('color: red;');
@@ -491,21 +490,21 @@ describe('Mixin', () => {
       const sourceBody = rules([sourceDecl]);
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: sourceBody.rules
       });
-      const callerRules = rules([]);
+      const callerRuleset = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        callerRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = callerRuleset;
 
       const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
-      callerRules.adopt(mixinCall);
+      callerRuleset.adopt(mixinCall);
       const result = await mixinCall.eval(context);
 
       expect(result).toBeInstanceOf(RulesClass);
@@ -516,10 +515,10 @@ describe('Mixin', () => {
       expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceRuleset);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
-      expect(outputDecl?.parent).toBe(sourceBody);
-      expect(sourceDecl.parent).toBe(sourceBody);
+      expect(outputDecl?.parent).toBe(sourceRuleset);
+      expect(sourceDecl.parent).toBe(sourceRuleset);
       expect(sourceValue.parent).toBe(sourceDecl);
     });
 
@@ -527,9 +526,9 @@ describe('Mixin', () => {
       const sourceComment = comment('/* placement */');
       const sourceNested = ruleset({
         selector: el('.nested'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
       const sourceBody = rules([
         sourceComment,
@@ -537,38 +536,38 @@ describe('Mixin', () => {
       ]);
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: sourceBody.rules
       });
-      const callerRules = rules([]);
+      const callerRuleset = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        callerRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = callerRuleset;
 
       const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
-      callerRules.adopt(mixinCall);
+      callerRuleset.adopt(mixinCall);
       const result = await mixinCall.eval(context);
 
       expect(result).toBeInstanceOf(RulesClass);
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.value);
-      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.value);
-      expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.value);
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceRuleset.rules);
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceRuleset.rules);
+      expect(sourceRuleset.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceRuleset.rules);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.value);
       expect(result.value.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.value.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
       expect(result.value[0]).not.toBe(sourceComment);
       expect(result.value[1]).not.toBe(sourceNested);
-      expect(sourceComment.parent).toBe(sourceBody);
-      expect(sourceNested.parent).toBe(sourceBody);
+      expect(sourceComment.parent).toBe(sourceRuleset);
+      expect(sourceNested.parent).toBe(sourceRuleset);
       expect(result.value.map(child => child.parent)).toEqual([result, result]);
     });
 
@@ -579,20 +578,20 @@ describe('Mixin', () => {
         params: list([
           any('color', { role: 'property' }) // Parameter without default is Any with role: 'property' (like variable names)
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -615,28 +614,28 @@ describe('Mixin', () => {
         params: list([
           vardecl({ name: 'color', value: any('red') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin without args: .test { .my-mixin(); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with args: .test2 { .my-mixin(blue); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
@@ -660,30 +659,30 @@ describe('Mixin', () => {
         params: list([
           vardecl({ name: 'value', value: any('blue') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           mixin({
             name: any('.inner'),
             params: list([
               vardecl({ name: 'tone', value: ref({ key: 'value' }, { type: 'variable' }) }, { paramVar: true })
             ]),
-            rules: rules([
+            rules: [
               mixin({
                 name: any('.leaf'),
-                rules: rules([
+                rules: [
                   decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-                ])
+                ]
               }),
               call({ name: ref({ key: '.leaf' }, { type: 'mixin' }) })
-            ])
+            ]
           }),
           call({ name: ref({ key: '.inner' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.outer' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
@@ -710,20 +709,20 @@ describe('Mixin', () => {
             })
           }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: ref({ key: 'bg' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.btn-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.button-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, component]);
@@ -759,14 +758,14 @@ describe('Mixin', () => {
       const hoverMixin = mixin({
         name: any('.hover'),
         params: list([any('content', { role: 'property' })]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), el(':hover')]),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       // Build #table-row-variant(@background) {
@@ -777,7 +776,7 @@ describe('Mixin', () => {
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           // @hover-background: @background (local body var, not a param)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           // .hover({ background-color: @hover-background; })
@@ -790,17 +789,17 @@ describe('Mixin', () => {
               ])
             ])
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
@@ -823,26 +822,26 @@ describe('Mixin', () => {
       const hoverMixin = mixin({
         name: any('.hover'),
         params: list([any('content', { role: 'property' })]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), el(':hover')]),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           // @hover-background: @background (local body var, at outer mixin level)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           // .table-hover { .hover({ background-color: @hover-background; }); }
           ruleset({
             selector: el('.table-hover'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.hover' }, { type: 'mixin' }),
                 args: list([
@@ -851,19 +850,19 @@ describe('Mixin', () => {
                   ])
                 ])
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
@@ -880,7 +879,7 @@ describe('Mixin', () => {
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -889,17 +888,17 @@ describe('Mixin', () => {
             ])
           }),
           call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([tableRowVariantMixin, component]);
@@ -927,7 +926,10 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        const callerRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -935,16 +937,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          callerRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = callerRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        callerRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -977,7 +976,10 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        const callerRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -985,16 +987,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          callerRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = callerRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        callerRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -1009,7 +1008,7 @@ describe('Mixin', () => {
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -1019,21 +1018,21 @@ describe('Mixin', () => {
           }),
           ruleset({
             selector: el('.table-hover'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([tableRowVariantMixin, component]);
@@ -1050,7 +1049,7 @@ describe('Mixin', () => {
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -1059,17 +1058,17 @@ describe('Mixin', () => {
             ])
           }),
           call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1106,16 +1105,16 @@ describe('Mixin', () => {
           vardecl({ name: 'size', value: any('14px') }, { paramVar: true }),
           vardecl({ name: 'weight', value: any('normal') }, { paramVar: true })
         ]),
-        rules: mixinBody
+        rules: mixinBody.rules
       });
       const importedRoot = rules([importedMixinDef]);
 
       // The main file calls the mixin inside a ruleset
       const component = ruleset({
         selector: el('.component'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.responsive-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Wire the imported root into the main root via push so lookup can find the mixin.
@@ -1144,21 +1143,21 @@ describe('Mixin', () => {
           any('border', { role: 'property' }),
           vardecl({ name: 'hover-background', value: any('darken') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background-color', value: ref({ key: 'background' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) }),
           decl({ name: 'background-hover', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.btn-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.button-variant' }, { type: 'mixin' }),
             args: list([any('blue'), any('darkblue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, component]);
@@ -1181,9 +1180,9 @@ describe('Mixin', () => {
         params: list([
           any('h', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'height', value: any('1024px') })
-        ])
+        ]
       });
 
       const useHeight = mixin({
@@ -1191,14 +1190,14 @@ describe('Mixin', () => {
         params: list([
           any('h', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.useHeightInMixinCall'),
-            rules: rules([
+            rules: [
               decl({ name: 'mixin-height', value: ref({ key: 'h' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1211,9 +1210,9 @@ describe('Mixin', () => {
         }),
         ruleset({
           selector: el('.heightIsSet'),
-          rules: rules([
+          rules: [
             decl({ name: 'height', value: ref({ key: 'height' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         call({
           name: ref({ key: '.useHeightInMixinCall' }, { type: 'mixin' }),
@@ -1233,9 +1232,9 @@ describe('Mixin', () => {
     it('does not let earlier sibling declarations see later mixin output in leaky Less mode', async () => {
       const setMix = mixin({
         name: any('.mixin'),
-        rules: rules([
+        rules: [
           vardecl({ name: 'mix', value: any('#989') })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1243,10 +1242,10 @@ describe('Mixin', () => {
         vardecl({ name: 'mix', value: any('blue') }),
         ruleset({
           selector: el('.tiny-scope'),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: ref({ key: 'mix' }, { type: 'variable' }) }),
             call({ name: ref({ key: '.mixin' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1269,12 +1268,12 @@ describe('Mixin', () => {
           '=',
           any('top level')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
           comment('/* source order */'),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1283,12 +1282,12 @@ describe('Mixin', () => {
         mixinNoParam,
         ruleset({
           selector: el('#allAreUsedHere'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'parameterDefault', value: any('inside') }),
             vardecl({ name: 'anotherVariable', value: any('inside') }),
             vardecl({ name: 'subScopeOnly', value: any('inside') }),
             call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1311,34 +1310,34 @@ describe('Mixin', () => {
           '=',
           any('top level')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
-        ])
+        ]
       });
-      const mixinBody = mixinNoParam.rules;
+      const mixinBody = mixinNoParam;
 
-      const callerRules = rules([
+      const callerRuleset = ruleset({
+        selector: el('#allAreUsedHere'),
+        rules: [
         vardecl({ name: 'parameterDefault', value: any('inside') }),
         vardecl({ name: 'anotherVariable', value: any('inside') }),
         vardecl({ name: 'subScopeOnly', value: any('inside') })
-      ]);
+        ]
+      });
 
       const root = rules([
         vardecl({ name: 'parameterDefault', value: any('top level') }),
         vardecl({ name: 'anotherVariable', value: any('top level') }),
         mixinNoParam,
-        ruleset({
-          selector: el('#allAreUsedHere'),
-          rules: callerRules
-        })
+        callerRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = callerRuleset;
 
       const mixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
-      callerRules.adopt(mixinCall);
+      callerRuleset.adopt(mixinCall);
 
       const result = await mixinCall.eval(context);
 
@@ -1360,38 +1359,38 @@ describe('Mixin', () => {
         source: segment.source,
         output: segment.output,
         index: segment.index
-      }))).toEqual(mixinBody.value.map((source, index) => ({
+      }))).toEqual(mixinBody.rules.map((source, index) => ({
         kind: 'source-child',
         source,
         output: result.value[index],
         index
       })));
-      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
-      expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.rules);
+      expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.rules);
       expect(getMixinOutputPlacementChildren(result)).toEqual(result.value);
       expect(getMixinOutputChildPlacementState(result, result.value[0]!)).toEqual({
         outputChild: result.value[0],
         outputRules: result,
-        sourceChild: mixinBody.value[0],
+        sourceChild: mixinBody.rules[0],
         sourceIndex: 0
       });
       expect(getMixinOutputPlacementRecord(result)?.source).toBe(mixinBody);
       expect(getMixinOutputPlacementRecord(result)?.output).toBe(result);
       expect(getMixinOutputScopeFrame(result)).toBe(result.getScopeFrame());
-      expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(mixinBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
-      expect(mixinBody.parent).toBe(mixinNoParam);
+      expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRuleset);
+      expect(mixinBody.parent).toBe(root);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
       expect(css).toContain('sub-scope-only: inside;');
 
       const secondMixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
-      callerRules.adopt(secondMixinCall);
+      callerRuleset.adopt(secondMixinCall);
       const secondResult = await secondMixinCall.eval(context);
       expect(secondResult).toBeInstanceOf(RulesClass);
       if (!(secondResult instanceof RulesClass)) {
@@ -1401,11 +1400,11 @@ describe('Mixin', () => {
       expect(secondResult.value).not.toBe(result.value);
       expect(secondResult.options.referenceMode).toBe(false);
       expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
-      expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
-      expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
+      expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.rules);
+      expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.rules);
       expect(getMixinOutputPlacementChildren(secondResult)).toEqual(secondResult.value);
       expect(getMixinOutputScopeFrame(secondResult)).toBe(secondResult.getScopeFrame());
-      expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
+      expect(mixinBody.rules.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
       expect(secondResult.value.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
@@ -1520,18 +1519,18 @@ describe('Mixin', () => {
               '=',
               any('red')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'marker', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.guarded' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1563,16 +1562,16 @@ describe('Mixin', () => {
           mixin({
             name: any('.noop'),
             params: list([any('color', { role: 'property' })]),
-            rules: rules([])
+            rules: []
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.noop' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1604,16 +1603,16 @@ describe('Mixin', () => {
           vardecl({ name: 'borderColor', value: any('blue') }),
           mixin({
             name: any('.paint'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') }),
               decl({ name: 'border-color', value: ref({ key: 'borderColor' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.test'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1646,18 +1645,18 @@ describe('Mixin', () => {
           mixin({
             name: any('.use-color'),
             params: list([any('color', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.use-color' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1690,15 +1689,15 @@ describe('Mixin', () => {
             params: list([
               vardecl({ name: 'color', value: any('red') }, { paramVar: true })
             ]),
-            rules: rules([])
+            rules: []
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.noop' }, { type: 'mixin' })
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1719,21 +1718,21 @@ describe('Mixin', () => {
           any('color', { role: 'property' }),
           any('size', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(blue, 16px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue'), any('16px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -1757,20 +1756,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           any('b', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -1808,18 +1807,18 @@ describe('Mixin', () => {
               any('color', { role: 'property' }),
               any('size', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.args' }, { type: 'mixin' }),
                 args: list([any('red'), any('10px')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1855,18 +1854,18 @@ describe('Mixin', () => {
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.resty' }, { type: 'mixin' }),
                 args: list([any('0'), any('red'), any('10px')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1886,15 +1885,15 @@ describe('Mixin', () => {
         mixin({
           name: any('.container-default'),
           params: list([param]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.container-default' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1923,18 +1922,18 @@ describe('Mixin', () => {
           mixin({
             name: any('.container-param'),
             params: list([any('space', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-param' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1966,20 +1965,20 @@ describe('Mixin', () => {
           mixin({
             name: any('.container-param'),
             params: list([any('space', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-param' }, { type: 'mixin' }),
                 args: list([
                   vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
                 ])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2012,17 +2011,17 @@ describe('Mixin', () => {
             params: list([
               vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-default' }, { type: 'mixin' })
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2056,18 +2055,18 @@ describe('Mixin', () => {
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.resty' }, { type: 'mixin' }),
                 args: list([any('0'), seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2107,18 +2106,18 @@ describe('Mixin', () => {
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.args' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2159,22 +2158,22 @@ describe('Mixin', () => {
             vardecl({ name: 'size', value: any('16px') }, { paramVar: true }),
             rest('rest')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
             decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
             decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) }),
             decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-          ])
+          ]
         });
 
         const testRuleset = ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
               args: list([any('blue'), any('1px'), any('2px'), any('3px')])
             })
-          ])
+          ]
         });
 
         const root = rules([mixinDef, testRuleset]);
@@ -2219,11 +2218,11 @@ describe('Mixin', () => {
         // Lexical global: @base-color defined once at root, referenced inside mixin body
         const mixinDef = mixin({
           name: any('.my-mixin'),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
             decl({ name: 'border-color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
             decl({ name: 'outline-color', value: ref({ key: 'base-color' }, { type: 'variable' }) })
-          ])
+          ]
         });
 
         const root = rules([
@@ -2231,9 +2230,9 @@ describe('Mixin', () => {
           mixinDef,
           ruleset({
             selector: el('.test'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2301,22 +2300,22 @@ describe('Mixin', () => {
 
       const mixinDef = mixin({
         name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('purple') })])
+        rules: [decl({ name: 'color', value: any('purple') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         })
       ]);
       context.root = root;
@@ -2338,7 +2337,7 @@ describe('Mixin', () => {
     it('direct callable fast path: one-segment array lookup', () => {
       const mixinDef = mixin({
         name: any('.array-mixin'),
-        rules: rules([decl({ name: 'color', value: any('purple') })])
+        rules: [decl({ name: 'color', value: any('purple') })]
       });
       const root = rules([mixinDef]);
 
@@ -2349,7 +2348,7 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('.array-mixin'),
-          rules: rules([decl({ name: 'color', value: any('purple') })])
+          rules: [decl({ name: 'color', value: any('purple') })]
         })
       ]);
 
@@ -2375,17 +2374,17 @@ describe('Mixin', () => {
       try {
         const mixinDef = mixin({
           name: any('.frame-mixin'),
-          rules: rules([decl({ name: 'color', value: any('rebeccapurple') })])
+          rules: [decl({ name: 'color', value: any('rebeccapurple') })]
         });
         root = rules([
           mixinDef,
           ruleset({
             selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+            rules: [call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })]
           }),
           ruleset({
             selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+            rules: [call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })]
           })
         ]);
         context.root = root;
@@ -2411,13 +2410,13 @@ describe('Mixin', () => {
     it('ScopeFrame callable buckets: current frame hit does not prepare parent callable buckets', () => {
       const mixinDef = mixin({
         name: any('.child-frame-hit'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const childRules = rules([mixinDef]);
       const root = rules([
         mixin({
           name: any('.parent-other'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }),
         childRules
       ]);
@@ -2442,7 +2441,7 @@ describe('Mixin', () => {
       try {
         const fallbackMixin = mixin({
           name: any('.fallback-frame-hit'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const parentRules = rules([]);
         const fallbackRules = rules([fallbackMixin]);
@@ -2471,7 +2470,7 @@ describe('Mixin', () => {
       try {
         const parentMixin = mixin({
           name: any('.parent-retry-frame-hit'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         });
         const parentRules = rules([parentMixin]);
         const childRules = rules([]);
@@ -2507,13 +2506,13 @@ describe('Mixin', () => {
         const parentRules = rules([
           mixin({
             name: any('.parent-other'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         const fallbackRules = rules([
           mixin({
             name: any('.fallback-other'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         const childRules = rules([]);
@@ -2534,19 +2533,17 @@ describe('Mixin', () => {
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
+        const namespaceRules = mixin({
+          name: any('#namespace'),
+          rules: []
+        });
         const fallbackRules = rules([
           mixin({
             name: any('.other-leaf'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
+        const root = rules([namespaceRules]);
         const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
         RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
@@ -2579,18 +2576,16 @@ describe('Mixin', () => {
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
+        const namespaceRules = mixin({
+          name: any('#namespace'),
+          rules: []
+        });
         const fallbackMixin = mixin({
           name: any('.fallback-leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackRules = rules([fallbackMixin]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
+        const root = rules([namespaceRules]);
         const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
         RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
@@ -2619,18 +2614,18 @@ describe('Mixin', () => {
     it('ScopeFrame callable buckets: searchParents false stops retry frames after current candidate', () => {
       const parentMixin = mixin({
         name: any('.retry-local-only'),
-        rules: rules([decl({ name: 'color', value: any('blue') })])
+        rules: [decl({ name: 'color', value: any('blue') })]
       });
       const fallbackMixin = mixin({
         name: any('.retry-local-only'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const parentRules = rules([parentMixin]);
       const fallbackRules = rules([fallbackMixin]);
       const childRules = rules([
         ruleset({
           selector: compound([el('.retry-local-only'), el('.candidate')]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
       const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
@@ -2644,6 +2639,26 @@ describe('Mixin', () => {
         kind: 'uncovered',
         reason: 'candidate'
       });
+    });
+
+    it('ScopeFrame callable buckets: array namespace lookup honors searchParents false', () => {
+      const parentRules = rules([
+        mixin({
+          name: any('#namespace'),
+          rules: [
+            mixin({
+              name: any('.leaf'),
+              rules: [decl({ name: 'color', value: any('parent') })]
+            })
+          ]
+        })
+      ]);
+      const childRules = rules([]);
+      childRules.getScopeFrame(parentRules.getScopeFrame());
+
+      expect(childRules.findMixin(['#namespace', '.leaf'], undefined, {
+        searchParents: false
+      })).toBeUndefined();
     });
 
     it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
@@ -2696,13 +2711,13 @@ describe('Mixin', () => {
       try {
         const frameRuleset = ruleset({
           selector: el('.frame-ruleset'),
-          rules: rules([decl({ name: 'color', value: any('teal') })])
+          rules: [decl({ name: 'color', value: any('teal') })]
         });
         root = rules([
           frameRuleset,
           ruleset({
             selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })])
+            rules: [call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })]
           })
         ]);
         context.root = root;
@@ -2741,7 +2756,7 @@ describe('Mixin', () => {
         const root = rules([
           mixin({
             name: any('.other-frame-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -2777,12 +2792,12 @@ describe('Mixin', () => {
         const root = rules([
           mixin({
             name: any('#other-namespace'),
-            rules: rules([
+            rules: [
               mixin({
                 name: any('.leaf'),
-                rules: rules([decl({ name: 'color', value: any('green') })])
+                rules: [decl({ name: 'color', value: any('green') })]
               })
-            ])
+            ]
           })
         ]);
         root.getScopeFrame();
@@ -2809,7 +2824,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: el('#other-ruleset-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -2835,12 +2850,12 @@ describe('Mixin', () => {
       try {
         const leaf = mixin({
           name: any('.leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const namespace = mixin({
           name: any('#guarded-frame-namespace'),
           guard: bool(true),
-          rules: rules([leaf])
+          rules: [leaf]
         });
         const root = rules([namespace]);
         root.getScopeFrame();
@@ -2864,18 +2879,16 @@ describe('Mixin', () => {
       };
 
       try {
-        const childRules = rules([
+        const childRules = mixin({
+          name: any('#parent-namespace'),
+          rules: [
           mixin({
             name: any('#other-child-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
-        ]);
-        const root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: childRules
-          })
-        ]);
+          ]
+        });
+        const root = rules([childRules]);
         root.getScopeFrame();
         childRules.getScopeFrame();
 
@@ -2898,18 +2911,16 @@ describe('Mixin', () => {
       };
 
       try {
-        childRules = rules([
+        childRules = mixin({
+          name: any('#parent-namespace'),
+          rules: [
           mixin({
             name: any('#other-child-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
-        ]);
-        const root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: childRules
-          })
-        ]);
+          ]
+        });
+        const root = rules([childRules]);
         root.getScopeFrame();
         childRules.getScopeFrame();
 
@@ -2935,16 +2946,14 @@ describe('Mixin', () => {
         const childSurface = rules([
           mixin({
             name: any('.other-child-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        namespaceRules = rules([childSurface]);
-        const root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
-          })
-        ]);
+        namespaceRules = mixin({
+          name: any('#parent-namespace'),
+          rules: [childSurface]
+        });
+        const root = rules([namespaceRules]);
         root.getScopeFrame();
         namespaceRules.getScopeFrame();
         childSurface.getScopeFrame();
@@ -2986,13 +2995,11 @@ describe('Mixin', () => {
           importOptions: { reference: true }
         })
       ]);
-      namespaceRules = rules([referenceChild]);
-      root = rules([
-        mixin({
-          name: any('#parent-namespace'),
-          rules: namespaceRules
-        })
-      ]);
+      namespaceRules = mixin({
+        name: any('#parent-namespace'),
+        rules: [referenceChild]
+      });
+      root = rules([namespaceRules]);
 
       try {
         root.getScopeFrame();
@@ -3017,7 +3024,7 @@ describe('Mixin', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const leaf = mixin({
         name: any('.reference-leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([leaf], { referenceMode: true });
       let namespaceRules: RulesClass;
@@ -3039,13 +3046,11 @@ describe('Mixin', () => {
       };
 
       try {
-        namespaceRules = rules([referenceChild]);
-        root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
-          })
-        ]);
+        namespaceRules = mixin({
+          name: any('#parent-namespace'),
+          rules: [referenceChild]
+        });
+        root = rules([namespaceRules]);
         root.getScopeFrame();
         namespaceRules.getScopeFrame();
         referenceChild.getScopeFrame();
@@ -3068,12 +3073,12 @@ describe('Mixin', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         mixin({
           name: any('#imported'),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ], { referenceMode: true });
       let namespaceRules: RulesClass;
@@ -3096,13 +3101,11 @@ describe('Mixin', () => {
       };
 
       try {
-        namespaceRules = rules([referenceChild]);
-        root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
-          })
-        ]);
+        namespaceRules = mixin({
+          name: any('#parent-namespace'),
+          rules: [referenceChild]
+        });
+        root = rules([namespaceRules]);
         root.getScopeFrame();
         namespaceRules.getScopeFrame();
         referenceChild.getScopeFrame();
@@ -3135,20 +3138,18 @@ describe('Mixin', () => {
       try {
         const leaf = mixin({
           name: any('.leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackChildNamespace = mixin({
           name: any('#fallback-child-namespace'),
-          rules: rules([leaf])
+          rules: [leaf]
         });
         const fallbackRules = rules([fallbackChildNamespace]);
-        const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-fallback-namespace'),
-            rules: childRules
-          })
-        ]);
+        const childRules = mixin({
+          name: any('#parent-with-fallback-namespace'),
+          rules: []
+        });
+        const root = rules([childRules]);
         root.getScopeFrame();
         childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
@@ -3178,16 +3179,14 @@ describe('Mixin', () => {
         const fallbackRules = rules([
           mixin({
             name: any('#fallback-other-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-covered-fallback'),
-            rules: childRules
-          })
-        ]);
+        const childRules = mixin({
+          name: any('#parent-with-covered-fallback'),
+          rules: []
+        });
+        const root = rules([childRules]);
         root.getScopeFrame();
         childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
@@ -3207,22 +3206,20 @@ describe('Mixin', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         mixin({
           name: any('#imported'),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      const childRules = mixin({
+        name: any('#parent-with-fallback-import'),
+        rules: []
+      });
+      const root = rules([childRules]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3269,22 +3266,20 @@ describe('Mixin', () => {
       const referenceChild = rules([
         mixin({
           name: any('#imported'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      const childRules = mixin({
+        name: any('#parent-with-fallback-import'),
+        rules: []
+      });
+      const root = rules([childRules]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3330,22 +3325,20 @@ describe('Mixin', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
-        })
-      ]);
+      const childRules = mixin({
+        name: any('#parent-with-fallback-ruleset-import'),
+        rules: []
+      });
+      const root = rules([childRules]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3392,22 +3385,20 @@ describe('Mixin', () => {
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
-        })
-      ]);
+      const childRules = mixin({
+        name: any('#parent-with-fallback-ruleset-import'),
+        rules: []
+      });
+      const root = rules([childRules]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3453,30 +3444,28 @@ describe('Mixin', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const mixinLeaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('mixin') })])
+        rules: [decl({ name: 'color', value: any('mixin') })]
       });
       const rulesetLeaf = ruleset({
         selector: el('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([rulesetLeaf])
+          rules: [rulesetLeaf]
         }),
         mixin({
           name: any('#imported'),
-          rules: rules([mixinLeaf])
+          rules: [mixinLeaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-ambiguous-import'),
-          rules: childRules
-        })
-      ]);
+      const childRules = mixin({
+        name: any('#parent-with-fallback-ambiguous-import'),
+        rules: []
+      });
+      const root = rules([childRules]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3573,7 +3562,7 @@ describe('Mixin', () => {
       const coveredChild = rules([
         mixin({
           name: any('.covered-sibling'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       const referenceChild = rules([
@@ -3659,12 +3648,12 @@ describe('Mixin', () => {
       const originalFindMixin = RulesClass.prototype.findMixin;
       const importedLeaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.branch')]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -3711,12 +3700,12 @@ describe('Mixin', () => {
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.branch')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -3762,7 +3751,7 @@ describe('Mixin', () => {
       const originalFindMixin = RulesClass.prototype.findMixin;
       const importedLeaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
@@ -3770,7 +3759,7 @@ describe('Mixin', () => {
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -3820,12 +3809,12 @@ describe('Mixin', () => {
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -3877,7 +3866,7 @@ describe('Mixin', () => {
       const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
       const importedLeaf = mixin({
         name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
@@ -3885,7 +3874,7 @@ describe('Mixin', () => {
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -3928,7 +3917,7 @@ describe('Mixin', () => {
           rules([
             mixin({
               name: any('.child-frame-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -3947,12 +3936,12 @@ describe('Mixin', () => {
       const missingKey = '.parent-only-after-child-miss';
       const parentMixin = mixin({
         name: any(missingKey),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       });
       const childSurface = rules([
         mixin({
           name: any('.child-other'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       const childRules = rules([childSurface]);
@@ -4014,7 +4003,7 @@ describe('Mixin', () => {
       expect(root.directChildRuleEntries).toBeNull();
       root.getScopeFrame();
 
-      const originalValue = childRules.value;
+      const originalValue = childRules.rules;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.prepared-child-missing') {
@@ -4079,7 +4068,7 @@ describe('Mixin', () => {
       const childRules = rules([
         mixin({
           name: any('.late-child-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       root.push(childRules);
@@ -4135,7 +4124,7 @@ describe('Mixin', () => {
           child: rules([
             mixin({
               name: any('.child-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         },
@@ -4144,7 +4133,7 @@ describe('Mixin', () => {
           child: rules([
             ruleset({
               selector: el('.child-ruleset'),
-              rules: rules([decl({ name: 'color', value: any('blue') })])
+              rules: [decl({ name: 'color', value: any('blue') })]
             })
           ])
         },
@@ -4153,11 +4142,11 @@ describe('Mixin', () => {
           child: rules([
             mixin({
               name: any('.mixed-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             }),
             ruleset({
               selector: el('.mixed-ruleset'),
-              rules: rules([decl({ name: 'color', value: any('blue') })])
+              rules: [decl({ name: 'color', value: any('blue') })]
             })
           ])
         },
@@ -4219,7 +4208,7 @@ describe('Mixin', () => {
           rules([
             ruleset({
               selector: el('.ruleset-only-child'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -4255,7 +4244,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: compound([el('.ruleset-only-prefix'), el('.leaf')]),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -4288,7 +4277,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: compound([el('.compound-prefix-only'), el('.leaf')]),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -4311,20 +4300,20 @@ describe('Mixin', () => {
       const parentMixin = mixin({
         name: any('.parent-terminal-mixin'),
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
-      const childRules = rules([
+      const childRules = ruleset({
+        selector: el('.caller'),
+        rules: [
         ruleset({
           selector: el('.ruleset-only-child'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         })
-      ]);
+        ]
+      });
       const root = rules([
         parentMixin,
-        ruleset({
-          selector: el('.caller'),
-          rules: childRules
-        })
+        childRules
       ]);
       root.getScopeFrame();
       childRules.getScopeFrame();
@@ -4350,7 +4339,7 @@ describe('Mixin', () => {
           rules([
             ruleset({
               selector: el('.ruleset-only-direct-child'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -4372,7 +4361,7 @@ describe('Mixin', () => {
       root.collectDirectChildRulesEntries();
       expect(root.directChildRuleEntries).toBeNull();
 
-      const originalValue = childRules.value;
+      const originalValue = childRules.rules;
       Object.defineProperty(childRules, 'value', {
         configurable: true,
         get() {
@@ -4396,13 +4385,13 @@ describe('Mixin', () => {
       const childRules = rules([
         mixin({
           name: any('.only-mixin-child'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       const root = rules([
         ruleset({
           selector: el('.mixin-only-surface'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
 
@@ -4439,12 +4428,12 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.button'),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              rules: [decl({ name: 'color', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
 
@@ -4459,12 +4448,12 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([decl({ name: 'primary', value: any('red') })])
+              rules: [decl({ name: 'primary', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
 
@@ -4478,17 +4467,17 @@ describe('Mixin', () => {
     it('mixin namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
         name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([leaf])
+              rules: [leaf]
             })
-          ])
+          ]
         })
       ]);
       const originalFindMixin = RulesClass.prototype.findMixin;
@@ -4511,17 +4500,17 @@ describe('Mixin', () => {
     it('ruleset namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
         name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([leaf])
+              rules: [leaf]
             })
-          ])
+          ]
         })
       ]);
       const originalFindMixin = RulesClass.prototype.findMixin;
@@ -4544,12 +4533,12 @@ describe('Mixin', () => {
     it('compound-prefix ruleset lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
         name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ]);
       const originalFindMixin = RulesClass.prototype.findMixin;
@@ -4575,45 +4564,45 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('red') })])
+                  rules: [decl({ name: 'color', value: any('red') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#compound'), el('.prefix')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.inner'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('blue') })])
+                  rules: [decl({ name: 'color', value: any('blue') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         mixin({
           name: any('#mixin-ns'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('green') })])
+                  rules: [decl({ name: 'color', value: any('green') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const originalFindMixin = RulesClass.prototype.findMixin;
@@ -4644,7 +4633,7 @@ describe('Mixin', () => {
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
         name: any('.lazy-frame-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const root = rules([mixinDef]);
 
@@ -4660,22 +4649,22 @@ describe('Mixin', () => {
 
       const mixinDef = mixin({
         name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         })
       ]);
       context.root = root;
@@ -4702,15 +4691,15 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('.fast-ruleset'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })]
         })
       ]);
       context.root = root;
@@ -4739,14 +4728,14 @@ describe('Mixin', () => {
           source: '.' + INTERPOLATION_PLACEHOLDER,
           replacements: [any('fast-mixin')]
         }, { role: 'name' }),
-        rules: rules([decl({ name: 'color', value: any('orange') })])
+        rules: [decl({ name: 'color', value: any('orange') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         })
       ]);
       context.root = root;
@@ -4771,17 +4760,17 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: interpolatedSelector(dynamicClass),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -4805,16 +4794,16 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('.other-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([
+          rules: [
             decl({
               name: 'content',
               value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -4827,6 +4816,42 @@ describe('Mixin', () => {
       `);
     });
 
+    it('callable cache fast path: guarded type=mixin fallback uses syntax on guard miss', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        mixin({
+          name: any('.guarded-mixin'),
+          guard: condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          rules: [decl({ name: 'color', value: any('red') })]
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: [
+            vardecl({ name: 'mode', value: any('light') }),
+            decl({
+              name: 'content',
+              value: ref({ key: '.guarded-mixin' }, { type: 'mixin', fallbackValue: true })
+            })
+          ]
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .light {
+          content: .guarded-mixin;
+        }
+      `);
+    });
+
     it('callable cache fast path: type=mixin-ruleset simple-name miss', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
@@ -4835,16 +4860,16 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('.other-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([
+          rules: [
             decl({
               name: 'content',
               value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -4864,7 +4889,7 @@ describe('Mixin', () => {
             source: '.' + INTERPOLATION_PLACEHOLDER,
             replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
           }, { role: 'name' }),
-          rules: rules([decl({ name: 'color', value: any('orange') })])
+          rules: [decl({ name: 'color', value: any('orange') })]
         })
       ]);
 
@@ -4876,27 +4901,27 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: interpolated({
                 source: INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'segment' }, { type: 'variable' })]
               }, { role: 'name' }),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -4910,35 +4935,35 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
@@ -4954,24 +4979,24 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('red') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -5166,21 +5191,21 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: el('.parameterized'),
-            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+            rules: [decl({ name: 'color', value: any('ruleset') })]
           }),
           mixin({
             name: any('.parameterized'),
             params: list([any('color', { role: 'property' })]),
-            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+            rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
           }),
           ruleset({
             selector: el('.a'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5272,19 +5297,19 @@ describe('Mixin', () => {
       const terminalMixin = mixin({
         name: any('.button'),
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
       const terminalRuleset = ruleset({
         selector: el('.button'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             terminalRuleset,
             terminalMixin
-          ])
+          ]
         })
       ]);
       root.getScopeFrame();
@@ -5303,7 +5328,7 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.button')]),
-          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          rules: [decl({ name: 'color', value: any('ruleset') })]
         })
       ]);
       const broadFastHits: string[] = [];
@@ -5342,19 +5367,19 @@ describe('Mixin', () => {
       const terminalMixin = mixin({
         name: any('.button'),
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
       const terminalRuleset = ruleset({
         selector: el('.button'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([
+          rules: [
             terminalRuleset,
             terminalMixin
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -5397,7 +5422,7 @@ describe('Mixin', () => {
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.dark'), el('.button')]),
-          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          rules: [decl({ name: 'color', value: any('ruleset') })]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
@@ -5439,21 +5464,21 @@ describe('Mixin', () => {
       const mixinDef = mixin({
         name: any('.parameterized'),
         params: list([any('color', { role: 'property' })]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           // @arguments is automatically bound in liveSlotsByName.
           decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({
+          rules: [call({
             name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
             args: list([any('red')])
-          })])
+          })]
         })
       ]);
       context.root = root;
@@ -5478,7 +5503,7 @@ describe('Mixin', () => {
         vardecl({ name: 'color', value: any('red') }),
         mixin({
           name: any('.paint'),
-          rules: rules([
+          rules: [
             decl({ name: 'current-before', value: ref({ key: 'color' }, { type: 'variable' }) }),
             decl({
               name: 'snapshot-before',
@@ -5490,13 +5515,13 @@ describe('Mixin', () => {
               name: 'snapshot-after',
               value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5518,16 +5543,16 @@ describe('Mixin', () => {
         vardecl({ name: 'color', value: any('red') }),
         mixin({
           name: any('.set-color'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.set-color' }, { type: 'mixin' }) }),
             decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
       ]);
@@ -5549,22 +5574,22 @@ describe('Mixin', () => {
         mixin({
           name: any('.set-color'),
           params: list([any('next', { role: 'property' })]),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'color',
               value: ref({ key: 'next' }, { type: 'variable' })
             }, { setDefined: true })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.set-color' }, { type: 'mixin' }),
               args: list([any('blue')])
             }),
             decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
       ]);
@@ -5600,18 +5625,18 @@ describe('Mixin', () => {
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5646,18 +5671,18 @@ describe('Mixin', () => {
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused-rest' }, { type: 'mixin' }),
                 args: list([any('0'), seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5694,18 +5719,18 @@ describe('Mixin', () => {
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused-arguments' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5730,14 +5755,14 @@ describe('Mixin', () => {
             vardecl({ name: 'a', value: any('1px') }, { paramVar: true }),
             vardecl({ name: 'b', value: any('50%') }, { paramVar: true })
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'height', value: ref({ key: 'b' }, { type: 'variable' }) }),
             decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'var', value: any('20%') }),
             call({
               name: ref({ key: '.named' }, { type: 'mixin' }),
@@ -5745,7 +5770,7 @@ describe('Mixin', () => {
                 vardecl({ name: 'b', value: ref({ key: 'var' }, { type: 'variable' }) }, { paramVar: true })
               ])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5764,20 +5789,20 @@ describe('Mixin', () => {
       const mixinDef = mixin({
         name: any('.colored'),
         params: list([any('color', { role: 'property' })]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({
+          rules: [call({
             name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
             args: list([any('red')])
-          })])
+          })]
         })
       ]);
       context.root = root;
@@ -5803,31 +5828,31 @@ describe('Mixin', () => {
           '=',
           any('red')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with matching condition: .test1 { .my-mixin(red); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('red')])
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with non-matching condition: .test2 { .my-mixin(blue); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
@@ -5858,15 +5883,15 @@ describe('Mixin', () => {
           mixin({
             name: any('.guarded'),
             guard: bool(true),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5891,15 +5916,15 @@ describe('Mixin', () => {
         mixin({
           name: any('.guarded'),
           guard,
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5920,16 +5945,16 @@ describe('Mixin', () => {
         mixin({
           name: any('.guarded'),
           guard,
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5965,16 +5990,16 @@ describe('Mixin', () => {
               '=',
               any('dark')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'mode', value: any('dark') }),
               call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -6007,32 +6032,32 @@ describe('Mixin', () => {
             any('red')
           ])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({
               name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
               args: list([any('red')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({
               name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
               args: list([any('red')])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6053,26 +6078,26 @@ describe('Mixin', () => {
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6093,19 +6118,19 @@ describe('Mixin', () => {
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'mode' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded-body' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6126,27 +6151,27 @@ describe('Mixin', () => {
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'mode', value: any('light') }),
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6174,9 +6199,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const lightDefault = mixin({
@@ -6193,9 +6218,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
@@ -6203,7 +6228,7 @@ describe('Mixin', () => {
         lightDefault,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             vardecl({ name: 'color', value: any('outer-dark') }),
             call({
@@ -6211,11 +6236,11 @@ describe('Mixin', () => {
               args: list([any('red')])
             }),
             decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             vardecl({ name: 'color', value: any('outer-light') }),
             call({
@@ -6223,7 +6248,7 @@ describe('Mixin', () => {
               args: list([any('blue')])
             }),
             decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6267,16 +6292,16 @@ describe('Mixin', () => {
               'and',
               defaultguard()
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.dark'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'mode', value: any('dark') }),
               call({ name: ref({ key: '.guarded-default' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -6302,9 +6327,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const lightDefault = mixin({
@@ -6318,9 +6343,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('white') })
-        ])
+        ]
       });
 
       const root = rules([
@@ -6328,19 +6353,19 @@ describe('Mixin', () => {
         lightDefault,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
             decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
             decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6367,30 +6392,30 @@ describe('Mixin', () => {
           '=',
           seq([any('2px'), any('3px')])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.match'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
               args: list([any('1px'), any('2px'), any('3px')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.miss'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
               args: list([any('1px'), any('4px'), any('5px')])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6411,9 +6436,9 @@ describe('Mixin', () => {
         params: list([
           any('color', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a mixin that calls the base mixin: .wrapper-mixin(@color) { .base-mixin(@color); }
@@ -6422,23 +6447,23 @@ describe('Mixin', () => {
         params: list([
           any('color', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.base-mixin' }, { type: 'mixin' }),
             args: list([ref({ key: 'color' }, { type: 'variable' })])
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the wrapper mixin: .test { .wrapper-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.wrapper-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([baseMixin, wrapperMixin, testRuleset]);
@@ -6460,9 +6485,9 @@ describe('Mixin', () => {
         params: list([
           any('red') // Pattern match - must be exactly 'red'
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       const blueMixin = mixin({
@@ -6470,30 +6495,30 @@ describe('Mixin', () => {
         params: list([
           any('blue') // Pattern match - must be exactly 'blue'
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       });
 
       // Create rulesets that call the mixin with different values
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
             args: list([any('red')])
           })
-        ])
+        ]
       });
 
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([redMixin, blueMixin, testRuleset1, testRuleset2]);
@@ -6519,20 +6544,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest') // Rest parameter collects remaining arguments
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with multiple args: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -6556,20 +6581,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest(undefined) // Unnamed rest parameter - should auto-generate "rest"
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with multiple args: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -6592,25 +6617,25 @@ describe('Mixin', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.sol'), co(' '), el('.la')]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([el('.si')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('cyan') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.mutli-selector-parents'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: compound([el('.do'), el('.re'), el('.mi'), el('.fa'), el('.sol'), el('.la'), el('.si')]) }, { type: 'mixin-ruleset' }) })
-          ])
+          ]
         })
       ]);
       context.opts.collapseNesting = true;
@@ -6644,32 +6669,32 @@ describe('Mixin', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     vardecl({ name: 'color', value: any('cyan') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             vardecl({ name: 'color', value: any('blue') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.rule'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: ['#theme', '.dark', '.navbar'] }, { type: 'mixin-ruleset' }) }),
             decl({ name: 'background-color', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -6688,17 +6713,17 @@ describe('Mixin', () => {
       const node = rules([
         ruleset({
           selector: interpolatedSelector(dynamicClass),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6730,7 +6755,7 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: compound([
                 pseudo({
@@ -6738,29 +6763,29 @@ describe('Mixin', () => {
                   arg: interpolatedSelector(dynamicPseudoArg)
                 })
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6783,7 +6808,7 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-op'),
           params: list([any('scale', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'width',
               value: op([
@@ -6792,25 +6817,25 @@ describe('Mixin', () => {
                 ref({ key: 'scale' }, { type: 'variable' })
               ])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-op' }, { type: 'mixin' }),
               args: list([dimension([2, 'em'])])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-op' }, { type: 'mixin' }),
               args: list([dimension([3, 'em'])])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6838,32 +6863,32 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-interpolated'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(dynamicClass),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6891,35 +6916,35 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-compound'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: compound([
                 el('.base'),
                 interpolatedSelector(dynamicClass)
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6947,36 +6972,36 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-complex'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 el('.base'),
                 co(' '),
                 interpolatedSelector(dynamicClass)
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7004,7 +7029,7 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-list'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([
                 pseudo({
@@ -7015,29 +7040,29 @@ describe('Mixin', () => {
                   ])
                 })
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-list' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-list' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7067,30 +7092,30 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-paren'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
               value: paren(dynamicValue)
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7113,30 +7138,30 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-quoted'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
               value: quoted(ref({ key: 'name' }, { type: 'variable' }))
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7159,30 +7184,30 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-sequence'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
               value: seq([ref({ key: 'name' }, { type: 'variable' }), any('tail')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7205,30 +7230,30 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-decl-value'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: any('value'),
               value: ref({ key: 'name' }, { type: 'variable' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7256,30 +7281,30 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-decl-name'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: dynamicName,
               value: any('ok')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7298,9 +7323,9 @@ describe('Mixin', () => {
         replacements: [any('foo')]
       });
       const params = list([any('value', { role: 'property' })]);
-      const body = rules([
+      const body = [
         decl({ name: any('value'), value: any('ok') })
-      ]);
+      ];
       const node = mixin({
         name: dynamicMixinName,
         params,
@@ -7314,7 +7339,7 @@ describe('Mixin', () => {
       expect(prepared.name.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
-      expect(body.parent).toBe(node);
+      expect(body[0]!.parent).toBe(node);
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
@@ -7332,38 +7357,38 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-nested-mixin'),
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             mixin({
               name: dynamicMixinName,
-              rules: rules([
+              rules: [
                 decl({
                   name: any('value'),
                   value: ref({ key: 'name' }, { type: 'variable' })
                 })
-              ])
+              ]
             }),
             call({
               name: ref({ key: dynamicMixinName }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7384,30 +7409,30 @@ describe('Mixin', () => {
       const node = rules([
         mixin({
           name: any('.emit-amp-append'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([amp('-suffix')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7429,30 +7454,30 @@ describe('Mixin', () => {
       const node = rules([
         mixin({
           name: any('.emit-amp-self'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([amp()]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7475,36 +7500,36 @@ describe('Mixin', () => {
         mixin({
           name: any('.emit-media'),
           params: list([any('mode', { role: 'property' })]),
-          rules: rules([
+          rules: [
             atrule({
               name: any('@media', { role: 'atkeyword' }),
               prelude: ref({ key: 'mode' }, { type: 'variable' }),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'value',
                   value: ref({ key: 'mode' }, { type: 'variable' })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-media' }, { type: 'mixin' }),
               args: list([any('screen')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-media' }, { type: 'mixin' }),
               args: list([any('print')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7521,33 +7546,33 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.b'), co(' '), el('.bb')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 compound([amp(), el('.foo-xxx')]),
                 co(' '),
                 compound([el('.yyy-foo'), el('#foo')])
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'b', value: any('1') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-b'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -7572,78 +7597,78 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.b'), co(' '), el('.bb')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 compound([amp(), el('.foo-xxx')]),
                 co(' '),
                 compound([el('.yyy-foo'), el('#foo')])
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'b', value: any('1') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('#foo-foo'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), el('.bar')]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([el('.baz')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'c', value: any('c') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-b'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-c'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([amp('-1')]),
-              rules: rules([
+              rules: [
                 call({
                   name: ref({ key: '#foo-foo' }, { type: 'mixin-ruleset' })
                 })
-              ])
+              ]
             }),
             ruleset({
               selector: sel([amp('-2')]),
-              rules: rules([
+              rules: [
                 call({
                   name: ref({ key: ['#foo-foo', '.bar'] }, { type: 'mixin-ruleset' })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-c-3'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: ['#foo-foo', '.bar', '.baz'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -7682,20 +7707,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with only the required arg: .test { .my-mixin(10px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px')]) // Only one arg, rest should be empty
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7718,20 +7743,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with two args: .test { .my-mixin(10px, 20px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')]) // Rest should contain 20px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7754,20 +7779,20 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with many args: .test { .my-mixin(10px, 20px, 30px, 40px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 20px, 30px, 40px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7790,18 +7815,18 @@ describe('Mixin', () => {
           any('b', { role: 'property' }),
           any('c', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: seq([
             ref({ key: 'a' }, { type: 'variable' }),
             ref({ key: 'b' }, { type: 'variable' }),
             ref({ key: 'c' }, { type: 'variable' })
           ]) })
-        ])
+        ]
       });
 
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([
@@ -7809,7 +7834,7 @@ describe('Mixin', () => {
               rest(seq([any('20px'), any('30px')]))
             ])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7833,20 +7858,20 @@ describe('Mixin', () => {
           any('b', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px, 40px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 30px, 40px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7869,21 +7894,21 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) }),
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7907,9 +7932,9 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           any('b', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a mixin with rest: .my-mixin(@a, @rest...) { color: blue; }
@@ -7919,31 +7944,31 @@ describe('Mixin', () => {
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls with exact 2 args: .test1 { .my-mixin(10px, 20px); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')]) // Matches mixinWithoutRest exactly
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls with 3 args: .test2 { .my-mixin(10px, 20px, 30px); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')]) // Should match mixinWithRest
           })
-        ])
+        ]
       });
 
       const root = rules([mixinWithoutRest, mixinWithRest, testRuleset1, testRuleset2]);
@@ -7971,17 +7996,17 @@ describe('Mixin', () => {
         params: list([
           any('color', { role: 'property' }) // Required parameter without default
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin without args: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7998,21 +8023,21 @@ describe('Mixin', () => {
           any('color', { role: 'property' }),
           any('size', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with only one arg: .test { .my-mixin(red); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('red')]) // Only one argument, but two are required
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8025,20 +8050,20 @@ describe('Mixin', () => {
       // Create a mixin with no parameters: .my-mixin() { color: red; }
       const mixinDef = mixin({
         name: any('.my-mixin'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with args: .test { .my-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')]) // One argument, but mixin has no parameters
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8056,30 +8081,30 @@ describe('Mixin', () => {
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.person'),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
                   name: any('.sayGender'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8087,7 +8112,7 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -8108,33 +8133,33 @@ describe('Mixin', () => {
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(interpolated({
                 source: '.' + INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'name' }, { type: 'variable' })]
               })),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
                   name: any('.sayGender'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8142,7 +8167,7 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -8163,33 +8188,33 @@ describe('Mixin', () => {
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(interpolated({
                 source: '.' + INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'name' }, { type: 'variable' })]
               })),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
                   name: any('.sayGender'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-d'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8197,7 +8222,7 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -8296,10 +8321,10 @@ describe('Mixin', () => {
     it('should serialize a mixin', () => {
       const rule = mixin({
         name: any('myMixin'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         myMixin() {
@@ -8316,10 +8341,10 @@ describe('Mixin', () => {
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ], { sep: ';' }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) {
@@ -8337,10 +8362,10 @@ describe('Mixin', () => {
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ], { sep: ';' }),
         guard: condition([expr(ref({ key: 'a' })), '=', expr(ref({ key: 'b' }))]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) when ($($a) = $($b)) {

@@ -7,9 +7,9 @@ import {
   type LocationInfo,
   Node,
   Any,
+  AtRuleStatement,
   Condition,
   type ConditionOperator,
-  AtRule,
   DefaultGuard,
   Paren,
   List,
@@ -992,7 +992,7 @@ export function useAtRule(this: P, T: TokenMap) {
         new Any(namespace, { role: namespace === '*' ? 'operator' : 'ident' }, undefined, $.context)
       );
     }
-    return new AtRule(
+    return new AtRuleStatement(
       {
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)

@@ -7,6 +7,7 @@ import {
   amp,
   any,
   atrule,
+  atrulestatement,
   attr,
   bool,
   block,
@@ -243,7 +244,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -355,7 +356,7 @@ describe('renderNodeToBuffer', () => {
         node: atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: any('screen'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expected: '@media screen {\n  color: red;\n}\n'
       }
@@ -390,7 +391,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'Ruleset',
         node: ruleset({
           selector: el('.box'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       },
       { surface: 'BasicSelector', node: el('.box'), expected: '.box' },
@@ -490,7 +491,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }) },
       {
         surface: 'Mixin',
-        node: mixin({ name: any('.paint'), rules: rules([decl({ name: 'color', value: any('red') })]) }),
+        node: mixin({ name: any('.paint'), rules: [decl({ name: 'color', value: any('red') })] }),
         expectedParts: []
       },
       {
@@ -501,10 +502,9 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'If',
         node: ifNode({
-          branches: [
-            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
-            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
-          ]
+          condition: bool(true),
+          rules: [decl({ name: 'color', value: any('red') })],
+          else: rules([decl({ name: 'color', value: any('blue') })])
         })
       },
       {
@@ -518,7 +518,7 @@ describe('renderNodeToBuffer', () => {
             includeStart: true,
             includeEnd: true
           },
-          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })]
         })
       },
       {
@@ -526,7 +526,7 @@ describe('renderNodeToBuffer', () => {
         node: forNode({
           pattern: { kind: 'single', value: vardecl({ name: 'tone', value: nil() }, { paramVar: true }) },
           iterable: { kind: 'node', value: list([any('red'), any('blue')]) },
-          rules: rules([decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })]
         }),
         expectedParts: ['color: red;\n', 'color: blue;\n']
       },
@@ -534,7 +534,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'While',
         node: whileNode({
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expectedParts: []
       },
@@ -542,7 +542,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'MixinCollection',
         node: new MixinCollection([
           callableRulesEntry(
-            { rules: rules([decl({ name: 'color', value: any('red') })]) },
+            { rules: [decl({ name: 'color', value: any('red') })] },
             undefined,
             0
           )
@@ -594,10 +594,9 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'If',
         node: ifNode({
-          branches: [
-            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
-            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
-          ]
+          condition: bool(true),
+          rules: [decl({ name: 'color', value: any('red') })],
+          else: rules([decl({ name: 'color', value: any('blue') })])
         }),
         expected: 'color: red;'
       },
@@ -612,14 +611,14 @@ describe('renderNodeToBuffer', () => {
             includeStart: true,
             includeEnd: true
           },
-          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })]
         })
       },
       {
         surface: 'While',
         node: whileNode({
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expected: ''
       }

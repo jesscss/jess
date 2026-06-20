@@ -15,12 +15,12 @@ describe('callable candidate match helper', () => {
   it('skips zero-param candidates when call args are present and keeps matched callable bindings', () => {
     const zeroArgRuleset = ruleset({
       selector: el('.zero'),
-      rules: rules([])
+      rules: []
     });
     const callable = callableRulesEntry({
       name: '.tone',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([])
+      rules: []
     });
 
     const prepared = prepareCallableCandidateMatches({
@@ -41,13 +41,13 @@ describe('callable candidate match helper', () => {
     const plainCallable = callableRulesEntry({
       name: '.plain',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([])
+      rules: []
     });
     const defaultCallable = callableRulesEntry({
       name: '.default',
       guard: condition([defaultguard()]),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([])
+      rules: []
     });
 
     const prepared = prepareCallableCandidateMatches({
@@ -68,9 +68,9 @@ describe('callable candidate match helper', () => {
   it('drops recursive ruleset candidates during the prepared eval-candidate pass', () => {
     const recursiveRuleset = ruleset({
       selector: el('.loop'),
-      rules: rules([
+      rules: [
         call({ name: ref({ key: '.loop' }, { type: 'mixin' }) })
-      ])
+      ]
     });
     const caller = call({ name: ref({ key: '.loop' }, { type: 'mixin' }) });
 
@@ -92,7 +92,7 @@ describe('callable candidate match helper', () => {
     const requiredCallable = callableRulesEntry({
       name: '.tone',
       params: list([vardecl({ name: 'tone', value: new Nil() }, { paramVar: true })]),
-      rules: rules([])
+      rules: []
     });
 
     expect(() => resolveCallableCandidateMatches({

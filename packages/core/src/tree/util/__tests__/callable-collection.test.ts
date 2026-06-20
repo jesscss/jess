@@ -15,9 +15,9 @@ describe('callable collection helper', () => {
 
     const mixinDef = mixin({
       name: any('.button'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const callerRules = rules([]);
     const root = rules([

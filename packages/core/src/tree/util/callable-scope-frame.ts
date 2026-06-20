@@ -24,7 +24,14 @@ export function wireCallableScopeFrames({
   leakyRules = false
 }: WireCallableScopeFramesOptions): void {
   if (liveSlots) {
-    rules.scopeFrame = buildScopeFrame(undefined, rules, lexicalScopeFrame, liveSlots);
+    rules.scopeFrame = buildScopeFrame(
+      undefined,
+      rules,
+      lexicalScopeFrame,
+      liveSlots,
+      undefined,
+      true
+    );
     rules.scopeFrame.fallbackFrame = fallbackScopeFrame;
     if (outerRules) {
       if (usesPreboundParamGuardOuterRules) {
@@ -32,7 +39,9 @@ export function wireCallableScopeFrames({
           undefined,
           outerRules,
           lexicalScopeFrame,
-          new Map(liveSlots)
+          new Map(liveSlots),
+          undefined,
+          true
         );
         if (parentFrame && parentFrame !== lexicalScopeFrame) {
           outerRules.scopeFrame.fallbackFrame = parentFrame;

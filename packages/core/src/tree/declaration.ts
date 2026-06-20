@@ -179,7 +179,7 @@ export function collectDeclarationMergeAdapterItems(
   const mergedItems: Node[] = [];
   const collect = (child: Node) => {
     if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
-      for (const item of child.items) {
+      for (const item of child.value) {
         collect(item);
       }
       return;
@@ -196,7 +196,7 @@ export function collectDeclarationMergeAdapterItems(
 
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
-  items: Node[];
+  value: Node[];
 };
 
 export type DeclarationMergeAdapterState = DeclarationMergeAdapterItemsState;
@@ -221,7 +221,7 @@ export function createDeclarationMergeAdapterState(
   if (mergedItems.length === 1) {
     return mergedItems[0]!;
   }
-  return { kind: mode, items: mergedItems };
+  return { kind: mode, value: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
@@ -238,7 +238,7 @@ type DeclarationRegistrationState = {
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
   renderAssignment?: {
-    items: Node[];
+    value: Node[];
     sep: ',' | ' ';
   };
   bindOutput?: (node: Declaration) => void;
@@ -289,11 +289,11 @@ const valueShouldResolveCustomProperty = (value: unknown): boolean => {
 };
 
 const unwrapAtomicCustomValue = (node: Node): Node => {
-  if (isNode(node, N.List) && node.items.length === 1) {
-    return unwrapAtomicCustomValue(node.items[0]!);
+  if (isNode(node, N.List) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
   }
-  if (isNode(node, N.Sequence) && node.items.length === 1) {
-    return unwrapAtomicCustomValue(node.items[0]!);
+  if (isNode(node, N.Sequence) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
   }
   return node;
 };
@@ -305,8 +305,8 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  for (let i = 0; i < node.items.length; i++) {
-    const child = node.items[i];
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i];
     if (!(child instanceof Node) || !canReuseLeaf(child)) {
       return false;
     }
@@ -711,9 +711,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       restorePrintState(options, saved);
     } else {
       if (mergeAdapter?.kind === 'space') {
-        this.renderSpaceValueSyntax(mergeAdapter.items, options);
+        this.renderSpaceValueSyntax(mergeAdapter.value, options);
       } else if (mergeAdapter?.kind === 'list') {
-        this.renderCommaValueSyntax(mergeAdapter.items, options);
+        this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
         const valueMark = w.mark();
         value.writeSyntax(options);
@@ -739,7 +739,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
     }
     if (this.valueRequiresSemi(value)) {
-      emitCommentTriviaAfterNode(important ?? value, options);
+      const triviaSource = important ?? value;
+      if (isNode(triviaSource)) {
+        emitCommentTriviaAfterNode(triviaSource, options);
+      }
     }
   }
 
@@ -958,7 +961,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           evaluated.push(out as Node);
         }
       };
-      for (const item of state.renderAssignment?.items ?? []) {
+      for (const item of state.renderAssignment?.value ?? []) {
         if (chain) {
           chain = chain.then(() => evaluateItem(item));
           continue;
@@ -1027,7 +1030,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
-            items: newValue
+            value: newValue
           },
           important: state.important,
           importantText,
@@ -1120,7 +1123,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         (isListMergedAssign && isNode(child, N.List))
         || (isSpaceMergedAssign && isNode(child, N.Sequence))
       ) {
-        for (const item of child.items) {
+        for (const item of child.value) {
           collect(item);
         }
         return;
@@ -1307,7 +1310,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isMergeListAssign = assign === AssignmentType.MergeList;
           if (state.renderOnly) {
             state.renderAssignment = {
-              items: [ref, inputValue],
+              value: [ref, inputValue],
               sep: isMergeListAssign ? ',' : ' '
             };
             state.normalizedFromAssign = normalizedAssign;
@@ -1346,7 +1349,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             };
             if (state.renderOnly) {
               state.renderAssignment = {
-                items: [ref, inputValue],
+                value: [ref, inputValue],
                 sep: ','
               };
               state.normalizedFromAssign = normalizedAssign;

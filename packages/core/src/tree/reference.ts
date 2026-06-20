@@ -39,7 +39,11 @@ import {
 } from './util/render-buffer.js';
 import { blocksAmbientMixinOutputLookup } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
-import type { MixinEntry } from './util/callable-entry.js';
+import {
+  getCallableEntryGuard,
+  getCallableEntryParams,
+  type MixinEntry
+} from './util/callable-entry.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -218,6 +222,21 @@ function promoteResolvedPendingVarDecls(
   }
 }
 
+function promoteResolvedPendingVarDeclsInFrameChain(frame: ScopeFrame): void {
+  const seen = new Set<ScopeFrame>();
+  const visit = (cursor: ScopeFrame | undefined): void => {
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      if (isNode(cursor.rulesNode, N.Rules)) {
+        promoteResolvedPendingVarDecls(cursor.rulesNode, cursor);
+      }
+      visit(cursor.fallbackFrame);
+      cursor = cursor.parent;
+    }
+  };
+  visit(frame);
+}
+
 const { isArray } = Array;
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -241,7 +260,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (const node of selector.components) {
+    for (const node of selector.value) {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
@@ -466,7 +485,13 @@ function getBindingHandleValue(handle: ScopeFrameVariableBindingHandle): Node {
 }
 
 function getBindingHandleRulesContext(handle: ScopeFrameVariableBindingHandle): Rules | undefined {
-  return isNode(handle.cell.rulesContext, N.Rules) ? handle.cell.rulesContext : handle.rulesContext;
+  if (isNode(handle.cell.rulesContext, N.Rules)) {
+    return handle.cell.rulesContext;
+  }
+  if (handle.rulesContext) {
+    return handle.rulesContext;
+  }
+  return handle.sourceNode?.sourceRoot ?? handle.sourceNode?.rulesParent;
 }
 
 type RulesLookupAdapterEnv = {
@@ -791,13 +816,12 @@ function lookupScopeFrameVariableBinding(
   if (mode === 'full' && (
     env.hasTarget
     || env.isInterpolatedVariable
-    || (opts.start !== undefined && env.readMode !== 'snapshot')
   )) {
     return undefined;
   }
   const frame = targetRules.getScopeFrame(undefined, false);
   if (mode === 'full') {
-    promoteResolvedPendingVarDecls(targetRules, frame);
+    promoteResolvedPendingVarDeclsInFrameChain(frame);
   }
   const hit = lookupScopeFrameVariable(frame, key, {
     start: mode === 'full' ? opts.start : undefined,
@@ -909,17 +933,19 @@ function performVariableRulesLookup(
 ): VariableReferenceLookupReturnValue {
   const { env, valueKey } = lookupContext;
   const keyStr = getLookupKeyString(valueKey);
+  const occurrenceStart = env.readMode === 'snapshot'
+    ? shape.start
+    : undefined;
   const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
     && !env.hasTarget
     && !env.isInterpolatedVariable
-    && !(shape.start !== undefined && env.readMode !== 'snapshot')
     ? 'full'
     : env.readMode !== 'snapshot'
       ? 'live-current'
       : undefined;
   if (frameMode) {
     const frameHit = lookupScopeFrameVariableBinding(scope, keyStr, {
-      start: shape.start,
+      start: occurrenceStart,
       filter: env.filter
     }, env, frameMode);
     if (frameHit) {
@@ -927,13 +953,13 @@ function performVariableRulesLookup(
     }
   }
   return findVariableDeclarationOccurrence(scope, keyStr, {
-    start: shape.start,
+    start: occurrenceStart,
     context: env.context,
     hasTarget: env.hasTarget,
     local: shape.local || undefined,
     filter: env.filter,
     includeLiveBindings: env.readMode !== 'snapshot',
-    ignoreCurrentScopeStart: true,
+    ignoreCurrentScopeStart: env.readMode !== 'snapshot',
     ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
   });
 }
@@ -2379,6 +2405,9 @@ function getRedirectReferenceTargetKey(
   referenceNode: Reference,
   resolvedTarget: unknown
 ): string | undefined {
+  if (!referenceNode.target) {
+    return undefined;
+  }
   if (!(resolvedTarget instanceof Node)) {
     return undefined;
   }
@@ -2438,16 +2467,14 @@ function materializeReferenceTarget(args: {
     return [jsResult, valueKey];
   }
   if (isNode(resolvedTarget, N.Mixin)) {
-    const sourceRules = resolvedTarget.rules;
-    const mixinResult = sourceRules.eval(context);
+    const mixinResult = resolvedTarget.eval(context);
     if (isThenable(mixinResult)) {
       return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
     }
     return [mixinResult, valueKey];
   }
   if (isNode(resolvedTarget, N.Ruleset)) {
-    const sourceRules = resolvedTarget.rules;
-    const mixinResult = sourceRules.eval(context);
+    const mixinResult = resolvedTarget.eval(context);
     if (isThenable(mixinResult)) {
       return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
     }
@@ -2465,6 +2492,12 @@ function resolveReferenceTargetValue(args: {
 }): MaybePromise<[unknown, NormalizedLookupKey]> {
   const { valueKey } = args;
   const resolvedTarget = resolveAmbiguousReferenceTarget(args);
+  if (!args.referenceNode.target) {
+    if (isThenable(resolvedTarget)) {
+      return Promise.resolve(resolvedTarget).then(target => [target, valueKey]);
+    }
+    return [resolvedTarget, valueKey];
+  }
   if (isThenable(resolvedTarget)) {
     return Promise.resolve(resolvedTarget).then(target => materializeReferenceTarget({
       resolvedTarget: target,
@@ -2503,8 +2536,8 @@ function canReturnMergedAssignReferenceValue(node: Node): boolean {
   if (!(node instanceof List)) {
     return true;
   }
-  for (let i = 0; i < node.items.length; i++) {
-    const child = node.items[i]!;
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i]!;
     if (child instanceof List || isEmptyMergedAssignPlaceholder(child)) {
       return false;
     }
@@ -2627,6 +2660,56 @@ function finalizeDirectReferenceResult(
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
   return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context);
+}
+
+function getMixinReferenceCandidateGuard(candidate: MixinEntry): Node | undefined {
+  if (isNode(candidate, N.Ruleset)) {
+    return candidate.guard;
+  }
+  return getCallableEntryGuard(candidate);
+}
+
+function getOptionalMixinFallbackCandidateText(
+  candidate: MixinEntry,
+  valueKey: NormalizedLookupKey
+): string | undefined {
+  if (isNode(candidate, N.Ruleset)) {
+    return undefined;
+  }
+  const params = getCallableEntryParams(candidate);
+  if (!params || params.value.length === 0) {
+    return undefined;
+  }
+  const renderedParams = new Array<string>(params.value.length);
+  for (let i = 0; i < params.value.length; i++) {
+    renderedParams[i] = String(params.value[i]!.valueOf());
+  }
+  return `${getLookupKeyDisplay(valueKey)}(${renderedParams.join(', ')})`;
+}
+
+function filterOptionalMixinFallbackCandidates(
+  candidates: MixinEntry[],
+  valueKey: NormalizedLookupKey
+): { candidates: MixinEntry[] | undefined; fallbackText?: string } {
+  let out: MixinEntry[] | undefined;
+  let changed = false;
+  let fallbackText: string | undefined;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!;
+    if (getMixinReferenceCandidateGuard(candidate)) {
+      fallbackText ??= getOptionalMixinFallbackCandidateText(candidate, valueKey);
+      changed = true;
+      if (out === undefined) {
+        out = i > 0 ? candidates.slice(0, i) : [];
+      }
+      continue;
+    }
+    out?.push(candidate);
+  }
+  return {
+    candidates: changed ? out : candidates,
+    fallbackText
+  };
 }
 
 function createDirectCallableReferenceResult(
@@ -2962,7 +3045,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
   let mergedItems: Node[] | undefined;
   const collect = (child: Node): void => {
     if (child instanceof List) {
-      for (const item of child.items) {
+      for (const item of child.value) {
         collect(item);
       }
       return;
@@ -2976,8 +3059,8 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     }
   };
 
-  for (let i = 0; i < node.items.length; i++) {
-    const child = node.items[i]!;
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i]!;
     const needsNormalization = (
       child instanceof List
       || child instanceof Nil
@@ -2992,7 +3075,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     if (!mergedItems) {
       mergedItems = [];
       for (let j = 0; j < i; j++) {
-        mergedItems.push(node.items[j]!);
+        mergedItems.push(node.value[j]!);
       }
     }
     collect(child);
@@ -3061,6 +3144,32 @@ function finalizeReferenceLookupResult(
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
     return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
+  }
+  if (
+    lookupType === 'mixin'
+    && fallbackValue === true
+    && isArray(returnVal)
+  ) {
+    const {
+      candidates: filtered,
+      fallbackText
+    } = filterOptionalMixinFallbackCandidates(returnVal as MixinEntry[], valueKey);
+    if (filtered === undefined || filtered.length === 0) {
+      if (fallbackText) {
+        context.popReference();
+        referenceNode._rulesLookupHandle = undefined;
+        return new Any(fallbackText, { role: referenceNode.role });
+      }
+      return finalizeFallbackReferenceResult(
+        referenceNode,
+        valueKey,
+        lookupType,
+        fallbackValue,
+        context,
+        textOnly
+      );
+    }
+    return finalizeDirectReferenceResult(referenceNode, filtered, context);
   }
   return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }

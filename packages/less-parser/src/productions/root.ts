@@ -1169,7 +1169,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           if (!selectorList) {
             return;
           }
-          const selectorCount = selectorList.selectors.length;
+          const selectorCount = selectorList.value.length;
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
@@ -1208,7 +1208,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       }
       const hasDefault = Boolean(ctx.hasDefault);
       let node = new Ruleset(
-        { selector, rules, guard },
+        { selector, rules: rules.rules, guard },
         guard ? { hasDefault } : undefined,
         undefined,
         $.context
@@ -1326,12 +1326,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
     const convertArgsForDefinition = (args: List<Node> | undefined): void => {
-      if (!args || !args.items.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args.items.length; i++) {
-        const node = args.items[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
@@ -1343,7 +1343,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context);
           args.adopt(replacement);
-          args.items[i] = replacement;
+          args.value[i] = replacement;
         }
         // Rest nodes with string values can stay as-is for mixin definitions
       }
@@ -1351,12 +1351,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
     // Helper function to convert Any nodes to Reference nodes for mixin call arguments
     const convertArgsForCall = (args: List<Node> | undefined): void => {
-      if (!args || !args.items.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args.items.length; i++) {
-        const node = args.items[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
@@ -1371,7 +1371,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
         if (replacement) {
           args.adopt(replacement);
-          args.items[i] = replacement;
+          args.value[i] = replacement;
         }
       }
     };
@@ -1490,7 +1490,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
+                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules: rules.rules, guard },
                     guard ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context

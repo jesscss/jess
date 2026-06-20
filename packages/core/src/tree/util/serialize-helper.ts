@@ -1,4 +1,5 @@
 import type { AtRule } from '../at-rule.js';
+import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, type Node } from '../node.js';
@@ -138,12 +139,8 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {
   return isNode(node, N.AtRule)
-    ? (
-        node === options?.atRuleBodyNode
-          ? options.atRuleBodyOverride
-          : node.getRenderRules()
-      )
-    : node.rules;
+    ? (node === options?.atRuleBodyNode ? options.atRuleBodyOverride : node)
+    : node;
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -224,7 +221,7 @@ export function flattenVisibleRulesForRender(
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
       }
-      if (isNode(child, N.Rules)) {
+      if (child.type === 'Rules') {
         if (!child.visible && !child.fullRender && !hasPrintableTrivia(child, options)) {
           continue;
         }
@@ -716,8 +713,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
 
-        const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
-        if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
+        const isAtRuleStatement = isNode(n, N.AtRuleStatement);
+        if (
+          isNode(n, N.AtRule)
+          && n.isRootOnly()
+          && n.isHoisted(options)
+        ) {
+          while (lastRenderedFrames.length > 0) {
+            w.add(indent(lastRenderedFrames.length - 1) + '}\n');
+            frameHeaders.pop();
+            lastRenderedFrames.pop();
+          }
+          const rootSaved = savePrintState(options, ['depth', 'inFrames']);
+          options.depth = 0;
+          options.inFrames = [];
+          serializeRulesContainerInternal(n, options, true);
+          restorePrintState(options, rootSaved);
+          continue;
+        }
+        if (isNode(n, N.Ruleset | N.AtRule)) {
+          const renderedFrameBaseline = lastRenderedFrames.length;
+          const frameHeaderBaseline = frameHeaders.length;
+          const renderedPositionBaseline = w.position();
           const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;
           options.referenceMode = inReferenceMode;
@@ -739,6 +756,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           if (!childOut && !hasPrintableTrivia(n, options)) {
+            w.restore(renderedPositionBaseline);
+            lastRenderedFrames.length = renderedFrameBaseline;
+            frameHeaders.length = frameHeaderBaseline;
             continue;
           }
           continue;
@@ -753,7 +773,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const renderedFrameBaseline = lastRenderedFrames.length;
         const frameHeaderBaseline = frameHeaders.length;
         const renderedPositionBaseline = w.position();
-        if (isNode(nn, N.Rules)) {
+        if (nn.type === 'Rules') {
           const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
           );
@@ -766,15 +786,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         // if (isNode(n, N.Declaration)) {
         const leafDepth = lastRenderedFrames.length;
         let idt = indent(leafDepth);
-        const ownReferenceMode = isNode(nn, N.Rules)
+        const ownReferenceMode = nn.type === 'Rules'
           && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-        const childReferenceMode = isNode(nn, N.Rules)
+        const childReferenceMode = nn.type === 'Rules'
           ? (inReferenceMode || ownReferenceMode)
           : inReferenceMode;
-        const enteringChildReferenceMode = isNode(nn, N.Rules)
+        const enteringChildReferenceMode = nn.type === 'Rules'
           ? (!inReferenceMode && ownReferenceMode)
           : false;
-        const childReferenceRenderEnabled = isNode(nn, N.Rules)
+        const childReferenceRenderEnabled = nn.type === 'Rules'
           ? (
               childReferenceMode
                 ? (enteringChildReferenceMode ? false : renderEnabled)
@@ -791,13 +811,34 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
-          if (isNode(nn, N.Rules)) {
-            if (!/^\s*$/.test(leading)) {
-              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+          if (nn.type === 'Rules') {
+          if (!/^\s*$/.test(leading)) {
+            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+            w.add(normalized);
+            if (/\/\*/u.test(leading) && normalized && !normalized.endsWith('\n')) {
+              w.add('\n');
             }
-            const before = w.position();
-            nn.writeSyntax(getPrintOptions(options));
-            const wrote = w.position() !== before;
+          }
+          if (childReferenceMode && !childReferenceRenderEnabled) {
+            restorePrintState(options, leafSaved);
+            let hasLaterRenderableEntry = false;
+            for (let nextIdx = idx + 1; nextIdx < rulesToRender.length; nextIdx++) {
+              const next = rulesToRender[nextIdx]!.node;
+              if (next.visible || next.fullRender || hasPrintableTrivia(next, options)) {
+                hasLaterRenderableEntry = true;
+                break;
+              }
+            }
+            if (!hasLaterRenderableEntry && !leading.trim()) {
+              w.restore(renderedPositionBaseline);
+              lastRenderedFrames.length = renderedFrameBaseline;
+              frameHeaders.length = frameHeaderBaseline;
+            }
+            continue;
+          }
+          const before = w.position();
+          nn.writeSyntax(getPrintOptions(options));
+          const wrote = w.position() !== before;
             restorePrintState(options, leafSaved);
             if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
               w.restore(renderedPositionBaseline);
@@ -828,7 +869,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
         if (
-          isNode(nn, N.Rules)
+          nn.type === 'Rules'
           && !out
           && !leading.trim()
           && !hasPrintableTrivia(nn, options)
@@ -873,7 +914,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           } else {
             w.add(declNormalized, nn);
           }
-        } else if (isNode(nn, N.Rules)) {
+        } else if (nn.type === 'Rules') {
           if (!/^\s*$/.test(leading)) {
             w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
@@ -883,7 +924,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
           w.add(out, nn);
-        } else if (isLeafAtRule) {
+        } else if (isAtRuleStatement) {
           if (!/^\s*$/.test(leading)) {
             w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }

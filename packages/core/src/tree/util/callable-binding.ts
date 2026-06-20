@@ -36,8 +36,8 @@ export function getArgumentsBindingValues(args: Node[]): Node[] {
   for (let i = 0; i < args.length; i++) {
     const argNode = args[i]!;
     if (argNode instanceof Sequence) {
-      for (let j = 0; j < argNode.items.length; j++) {
-        argumentNodes.push(argNode.items[j]!);
+      for (let j = 0; j < argNode.value.length; j++) {
+        argumentNodes.push(argNode.value[j]!);
       }
     } else {
       argumentNodes.push(argNode);

@@ -85,9 +85,9 @@ describe('Rules streaming', () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       }),
       decl({ name: 'background', value: any('blue') })
     ]);

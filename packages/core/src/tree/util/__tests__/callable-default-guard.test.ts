@@ -126,19 +126,19 @@ describe('callable default guard helpers', () => {
         {
           label: 'none',
           group: CALLABLE_DEFAULT_NONE,
-          rules: rules([]),
+          rules: [],
           sourceRules: rules([])
         },
         {
           label: 'true',
           group: CALLABLE_DEFAULT_TRUE,
-          rules: rules([]),
+          rules: [],
           sourceRules: rules([])
         },
         {
           label: 'false',
           group: CALLABLE_DEFAULT_FALSE,
-          rules: rules([]),
+          rules: [],
           sourceRules: rules([])
         }
       ],
@@ -161,13 +161,13 @@ describe('callable default guard helpers', () => {
         {
           label: 'true',
           group: CALLABLE_DEFAULT_TRUE,
-          rules: rules([]),
+          rules: [],
           sourceRules: rules([])
         },
         {
           label: 'false',
           group: CALLABLE_DEFAULT_FALSE,
-          rules: rules([]),
+          rules: [],
           sourceRules: rules([])
         }
       ],
@@ -210,7 +210,7 @@ describe('callable default guard helpers', () => {
     state.pendingCandidates.push({
       label: 'true',
       group: CALLABLE_DEFAULT_TRUE,
-      rules: rules([]),
+      rules: [],
       sourceRules: rules([])
     });
 

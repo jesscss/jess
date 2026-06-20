@@ -5,12 +5,12 @@ import { eachImplementation } from '../less/each.js';
 function makeMixin(paramNames?: string[]) {
   const mixinRules = new Rules([]);
   if (!paramNames) {
-    return new Mixin({ rules: mixinRules });
+    return new Mixin({ rules: mixinRules.rules });
   }
   const params = new List(
     paramNames.map(name => new Any(name, { role: 'property' }))
   );
-  return new Mixin({ params, rules: mixinRules });
+  return new Mixin({ params, rules: mixinRules.rules });
 }
 
 function assertTupleBindings(loop: For, expectedNames: string[]) {
@@ -47,8 +47,7 @@ describe('each', () => {
     expect(result).toBeInstanceOf(For);
     assertTupleBindings(result, ['value', 'key', 'index']);
     expect(result.iterable.value).toBe(list);
-    expect(result.rules).toBeInstanceOf(Rules);
-    expect(result.rules).toBe(mixinRules);
+    expect(result.rules).toBe(mixinRules.rules);
     expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });
 
@@ -59,7 +58,6 @@ describe('each', () => {
     const result = await callEach(list, mixin);
 
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.rules).toBeInstanceOf(Rules);
     expect(result.rules).toBe(mixin.rules);
     expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });

@@ -68,14 +68,13 @@ describe('List', () => {
     expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
 
-  it('stores child items on a constructor-owned direct field', () => {
+  it('stores child items on canonical value', () => {
     const first = any('one');
     const second = any('two');
     const rule = list([first, second]);
 
-    expect(List.childKeys).toEqual(['items']);
-    expect(rule.items).toEqual([first, second]);
-    expect(rule.items).toBe(rule.value);
+    expect(List.childKeys).toEqual(['value']);
+    expect(rule.value).toEqual([first, second]);
   });
 
   it('does not allocate options when rendering list syntax with defaults', () => {

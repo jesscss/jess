@@ -142,8 +142,8 @@ export function processScssStringInterpolation(
 import { Expression } from '@jesscss/core';
 
 export function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, N.Sequence) && (n as Sequence).items.length === 1) {
-    return (n as Sequence).items[0]!;
+  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
+    return (n as Sequence).value[0]!;
   }
   return n;
 }
@@ -212,7 +212,7 @@ export function desugarMapLookup(
     return call;
   }
 
-  const args = isNode(argsList, N.List) ? (argsList as List).items : [];
+  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
   if (args.length < 2) {
     return call;
   }

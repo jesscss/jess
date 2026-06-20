@@ -113,6 +113,13 @@ export type IslandParseCounters = {
   fallbackFullTreeMaterializations: number;
   structuralOnlyQueries: number;
   visitorPlans: number;
+  visitorPlanCacheHits: number;
+  visitorPlanCacheMisses: number;
+  visitorTraversalRequests: number;
+  visitorMaterializedNodeRequests: number;
+  visitorPromotedIslandRequests: number;
+  visitorAdapterNodeRequests: number;
+  visitorReplacementRequests: number;
 };
 
 /**
@@ -136,5 +143,6 @@ export type VisitorMaterializationRule = {
 export type VisitorShape = {
   nodeKinds?: readonly StructuralNode['kind'][];
   islandKinds?: readonly IslandKind[];
+  materializationRules?: readonly VisitorMaterializationRule[];
   targetShape?: IslandTargetShape;
 };

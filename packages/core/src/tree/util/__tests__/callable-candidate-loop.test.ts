@@ -25,9 +25,9 @@ describe('callable candidate loop helper', () => {
     const callerRules = rules([]);
     const candidate = ruleset({
       selector: el('.candidate'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const root = rules([candidate, callerRules]);
     context.root = root;
@@ -58,10 +58,10 @@ describe('callable candidate loop helper', () => {
       getCallableEntryGuard
     });
 
-    expect(outputState.sourceRules).toBe(candidate.rules);
+    expect(outputState.sourceRules).toBe(candidate);
     expect(outputState.outputRules).toHaveLength(1);
     expect(getMixinOutputPlacementRecord(outputState.outputRules[0]!)).toEqual({
-      source: candidate.rules,
+      source: candidate,
       output: outputState.outputRules[0]
     });
   });
@@ -71,9 +71,9 @@ describe('callable candidate loop helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callerRules = rules([]);
@@ -115,7 +115,7 @@ describe('callable candidate loop helper', () => {
       getCallableEntryGuard
     });
 
-    expect(outputState.sourceRules).toBe(candidate.rules);
+    expect(outputState.sourceRules).toBe(candidate);
     expect(outputState.outputRules).toHaveLength(1);
     expect(outputState.outputRules[0]?.toString()).toContain('color: blue;');
   });

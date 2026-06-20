@@ -1,5 +1,5 @@
 import { type Context } from '../../context.js';
-import { type AtRule } from '../at-rule.js';
+import type { AtRuleStatement } from '../at-rule-statement.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 
@@ -18,7 +18,7 @@ function locationsEqual(a: readonly unknown[] | undefined, b: readonly unknown[]
   return true;
 }
 
-function importSyntaxMatches(a: AtRule, b: AtRule): boolean {
+function importSyntaxMatches(a: AtRuleStatement, b: AtRuleStatement): boolean {
   if (!locationsEqual(a.location, b.location)) {
     return false;
   }
@@ -32,17 +32,17 @@ function importSyntaxMatches(a: AtRule, b: AtRule): boolean {
   return String(aPrelude) === String(bPrelude);
 }
 
-export function queueTopImport(context: Context, importRule: AtRule): void {
+export function queueTopImport(context: Context, importRule: AtRuleStatement): void {
   if (context.inReferenceImportScope) {
     return;
   }
   const topImports = (context.topImports ??= []);
   for (let i = 0; i < topImports.length; i++) {
     const queuedNode = topImports[i]!;
-    if (!isNode(queuedNode, N.AtRule)) {
+    if (!isNode(queuedNode, N.AtRuleStatement)) {
       continue;
     }
-    const queued = queuedNode as AtRule;
+    const queued = queuedNode;
     if (
       queued === importRule
       || queued.sourceNode === importRule.sourceNode

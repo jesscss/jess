@@ -88,15 +88,15 @@ describe('@container at-rule parsing and serialization', () => {
     expect(out).toContainString(`
       prelude:
         (Sequence
-          items:
+          value:
             [
-            (QueryCondition
-              items:
+              (QueryCondition
+                value:
                 [
-                (Keyword [role=keyword] 'not')
-                (Paren
-                  node:
-                    (QueryCondition
+                  (Keyword [role=keyword] 'not')
+                  (Paren
+                    node:
+                      (QueryCondition
       `);
   });
 
@@ -207,10 +207,10 @@ describe('@media at-rule - QueryCondition parsing', () => {
         (Paren
           node:
             (QueryCondition
-              items:
+              value:
                 [
-              (Any [role=ident] 'width')
-              (Any [role=operator] '>')
+                  (Any [role=ident] 'width')
+                  (Any [role=operator] '>')
       `);
   });
 
@@ -307,11 +307,11 @@ describe('@container - container query type functions', () => {
     expect(queryNode.value[1].value[0].name).toBe('scroll-state');
     expect(out).toContainString(`
 	      (QueryCondition
-	        items:
+	        value:
 	          [
 	            (Keyword [role=keyword] 'not')
 	            (QueryCondition
-	              items:
+	              value:
 	                [
 	                  (Call
 	                    name: 'scroll-state'

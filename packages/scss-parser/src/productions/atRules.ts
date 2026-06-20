@@ -9,6 +9,7 @@ import {
   Ampersand,
   Any,
   AtRule,
+  AtRuleStatement,
   Call,
   Collection,
   ComplexSelector,
@@ -56,6 +57,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type ProductionRule = (ctx?: RuleContext) => any;
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
@@ -283,7 +285,7 @@ function getNodeLocation(node: Node): LocationInfo | undefined {
 function prefixAtRootSelector(selector: Selector, context: any): Selector {
   if (isNode(selector, N.SelectorList)) {
     const list = new SelectorList(
-      (selector as SelectorList).selectors.map(item => prefixAtRootSelector(item as Selector, context)),
+      (selector as SelectorList).value.map(item => prefixAtRootSelector(item as Selector, context)),
       undefined,
       getNodeLocation(selector),
       context
@@ -294,7 +296,7 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
   const amp = createNullParentAmpersand(context, selector);
   if (isNode(selector, N.ComplexSelector)) {
     const complex = new ComplexSelector(
-      [amp, ...(selector as ComplexSelector).components],
+      [amp, ...(selector as ComplexSelector).value],
       undefined,
       getNodeLocation(selector),
       context
@@ -329,8 +331,9 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
     }
 
     if (node instanceof If) {
-      for (const branch of node.branches) {
-        lowerPlainAtRootRules(branch.rules as RulesType, context);
+      lowerPlainAtRootRules(node as unknown as RulesType, context);
+      if (node.else) {
+        lowerPlainAtRootRules(node.else as RulesType, context);
       }
       return node;
     }
@@ -359,7 +362,7 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
 
 function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.selectors) {
+    for (const item of selector.value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -376,11 +379,11 @@ function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSel
         : isNode(selector, N.ComplexSelector)
           ? ['complex']
           : ['simple'];
-  if (isNode(selector, N.CompoundSelector) && selector.components.length === 1) {
-    return findDisallowedExtendSelector(selector.components[0], allowed);
+  if (isNode(selector, N.CompoundSelector) && selector.value.length === 1) {
+    return findDisallowedExtendSelector(selector.value[0], allowed);
   }
-  if (isNode(selector, N.ComplexSelector) && selector.components.length === 1) {
-    return findDisallowedExtendSelector(selector.components[0], allowed);
+  if (isNode(selector, N.ComplexSelector) && selector.value.length === 1) {
+    return findDisallowedExtendSelector(selector.value[0], allowed);
   }
   if (kinds.some(k => allowed.includes(k))) {
     return undefined;
@@ -461,7 +464,7 @@ function isPlainCssImportPrelude(prelude: Node, extraNodes: Node[] | undefined):
   return true;
 }
 
-export function importAtRule(this: P, T: TokenMap) {
+export function importAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -500,7 +503,7 @@ export function importAtRule(this: P, T: TokenMap) {
         }
 
         const preludeNodes = [prelude, ...(extraNodes ?? [])];
-        imports.push(new AtRule(
+        imports.push(new AtRuleStatement(
           {
             name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
             prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
@@ -526,7 +529,7 @@ export function importAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function innerAtRule(this: P, T: TokenMap) {
+export function innerAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => $.OR([
     { GATE: () => $.isType($.T.AtImport), ALT: () => $.SUBRULE($.importAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
@@ -547,7 +550,7 @@ export function innerAtRule(this: P, T: TokenMap) {
  * and `JsImport` for script paths. `sass:*` built-ins are rewritten
  * to `#sass/*` and imported as `JsImport`.
  */
-export function scssUseAtRule(this: P, T: TokenMap) {
+export function scssUseAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -635,7 +638,7 @@ export function scssUseAtRule(this: P, T: TokenMap) {
  *
  * Full show/hide/as parsing is deferred; we currently ignore extra prelude tokens.
  */
-export function scssForwardAtRule(this: P, T: TokenMap) {
+export function scssForwardAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -801,7 +804,7 @@ export function scssForwardAtRule(this: P, T: TokenMap) {
  * We parse it into Jess `Extend` nodes (Sass default flag = All).
  * `!optional` is accepted (so sass-spec parses) but ignored in evaluation.
  */
-export function scssExtendAtRule(this: P, T: TokenMap) {
+export function scssExtendAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -838,14 +841,14 @@ export function scssExtendAtRule(this: P, T: TokenMap) {
       if (isNode(sel, N.BasicSelector)) {
         return sel.value.startsWith('\\');
       }
-      if (isNode(sel, N.SelectorList) && sel.selectors.length === 1) {
-        return isPlaceholderTarget(sel.selectors[0]!);
+      if (isNode(sel, N.SelectorList) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
-      if (isNode(sel, N.CompoundSelector) && sel.components.length === 1) {
-        return isPlaceholderTarget(sel.components[0]!);
+      if (isNode(sel, N.CompoundSelector) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
-      if (isNode(sel, N.ComplexSelector) && sel.components.length === 1) {
-        return isPlaceholderTarget(sel.components[0]!);
+      if (isNode(sel, N.ComplexSelector) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
       return false;
     };
@@ -863,7 +866,7 @@ export function scssExtendAtRule(this: P, T: TokenMap) {
 /**
  * Parses Sass `with (...)` config into a Rules node of VarDeclarations.
  */
-export function scssWithConfig(this: P, T: TokenMap) {
+export function scssWithConfig(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -931,7 +934,7 @@ export function scssWithConfig(this: P, T: TokenMap) {
 /**
  * SCSS: `@content` → `$content()` (Call(Reference(type='mixin')))
  */
-export function scssContentAtRule(this: P, T: TokenMap) {
+export function scssContentAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -965,7 +968,7 @@ export function scssContentAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function scssIncludeUsingParams(this: P, T: TokenMap) {
+export function scssIncludeUsingParams(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -1007,7 +1010,7 @@ export function scssIncludeUsingParams(this: P, T: TokenMap) {
  * (parse-only). The evaluation semantics for binding it to the call scope
  * are implemented later.
  */
-export function scssIncludeAtRule(this: P, T: TokenMap) {
+export function scssIncludeAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1212,7 +1215,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
     let contentNode: Node | undefined;
     if (contentRules) {
       const contentMixin = new Mixin(
-        { rules: contentRules, params: usingParams },
+        { rules: contentRules.rules, params: usingParams },
         undefined,
         loc,
         $.context
@@ -1228,7 +1231,7 @@ export function scssIncludeAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function scssIfAtRule(this: P, T: TokenMap) {
+export function scssIfAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1301,16 +1304,19 @@ export function scssIfAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    return new If({
-      branches: [
-        ...conditions.map((condition, index) => ({ condition, rules: bodies[index]! })),
-        ...(elseBranch ? [{ rules: elseBranch }] : [])
-      ]
-    }, undefined, loc, $.context);
+    let elseNode: If | Rules | undefined = elseBranch;
+    for (let index = conditions.length - 1; index >= 0; index--) {
+      elseNode = new If({
+        condition: conditions[index]!,
+        rules: bodies[index]!.rules,
+        else: elseNode
+      }, undefined, loc, $.context);
+    }
+    return elseNode;
   };
 }
 
-export function scssForAtRule(this: P, T: TokenMap) {
+export function scssForAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1397,12 +1403,12 @@ export function scssForAtRule(this: P, T: TokenMap) {
         includeStart: true,
         includeEnd
       },
-      rules
+      rules: rules.rules
     }, undefined, loc, $.context);
   };
 }
 
-export function scssEachAtRule(this: P, T: TokenMap) {
+export function scssEachAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1457,12 +1463,12 @@ export function scssEachAtRule(this: P, T: TokenMap) {
     return new For({
       pattern,
       iterable: { kind: 'node', value: expr },
-      rules
+      rules: rules.rules
     }, undefined, loc, $.context);
   };
 }
 
-export function scssWhileAtRule(this: P, T: TokenMap) {
+export function scssWhileAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1478,11 +1484,11 @@ export function scssWhileAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    return new While({ condition: condition!, rules }, undefined, loc, $.context);
+    return new While({ condition: condition!, rules: rules.rules }, undefined, loc, $.context);
   };
 }
 
-export function scssMixinAtRule(this: P, T: TokenMap) {
+export function scssMixinAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1560,7 +1566,7 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
     })();
 
     return new Mixin(
-      { name: finalNameNode, params, rules },
+      { name: finalNameNode, params, rules: rules.rules },
       undefined,
       loc,
       $.context
@@ -1568,7 +1574,7 @@ export function scssMixinAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function scssMixinParams(this: P, T: TokenMap) {
+export function scssMixinParams(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1598,7 +1604,7 @@ export function scssMixinParams(this: P, T: TokenMap) {
   };
 }
 
-export function scssMixinParamsAfterFunctionStart(this: P, T: TokenMap) {
+export function scssMixinParamsAfterFunctionStart(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1627,7 +1633,7 @@ export function scssMixinParamsAfterFunctionStart(this: P, T: TokenMap) {
   };
 }
 
-export function scssMixinParam(this: P, T: TokenMap) {
+export function scssMixinParam(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1678,7 +1684,7 @@ export function scssMixinParam(this: P, T: TokenMap) {
   };
 }
 
-export function scssMediaPrelude(this: P, T: TokenMap) {
+export function scssMediaPrelude(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1721,7 +1727,7 @@ export function scssMediaPrelude(this: P, T: TokenMap) {
   };
 }
 
-export function mediaAtRule(this: P, T: TokenMap) {
+export function mediaAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1730,7 +1736,7 @@ export function mediaAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function scssSupportsPrelude(this: P, T: TokenMap) {
+export function scssSupportsPrelude(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1773,7 +1779,7 @@ export function scssSupportsPrelude(this: P, T: TokenMap) {
   };
 }
 
-export function supportsAtRule(this: P, T: TokenMap) {
+export function supportsAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1792,12 +1798,12 @@ export function supportsAtRule(this: P, T: TokenMap) {
     return new AtRule({
       name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
       prelude: prelude,
-      rules
+      rules: rules.rules
     }, { nestable: true }, location, $.context);
   };
 }
 
-export function scssContainerPrelude(this: P, T: TokenMap) {
+export function scssContainerPrelude(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1840,7 +1846,7 @@ export function scssContainerPrelude(this: P, T: TokenMap) {
   };
 }
 
-export function containerAtRule(this: P, T: TokenMap) {
+export function containerAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1849,7 +1855,7 @@ export function containerAtRule(this: P, T: TokenMap) {
   };
 }
 
-export function scssScopePrelude(this: P, T: TokenMap) {
+export function scssScopePrelude(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1892,7 +1898,7 @@ export function scssScopePrelude(this: P, T: TokenMap) {
   };
 }
 
-export function scopeAtRule(this: P, T: TokenMap) {
+export function scopeAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1908,7 +1914,7 @@ export function scopeAtRule(this: P, T: TokenMap) {
  * lookahead will otherwise choose `unknownAtRule` and skip our custom
  * alternatives.
  */
-export function unknownAtRule(this: P, T: TokenMap) {
+export function unknownAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1962,7 +1968,7 @@ export function unknownAtRule(this: P, T: TokenMap) {
 /**
  * SCSS: `@return <value>;` → `$result: <value>;`
  */
-export function scssReturnAtRule(this: P, T: TokenMap) {
+export function scssReturnAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -1986,7 +1992,7 @@ export function scssReturnAtRule(this: P, T: TokenMap) {
  * Parsed as a `Func` node with a `body` (Rules) and `params` list, and registered in the function registry.
  * Return value is represented by a `$result: <value>;` variable declaration (see `@return`).
  */
-export function scssFunctionAtRule(this: P, T: TokenMap) {
+export function scssFunctionAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -2064,7 +2070,7 @@ export function scssFunctionAtRule(this: P, T: TokenMap) {
  * Parsed as `Log` nodes. These are diagnostic at-rules that output messages during compilation.
  * They serialize to empty strings since they're not supported in Jess syntax.
  */
-export function scssDiagnosticAtRule(this: P, T: TokenMap) {
+export function scssDiagnosticAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -2096,7 +2102,7 @@ export function scssDiagnosticAtRule(this: P, T: TokenMap) {
  * null-parent ampersand template so they hoist naturally during selector
  * composition. Prelude/filter forms remain preserved as unsupported at-rules.
  */
-export function scssAtRootAtRule(this: P, T: TokenMap) {
+export function scssAtRootAtRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const $ = this;
@@ -2153,7 +2159,7 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
       return new Ruleset(
         {
           selector: prefixAtRootSelector(prelude as Selector, $.context),
-          rules
+          rules: rules.rules
         },
         undefined,
         loc,
@@ -2174,7 +2180,7 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
     }
 
     const name = new Any(atKeyword.image, { role: 'atkeyword' }, $.getLocationInfo(atKeyword), $.context);
-    const atRule = new AtRule({ name, prelude: prelude ? prelude : undefined, rules }, undefined, loc, $.context);
+    const atRule = new AtRule({ name, prelude: prelude ? prelude : undefined, rules: rules.rules }, undefined, loc, $.context);
     saveUnsupportedSyntaxError(
       $,
       atKeyword,

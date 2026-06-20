@@ -434,29 +434,34 @@ export function lookupScopeFrameVariable(
   let f = frame;
   let start = options?.start;
   let fallbackFrame = frame?.fallbackFrame;
+  let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
+      if (visitedFallbackFrames?.has(f)) {
+        return { kind: 'miss' };
+      }
+      visitedFallbackFrames?.add(f);
       let currentCellRejectedByGuard = false;
-      if (start === undefined) {
-        const currentCell = f.currentBindingsByName.get(name);
+      const currentCell = f.currentBindingsByName.get(name);
+      if (
+        currentCell
+        && currentCell.live === true
+        && options?.includeLive !== false
+      ) {
+        const sourceNode = currentCell.sourceNode;
+        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+          return {
+            kind: 'live',
+            cell: currentCell,
+            sourceNode,
+            frame: f,
+            readonly: currentCell.readonly
+          };
+        }
+        currentCellRejectedByGuard = sourceNode !== undefined
+          && options?.blockedSource?.(sourceNode) === true;
+      } else if (start === undefined) {
         if (
-          currentCell
-          && currentCell.live === true
-          && options?.includeLive !== false
-        ) {
-          const sourceNode = currentCell.sourceNode;
-          if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
-            return {
-              kind: 'live',
-              cell: currentCell,
-              sourceNode,
-              frame: f,
-              readonly: currentCell.readonly
-            };
-          }
-          currentCellRejectedByGuard = sourceNode !== undefined
-            && options?.blockedSource?.(sourceNode) === true;
-        } else if (
           currentCell
           && options?.includeDeclarations !== false
           && f.declarationsCovered
@@ -522,7 +527,6 @@ export function lookupScopeFrameVariable(
       }
 
       const bucket = options?.includeDeclarations === false
-        || currentCellRejectedByGuard
         ? undefined
         : f.declarationBucketsByName.get(name);
       if (bucket?.length) {
@@ -546,6 +550,7 @@ export function lookupScopeFrameVariable(
         }
       }
 
+      fallbackFrame ??= f.fallbackFrame;
       start = undefined;
       f = f.parent;
     }
@@ -555,6 +560,7 @@ export function lookupScopeFrameVariable(
     }
 
     f = fallbackFrame;
+    visitedFallbackFrames ??= new Set();
     fallbackFrame = fallbackFrame.fallbackFrame;
     start = undefined;
   }

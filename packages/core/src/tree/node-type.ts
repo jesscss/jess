@@ -2,8 +2,8 @@
  * Bitmask-based node type system.
  *
  * Each concrete node type gets a single bit. Abstract parent types
- * (Selector, SimpleSelector) are masks combining their children's bits.
- * A node's `nodeType` field is the OR of its own bit and all ancestor bits.
+ * (Selector, SimpleSelector, RuleContainer) are masks combining their
+ * children's bits.
  *
  * isNode(x, N.Foo) compiles to: x.nodeType & Foo (one bitwise AND)
  */
@@ -55,14 +55,17 @@ export enum N {
   Comment           = 1 << 28,
   JsFunction        = 1 << 29,
   JsObject          = 1 << 30,
-  // Note: 1 << 31 is negative in JS (sign bit), so we use it carefully
-  JsArray           = 1 << 31,
+  // Note: 1 << 31 is negative in JS (sign bit), so we use it carefully.
+  // JsArray is checked by class identity rather than isNode(..., N.JsArray).
+  AtRuleStatement   = 1 << 31,
+  JsArray           = 0,
 
   // ── Abstract / parent masks ──────────────────────────────────────
   // These combine child bits so isNode(x, N.Selector) matches any selector.
 
   SimpleSelector    = BasicSelector | Ampersand | PseudoSelector,
-  Selector          = SimpleSelector | CompoundSelector | ComplexSelector | SelectorList | Combinator
+  Selector          = SimpleSelector | CompoundSelector | ComplexSelector | SelectorList | Combinator,
+  RuleContainer     = Rules | Ruleset | AtRule | Mixin
 }
 
 /**
@@ -102,13 +105,17 @@ export const nodeTypeBits: Record<string, number> = {
   Nil: N.Nil,
   Call: N.Call,
   Func: N.Func,
-  Mixin: N.Mixin,
+  Mixin: N.Mixin | N.Rules,
   Declaration: N.Declaration,
   VarDeclaration: N.VarDeclaration,
   Rules: N.Rules,
   Collection: N.Collection,
-  Ruleset: N.Ruleset,
-  AtRule: N.AtRule,
+  Ruleset: N.Ruleset | N.Rules,
+  AtRule: N.AtRule | N.Rules,
+  AtRuleStatement: N.AtRuleStatement,
+  If: N.Rules,
+  For: N.Rules,
+  While: N.Rules,
   Reference: N.Reference,
   Comment: N.Comment,
   JsFunction: N.JsFunction,

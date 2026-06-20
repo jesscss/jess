@@ -389,7 +389,7 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Call result');
     }
     expect(resolved.args).toBeInstanceOf(List);
-    const calcArg = resolved.args.items[0];
+    const calcArg = resolved.args.value[0];
     expect(calcArg).toBeInstanceOf(Operation);
     if (!(calcArg instanceof Operation)) {
       throw new Error('Expected calc fallback Operation argument');
@@ -486,7 +486,7 @@ describe('Operation', () => {
       }),
       ruleset({
         selector: any('.probe'),
-        rules: rules([
+        rules: [
           decl({
             name: 'margin',
             value: call({
@@ -540,7 +540,7 @@ describe('Operation', () => {
               ])
             })
           })
-        ])
+        ]
       })
     ]);
 

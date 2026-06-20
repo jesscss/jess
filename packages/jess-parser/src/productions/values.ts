@@ -13,6 +13,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type Production<T = unknown> = (ctx?: RuleContext) => T | undefined;
 
 const scssValue = scssValueProduction;
 const cssMathProduct = cssProductions.mathProduct;
@@ -68,7 +69,7 @@ export function jessCallArgs(this: P, T: TokenMap) {
   };
 }
 
-export function functionCallArgs(this: P, T: TokenMap) {
+export function functionCallArgs(this: P, T: TokenMap): Production<List<Node>> {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -135,7 +136,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
  * `$var` with optional accessor chain `.prop`, `[idx]`, `.method(args)`.
  * Returns a Reference for plain `$var` or a nested Reference/Call for chains.
  */
-export function jessVarWithAccessors(this: P, T: TokenMap) {
+export function jessVarWithAccessors(this: P, T: TokenMap): Production<Node> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();

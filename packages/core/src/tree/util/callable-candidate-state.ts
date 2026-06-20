@@ -66,7 +66,7 @@ export function prepareCallableCandidateState({
     : undefined;
   const lexicalScopeFrame = definitionFrame ?? parentFrame;
   const fallbackScopeFrame = (
-    leakyRules
+    (leakyRules || parentFrame?.hasLiveBindings === true)
     && parentFrame
     && parentFrame !== lexicalScopeFrame
   )

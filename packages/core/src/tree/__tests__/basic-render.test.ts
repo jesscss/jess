@@ -15,9 +15,9 @@ describe('Basic Ruleset Rendering', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) })
-        ])
+        ]
       })
     ]);
 
@@ -34,9 +34,9 @@ describe('Basic Ruleset Rendering', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) })
-        ])
+        ]
       })
     ]);
 
@@ -53,9 +53,9 @@ describe('Basic Ruleset Rendering', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) })
-        ])
+        ]
       })
     ]);
 
@@ -112,9 +112,9 @@ describe('Basic Ruleset Rendering', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) })
-        ])
+        ]
       })
     ]);
 

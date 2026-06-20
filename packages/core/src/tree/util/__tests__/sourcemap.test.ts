@@ -44,9 +44,9 @@ describe('source map segments', () => {
     const nested = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: any('x'), value: any('y') })
-        ])
+        ]
       })
     ], undefined, undefined, treeContext);
     // attach fake locations and files

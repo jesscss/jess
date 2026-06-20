@@ -14,14 +14,14 @@ describe.skip('Extend', () => {
     let rule = rules([
       ruleset({
         selector: el('.a'),
-        rules: rules([])
+        rules: []
       }),
       ruleset({
         selector: extend({
           selector: el('.b'),
           target: el('.a')
         }),
-        rules: rules([])
+        rules: []
       })
     ]);
     let evald = await rule.eval(context);

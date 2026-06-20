@@ -30,7 +30,7 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "test": "vitest --run --passWithNoTests",
     "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -42,6 +42,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "color-name": "~2.0.0"

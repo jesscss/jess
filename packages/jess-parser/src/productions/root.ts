@@ -12,6 +12,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type Production<T = unknown> = (ctx?: RuleContext) => T | undefined;
 
 type AltContext = (ctx?: RuleContext) => Array<{ ALT: () => any; GATE?: () => boolean }>;
 
@@ -118,7 +119,7 @@ export function varDeclaration(this: P, _T: TokenMap) {
 /**
  * Bare `$foo[.bar][…];` at statement level — expression statement.
  */
-export function jessExprStatement(this: P, _T: TokenMap) {
+export function jessExprStatement(this: P, _T: TokenMap): Production<NodeType> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     // jessVarWithAccessors handles $var, $var.prop, $var[idx], etc.

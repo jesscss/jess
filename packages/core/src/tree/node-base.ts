@@ -104,26 +104,26 @@ function setParent(node: Node, parent: Node | undefined): void {
   node.parent = parent;
 }
 
-function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
-  return node?.type === 'Rules';
+function isRulesNode(node: Node | { nodeType?: number; type?: string } | undefined): node is Rules {
+  return Boolean(node && (node.nodeType & nodeTypeBits.Rules) !== 0);
 }
 
 function sourceRootOf(node: Node): Rules | undefined {
-  if (isRulesNode(node)) {
-    return node;
-  }
   if (node._sourceRoot) {
     return node._sourceRoot;
   }
+  if (node.type === 'Rules' && isRulesNode(node)) {
+    return node;
+  }
   let current = node.parent;
   while (current) {
-    if (isRulesNode(current)) {
-      node._sourceRoot = current;
-      return current;
-    }
     if (current._sourceRoot) {
       node._sourceRoot = current._sourceRoot;
       return current._sourceRoot;
+    }
+    if (current.type === 'Rules' && isRulesNode(current)) {
+      node._sourceRoot = current;
+      return current;
     }
     current = current.parent;
   }
@@ -186,9 +186,16 @@ export const defineType = <
   Clazz.prototype.type = type;
   Clazz.prototype.shortType = shortType;
 
-  /** Build nodeType bitmask by OR-ing bits for each type in the prototype chain */
-  let nodeType = 0;
+  /**
+   * Build nodeType from the registered concrete type plus abstract ancestors.
+   *
+   * Concrete leaf entries may deliberately include inherited base bits. For
+   * example `Ruleset`, `AtRule`, and `Mixin` extend `Rules`, so their registered
+   * leaf masks include both their concrete bit and `N.Rules`.
+   */
+  let nodeType = nodeTypeBits[type] ?? 0;
   let ctor = Clazz;
+  let first = true;
   do {
     const proto = ctor?.prototype;
     const type = proto?.type;
@@ -198,10 +205,11 @@ export const defineType = <
     }
 
     const bit = nodeTypeBits[type];
-    if (bit !== undefined) {
+    if (!first && bit !== undefined && bit === 0) {
       nodeType |= bit;
     }
 
+    first = false;
     ctor = Object.getPrototypeOf(ctor);
   } while (ctor);
   Clazz.prototype.nodeType = nodeType;
@@ -554,7 +562,7 @@ export abstract class Node<
 
   get rulesParent(): Rules | undefined {
     let possibleRules: Node | undefined = this.parent;
-    while (possibleRules && possibleRules.type !== 'Rules') {
+    while (possibleRules && !isRulesNode(possibleRules)) {
       possibleRules = possibleRules.parent;
     }
     return isRulesNode(possibleRules) ? possibleRules : undefined;

@@ -11,6 +11,7 @@ import {
   Any,
   Block,
   For,
+  Rules,
   List,
   Sequence,
   Call,
@@ -190,7 +191,7 @@ function createEachPattern(
     };
   }
 
-  const params = mixin.params.items
+  const params = mixin.params.value
     .map((param: Node) => {
       if (isNode(param, N.VarDeclaration)) {
         return param;
@@ -314,7 +315,7 @@ export function expressionProduct(this: P, T: TokenMap) {
 
       if (op.image === '/' && !shouldParseSlashDivision($, T, ctx, left, right)) {
         if (isNode(left, N.List) && left.options?.sep === '/') {
-          left = new List([...left.items, right], { sep: '/' }, location, $.context);
+          left = new List([...left.value, right], { sep: '/' }, location, $.context);
         } else {
           left = new List([left, right], { sep: '/' }, location, $.context);
         }
@@ -483,7 +484,7 @@ export function customBlock(this: P, T: TokenMap) {
     }
     const startNode = new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context);
     const endNode = new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context);
-    return new Sequence([startNode, ...items!, endNode], undefined, location, $.context);
+    return new Sequence([startNode, ...value!, endNode], undefined, location, $.context);
   };
 }
 
@@ -726,11 +727,11 @@ export function ifFunction(this: P, T: TokenMap) {
           ALT: () => {
             $.CONSUME(T.Semi);
             node = $.SUBRULE2($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-            args = new List([...args.items, node], args.options, $.getLocationFromNodes([...args.items, node]), $.context);
+            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
             $.OPTION(() => {
               $.CONSUME4(T.Semi);
               node = $.SUBRULE3($.valueList, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-              args = new List([...args.items, node], args.options, $.getLocationFromNodes([...args.items, node]), $.context);
+              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
             });
           }
         },
@@ -738,11 +739,11 @@ export function ifFunction(this: P, T: TokenMap) {
           ALT: () => {
             $.CONSUME(T.Comma);
             node = $.SUBRULE($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-            args = new List([...args.items, node], args.options, $.getLocationFromNodes([...args.items, node]), $.context);
+            args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
             $.OPTION2(() => {
               $.CONSUME2(T.Comma);
               node = $.SUBRULE2($.callArgument, { ARGS: [{ ...ctx, allowAnonymousMixins: true }] });
-              args = new List([...args.items, node], args.options, $.getLocationFromNodes([...args.items, node]), $.context);
+              args = new List([...args.value, node], args.options, $.getLocationFromNodes([...args.value, node]), $.context);
             });
           }
         }
@@ -953,11 +954,11 @@ export function functionCall(this: P, T: TokenMap) {
       if (!modernColorFunctions.has(name.toLowerCase())) {
         return false;
       }
-      if (!args || args.items.length !== 1) {
+      if (!args || args.value.length !== 1) {
         return false;
       }
-      const firstArg = args.items[0];
-      return Boolean(isNode(firstArg, N.Sequence) && firstArg.items.length >= 2);
+      const firstArg = args.value[0];
+      return Boolean(isNode(firstArg, N.Sequence) && firstArg.value.length >= 2);
     };
 
     let funcAlt = (ctx: RuleContext = {}) => [
@@ -992,10 +993,10 @@ export function functionCall(this: P, T: TokenMap) {
           $.CONSUME(T.RParen);
           const location = $.endRule();
           const nameValue = fnNameForCtx;
-          if (nameValue === 'unit' && args?.items[1] instanceof Any) {
-            const unitArg = args.items[1];
+          if (nameValue === 'unit' && args?.value[1] instanceof Any) {
+            const unitArg = args.value[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
-            const newArgsData = [...args.items];
+            const newArgsData = [...args.value];
             newArgsData[1] = quotedUnit;
             args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
           }
@@ -1009,11 +1010,11 @@ export function functionCall(this: P, T: TokenMap) {
           }
           if (
             nameValue === 'each'
-            && args?.items.length === 2
-            && isNode(args.items[1], N.Mixin)
+            && args?.value.length === 2
+            && isNode(args.value[1], N.Mixin)
           ) {
-            const iterable = args.items[0]!;
-            const callback = args.items[1]!;
+            const iterable = args.value[0]!;
+            const callback = args.value[1]!;
             return new For({
               pattern: createEachPattern(callback, location, $.context),
               iterable: { kind: 'node', value: iterable },

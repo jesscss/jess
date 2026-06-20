@@ -11,6 +11,7 @@ import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
+import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
@@ -634,16 +635,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return [];
     }
     if (isNode(postlude, N.List)) {
-      return postlude.items;
+      return postlude.value;
     }
-    return isNode(postlude, N.Sequence) ? postlude.items : [postlude];
+    return isNode(postlude, N.Sequence) ? postlude.value : [postlude];
   }
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
     const wrappedAtRule = new AtRule({
       name: new Any(name, { role: 'atkeyword' }),
       prelude,
-      rules
+      rules: rules.rules
     });
     return this.deriveRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
   }
@@ -844,7 +845,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
   }
 
-  private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
+  private createCssImportAtRule(pathNode: Quoted | Url): AtRuleStatement {
     const preludeNodes: Node[] = [pathNode];
     const postludeNodes = this.getPostludeNodes(this.options.importOptions?.postlude);
     for (let i = 0; i < postludeNodes.length; i++) {
@@ -855,7 +856,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       : new Sequence(preludeNodes);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
-    return new AtRule({
+    return new AtRuleStatement({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
     }, undefined, location);
@@ -1351,7 +1352,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (isNode(current, N.Call)) {
         const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.args?.items ?? [];
+          const args = current.args?.value ?? [];
           const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
