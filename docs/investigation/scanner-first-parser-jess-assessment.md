@@ -64,7 +64,7 @@ the end of a long pass to mark completed work.
 - [x] Slice 4: structural document parser
 - [x] Slice 5: parse services and island parse planning
 - [x] Slice 6: semantic index builder
-- [ ] Slice 7: CSS and Less island provider entrypoints
+- [x] Slice 7: CSS and Less island provider entrypoints
 - [ ] Slice 8: CSS and Less e2e compiler/eval prototype
 - [ ] Slice 9: plugin and visitor integration
 - [x] Slice 9b: SCSS and Jess island provider entrypoints after CSS/Less e2e
@@ -1589,14 +1589,14 @@ actually needs.
 
 Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 
-- [ ] Map each CSS/Less provider against the current token definitions,
+- [x] Map each CSS/Less provider against the current token definitions,
   productions, and parser tests before implementing it. CSS work should use
   `cssTokens.ts` plus CSS productions as compatibility guide rails; Less work
   should use `lessTokens.ts` plus Less overrides/additions the same way. Treat
   those files as a compatibility inventory and regression map, not as a sacred
   implementation template. The mapping should answer "what behavior do we need
   to preserve?" before it answers "which token regex do we copy?".
-- [ ] For each mapped token/provider behavior, choose an explicit scanner-first
+- [x] For each mapped token/provider behavior, choose an explicit scanner-first
   fidelity tier before implementing it:
   exact hot-path recognition, cheap common-case structural recognition,
   deferred island parsing with canonical fallback, diagnostic-only recovery, or
@@ -1609,6 +1609,38 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
   fallback/materialization story. Any divergence from existing productions must
   be documented as an intentional structural-stage cost/coverage tradeoff, not
   accidental grammar drift.
+
+Current CSS/Less provider map:
+
+| Package | Structural island | Provider target | Existing parser production used for materialization | Guide rails | Scanner-first fidelity tier |
+| --- | --- | --- | --- | --- | --- |
+| `@jesscss/css-parser` | `selector` | `css-selector` | `selectorList` | `cssTokens.ts`; `productions/selectors.ts`; selector parser tests | Cheap common-case structural recognition for rule headers; exact selector shape is deferred to island parsing. |
+| `@jesscss/css-parser` | `declaration-value` | `css-value` | `valueList` | `cssTokens.ts`; `productions/values.ts`; declaration/value/custom-property tests | Exact structural boundary with deferred island parsing; custom-property brace/string/comment boundaries are guarded by scanner tests. |
+| `@jesscss/css-parser` | `at-rule-prelude` | `css-prelude` | `valueList` | `cssTokens.ts`; `productions/atRules.ts`; `productions/misc.ts`; at-rule/container/media tests | Exact prelude range from at-rule name boundary; deferred parser-owned prelude shape. |
+| `@jesscss/less-parser` | `selector` | `less-selector` | `selectorList` | `lessTokens.ts`; Less selector overrides in `productions/selectors.ts`; Less selector/extend tests | Cheap common-case structural recognition, with Less selector semantics deferred to island parsing. |
+| `@jesscss/less-parser` | `extend-candidate` | `less-selector` | `qualifiedRule` wrapped as `${source} {}` | `lessTokens.ts`; Less `:extend()` and qualified-rule productions/tests | Deferred island parsing with required wrapper context so `Extend` nodes match current parser behavior. |
+| `@jesscss/less-parser` | `declaration-value` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; Less declaration/value/function/custom-property tests | Exact structural boundary with deferred value parsing; high-cost value grammar remains parser-owned. |
+| `@jesscss/less-parser` | `variable-reference` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; variable/reference/accessor tests | Cheap lexical recognition of reference-like spans; exact reference/accessor shape is deferred. |
+| `@jesscss/less-parser` | `mixin-definition` | `less-mixin` | `selectorList` | `lessTokens.ts`; `productions/guards.ts`; `mixinName`/mixin definition tests | Cheap common-case recognition for `.name(`/`#name(`; canonical parser remains authority for parameter/body semantics. |
+| `@jesscss/less-parser` | `mixin-call` | `less-mixin` | `valueReference` | `lessTokens.ts`; `productions/values.ts`; `productions/guards.ts`; mixin call/reference tests | Deferred island parsing from a structural statement boundary; unsupported/broad call forms fall back through canonical parse paths. |
+| `@jesscss/less-parser` | `at-rule-prelude` | `less-media-prelude` | `mediaQuery` | `lessTokens.ts`; `productions/root.ts` Less media overrides; at-rule/media/deprecation tests | Exact prelude range from at-rule name boundary; Less-specific bare variable/index behavior remains parser-owned. |
+
+Pragmatic divergence notes:
+
+- Structural selector recognition intentionally does not copy every selector
+  token regex. It finds rule-header spans cheaply and leaves full selector
+  grammar, escapes, extend grouping, and compound selector shape to the
+  language parser provider.
+- Structural declaration/value recognition prioritizes stable source ranges and
+  recovery over eager grammar fidelity. The scanner must keep strings, comments,
+  `url()`, custom-property blocks, and nested delimiters from corrupting
+  statement boundaries; the value grammar itself remains deferred.
+- At-rule prelude islands start after the at-keyword, even for adjacent forms
+  such as `@supports(display: grid)`, so provider rules receive the same
+  prelude text their existing productions expect.
+- Less profile hints such as `@` reference detection are deliberately broad.
+  They are request-planning hints, not proof that every span is a variable AST;
+  exact shape comes only from the provider or canonical fallback.
 - [x] Add CSS selector island provider in `@jesscss/css-parser`.
 - [x] Add CSS value/prelude island providers in `@jesscss/css-parser`.
 - [x] Add Less selector island provider in `@jesscss/less-parser`.
