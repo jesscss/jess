@@ -103,6 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first complex-target `:extend(...)` proof.
+- Verdict: accepted as a bounded Less extend semantics proof, not a performance
+  claim. The structural-fed path now admits cheap target-only complex selectors
+  such as `.base .child` while the owning ruleset selector remains raw.
+- New traversal/allocation: one private target tokenizer walks only the
+  already-matched `:extend(...)` target substring. It creates the
+  `BasicSelector`, `Combinator`, and `ComplexSelector` nodes required for Less
+  extend matching; it does not parse unrelated selectors, declarations, values,
+  or child rules.
+- New materialization: target selector materialization only. The e2e proof
+  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
+  source selector storage, and raw declaration value storage. Unsupported
+  pseudo/attribute/interpolated source selectors, compound/pseudo targets,
+  `&:extend(...)`, and grouped extends remain canonical fallback.
+- Helper/API surface: no exports and no compatibility shims. The helper is
+  private to the Less plugin prototype and should be narrowed or replaced when
+  the shared scanner-native selector materializer grows a reusable target mode.
+- Metadata mutations: none added.
+- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
+  e2e suite, scanner-first Less corpus parity audit, Less plugin build, eslint,
+  `git diff --check`, and aggressive cutting review.
+
 - Latest pass: scanner-first simple `:extend(... all)` selector-header proof.
 - Verdict: accepted as a bounded Less semantics proof, not a performance claim.
   The structural-fed path now admits only the already-cheap selector-header

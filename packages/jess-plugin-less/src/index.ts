@@ -10,6 +10,8 @@ import {
   AtRuleStatement,
   Comment,
   BasicSelector,
+  Combinator,
+  ComplexSelector,
   Color,
   Declaration,
   Dimension,
@@ -1945,25 +1947,29 @@ function readScannerNativeExtendSelectorToken(
     !sourceSelector
     || !targetSelector
     || !SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN.test(sourceSelector)
-    || !SCANNER_NATIVE_EXTEND_TARGET_PATTERN.test(targetSelector)
   ) {
     return undefined;
   }
   const selectorEnd = range.start + sourceSelector.length;
   const targetStart = range.start + sourceSelector.length + ':extend('.length;
   const targetEnd = targetStart + targetSelector.length;
+  const target = scannerNativeExtendTargetSelector(
+    plan.document,
+    targetSelector,
+    targetStart,
+    targetEnd,
+    context
+  );
+  if (!target) {
+    return undefined;
+  }
   return {
     start: range.start,
     selectorEnd,
     selectorText: sourceSelector,
     node: new Extend(
       {
-        target: new BasicSelector(
-          targetSelector,
-          undefined,
-          locationFromRange(plan.document, targetStart, targetEnd),
-          context
-        ),
+        target,
         flag: flagText === 'all' ? ExtendFlag.All : ExtendFlag.Exact
       },
       undefined,
@@ -1971,6 +1977,65 @@ function readScannerNativeExtendSelectorToken(
       context
     )
   };
+}
+
+function scannerNativeExtendTargetSelector(
+  document: StructuralDocument,
+  targetSelector: string,
+  targetStart: number,
+  targetEnd: number,
+  context: TreeContext
+): BasicSelector | ComplexSelector | undefined {
+  if (SCANNER_NATIVE_EXTEND_TARGET_PATTERN.test(targetSelector)) {
+    return new BasicSelector(
+      targetSelector,
+      undefined,
+      locationFromRange(document, targetStart, targetEnd),
+      context
+    );
+  }
+  if (!SCANNER_NATIVE_COMPLEX_SELECTOR_PATTERN.test(targetSelector)) {
+    return undefined;
+  }
+  const parts: Array<BasicSelector | Combinator> = [];
+  let cursor = 0;
+  for (const match of targetSelector.matchAll(SCANNER_NATIVE_EXTEND_TARGET_TOKEN_PATTERN)) {
+    if (match.index !== cursor || !match.groups) {
+      return undefined;
+    }
+    const text = match[0];
+    if (match.groups.selector) {
+      parts.push(new BasicSelector(
+        text,
+        undefined,
+        locationFromRange(document, targetStart + match.index, targetStart + match.index + text.length),
+        context
+      ));
+    } else if (match.groups.combinator) {
+      const combinator = text.trim();
+      if (combinator !== '>' && combinator !== '+' && combinator !== '~') {
+        return undefined;
+      }
+      parts.push(new Combinator(
+        combinator,
+        undefined,
+        locationFromRange(document, targetStart + match.index, targetStart + match.index + text.length),
+        context
+      ));
+    } else {
+      parts.push(new Combinator(
+        ' ',
+        undefined,
+        locationFromRange(document, targetStart + match.index, targetStart + match.index + text.length),
+        context
+      ));
+    }
+    cursor = match.index + text.length;
+  }
+  if (cursor !== targetSelector.length || parts.length < 3) {
+    return undefined;
+  }
+  return new ComplexSelector(parts, undefined, locationFromRange(document, targetStart, targetEnd), context);
 }
 
 function readScannerNativeAtRulePreludeToken(
@@ -2634,8 +2699,12 @@ const SCANNER_NATIVE_SELECTOR_PATTERN =
 const SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}$`, 'u');
 const SCANNER_NATIVE_EXTEND_TARGET_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
+const SCANNER_NATIVE_COMPLEX_SELECTOR_PATTERN =
+  /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;
+const SCANNER_NATIVE_EXTEND_TARGET_TOKEN_PATTERN =
+  /(?<combinator>[ \t]*[>+~][ \t]*)|(?<space>[ \t]+)|(?<selector>[.#][-_a-zA-Z][\w-]*)/gu;
 const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =
-  /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^()\s{},;\r\n]+)(?:[ \t]+(?<flag>all))?\)$/u;
+  /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^(){},;\r\n]+?)(?:[ \t]+(?<flag>all))?\)$/u;
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {

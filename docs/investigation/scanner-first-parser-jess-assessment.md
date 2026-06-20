@@ -2144,15 +2144,17 @@ storage.
   - [x] Added the first structural-fed Less extend proof for simple exact
     selector-header extends such as `.button:extend(.base) { width: 1px; }`,
     then widened the same cheap token path to simple `all` selector-header
-    extends such as `.button:extend(.base all) { width: 1px; }`.
+    extends such as `.button:extend(.base all) { width: 1px; }` and target-only
+    cheap complex selectors such as `.button:extend(.base .child)`.
     The builder splits only the participating selector field, keeps the owning
     ruleset selector as raw `.button`, constructs the existing core `Extend`
-    node for the target selector and exact/all flag, leaves unrelated
+    node for the target selector and exact/all flag, materializes only the
+    target selector nodes needed for Less extend matching, leaves unrelated
     declarations as raw-field payloads, renders equal CSS, and asserts zero
     selected island parser executions / zero full-tree fallback.
-    - Current limit: complex targets, pseudo/attribute/interpolated source
-      selectors, `&:extend(...)` statements, multiple extend groups, and richer
-      selector semantics still fall back canonically.
+    - Current limit: pseudo/attribute/interpolated source selectors,
+      compound/pseudo target selectors, `&:extend(...)` statements, multiple
+      extend groups, and richer selector semantics still fall back canonically.
   - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
     constructor can store raw scanner-native at-keyword/prelude strings, renders
     and serializes them as `rawName` / `rawPrelude` without canonical header
