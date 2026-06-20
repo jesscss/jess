@@ -1084,6 +1084,102 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (');
   });
 
+  it('feeds CSS grid declaration values through structural parse without value materialization', async () => {
+    const source = [
+      '.wrapper {',
+      '  display: grid;',
+      '  grid-column: container-left / span 1;',
+      '  grid-template-columns: [col1-start] 9fr [col1-end] 10px [col2-start] 3fr [col2-end];',
+      '  grid-template-rows: repeat(14, [gutter] 10px [row] 60px);',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('grid-column: container-left / span 1');
+    expect(rendered).toContain('grid-template-columns: [col1-start] 9fr [col1-end] 10px [col2-start] 3fr [col2-end]');
+    expect(rendered).toContain('grid-template-rows: repeat(14, [gutter] 10px [row] 60px)');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/css-grid-values.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('rawName: \'grid-column\'');
+    expect(types).toContain('[\'container-left / span 1\']');
+    expect(types).toContain('rawName: \'grid-template-columns\'');
+    expect(types).toContain('[\'[col1-start] 9fr [col1-end] 10px [col2-');
+    expect(types).toContain('rawName: \'grid-template-rows\'');
+    expect(types).toContain('[\'repeat(14, [gutter] 10px [row] 60px)\']');
+    expect(types).toContain('rawValueSegments:');
+    expect(types).not.toContain('valueNode: (');
+  });
+
+  it('falls back for CSS grid declaration values with Less variable-like tokens', async () => {
+    const source = '@cols: 1fr;\n.wrapper { grid-template-columns: repeat(2, @cols); }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+  });
+
+  it('falls back for CSS grid declaration values with unproven functions', async () => {
+    const source = '.wrapper { grid-template-columns: minmax(10px, 1fr) 2fr; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+  });
+
   it('feeds simple Less function values through progressive declaration segments', async () => {
     const cases = [
       {

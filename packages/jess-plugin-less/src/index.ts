@@ -1684,7 +1684,7 @@ function validateStructuralFedDeclaration(
   if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
     return 'declaration assignment is outside the first structural-fed subset';
   }
-  if (MULTILINE_VALUE_PATTERN.test(valueText)) {
+  if (MULTILINE_VALUE_PATTERN.test(valueText) && !isScannerNativeCssGridDeclarationValue(name, valueText)) {
     return 'multiline declaration values are not in the first structural-fed subset';
   }
   if (isCustomPropertyName(name)) {
@@ -1711,6 +1711,9 @@ function validateStructuralFedDeclaration(
     return undefined;
   }
   if (isScannerNativeMixedFunctionValue(scannerNativeValueText)) {
+    return undefined;
+  }
+  if (isScannerNativeCssGridDeclarationValue(name, scannerNativeValueText)) {
     return undefined;
   }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
@@ -2157,6 +2160,15 @@ function structuralScannerNativeDeclarationValueToken(
       valueParts?.important
     );
   }
+  if (name !== undefined && isScannerNativeCssGridDeclarationValue(name, scannerNativeValueText)) {
+    return {
+      kind: 'raw-value',
+      start: range.start,
+      end: range.end,
+      text: scannerNativeValueText,
+      important: valueParts?.important
+    };
+  }
   if (!SIMPLE_FLAT_VALUE_PATTERN.test(scannerNativeValueText)) {
     if (
       valueParts
@@ -2206,6 +2218,45 @@ function isScannerNativeMixedFunctionValue(valueText: string): boolean {
     && SIMPLE_FLAT_VALUE_PATTERN.test(prefix.trimEnd())
     && isScannerNativeFunctionCallValue(call)
   );
+}
+
+function isScannerNativeCssGridDeclarationValue(name: string, valueText: string): boolean {
+  if (!CSS_GRID_RAW_VALUE_PROPERTY_PATTERN.test(name)) {
+    return false;
+  }
+  if (
+    RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)
+    || valueText.includes('/*')
+    || CSS_GRID_RAW_UNPROVEN_FUNCTION_PATTERN.test(valueText)
+    || /[{};]/u.test(valueText)
+  ) {
+    return false;
+  }
+  return CSS_GRID_RAW_VALUE_PATTERN.test(valueText)
+    && hasBalancedCssGridRawValueDelimiters(valueText);
+}
+
+function hasBalancedCssGridRawValueDelimiters(valueText: string): boolean {
+  const stack: string[] = [];
+  for (let i = 0; i < valueText.length; i++) {
+    const char = valueText[i];
+    if (char === '(' || char === '[') {
+      stack.push(char);
+      continue;
+    }
+    if (char === ')') {
+      if (stack.pop() !== '(') {
+        return false;
+      }
+      continue;
+    }
+    if (char === ']') {
+      if (stack.pop() !== '[') {
+        return false;
+      }
+    }
+  }
+  return stack.length === 0;
 }
 
 function scannerNativeFunctionValueToken(
@@ -2521,6 +2572,9 @@ const SIMPLE_FLAT_VALUE_PATTERN =
 const RAW_COMMA_FLAT_VALUE_PATTERN =
   new RegExp(String.raw`^${SIMPLE_FLAT_VALUE_ATOM_SOURCE}(?:[ \t]+${SIMPLE_FLAT_VALUE_ATOM_SOURCE})*(?:[ \t]*,[ \t]*${SIMPLE_FLAT_VALUE_ATOM_SOURCE}(?:[ \t]+${SIMPLE_FLAT_VALUE_ATOM_SOURCE})*)+$`, 'u');
 const RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
+const CSS_GRID_RAW_VALUE_PROPERTY_PATTERN = /^grid(?:-|$)/u;
+const CSS_GRID_RAW_VALUE_PATTERN = /^[A-Za-z0-9_ \t%.,/()+\[\]-]+$/u;
+const CSS_GRID_RAW_UNPROVEN_FUNCTION_PATTERN = /\b(?!repeat\b)[A-Za-z_][\w-]*\(/u;
 const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
 const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{},a-zA-Z0-9]+\)$/u;
 const RAW_QUOTED_URL_PATTERN = /^url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\)$/u;
