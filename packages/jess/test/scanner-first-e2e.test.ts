@@ -674,6 +674,57 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds custom property declarations through structural parse without value materialization', async () => {
+    const cases = [
+      {
+        source: '.a { --brand: #06c; }\n',
+        name: '--brand',
+        value: '#06c',
+        progressiveNodes: 2
+      },
+      {
+        source: '.a { --raw: { token: "}"; }; color: blue; }\n',
+        name: '--raw',
+        value: '{ token: "}"; }',
+        progressiveNodes: 3
+      }
+    ];
+
+    for (const { source, name, value, progressiveNodes } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(name);
+      expect(rendered).toContain(value);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/custom-property.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain(`rawName: '${name}'`);
+      expect(types).toContain('rawValueSegments:');
+      expect(types).toContain(`['${value}']`);
+      expect(types).not.toContain(`name: (Any '${name}')`);
+      expect(types).not.toContain('valueNode: (');
+    }
+  });
+
   it('feeds exact important declarations through structural parse without value materialization', async () => {
     const cases = [
       { property: 'color', value: 'blue' },
@@ -1290,6 +1341,18 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@brand: blue ! important;\n.a { color: @brand; }\n',
         reason: 'important variable declarations are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: blue;\n.a { --brand: @brand; }\n',
+        reason: 'custom property values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: blue;\n.a { --brand: @{brand}; }\n',
+        reason: 'custom property values with Less variable-like tokens are not in the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { color: blue; --brand: ${color}; }\n',
+        reason: 'custom property values with Less variable-like tokens are not in the scanner-native structural-fed subset'
       },
       {
         source: '.wrapper { grid-template-areas:\n  "header header"\n  "content sidebar"; }\n',

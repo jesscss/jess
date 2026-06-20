@@ -1034,6 +1034,15 @@ function validateStructuralFedDeclaration(
   if (MULTILINE_VALUE_PATTERN.test(valueText)) {
     return 'multiline declaration values are not in the first structural-fed subset';
   }
+  if (isCustomPropertyName(name)) {
+    if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+      return 'custom property important values are not in the scanner-native structural-fed subset';
+    }
+    if (CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
+      return 'custom property values with Less variable-like tokens are not in the scanner-native structural-fed subset';
+    }
+    return undefined;
+  }
   const valueParts = splitScannerNativeDeclarationImportant(valueText);
   if (IMPORTANT_FLAG_PATTERN.test(valueText) && !valueParts) {
     return 'important declarations are not in the first structural-fed subset';
@@ -1148,7 +1157,7 @@ type ScannerNativeSelectorToken = {
 };
 
 type ScannerNativeValueToken = {
-  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list';
+  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list' | 'custom-property-raw';
   start: number;
   end: number;
   text: string;
@@ -1256,6 +1265,22 @@ function structuralScannerNativeDeclarationValueToken(
     return undefined;
   }
   const valueText = document.source.text.slice(range.start, range.end);
+  const name = structuralFieldText(document, owner, 'name', 'declaration-name');
+  if (name !== undefined && isCustomPropertyName(name)) {
+    if (
+      MULTILINE_VALUE_PATTERN.test(valueText)
+      || IMPORTANT_FLAG_PATTERN.test(valueText)
+      || CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN.test(valueText)
+    ) {
+      return undefined;
+    }
+    return {
+      kind: 'custom-property-raw',
+      start: range.start,
+      end: range.end,
+      text: valueText
+    };
+  }
   const valueParts = splitScannerNativeDeclarationImportant(valueText);
   const scannerNativeValueText = valueParts?.valueText ?? valueText;
   const tokenEnd = valueParts ? range.start + valueParts.valueLength : range.end;
@@ -1342,7 +1367,14 @@ function structuralFieldText(
 }
 
 function isPlainStructuralFedDeclarationName(name: string): boolean {
-  return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
+  return (
+    (PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_'))
+    || isCustomPropertyName(name)
+  );
+}
+
+function isCustomPropertyName(name: string): boolean {
+  return CUSTOM_PROPERTY_NAME_PATTERN.test(name);
 }
 
 function splitScannerNativeDeclarationImportant(valueText: string): {
@@ -1375,6 +1407,8 @@ const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!impo
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
+const CUSTOM_PROPERTY_NAME_PATTERN = /^--[-_a-zA-Z][\w-]*$/u;
+const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SIMPLE_LITERAL_VALUE_PATTERN =

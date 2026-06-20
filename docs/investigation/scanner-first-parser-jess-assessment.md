@@ -1910,14 +1910,15 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
-  selector, simple and flat literal declaration values, exact `!important`
-  declaration flags on those values, simple root or ruleset-local `@media`
-  prelude/body shape including ordinary nested rules, simple root `@layer`
-  blocks with ordinary rule bodies, and simple already-seen Less variable
-  declaration/reference token detection with zero legacy island parser
-  executions. Hoisted/lazy variable references, non-`@media`/root-`@layer` block
-  at-rule families, complex/list/interpolated selectors, and richer nested
-  at-rule bodies remain canonical fallbacks until their progressive
+  selector, simple and flat literal declaration values, conservative raw custom
+  property declarations, exact `!important` declaration flags on non-custom
+  values, simple root or ruleset-local `@media` prelude/body shape including
+  ordinary nested rules, simple root `@layer` blocks with ordinary rule bodies,
+  and simple already-seen Less variable declaration/reference token detection
+  with zero legacy island parser executions. Hoisted/lazy variable references,
+  non-`@media`/root-`@layer` block at-rule families, complex/list/interpolated
+  selectors, and richer nested at-rule bodies remain canonical fallbacks until
+  their progressive
   materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
@@ -1986,9 +1987,17 @@ storage.
     The structural-fed Less path keeps the entire value as one raw string
     segment for direct render/serialization and still reports zero selected
     island parser executions. This is deliberately not a general value parser:
-    quoted strings, `url()`, functions, comments, custom-property bodies,
-    interpolation, arithmetic, comma lists, and mixed variable/value streams
-    remain outside the proven cheap subset.
+    quoted strings, `url()`, functions, comments, interpolation, arithmetic,
+    comma lists, and mixed variable/value streams remain outside the proven
+    cheap subset.
+  - [x] Extended raw-field declaration transport to conservative custom
+    property declarations such as `--brand: #06c` and raw single-line
+    brace/string payloads such as `--raw: { token: "}"; }`. These values are
+    carried as one raw string segment and rely on the structural scanner's
+    existing balanced-boundary handling; they do not allocate value child nodes
+    or execute legacy island parsers. Custom-property `!important`, multiline
+    custom-property values, interpolation, and un-interpolated Less variable-like
+    tokens still fall back so canonical warning/eval behavior is not skipped.
   - [x] Extended raw-field declaration transport to exact trailing `!important`
     flags on already-supported simple/flat literal values. The structural-fed
     Less path strips the flag into `rawImportant` while keeping the declaration
