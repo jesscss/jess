@@ -2,7 +2,7 @@ import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
   num, dimension, amp, F_MAY_ASYNC,
-  F_STATIC, paren, seq, comment, nil, quoted, color, co, interpolated,
+  F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
   keyword, Anonymous
 } from '../index.js';
 import type { IToken } from 'chevrotain';
@@ -116,6 +116,23 @@ describe('AtRule', () => {
 
     expect(node.valueOf()).toBe('@media screen');
     expect(toStringCalls).toBe(0);
+  });
+
+  it('includes structured preludes in raw-name at-rule identity', () => {
+    const grid = new AtRule({
+      name: '@supports',
+      prelude: paren(query([any('display:', { role: 'property' }), any('grid', { role: 'keyword' })])),
+      rules: []
+    });
+    const flex = new AtRule({
+      name: '@supports',
+      prelude: paren(query([any('display:', { role: 'property' }), any('flex', { role: 'keyword' })])),
+      rules: []
+    });
+
+    expect(grid.valueOf()).toBe('@supports (display: grid)');
+    expect(flex.valueOf()).toBe('@supports (display: flex)');
+    expect(grid.valueOf()).not.toBe(flex.valueOf());
   });
 
   it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {

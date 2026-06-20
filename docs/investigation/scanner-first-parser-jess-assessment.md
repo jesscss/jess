@@ -937,12 +937,14 @@ detail.
 line-start offsets, and using binary search for offset-to-line/column
 conversion. Position-to-offset conversion should use the same line-start table.
 Do not build the map with `source.split('\n')` or any equivalent that creates
-one substring per line. A cursor loop over `charCodeAt()` is the simplest first
-implementation; a sticky/global newline regex is also worth benchmarking if it
-can walk the source without allocating matched line text. The stored result
-should be a numeric line-start table, preferably a plain `number[]` initially
-and a typed-array candidate only if measurement shows the conversion cost is
-worth the extra construction step.
+one substring per line. The first implementation should be a cursor loop over
+`charCodeAt()` or `indexOf()` because hot primitive scans should avoid match
+arrays and regex-engine control-flow opacity by default. A sticky/global
+newline regex is only a benchmark candidate if it makes the implementation
+substantially clearer and can walk the source without allocating matched line
+text. The stored result should be a numeric line-start table, preferably a
+plain `number[]` initially and a typed-array candidate only if measurement
+shows the conversion cost is worth the extra construction step.
 
 For incremental parsing, `SourceText.version` and structural document version
 become part of the cache key. When source changes, increment the version,
@@ -2528,7 +2530,7 @@ storage.
     `+`/`~` combinators, or arbitrary selector lists.
   - [x] Corpus movement from the nested-relative-selector, namespaced-mixin,
     and corrected-`@supports` slices: the Less corpus parity audit now reports
-    12 structural-fed cases out of 65, selector fallbacks dropped from 9 to 7,
+    13 structural-fed cases out of 65, selector fallbacks dropped from 9 to 7,
     mixin-call fallbacks dropped to 1, and the corpus still reports zero
     requested islands, zero actual parser executions, and zero promoted bytes
     for the structural-fed path.
@@ -2550,8 +2552,11 @@ storage.
   - [x] Corrected the earlier raw-`@supports` proof: `@supports (display:
     grid)` is no longer considered a scanner-native raw prelude because the
     condition has meaningful parenthesized declaration-query structure. Root,
-    nested, and mixin-body `@supports` cases now render through canonical
-    fallback until a thin supports-condition structure exists.
+    nested, direct nested, and mixin-body `@supports` cases with one
+    scanner-native declaration condition now render through structural-fed
+    `Paren(QueryCondition(...))` preludes with zero selected island parser
+    executions, zero full-tree fallback, zero promoted bytes, and no raw
+    prelude blob for the condition.
   - [x] Extended nested at-rule proof to direct scanner-native `@media`
     children inside already-supported at-rule bodies, covering `@media` inside
     `@media`. The builder recursively emits raw core `AtRule` nodes for the
@@ -2608,8 +2613,10 @@ storage.
   containing already-supported ordinary nested rules.
   - Current limit: raw `AtRule` semantic materialization is proven for the
     scanner-native root `@media`, ruleset-local `@media`, mixin-body `@media`,
-    and root `@layer` subsets only. `@supports` stays canonical fallback until
-    a thin condition representation exists.
+    root `@layer`, and simple parenthesized declaration-condition `@supports`
+    subsets only. Richer supports expressions, nested boolean conditions, and
+    variable-bearing supports values still stay canonical fallback until their
+    specific grammar is proven.
 - [x] Structural-fed prototype: support supported at-rules nested inside
   ordinary rules that are themselves inside supported at-rule bodies, while
   keeping raw at-rule headers unmaterialized during ruleset registration.
@@ -2764,11 +2771,11 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 12
-    structural-fed prototype records, 54 canonical fallback records, 20 current
+  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 13
+    structural-fed prototype records, 53 canonical fallback records, 20 current
     expected-CSS failures, 17 structural expected-CSS failures, zero
     requested/materialized islands, zero promoted bytes, zero actual parses,
-    and 71 progressive nodes from the upstream corpus. That is
+    and 75 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2785,8 +2792,8 @@ storage.
     `tests-unit/plugi/plugi.less` are explicit structural-fed expected-CSS
     overrides because current Jess drops them while the new structural-fed path
     now matches the upstream expected CSS. The
-    comma-value, standalone block-comment, mixin-local `@media`, nested
-    `@supports`, direct nested at-rule, recursive nested supported at-rule,
+    comma-value, standalone block-comment, mixin-local `@media`, direct nested
+    at-rule, recursive nested supported at-rule,
     ruleset-local no-arg mixin, root-level no-arg mixin call, and at-rule-local
     variable proofs above did not change the included-corpus counts because the
     relevant upstream files also contain other unsupported constructs. The CSS
@@ -2803,11 +2810,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.72ms median over 20 samples, with 10,259 structural records, 5,738
+    2.70ms median over 20 samples, with 10,259 structural records, 5,738
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    6.50ms total, producing 5,301 structural records, 3,070 raw islands, and 5
+    16.24ms total, producing 5,301 structural records, 3,070 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2831,16 +2838,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 266.22ms, structural sidecar full render
-    249.30ms across 306 probe records, selected-materialization sidecar full
-    render 288.41ms across 306 probe records with 5,223
+    current parser/eval/render 275.27ms, structural sidecar full render
+    276.74ms across 306 probe records, selected-materialization sidecar full
+    render 295.92ms across 306 probe records with 5,223
     requested/materialized islands and 147,090 promoted bytes, and
-    structural-fed prototype 263.50ms across 198 prototype records with 36
-    structural-fed records, 162 canonical fallbacks, zero
-    requested/materialized islands, zero promoted bytes, and 213 progressive
+    structural-fed prototype 282.20ms across 198 prototype records with 39
+    structural-fed records, 159 canonical fallbacks, zero
+    requested/materialized islands, zero promoted bytes, and 225 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 6.31x, structural sidecar 5.91x, selected
-    materialization 6.84x, and structural-fed 6.25x. These medians are gate
+    median were current 6.53x, structural sidecar 6.56x, selected
+    materialization 7.02x, and structural-fed 6.69x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

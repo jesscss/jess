@@ -71,7 +71,7 @@ export type AtRuleValue = {
 
 export type RawAtRuleValue = {
   name: string;
-  prelude?: string;
+  prelude?: string | Node;
   rules: Node[];
 };
 
@@ -610,8 +610,13 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
       }
       this.name = undefined;
       this.rawName = value.name;
-      this.prelude = undefined;
-      this.rawPrelude = value.prelude;
+      if (typeof value.prelude === 'string') {
+        this.prelude = undefined;
+        this.rawPrelude = value.prelude;
+      } else {
+        this.prelude = value.prelude;
+        this.rawPrelude = undefined;
+      }
     } else {
       this.name = value.name;
       this.rawName = undefined;
@@ -709,7 +714,11 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   override valueOf() {
     return (this._valueOf ??= (
       this.rawName !== undefined
-        ? this.rawName + (this.rawPrelude !== undefined ? ' ' + this.rawPrelude : '')
+        ? this.rawName + (
+          this.prelude !== undefined
+            ? ' ' + getAtRuleSourceIdentityText(this.prelude)
+            : this.rawPrelude !== undefined ? ' ' + this.rawPrelude : ''
+        )
         : this.atRuleNameText() + (this.prelude ? ' ' + this.prelude.valueOf() : '')
     ));
   }
@@ -1304,6 +1313,12 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
 
   getComparableHeaderString(options: FinalPrintOptions): string {
     if (this.rawName !== undefined && options.atRuleHeaderNode !== this) {
+      if (this.prelude !== undefined) {
+        return buildComparableAtRuleHeader(
+          this.rawName,
+          renderAtRuleHeaderNodeSyntax(this.prelude, options, true)
+        );
+      }
       return buildComparableAtRuleHeader(this.rawName, this.rawPrelude);
     }
     let { name } = this;
@@ -1345,11 +1360,14 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
         w.add(idt);
       }
       w.add(this.rawName, this);
-      if (this.rawPrelude !== undefined && hasNonAtRuleWhitespace(this.rawPrelude)) {
-        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(this.rawPrelude)) {
+      const preludeOut = this.prelude !== undefined
+        ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+        : this.rawPrelude;
+      if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
+        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(preludeOut)) {
           w.add(' ');
         }
-        w.add(this.rawPrelude, this);
+        w.add(preludeOut, this.prelude ?? this);
       }
       w.add(' {\n');
       return true;
@@ -1413,12 +1431,14 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
         : this.getRenderRules();
       const idt = indent(options.depth);
       let out = idt + this.rawName;
-      const rawPrelude = this.rawPrelude;
-      if (rawPrelude !== undefined && hasNonAtRuleWhitespace(rawPrelude)) {
-        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(rawPrelude)) {
+      const preludeOut = this.prelude !== undefined
+        ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+        : this.rawPrelude;
+      if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
+        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(preludeOut)) {
           out += ' ';
         }
-        out += rawPrelude;
+        out += preludeOut;
       }
       return rules
         ? normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n'

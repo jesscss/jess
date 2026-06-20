@@ -3119,7 +3119,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for root @supports blocks until condition structure is represented', async () => {
+  it('feeds root @supports blocks with a scanner-native declaration condition through structural parse', async () => {
     const source = '@supports (display: grid) { .a { display: grid; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3135,13 +3135,26 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
       actualParses: 0,
-      requestedIslands: 0
+      requestedIslands: 0,
+      promotedBytes: 0
     });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/root-supports.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@supports\'');
+    expect(types).toContain('(Paren');
+    expect(types).toContain('(QueryCondition');
+    expect(types).toContain('(Any [role=property] \'display:\'');
+    expect(types).toContain('(Any [role=keyword] \'grid\'');
+    expect(types).not.toContain('rawPrelude');
+    expect(types).not.toContain('(ProgressiveAtRule');
   });
 
   it('falls back for root @layer shapes outside the structural-fed subset', async () => {
@@ -3218,7 +3231,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for nested @supports declaration blocks until condition structure is represented', async () => {
+  it('feeds nested @supports declaration blocks through structural parse', async () => {
     const source = '.a { @supports (display: grid) { display: grid; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3234,17 +3247,27 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-supports-declarations.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('selector: \'.a\'');
+    expect(types).toContain('rawName: \'@supports\'');
+    expect(types).toContain('(Paren');
+    expect(types).toContain('(QueryCondition');
+    expect(types).toContain('rawName: \'display\'');
+    expect(types).not.toContain('rawPrelude');
   });
 
-  it('falls back for nested @supports rule blocks until condition structure is represented', async () => {
+  it('feeds nested @supports rule blocks through structural parse', async () => {
     const source = '.a { @supports (display: grid) { .b { display: grid; } } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3261,14 +3284,24 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('.b');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-supports-rule.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('selector: \'.a\'');
+    expect(types).toContain('rawName: \'@supports\'');
+    expect(types).toContain('(Paren');
+    expect(types).toContain('(QueryCondition');
+    expect(types).toContain('selector: \'.b\'');
+    expect(types).not.toContain('rawPrelude');
   });
 
   it('feeds nested @media blocks with ordinary declarations through structural parse', async () => {
@@ -3395,19 +3428,21 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
-  it('falls back for direct nested @supports at-rules until condition structure is represented', async () => {
+  it('feeds direct nested @supports at-rules through structural parse', async () => {
     const cases = [
       {
         source: '.a { @media screen { @supports (display: grid) { color: blue; } } }\n',
-        expectedRender: '@supports (display: grid)'
+        expectedRender: '@supports (display: grid)',
+        expectedSibling: '@media screen'
       },
       {
         source: '.a { @supports (display: grid) { @media screen { color: blue; } } }\n',
-        expectedRender: '@media screen'
+        expectedRender: '@media screen',
+        expectedSibling: '@supports (display: grid)'
       }
     ];
 
-    for (const { source, expectedRender } of cases) {
+    for (const { source, expectedRender, expectedSibling } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -3420,16 +3455,28 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
       expect(rendered).toBe(baseline);
       expect(rendered).toContain(expectedRender);
+      expect(rendered).toContain(expectedSibling);
       expect(rendered).toContain('color: blue');
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-        runtimeTreeSource: 'canonical-fallback',
-        fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
-        fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
       });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/direct-nested-supports.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('selector: \'.a\'');
+      expect(types).toContain('rawName: \'@media\'');
+      expect(types).toContain('rawName: \'@supports\'');
+      expect(types).toContain('(Paren');
+      expect(types).toContain('(QueryCondition');
+      expect(types).toContain('rawName: \'color\'');
+      expect(types).not.toContain('rawPrelude: \'(display: grid)\'');
     }
   });
 
@@ -4201,7 +4248,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
-  it('falls back for @supports inside Less mixin definitions until condition structure is represented', async () => {
+  it('feeds @supports inside Less mixin definitions through structural parse', async () => {
     const source = '.m() { @supports (display: grid) { color: blue; } }\n.a { .m(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -4217,14 +4264,26 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/mixin-supports.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Mixin');
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@supports\'');
+    expect(types).toContain('(Paren');
+    expect(types).toContain('(QueryCondition');
+    expect(types).toContain('(Call');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('rawPrelude: \'(display: grid)\'');
   });
 
   it('falls back canonically for declaration syntax the structural-fed subset cannot preserve', async () => {

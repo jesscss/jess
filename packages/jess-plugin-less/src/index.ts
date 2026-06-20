@@ -23,6 +23,8 @@ import {
   List,
   Num,
   Any,
+  Paren,
+  QueryCondition,
   ProgressiveVariableDeclaration,
   Node,
   getErrorFromParser,
@@ -1486,7 +1488,7 @@ function buildStructuralFedAtRule(
     return { reason: `${name} prelude is outside the scanner-native structural-fed subset` };
   }
   const preludeToken = preludeIsland
-    ? readScannerNativeAtRulePreludeToken(plan, atRule, preludeIsland, name)
+    ? readScannerNativeAtRulePreludeToken(plan, atRule, preludeIsland, name, context)
     : undefined;
   if (!preludeToken && preludeIsland) {
     return { reason: 'at-rule prelude is outside the scanner-native structural-fed subset' };
@@ -1575,7 +1577,7 @@ function buildStructuralFedAtRule(
   return {
     node: new AtRule({
       name,
-      prelude: preludeToken?.text,
+      prelude: preludeToken?.node ?? preludeToken?.text,
       rules
     }, undefined, locationFromRange(plan.document, atRule.start, atRule.end), context),
     progressiveNodes
@@ -1965,7 +1967,8 @@ type ScannerNativeValueToken = {
     | 'function-call'
     | 'custom-property-raw'
     | 'raw-value'
-    | 'raw-at-rule-prelude';
+    | 'raw-at-rule-prelude'
+    | 'supports-declaration-condition';
   start: number;
   end: number;
   text: string;
@@ -2119,13 +2122,17 @@ function readScannerNativeAtRulePreludeToken(
   plan: IslandParsePlan,
   owner: StructuralContainerNode,
   island: RawIslandNode,
-  atRuleName: string
+  atRuleName: string,
+  context: TreeContext
 ): ScannerNativeValueToken | undefined {
   const range = structuralFieldRange(plan.document, owner, 'prelude', 'prelude');
   if (!range || range.start !== island.start || range.end !== island.end) {
     return undefined;
   }
   const preludeText = plan.document.source.text.slice(range.start, range.end);
+  if (atRuleName === '@supports') {
+    return scannerNativeSupportsDeclarationConditionToken(plan.document, preludeText, range.start, range.end, context);
+  }
   if (!isScannerNativeAtRulePrelude(atRuleName, preludeText)) {
     return undefined;
   }
@@ -2138,6 +2145,45 @@ function readScannerNativeAtRulePreludeToken(
     start: range.start,
     end: range.end,
     text: preludeText
+  };
+}
+
+function scannerNativeSupportsDeclarationConditionToken(
+  document: StructuralDocument,
+  preludeText: string,
+  start: number,
+  end: number,
+  context: TreeContext
+): ScannerNativeValueToken | undefined {
+  if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return undefined;
+  }
+  const match = SCANNER_NATIVE_SUPPORTS_DECLARATION_CONDITION_PATTERN.exec(preludeText);
+  const property = match?.groups?.property;
+  const value = match?.groups?.value;
+  if (!property || !value) {
+    return undefined;
+  }
+  const valueMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(value);
+  if (!valueMatch) {
+    return undefined;
+  }
+  const propertyStart = start + preludeText.indexOf(property);
+  const valueStart = start + preludeText.lastIndexOf(value);
+  const condition = new QueryCondition([
+    new Any(`${property}:`, { role: 'property' }, locationFromRange(document, propertyStart, propertyStart + property.length + 1), context),
+    scannerNativeLiteralNodeFromToken(
+      scannerNativeLiteralValueTokenFromMatch(value, valueStart, valueStart + value.length, valueMatch),
+      document,
+      context
+    )
+  ], undefined, locationFromRange(document, start + 1, end - 1), context);
+  return {
+    kind: 'supports-declaration-condition',
+    start,
+    end,
+    text: preludeText,
+    node: new Paren(condition, undefined, locationFromRange(document, start, end), context)
   };
 }
 
@@ -2616,6 +2662,28 @@ function scannerNativeLiteralValueTokenFromMatch(
   };
 }
 
+function scannerNativeLiteralNodeFromToken(
+  token: ScannerNativeValueToken,
+  document: StructuralDocument,
+  context: TreeContext
+): Node {
+  const location = locationFromRange(document, token.start, token.end);
+  if (token.kind === 'hex-color') {
+    return new Color(token.text, undefined, location, context);
+  }
+  if (token.kind === 'dimension-or-number') {
+    const numberMatch = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(token.text);
+    const value = Number(numberMatch?.groups?.value);
+    if (Number.isFinite(value)) {
+      const unit = numberMatch?.groups?.unit;
+      return unit
+        ? new Dimension({ number: value, unit }, undefined, location, context)
+        : new Num(value, undefined, location, context);
+    }
+  }
+  return new Any(token.text, { role: 'keyword' }, location, context);
+}
+
 function scannerNativeValueKind(match: RegExpExecArray): ScannerNativeValueToken['kind'] {
   if (match.groups?.hex) {
     return 'hex-color';
@@ -2724,6 +2792,8 @@ const SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN =
   /^(?<left>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)[ \t]*(?<operator>[+-])[ \t]*(?<right>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)$/u;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
+const SCANNER_NATIVE_SUPPORTS_DECLARATION_CONDITION_PATTERN =
+  /^\([ \t]*(?<property>-?[-_a-zA-Z][\w-]*)[ \t]*:[ \t]*(?<value>(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*))[ \t]*\)$/u;
 const SIMPLE_FLAT_VALUE_ATOM_SOURCE =
   String.raw`(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*)`;
 const SIMPLE_FLAT_VALUE_PATTERN =
@@ -2790,9 +2860,15 @@ function isScannerNativeAtRulePrelude(atRuleName: string | undefined, preludeTex
     return false;
   }
   if (atRuleName === '@supports') {
-    return false;
+    return isScannerNativeSupportsDeclarationConditionPrelude(preludeText);
   }
   return SIMPLE_LITERAL_VALUE_PATTERN.test(preludeText);
+}
+
+function isScannerNativeSupportsDeclarationConditionPrelude(preludeText: string): boolean {
+  const match = SCANNER_NATIVE_SUPPORTS_DECLARATION_CONDITION_PATTERN.exec(preludeText);
+  const value = match?.groups?.value;
+  return value !== undefined && SIMPLE_LITERAL_VALUE_PATTERN.test(value);
 }
 
 function isScannerNativeAtRuleStatementPrelude(name: string, preludeText: string): boolean {

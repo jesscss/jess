@@ -103,6 +103,68 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first thin `@supports` declaration-condition prelude.
+- Verdict: accepted as a structural-fed correctness proof, not a speed claim.
+  The Less structural-fed path now admits `@supports (property: literal)` only
+  when the parenthesized condition can be represented as
+  `Paren(QueryCondition([property-token, literal-token]))`. Richer supports
+  expressions, variable-bearing values, comments, multiline preludes, boolean
+  operators, and nested conditions remain canonical fallback.
+- Architecture surface: Less structural-fed admission/building plus core
+  `AtRule` raw-name/structured-prelude header identity/rendering. This does
+  not widen SCSS/Jess parsing and does not add language-service surface.
+- Separation/duplication: the supports predicate/builder stays plugin-local
+  and reuses existing `QueryCondition`/`Paren` nodes. No package export,
+  parser profile, or grammar registry is duplicated; broader supports grammar
+  remains canonical fallback.
+- Cumulative node weight: this slice adds only semantic prelude nodes for the
+  supported `@supports` condition and one core identity test fixture. It does
+  not add cumulative `Rules` lookup/cache objects or a new side table.
+- New traversal: no new tree traversal. The Less plugin adds one bounded regex
+  recognition step over the already-isolated at-rule prelude string and reuses
+  the existing block/rule/declaration structural-fed walks. Core `AtRule`
+  header rendering adds no scan; it writes an existing structured prelude node
+  when a raw at-rule name owns one.
+- New node/materialization: the scanner-fed builder creates one `Paren`, one
+  `QueryCondition`, one property `Any`, and one literal value node for the
+  supports prelude. This is accepted as semantic prelude structure because the
+  condition is not a raw atom and must not be stored as a raw prelude blob.
+  `AtRule` raw-name semantic materialization still materializes only the raw
+  at-keyword when eval/registration needs a canonical name; it does not
+  materialize a raw supports prelude string.
+- Render path: supported cases render equal CSS through structural-fed with
+  zero full-tree fallback, zero selected island requests, zero actual parser
+  executions, and zero promoted bytes. `AtRule` can now render `rawName` plus a
+  structured `prelude` node directly, so the header does not first stringify a
+  raw complex supports condition.
+- Helper/API surface: one plugin-local literal-token-to-node helper and one
+  plugin-local supports-condition recognizer. No public parser/core API is
+  introduced; `RawAtRuleValue.prelude` is widened to the existing core `Node`
+  type only so raw at-keyword storage can pair with structured prelude storage.
+- Metadata mutations: none added beyond normal node construction/adoption. The
+  focused proof intentionally leaves unrelated `AUDIT:` markers and broader
+  `AtRule` cleanup outside this slice.
+- Review-flagged diff tokens: [node construction] and
+  [materialized array/object] matches are the focused core `AtRule.valueOf()`
+  regression fixture constructing two raw-name `AtRule` nodes with empty body
+  arrays to prove distinct structured supports preludes do not collide. They
+  are test-only construction, not runtime parser/eval materialization.
+- Review fix: sub-agent review caught that raw-name `AtRule.valueOf()` ignored
+  structured preludes. The raw-name identity branch now uses the existing
+  at-rule syntax identity helper for structured preludes, and a focused core
+  test proves `@supports (display: grid)` and `@supports (display: flex)` do
+  not collide before semantic materialization.
+- Evidence: focused scanner-first e2e now covers root, nested declaration-body,
+  nested rule-body, direct nested, and mixin-body `@supports` with
+  `Paren(QueryCondition(...))` serialized preludes and zero island parser
+  executions. Focused core at-rule identity coverage proves structured raw-name
+  preludes participate in `valueOf()`. The Less corpus gate reports 13
+  structural-fed cases out of 65, 53 canonical fallbacks, zero requested
+  islands, zero actual parser executions, zero promoted bytes, and 75
+  progressive nodes. Verification also covered core/plugin builds, package
+  exports, eslint on touched implementation/e2e files, `git diff --check`, and
+  aggressive cutting review.
+
 - Latest pass: scanner-first docs/tooling review hardening.
 - Verdict: accepted as a docs/tooling guardrail pass, not a runtime or
   performance claim. It records current scanner-first corpus evidence, reopens
