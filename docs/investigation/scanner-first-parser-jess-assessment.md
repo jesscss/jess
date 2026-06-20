@@ -1380,6 +1380,11 @@ verification items are green and its performance counters are recorded.
 When completing work from this plan, update the relevant checkboxes in the same
 change set as the implementation or verification evidence.
 
+Use [`scanner-first-structure-targets.md`](./scanner-first-structure-targets.md)
+as the example-driven seed for the eventual structure-parse corpus. Before
+widening parser behavior, add or update target examples there with cheap
+structure, direct behavior, JIT triggers, and current status.
+
 ### Documentation Standard
 
 Every new scanner-first parser file must include useful JSDoc on exported
@@ -1722,15 +1727,13 @@ The target runtime shape should be even cheaper than the temporary core bridge:
 ```ts
 Ruleset {
   selector: ".a",
-  selectorSpan: [0, 2],
   rules: [
     Declaration {
       name: "foo",
-      nameSpan: [7, 10],
-      value: "bar",
-      valueSpan: [12, 15]
+      value: "bar"
     }
-  ]
+  ],
+  sourceRanges: ... // exact storage is still a design choice
 }
 ```
 
@@ -1742,6 +1745,11 @@ plugin/visitor access to typed selector/value nodes, detailed diagnostics, or
 source-map detail beyond the stored span. Put differently: scanner-first does
 not mean "create cheaper core AST nodes sooner"; it means "keep strings/spans
 until a specific compile stage proves it needs a parsed shape."
+
+Do not take `sourceRanges` or `selectorSpan`/`valueSpan`-style field names as
+the proposal. The requirement is stable source identity for cheap fields; the
+storage may be per-node offsets, a packed range table, field metadata, or
+another lower-allocation representation after measurement.
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default
@@ -1803,6 +1811,8 @@ until a specific compile stage proves it needs a parsed shape."
   adapter boundary: tokenization/materialization records text, kind, and spans;
   core `Any`/selector nodes are created only when adapting into the current
   compiler tree.
+- [x] Seed structure-target examples for CSS/Less so minimal structural shape
+  can be reasoned about before implementing more JIT parsing.
 - [ ] Replace the temporary core-node bridge with structural runtime nodes that
   carry strings/spans for simple selectors, declaration names, declaration
   values, and at-rule preludes, then JIT-parse individual fields only when
