@@ -2232,6 +2232,16 @@ storage.
     eager `BasicSelector`, and no `Any` declaration value wrapper for the
     covered fields. Nested richer supports expressions and unsupported child
     bodies remain canonical fallbacks.
+  - [x] Extended nested at-rule proof to direct scanner-native `@media` /
+    `@supports` children inside already-supported at-rule bodies, covering
+    `@media` inside `@media`, `@supports` inside `@media`, and `@media` inside
+    `@supports` under an ordinary ruleset. The builder recursively emits raw
+    core `AtRule` nodes for the direct at-rule child, preserves raw preludes,
+    renders equal CSS, and asserts zero island parser executions, zero full-tree
+    fallback, zero promoted bytes, no eager selector node, and no `Any`
+    declaration value wrapper. At-rules nested inside ordinary rules that are
+    themselves inside at-rules remain fallback until that wider recursion policy
+    is proven.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or non-exact important-flag spelling.
@@ -2279,10 +2289,12 @@ storage.
   - Current limit: raw `AtRule` semantic materialization is proven for the
     scanner-native root `@media`, ruleset-local `@media`, root `@layer`, and
     root/ruleset-local/mixin-body `@supports (property: value)` subsets only.
-    Nested block at-rules still fall back while Less variables inside nested
-    `@media` / `@supports`, reference/import semantics, boolean supports
-    expressions, nested richer `@supports`, and other at-rule families remain
-    unproven.
+    Direct `@media` / simple `@supports` children inside those at-rule bodies
+    are also proven when their own children stay in the supported subset. Less
+    variables inside nested `@media` / `@supports`, reference/import semantics,
+    boolean supports expressions, nested richer `@supports`, at-rules nested
+    inside ordinary rules that are themselves inside at-rules, and other at-rule
+    families remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2312,11 +2324,12 @@ storage.
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
-    The comma-value, standalone block-comment, mixin-local `@media`, and nested
-    `@supports` proofs above did not change the included-corpus counts because
-    the relevant upstream files also contain other unsupported constructs.
-    Progressive render/serialize proof is covered by the dedicated thin
-    structure-target tests rather than inferred from this broad upstream corpus.
+    The comma-value, standalone block-comment, mixin-local `@media`, nested
+    `@supports`, and direct nested at-rule proofs above did not change the
+    included-corpus counts because the relevant upstream files also contain
+    other unsupported constructs. Progressive render/serialize proof is covered
+    by the dedicated thin structure-target tests rather than inferred from this
+    broad upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
   parser/eval/render, structural sidecar full-render probe, selected
   materialization sidecar full-render probe, and structural-fed prototype over
@@ -2325,11 +2338,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    1.96ms median over 20 samples, with 10,283 structural records, 5,762
+    2.36ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    9.65ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    14.23ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2353,16 +2366,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 213.01ms, structural sidecar full render
-    207.55ms across 306 probe records, selected-materialization sidecar full
-    render 238.96ms across 306 probe records with 5,295
+    current parser/eval/render 227.32ms, structural sidecar full render
+    210.00ms across 306 probe records, selected-materialization sidecar full
+    render 247.67ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 214.43ms across 198 prototype records with 21
+    structural-fed prototype 216.44ms across 198 prototype records with 21
     structural-fed records, 177 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 75 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.05x, structural sidecar 4.92x, selected
-    materialization 5.67x, and structural-fed 5.09x. These medians are gate
+    median were current 5.39x, structural sidecar 4.98x, selected
+    materialization 5.87x, and structural-fed 5.13x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

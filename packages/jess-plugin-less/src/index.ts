@@ -1044,6 +1044,13 @@ function validateStructuralFedAtRule(
     return 'at-rule prelude is outside the scanner-native structural-fed subset';
   }
   for (const child of atRule.children) {
+    if (child.kind === 'at-rule') {
+      const reason = validateStructuralFedAtRule(document, child, variables, 'at-rule', mathMode);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
     if (child.kind === 'rule') {
       if (rootDeclarationBlockPrelude !== undefined) {
         return `unsupported at-rule child ${child.kind}`;
@@ -1352,6 +1359,15 @@ function buildStructuralFedAtRule(
     progressiveNodes += comments.progressiveNodes;
     triviaCursor = child.end;
 
+    if (child.kind === 'at-rule') {
+      const builtChild = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, 'at-rule', mathMode);
+      if ('reason' in builtChild) {
+        return builtChild;
+      }
+      rules.push(builtChild.node);
+      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      continue;
+    }
     if (child.kind === 'rule') {
       if (rootDeclarationBlockPrelude !== undefined) {
         return { reason: `unsupported at-rule child ${child.kind}` };
