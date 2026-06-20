@@ -112,6 +112,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: direct variable occurrence current-cell projection.
+- Verdict: accepted as a narrow declaration binding/direct lookup unification
+  slice, not a speed claim. Covered current static variable occurrences now
+  project from `lookupScopeFrameVariable(...)` / `ScopeFrame.currentBindingsByName`
+  before the direct occurrence helper considers local tree buckets.
+- Architecture surface: `lookupScopeFrameVariable(...)` current-frame-only
+  options, direct variable occurrence lookup in
+  `util/direct-rules-lookup.ts`, and focused reference/scope-frame tests.
+- Separation/duplication: deleted the private
+  `findScopeBindingDeclaration(...)` bucket scan. The remaining direct local
+  scan is only the occurrence fallback for cases the frame path does not
+  accept, such as `setDefined` source nodes, property lookup, child/import
+  surfaces, filters, and source-order modes.
+- Cumulative node weight: no production node, map, set, side table, wrapper,
+  or retained cache was added. Non-test `packages/core/src` line count is
+  `54975` in this worktree after the slice.
+- New traversal: none added in production. The direct lookup path reuses the
+  existing scope-frame lookup loop with parent/fallback search disabled for
+  this call site and removes one duplicate bucket loop.
+- New node/materialization: none in production. Tests construct small Rules
+  fixtures only.
+- Render path: unchanged.
+- Helper/API surface: the old private helper was deleted. Two internal
+  `lookupScopeFrameVariable(...)` options were added so callers can ask the
+  existing frame facade to answer only the current frame, without parent or
+  fallback traversal.
+- Metadata mutations: production reads `sourceNode` from the frame result to
+  return the existing direct occurrence projection; it does not mutate parent,
+  source, location, or frozen metadata.
+- Review-flagged diff tokens: [generator] is docs wording from the wider
+  scoped diff; [node construction] and [materialized array/object] are test
+  fixture construction; [parent/source mutation] is source-node identity reads
+  from the frame hit; [routine error control] is the reference-test poison
+  tripwire and restoration block.
+- Evidence: the new reference test first failed on the deleted
+  `findScopeBindingDeclaration(...)` bucket path, then passed after the cut.
+  Focused reference occurrence/current-cell tests passed; full
+  `scope-frame.test.ts`, full `rules.test.ts`,
+  `pnpm run verify:binding-lookup-hot-paths`, `pnpm --filter @jesscss/core
+  build`, and `git diff --check` passed. A full `reference.test.ts` attempt
+  was interrupted after it produced no completion output for several minutes;
+  exact reference tests for the touched direct-variable path passed.
+
 - Latest pass: binding-cell source-of-truth cut for `setDefined`.
 - Verdict: accepted as a binding cleanup plus correctness repair, not a speed
   claim.

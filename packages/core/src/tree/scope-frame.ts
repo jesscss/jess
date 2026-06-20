@@ -432,11 +432,15 @@ export function lookupScopeFrameVariable(
     includeDeclarations?: boolean;
     includeAssignmentTargets?: boolean;
     bailOnPendingDeclarations?: boolean;
+    searchParents?: boolean;
+    includeFallbackFrames?: boolean;
   }
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
-  let fallbackFrame = frame?.fallbackFrame;
+  const searchParents = options?.searchParents !== false;
+  const includeFallbackFrames = options?.includeFallbackFrames !== false;
+  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
@@ -553,7 +557,12 @@ export function lookupScopeFrameVariable(
         }
       }
 
-      fallbackFrame ??= f.fallbackFrame;
+      if (!searchParents) {
+        return { kind: 'miss' };
+      }
+      if (includeFallbackFrames) {
+        fallbackFrame ??= f.fallbackFrame;
+      }
       start = undefined;
       f = f.parent;
     }

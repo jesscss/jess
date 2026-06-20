@@ -55,6 +55,13 @@ preserving Jess/Less behavior. Current measured baseline in this worktree:
 target <= 27504 lines
 ```
 
+Current measured count after `d7f33811a`:
+
+```txt
+54991 packages/core/src non-test TypeScript lines
+remaining deletion needed: 27487 lines
+```
+
 Largest current files:
 
 ```txt
@@ -80,6 +87,45 @@ Rules for counting progress:
 - generated files, tests, snapshots, and docs do not count toward the source
   target;
 - every cut pass should report before/after non-test `packages/core/src` lines.
+
+High-yield lanes:
+
+1. [ ] Declaration binding/direct lookup ownership: fold direct variable and
+   property occurrence lookup into the declaration binding layer. Expected
+   first-stage cut: 900-1,500 lines across `reference.ts`,
+   `direct-rules-lookup.ts`, `rules.ts`, and `scope-frame.ts`; larger cuts
+   become possible once `directDeclarationsByName`, direct occurrence caches,
+   and separate version state stop owning the same facts as binding cells.
+2. [ ] Callable namespace traversal collapse: replace duplicated exact,
+   namespace, prefix, fallback-frame, and terminal mixin-only branches with one
+   callable namespace result model. Expected cut: 700-1,050 lines in
+   `rules.ts`, after declaration binding ownership removes related fallback
+   bridges.
+3. [ ] Extend walk-and-consume canonicalization: make `extend-walk.ts` the only
+   matcher/applicator, then delete legacy location search, selector-match
+   caches, path application, exact-mode shims, and ampersand clone/search
+   helpers. Expected cut: 3,000-5,000 lines across `extend.ts`,
+   `selector-match-core.ts`, and `extend-walk.ts`, gated by complex selector,
+   `:is()`, ampersand, chained extend, import-reference, and Less fixture
+   parity.
+4. [ ] Registration/eval/render responsibility cuts: after lookup ownership is
+   coherent, delete duplicated child-surface summaries, sync/async eval lane
+   scaffolding, public/debug render transport branches, and node-local
+   defensive machinery that only exists to repair earlier copies. Expected cut:
+   1,000-2,000 lines in `rules.ts`, `reference.ts`, and render helpers.
+
+These estimates still leave a large gap. After the first two lanes, rerun the
+line map and reassess whether smaller node files contain generated defensive
+patterns that can be deleted wholesale, not polished.
+
+Minimum proof for each line-count batch:
+
+- focused behavior tests for the touched semantic lane;
+- `pnpm run verify:binding-lookup-hot-paths` for lookup/binding cuts;
+- extend walk and integration tests for extend cuts;
+- `pnpm run verify:aggressive-cutting-review`;
+- `git diff --check`;
+- a fresh non-test `packages/core/src` line count.
 
 ## Active Binding Queue
 

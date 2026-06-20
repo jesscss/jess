@@ -3341,6 +3341,26 @@ describe('reference', () => {
       }
     });
 
+    it('variable occurrence lookup reads covered current declaration cells without bucket fallback', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      const originalGet = frame.declarationBucketsByName.get;
+      frame.declarationBucketsByName.get = () => {
+        throw new Error('covered current declaration occurrence should not reopen declaration buckets');
+      };
+
+      try {
+        const found = findVariableDeclarationOccurrence(node, 'color')?.node;
+
+        expect(found?.value.valueOf()).toBe('red');
+      } finally {
+        frame.declarationBucketsByName.get = originalGet;
+      }
+    });
+
     it('property occurrence lookup uses direct Declaration lookup for unfiltered exact hits', async () => {
       const node = rules([
         decl({ name: any('color'), value: any('red') })

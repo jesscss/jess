@@ -3,6 +3,7 @@ import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import type { Rules, RulesOptions } from '../rules.js';
+import { lookupScopeFrameVariable } from '../scope-frame.js';
 import { isNode } from './is-node.js';
 import {
   canEnterMixinOutputForLookup,
@@ -469,38 +470,6 @@ function findLocalDeclaration(
   return undefined;
 }
 
-function findScopeBindingDeclaration(
-  scope: Rules,
-  key: string,
-  filter: DeclarationFindOptions['filter'] | undefined,
-  start: number | undefined
-): DirectDeclarationOccurrence | undefined {
-  const frame = scope._scopeFrame;
-  if (!frame?.declarationsCovered) {
-    return undefined;
-  }
-  const bucket = frame.declarationBucketsByName.get(key);
-  if (!bucket?.length) {
-    return undefined;
-  }
-  for (let i = bucket.length - 1; i >= 0; i--) {
-    const sourceNode = bucket[i]!.sourceNode;
-    if (!isNode(sourceNode, N.VarDeclaration)) {
-      continue;
-    }
-    if (sourceNode.options?.setDefined) {
-      continue;
-    }
-    if (start !== undefined && !(sourceNode.index !== undefined && sourceNode.index < start)) {
-      continue;
-    }
-    if (!filter || filter(sourceNode)) {
-      return createDeclarationOccurrence(sourceNode);
-    }
-  }
-  return undefined;
-}
-
 function findWithinScopeSurface(
   scope: Rules,
   key: string,
@@ -543,10 +512,17 @@ function findWithinScopeSurface(
   }
 
   const state = createTraversalMatchState(readonly || Boolean(scope.options.readonly));
+  let localMatch: DirectDeclarationOccurrence | undefined;
+  let skipVarDeclarations = false;
   if (includeLiveBindings) {
-    const live = scope._scopeFrame?.currentBindingsByName.get(key);
-    const liveSource = live?.live === true
-      ? live.sourceNode
+    const frameHit = lookupScopeFrameVariable(scope._scopeFrame, key, {
+      start,
+      filter: options.filter,
+      includeFallbackFrames: false,
+      searchParents: false
+    });
+    const liveSource = frameHit.kind === 'live'
+      ? frameHit.sourceNode
       : undefined;
     if (
       liveSource
@@ -555,7 +531,7 @@ function findWithinScopeSurface(
     ) {
       const liveOccurrence = createDeclarationOccurrence(liveSource);
       countDirectLookup?.('declaration.liveBindingHit');
-      state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
+      state.readonly ||= Boolean(frameHit.readonly || frameHit.cell.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
         state.optionalMatch = liveOccurrence;
@@ -564,19 +540,18 @@ function findWithinScopeSurface(
         return state;
       }
     }
-  }
-
-  let localMatch: DirectDeclarationOccurrence | undefined;
-  if (includeLiveBindings) {
-    const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
-    if (bindingMatch) {
+    if (
+      frameHit.kind === 'declaration'
+      && isNode(frameHit.sourceNode, N.VarDeclaration)
+      && !frameHit.sourceNode.options?.setDefined
+    ) {
       countDirectLookup?.('declaration.scopeBindingHit');
-      state.readonly ||= Boolean(bindingMatch.node.options.readonly);
-      localMatch = bindingMatch;
+      state.readonly ||= Boolean(frameHit.readonly || frameHit.cell.readonly || frameHit.sourceNode.options.readonly);
+      localMatch = createDeclarationOccurrence(frameHit.sourceNode);
+      skipVarDeclarations = strategy.skipVarsAfterBindingHit;
     }
   }
 
-  const skipVarDeclarations = Boolean(localMatch && strategy.skipVarsAfterBindingHit);
   if (!skipVarDeclarations) {
     const treeMatch = findLocalDeclaration(
       scope,
