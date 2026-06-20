@@ -1523,7 +1523,7 @@ const RAW_FONT_LIST_PATTERN =
 const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
   /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
-  /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)$/u;
+  /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)(?:[ \t]*,[ \t]*(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*))*$/u;
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {

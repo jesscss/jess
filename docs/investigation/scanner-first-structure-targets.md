@@ -215,10 +215,15 @@ Ruleset {
 
 Direct behavior: preserve the selector text and render declarations directly.
 
-JIT triggers: selector-list splitting, `:extend()`, visitor access to typed
-selector nodes, or diagnostics that need selector component positions.
+JIT triggers: selector-list splitting beyond scanner-native branches,
+`:extend()`, visitor access to typed selector nodes, or diagnostics that need
+selector component positions.
 
-Current status: first-wave corpus gap.
+Current status: structural-fed prototype handles comma-separated lists whose
+branches are already in the scanner-native selector subset, such as `.a, .b`
+and `.a, button.primary`, without island parser requests. Complex selector
+branches, interpolation, nested selectors, and `:extend()` remain outside this
+proof.
 
 ### CSS-005 Nested Ampersand Selector
 

@@ -31,11 +31,11 @@ export const lessProfile: LanguageProfile = createLanguageProfile({
     }
     return undefined;
   },
-  classifyRuleHeader(text): RuleHeaderKind | undefined {
+  classifyRuleHeader(text, source, range): RuleHeaderKind | undefined {
     if (looksLikeLessMixin(text)) {
       return 'mixin-definition';
     }
-    return undefined;
+    return cssProfile.classifyRuleHeader(source, range);
   },
   classifyIsland(text, _source, _range, context): readonly IslandKind[] {
     const kinds = [...classifyCssIsland(text, context)];

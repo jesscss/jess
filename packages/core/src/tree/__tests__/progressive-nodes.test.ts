@@ -429,6 +429,46 @@ describe('progressive scanner-first proof nodes', () => {
     expect(elementTypes).toContain('(BasicSelector \'.primary\')');
   });
 
+  test('materializes raw-field selector lists only when semantic registration asks', () => {
+    const context = new Context();
+    const node = ruleset({
+      selector: '.a, button.primary',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('.a, button.primary {\n  color: blue;\n}\n');
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('.a, button.primary');
+    expect(serializeTypes(node)).toContain('rawSelector: \'.a, button.primary\'');
+    void node.prepareRegistration(context);
+    expect(node.rawSelector).toBeUndefined();
+    expect(node.selector).toBeDefined();
+    const selector = node.selector;
+    if (!selector || !isNode(selector, N.SelectorList)) {
+      throw new Error('Expected raw selector list materialization to create a SelectorList.');
+    }
+    expect(selector.parent).toBe(node);
+    expect(selector.value[0]!.parent).toBe(selector);
+    expect(selector.value[1]!.parent).toBe(selector);
+    if (!isNode(selector.value[1], N.CompoundSelector)) {
+      throw new Error('Expected second selector list branch to materialize as a CompoundSelector.');
+    }
+    expect(selector.value[1].value[0]!.parent).toBe(selector.value[1]);
+    expect(selector.value[1].value[1]!.parent).toBe(selector.value[1]);
+    const types = serializeTypes(node);
+    expect(types).toContain('(SelectorList');
+    expect(types).toContain('(BasicSelector \'.a\')');
+    expect(types).toContain('(CompoundSelector');
+    expect(types).toContain('(BasicSelector \'button\')');
+    expect(types).toContain('(BasicSelector \'.primary\')');
+    expect(types).not.toContain('rawSelector');
+  });
+
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
       selector: '.a .b',
