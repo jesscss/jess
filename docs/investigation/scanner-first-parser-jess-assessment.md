@@ -101,7 +101,7 @@ the end of a long pass to mark completed work.
 - [x] Slice 7: CSS and Less island provider entrypoints
 - [ ] Slice 8: CSS and Less e2e compiler/eval prototype
 - [ ] Slice 9: plugin and visitor integration
-- [x] Slice 9b: SCSS and Jess island provider entrypoints after CSS/Less e2e
+- [ ] Slice 9b: SCSS and Jess island provider entrypoints after CSS/Less e2e
 - [ ] Slice 10: language-service consumer
 - [ ] Slice 11: compiler opt-in experiment
 
@@ -1936,13 +1936,24 @@ Goal: first prove scanner-first CSS/Less behavior as a sidecar e2e probe inside
 the real compiler/eval/render API, then graduate to a structural-fed
 compile/eval path before widening to SCSS/Jess parser packages.
 
+This slice now runs in parallel with the core binding/lookup architecture lane,
+not after it as an afterthought. The parser lane owns scanner-native CSS/Less
+coverage, corpus gates, and benchmarks. The binding lane owns whether the
+resulting AST can evaluate without overlapping direct lookup, scope-frame,
+assignment, import, and callable mechanisms fighting each other. If an e2e
+parser proof fails because lookup/eval has no cohesive source of truth, stop
+and move that blocker to the binding lane instead of adding a parser-local
+workaround.
+
 Do this before adding or widening SCSS/Jess structural work. CSS/Less is not
 complete merely because focused e2e fixtures pass: the structural-fed Less path
 must render the existing upstream Less test-data fixture set to its expected CSS
 with output equality, and the same corpus must have benchmark output for the
 current parser path versus structural-sidecar, selected-materialization, and
 structural-fed modes. Until that corpus-plus-benchmark gate exists, SCSS/Jess
-work stays limited to already-landed provider entrypoint smoke coverage.
+work stays limited to recorded/parked provider entrypoint smoke coverage. Do
+not mark Slice 9b complete, add new SCSS/Jess structural features, or expand
+SCSS/Jess parser surface until this Less corpus-plus-benchmark gate is green.
 The first milestone did not replace the default parser path: it ran structural
 scan and selected island materialization before canonical parse, then the
 existing parser still built the runtime AST used by eval/render. That sidecar

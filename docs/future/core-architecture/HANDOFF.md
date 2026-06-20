@@ -43,6 +43,15 @@ The fastest credible runtime path remains:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
+The scanner-first parser and binding/lookup work must be attacked
+holistically. If a parser/e2e proof fails because lookup, live binding, import,
+or callable resolution lacks one source of truth, move that blocker into the
+binding queue instead of adding parser-local workarounds. If binding work needs
+new parser shapes to prove Less-to-CSS behavior, keep the parser slice bounded
+to CSS/Less and the existing corpus/benchmark gates. Do not expand SCSS/Jess
+structural work until CSS/Less structural-fed output equality and benchmark
+gates are green.
+
 Do not preserve an unreleased or self-invented public-looking method for
 compatibility alone. If repo usage does not need it and the user has not
 approved it as API, delete or reshape it.

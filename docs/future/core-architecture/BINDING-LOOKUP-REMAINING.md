@@ -1454,19 +1454,21 @@ files changed in this pass. The binding-owned queue and cluster inventory are
 closed; broad changed-baseline failures remain documented outside the binding
 lane.
 
-87. [ ] Audit cumulative `Rules` lookup/index ownership before adding more
-scanner-first or binding narrow cases. Scope: `packages/core/src/tree/rules.ts`
-line-range responsibility map, persistent `Map`/`Set` fields, scratch maps,
-scope-frame overlap, direct declaration lookup overlap, callable lookup overlap,
-mixin-output placement state, and cache/version invalidation paths. Goal:
-decide which state genuinely belongs on the canonical `Rules` child container
-and which state should move behind package-internal lookup/eval/render services
-without adding more hot-path side maps. Acceptance: a read-only audit records
-line ranges and classifies every persistent `Rules` map/cache field as
-canonical node state, scope-frame index, direct declaration lookup cache,
-callable lookup cache, render/eval orchestration, or cold public/debug state;
-each retained map has an ownership reason; at least one first cleanup slice is
-chosen with focused tests. Current evidence: `rules.ts` currently owns
+87. [ ] Unify cumulative `Rules` lookup/index ownership before adding more
+scanner-first parser or binding narrow cases. This is an implementation lane,
+not a read-only audit. Scope: `packages/core/src/tree/rules.ts` line-range
+responsibility map, persistent `Map`/`Set` fields, scratch maps, scope-frame
+overlap, direct declaration lookup overlap, callable lookup overlap,
+mixin-output placement state, import/reference summaries, and cache/version
+invalidation paths. Goal: decide which state genuinely belongs on the
+canonical `Rules` child container and move the rest behind package-internal
+binding/lookup/eval/render services without adding more hot-path side maps.
+Acceptance: a responsibility map records line ranges and classifies every
+persistent `Rules` map/cache field as canonical node state, scope-frame index,
+direct declaration lookup cache, callable lookup cache, render/eval
+orchestration, or cold public/debug state; each retained map has an ownership
+reason; then at least one concrete cleanup slice deletes or moves a mechanism
+with focused tests. Current evidence: `rules.ts` currently owns
 `functionsByName`, `varsByName`, `callableLookupCache`,
 `directDeclarationsByName`, `directDeclarationLookupCache`,
 `declarationLookupVersionsByName`, and `functionLookupVersionsByName`, while
@@ -1476,6 +1478,36 @@ problem is cumulative ownership fragmentation, not one isolated map. The
 existing aggressive-cutting verifier only scans the current diff and can pass
 with a self-prosecution block, so it did not prove the accumulated `Rules`
 shape was acceptable.
+
+Required sub-slices:
+
+- [ ] 87a. Source-of-truth map: classify every binding/lookup field and method
+  family in `Rules`, `ScopeFrame`, direct lookup utilities, and reference
+  handles as source AST identity, runtime binding cell, lookup index, import
+  summary, callable namespace surface, eval placement state, or render-only
+  state. Do not edit behavior in this slice except comments/docs.
+- [ ] 87b. Declaration binding model: specify and implement the canonical
+  declaration binding record shape: stable `sourceNode`, mutable runtime cell,
+  visibility/import/readonly metadata, and source-order facts. Variable,
+  property, and assignment reads must share this shape instead of duplicating
+  `varsByName`, direct occurrence, and scope-frame answers.
+- [ ] 87c. `setDefined` and live current reads: convert all modeled
+  `setDefined` paths to update binding cells or insert runtime declarations
+  when no cell exists. Evaluated replacements must not mutate authored
+  declaration fields. Focused tests must assert both rendered/read value and
+  unchanged source declaration serialization.
+- [ ] 87d. Direct lookup consolidation: fold direct variable/property
+  occurrence lookup into the declaration binding layer, or document exact cold
+  public API boundaries where direct occurrence remains necessary. Delete
+  duplicate cache/version state when the binding index owns the same fact.
+- [ ] 87e. Callable/import surface ownership: decide whether callable namespace
+  and reference-import summaries are binding-layer indexes or separate
+  callable services. Either way, `Rules` should stop owning both summary facts
+  and traversal algorithms when a service can own one coherent pass.
+- [ ] 87f. Verification gates: run focused lookup/setDefined/import/callable
+  tests, `verify:binding-lookup-hot-paths`, `verify:aggressive-cutting-review`,
+  changed baseline where feasible, and a lookup profile. No speed claim unless
+  before/after benchmark evidence is stable.
 
 Read-only sub-agent audit result:
 
