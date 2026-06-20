@@ -1,5 +1,12 @@
 export { StructuralDocument } from './document.js';
+export { FieldRangeTable } from './field-ranges.js';
 export { parseStructure } from './parse.js';
+export {
+  type FieldRange,
+  type FieldRangeKind,
+  type FieldRangeName,
+  type ReadonlyFieldRangeTable
+} from './field-ranges.js';
 export {
   type ChangedRange,
   type DocumentSymbol,

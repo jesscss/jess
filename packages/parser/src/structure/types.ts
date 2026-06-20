@@ -1,6 +1,7 @@
 import type { ParserDiagnostic } from '../scanner/index.js';
 import type { SourceText, TriviaRun } from '../source/index.js';
 import type { IslandKind, LanguageProfile } from '../profiles/index.js';
+import type { FieldRangeTable } from './field-ranges.js';
 
 /**
  * Node kinds produced by the scanner-first structural parser.
@@ -45,6 +46,7 @@ export type StructuralContainerNode = StructuralNodeBase & {
   kind: 'at-rule' | 'block' | 'document' | 'mixin-definition' | 'rule';
   headerStart: number;
   headerEnd: number;
+  bodyStart: number;
   children: StructuralNode[];
 };
 
@@ -141,4 +143,5 @@ export type StructuralDocumentData = {
   diagnostics: ParserDiagnostic[];
   trivia: TriviaRun[];
   islands: RawIslandNode[];
+  fieldRanges: FieldRangeTable<StructuralNode>;
 };

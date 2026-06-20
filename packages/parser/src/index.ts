@@ -92,10 +92,15 @@ export {
 
 export {
   StructuralDocument,
+  FieldRangeTable,
   parseStructure,
   type ChangedRange,
   type DocumentSymbol,
   type ErrorNode,
+  type FieldRange,
+  type FieldRangeKind,
+  type FieldRangeName,
+  type ReadonlyFieldRangeTable,
   type FoldingRange,
   type ParseStructureInput,
   type ParseStructureOptions,

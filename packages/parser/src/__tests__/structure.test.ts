@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  FieldRangeTable,
   SourceText,
   parseStructure
 } from '../index.js';
@@ -83,6 +84,68 @@ describe('parseStructure', () => {
     ]);
   });
 
+  test('records string field ranges in a packed metadata table', () => {
+    const source = new SourceText('.foo { color: @brand; }');
+    const document = parseStructure(source, fixtureLessProfile);
+    const rule = document.root.children[0]!;
+
+    if (!('children' in rule)) {
+      throw new Error('Expected rule to be a container.');
+    }
+
+    const declaration = rule.children[0]!;
+    expect(document.fieldRanges.get(rule, 'selector')).toEqual({
+      field: 'selector',
+      index: 0,
+      start: 0,
+      end: 4,
+      kind: 'selector'
+    });
+    expect(document.fieldRanges.get(rule, 'body')).toEqual({
+      field: 'body',
+      index: 0,
+      start: 7,
+      end: 21,
+      kind: 'body-text'
+    });
+    expect(document.fieldRanges.get(declaration, 'name')).toEqual({
+      field: 'name',
+      index: 0,
+      start: 7,
+      end: 12,
+      kind: 'declaration-name'
+    });
+    expect(document.fieldRanges.get(declaration, 'value')).toEqual({
+      field: 'value',
+      index: 0,
+      start: 14,
+      end: 20,
+      kind: 'value'
+    });
+    expect(document.fieldRanges.size).toBeGreaterThanOrEqual(4);
+  });
+
+  test('stores field metadata without per-segment wrapper objects', () => {
+    const owner = {};
+    const table = new FieldRangeTable<object>();
+
+    table.add(owner, 'value', 0, 10, 14, 'value');
+    table.add(owner, 'value', 1, 15, 19, 'value');
+
+    expect(table.size).toBe(2);
+    expect(table.get(owner, 'value', 1)).toEqual({
+      field: 'value',
+      index: 1,
+      start: 15,
+      end: 19,
+      kind: 'value'
+    });
+    expect(table.rangesFor(owner, 'value')).toEqual([
+      { field: 'value', index: 0, start: 10, end: 14, kind: 'value' },
+      { field: 'value', index: 1, start: 15, end: 19, kind: 'value' }
+    ]);
+  });
+
   test('classifies at-rule prelude islands without the at-keyword', () => {
     const source = new SourceText('@media screen { .foo { color: red; } }');
     const document = parseStructure(source, fixtureLessProfile);
@@ -140,6 +203,20 @@ describe('parseStructure', () => {
       kind: 'import',
       start: 0,
       end: 15
+    });
+    expect(document.fieldRanges.get(document.root.children[0]!, 'name')).toEqual({
+      field: 'name',
+      index: 0,
+      start: 0,
+      end: 7,
+      kind: 'import-name'
+    });
+    expect(document.fieldRanges.get(document.root.children[0]!, 'prelude')).toEqual({
+      field: 'prelude',
+      index: 0,
+      start: 8,
+      end: 15,
+      kind: 'prelude'
     });
 
     const rule = document.root.children[1]!;

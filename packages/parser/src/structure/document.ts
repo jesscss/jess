@@ -8,6 +8,7 @@ import type {
   StructuralDocumentStats,
   StructuralNode
 } from './types.js';
+import type { ReadonlyFieldRangeTable } from './field-ranges.js';
 import type { IslandKind, LanguageProfile } from '../profiles/index.js';
 import type { ParserDiagnostic } from '../scanner/index.js';
 import type { SourceText, TriviaRun } from '../source/index.js';
@@ -26,6 +27,7 @@ export class StructuralDocument {
   readonly root: StructuralContainerNode;
   readonly diagnostics: readonly ParserDiagnostic[];
   readonly trivia: readonly TriviaRun[];
+  readonly fieldRanges: ReadonlyFieldRangeTable<StructuralNode>;
 
   #islands: readonly RawIslandNode[];
 
@@ -35,6 +37,7 @@ export class StructuralDocument {
     this.root = data.root;
     this.diagnostics = data.diagnostics;
     this.trivia = data.trivia;
+    this.fieldRanges = data.fieldRanges;
     this.#islands = data.islands;
   }
 

@@ -12,12 +12,14 @@ import {
 } from '../scanner/index.js';
 import { SourceText, sourceSpan, type SourceSpan, type TriviaRun } from '../source/index.js';
 import { StructuralDocument } from './document.js';
+import { FieldRangeTable } from './field-ranges.js';
 import type {
   ErrorNode,
   ParseStructureInput,
   ParseStructureOptions,
   RawIslandNode,
   StructuralContainerNode,
+  StructuralNode,
   StructuralStatementNode
 } from './types.js';
 
@@ -37,12 +39,14 @@ export function parseStructure(
   const diagnostics: ParserDiagnostic[] = [];
   const trivia: TriviaRun[] = [];
   const islands: RawIslandNode[] = [];
+  const fieldRanges = new FieldRangeTable<StructuralNode>();
   const root: StructuralContainerNode = {
     kind: 'document',
     start: 0,
     end: source.length,
     headerStart: 0,
     headerEnd: 0,
+    bodyStart: 0,
     children: []
   };
   const stack: StructuralContainerNode[] = [root];
@@ -57,7 +61,7 @@ export function parseStructure(
     }
 
     if (cursor.peekCode() === Char.CloseBrace) {
-      closeCurrentBlock(cursor, stack, diagnostics);
+      closeCurrentBlock(cursor, stack, diagnostics, fieldRanges);
       continue;
     }
 
@@ -68,6 +72,7 @@ export function parseStructure(
     if (boundary.kind === 'block-open') {
       const block = createContainerNode(source, profile, statementStart, boundary.offset, parent);
       parent.children.push(block);
+      appendContainerHeaderFieldRanges(source, block, fieldRanges);
       appendContainerIslands(source, profile, block, islands);
       stack.push(block);
       cursor.advance();
@@ -78,6 +83,7 @@ export function parseStructure(
       const statement = createStatementNode(source, profile, statementStart, boundary.offset, parent);
       if (statement) {
         parent.children.push(statement);
+        appendStatementFieldRanges(statement, fieldRanges);
         appendIslands(source, profile, statement, islands);
       }
       cursor.advance();
@@ -88,6 +94,7 @@ export function parseStructure(
       const statement = createStatementNode(source, profile, statementStart, boundary.offset, parent);
       if (statement) {
         parent.children.push(statement);
+        appendStatementFieldRanges(statement, fieldRanges);
         appendIslands(source, profile, statement, islands);
       }
     }
@@ -106,6 +113,7 @@ export function parseStructure(
     });
     diagnostics.push(diagnostic);
     unclosed.end = source.length;
+    appendContainerBodyFieldRange(source, unclosed, fieldRanges);
     unclosed.children.push({
       kind: 'error',
       start: source.length,
@@ -121,7 +129,8 @@ export function parseStructure(
     root,
     diagnostics,
     trivia,
-    islands
+    islands,
+    fieldRanges
   });
 }
 
@@ -238,6 +247,7 @@ function createContainerNode(
     end: source.length,
     headerStart,
     headerEnd,
+    bodyStart: openOffset + 1,
     parent,
     children: []
   };
@@ -262,11 +272,13 @@ function createStatementNode(
   const atInclude = INCLUDE_STATEMENT_PATTERN.test(text);
 
   if (atImport) {
-    return statement('import', trimmedStart, trimmedEnd, trimmedStart, trimmedStart + 7, trimmedStart + 7, trimmedEnd, parent);
+    const nameEnd = trimmedStart + 7;
+    return statement('import', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
   }
 
   if (atInclude) {
-    return statement('mixin-call', trimmedStart, trimmedEnd, trimmedStart, trimmedStart + 8, trimmedStart + 8, trimmedEnd, parent);
+    const nameEnd = trimmedStart + 8;
+    return statement('mixin-call', trimmedStart, trimmedEnd, trimmedStart, nameEnd, trimStart(source, nameEnd, trimmedEnd), trimmedEnd, parent);
   }
 
   if (colon !== -1) {
@@ -302,10 +314,59 @@ function statement(
   return { kind, start, end, nameStart, nameEnd, valueStart, valueEnd, parent };
 }
 
+function appendContainerHeaderFieldRanges(
+  source: SourceText,
+  node: StructuralContainerNode,
+  fieldRanges: FieldRangeTable<StructuralNode>
+): void {
+  if (node.kind === 'at-rule') {
+    const name = AT_RULE_HEADER_PATTERN.exec(source.slice(node.headerStart, node.headerEnd))?.[0];
+    if (name) {
+      fieldRanges.add(node, 'name', 0, node.headerStart, node.headerStart + name.length, 'at-rule-name');
+    }
+    const prelude = atRulePreludeSpan(source, node.headerStart, node.headerEnd);
+    if (prelude.start < prelude.end) {
+      fieldRanges.add(node, 'prelude', 0, prelude.start, prelude.end, 'prelude');
+    }
+  } else if (node.kind === 'rule' || node.kind === 'mixin-definition') {
+    fieldRanges.add(node, 'selector', 0, node.headerStart, node.headerEnd, 'selector');
+  }
+}
+
+function appendContainerBodyFieldRange(
+  source: SourceText,
+  node: StructuralContainerNode,
+  fieldRanges: FieldRangeTable<StructuralNode>
+): void {
+  const bodyStart = trimStart(source, node.bodyStart, node.end);
+  const bodyEnd = trimEnd(source, bodyStart, Math.max(bodyStart, node.end - 1));
+  if (bodyStart < bodyEnd) {
+    fieldRanges.add(node, 'body', 0, bodyStart, bodyEnd, 'body-text');
+  }
+}
+
+function appendStatementFieldRanges(
+  node: StructuralStatementNode,
+  fieldRanges: FieldRangeTable<StructuralNode>
+): void {
+  const nameKind = node.kind === 'mixin-call'
+    ? 'mixin-name'
+    : node.kind === 'import'
+      ? 'import-name'
+      : 'declaration-name';
+  fieldRanges.add(node, 'name', 0, node.nameStart, node.nameEnd, nameKind);
+  if (node.valueStart < node.valueEnd) {
+    const valueField = node.kind === 'import' ? 'prelude' : 'value';
+    const valueKind = node.kind === 'import' ? 'prelude' : 'value';
+    fieldRanges.add(node, valueField, 0, node.valueStart, node.valueEnd, valueKind);
+  }
+}
+
 function closeCurrentBlock(
   cursor: ScannerCursor,
   stack: StructuralContainerNode[],
-  diagnostics: ParserDiagnostic[]
+  diagnostics: ParserDiagnostic[],
+  fieldRanges: FieldRangeTable<StructuralNode>
 ): void {
   if (stack.length === 1) {
     const start = cursor.offset;
@@ -337,6 +398,7 @@ function closeCurrentBlock(
   const block = stack.pop()!;
   cursor.advance();
   block.end = cursor.offset;
+  appendContainerBodyFieldRange(cursor.source, block, fieldRanges);
 }
 
 /**
