@@ -627,6 +627,61 @@ describe('scanner-first CSS/Less e2e probe', () => {
     ]));
   });
 
+  it('feeds a block at-rule containing an ordinary ruleset through structural parse', async () => {
+    const source = '@media screen { .a { color: blue; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 3,
+      requestedIslands: 3
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
+      ['at-rule-prelude', 1],
+      ['selector', 1],
+      ['declaration-value', 1]
+    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
+      ['at-rule', 1],
+      ['rule', 1],
+      ['declaration', 1]
+    ]));
+  });
+
+  it('falls back canonically for unproven block at-rule families', async () => {
+    const source = '@supports (display: grid) { .a { color: blue; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'unsupported block at-rule in the first structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+  });
+
   it('falls back canonically for Less features outside the first structural-fed subset', async () => {
     const source = '.rounded() { color: blue; }\n.a { .rounded(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

@@ -9,6 +9,7 @@ import {
   Declaration,
   VarDeclaration,
   Ruleset,
+  AtRule,
   Selector,
   Node,
   getErrorFromParser,
@@ -270,11 +271,13 @@ export class LessPlugin extends AbstractPlugin {
    * Attempts the first structural-fed compiler tree for a tiny CSS/Less subset.
    *
    * This is intentionally hidden and conservative. It supports ordinary rules
-   * whose bodies contain ordinary declarations and nested ordinary rules, while
-   * still delegating selector and value materialization to the Less island
-   * providers. Anything outside that shape records a canonical fallback instead
-   * of pretending the structural path owns more Less semantics than it actually
-   * proves.
+   * whose bodies contain ordinary declarations, nested ordinary rules, plain
+   * Less variables, plus root @media block at-rules with the same supported
+   * body shapes.
+   * Selectors, values, and at-rule preludes still materialize through Less
+   * island providers. Anything outside that shape records a canonical fallback
+   * instead of pretending the structural path owns more Less semantics than it
+   * actually proves.
    */
   runScannerFirstPrototype(
     filePath: string,
@@ -339,7 +342,7 @@ export class LessPlugin extends AbstractPlugin {
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
 
     for (const child of plan.document.root.children) {
-      if (child.kind !== 'rule' && child.kind !== 'variable-declaration') {
+      if (child.kind !== 'rule' && child.kind !== 'at-rule' && child.kind !== 'variable-declaration') {
         return fallback(`unsupported root node ${child.kind}`);
       }
       if (child.kind === 'variable-declaration') {
@@ -348,6 +351,18 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(eligibilityReason);
         }
         const result = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        continue;
+      }
+      if (child.kind === 'at-rule') {
+        const eligibilityReason = validateStructuralFedAtRule(plan.document, child);
+        if (eligibilityReason) {
+          return fallback(eligibilityReason);
+        }
+        const result = buildStructuralFedAtRule(plan, child, ownerIslands, configKey, context);
         if ('reason' in result) {
           return fallback(result.reason);
         }
@@ -829,6 +844,43 @@ function validateStructuralFedVariableDeclaration(
   return undefined;
 }
 
+function validateStructuralFedAtRule(
+  document: StructuralDocument,
+  atRule: StructuralContainerNode
+): string | undefined {
+  if (!structuralAtRuleName(document, atRule)) {
+    return 'at-rule name is outside the first structural-fed subset';
+  }
+  if (!isSupportedStructuralFedAtRule(document, atRule)) {
+    return 'unsupported block at-rule in the first structural-fed subset';
+  }
+  for (const child of atRule.children) {
+    if (child.kind === 'rule') {
+      const reason = validateStructuralFedRule(document, child);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
+    if (child.kind === 'at-rule') {
+      const reason = validateStructuralFedAtRule(document, child);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
+    if (child.kind === 'variable-declaration') {
+      const reason = validateStructuralFedVariableDeclaration(document, child);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
+    return `unsupported at-rule child ${child.kind}`;
+  }
+  return undefined;
+}
+
 function buildStructuralFedRuleset(
   plan: IslandParsePlan,
   rule: StructuralContainerNode,
@@ -898,6 +950,72 @@ function buildStructuralFedRuleset(
       selector: selectorRecord.value,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
+  };
+}
+
+function buildStructuralFedAtRule(
+  plan: IslandParsePlan,
+  atRule: StructuralContainerNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  configKey: ParserConfigKey,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const nameText = structuralAtRuleName(plan.document, atRule);
+  if (!nameText) {
+    return { reason: 'at-rule name is outside the first structural-fed subset' };
+  }
+
+  const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
+  const preludeRecord = preludeIsland
+    ? plan.execute<Node>(plan.requestIsland(preludeIsland, 'less-media-prelude', configKey))
+    : undefined;
+  if (preludeRecord && (preludeRecord.fallbackFullTree || preludeRecord.diagnostics.length > 0)) {
+    return { reason: 'at-rule prelude island did not materialize cleanly' };
+  }
+  if (preludeRecord && !(preludeRecord.value instanceof Node)) {
+    return { reason: 'at-rule prelude island returned a non-node value' };
+  }
+
+  const rules: Node[] = [];
+  for (const child of atRule.children) {
+    if (child.kind === 'rule') {
+      const nested = buildStructuralFedRuleset(plan, child, ownerIslands, configKey, context);
+      if ('reason' in nested) {
+        return nested;
+      }
+      rules.push(nested.node);
+      continue;
+    }
+    if (child.kind === 'at-rule') {
+      const nested = buildStructuralFedAtRule(plan, child, ownerIslands, configKey, context);
+      if ('reason' in nested) {
+        return nested;
+      }
+      rules.push(nested.node);
+      continue;
+    }
+    if (child.kind === 'variable-declaration') {
+      const variable = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+      if ('reason' in variable) {
+        return variable;
+      }
+      rules.push(variable.node);
+      continue;
+    }
+    return { reason: `unsupported at-rule child ${child.kind}` };
+  }
+
+  return {
+    node: new AtRule({
+      name: new Any(
+        nameText,
+        { role: 'atkeyword' },
+        locationFromRange(plan.document, atRule.headerStart, atRule.headerStart + nameText.length),
+        context
+      ),
+      prelude: preludeRecord?.value,
+      rules
+    }, { nestable: true }, locationFromRange(plan.document, atRule.start, atRule.end), context)
   };
 }
 
@@ -979,7 +1097,23 @@ function isPlainStructuralFedDeclarationName(name: string): boolean {
   return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
 }
 
+function structuralAtRuleName(
+  document: StructuralDocument,
+  atRule: StructuralContainerNode
+): string | undefined {
+  const header = document.source.slice(atRule.headerStart, atRule.headerEnd);
+  return AT_RULE_NAME_PATTERN.exec(header)?.[0];
+}
+
+function isSupportedStructuralFedAtRule(
+  document: StructuralDocument,
+  atRule: StructuralContainerNode
+): boolean {
+  return structuralAtRuleName(document, atRule) === '@media';
+}
+
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
+const AT_RULE_NAME_PATTERN = /^@[-\w]+/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
 const PLAIN_LESS_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;

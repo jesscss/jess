@@ -83,6 +83,56 @@ describe('parseStructure', () => {
     ]);
   });
 
+  test('classifies at-rule prelude islands without the at-keyword', () => {
+    const source = new SourceText('@media screen { .foo { color: red; } }');
+    const document = parseStructure(source, fixtureLessProfile);
+    const preludeStart = source.text.indexOf('screen');
+
+    expect(document.islands('at-rule-prelude')).toEqual([
+      expect.objectContaining({
+        islandKind: 'at-rule-prelude',
+        start: preludeStart,
+        end: preludeStart + 'screen'.length
+      })
+    ]);
+    expect(document.islands('variable-reference')).toEqual([]);
+  });
+
+  test('classifies adjacent at-rule preludes from the name boundary', () => {
+    const source = new SourceText('@supports(display: grid) { .foo { color: red; } }');
+    const document = parseStructure(source, fixtureLessProfile);
+    const preludeStart = source.text.indexOf('(display');
+
+    expect(document.islands('at-rule-prelude')).toEqual([
+      expect.objectContaining({
+        islandKind: 'at-rule-prelude',
+        start: preludeStart,
+        end: preludeStart + '(display: grid)'.length
+      })
+    ]);
+  });
+
+  test('classifies Less references inside at-rule preludes without including the at-keyword', () => {
+    const source = new SourceText('@media @breakpoint { .foo { color: red; } }');
+    const document = parseStructure(source, fixtureLessProfile);
+    const preludeStart = source.text.indexOf('@breakpoint');
+
+    expect(document.islands('at-rule-prelude')).toEqual([
+      expect.objectContaining({
+        islandKind: 'at-rule-prelude',
+        start: preludeStart,
+        end: preludeStart + '@breakpoint'.length
+      })
+    ]);
+    expect(document.islands('variable-reference')).toEqual([
+      expect.objectContaining({
+        islandKind: 'variable-reference',
+        start: preludeStart,
+        end: preludeStart + '@breakpoint'.length
+      })
+    ]);
+  });
+
   test('classifies import and SCSS mixin-call statements structurally', () => {
     const document = parseStructure('@import "a.css"; .foo { @include reset; }', fixtureScssProfile);
 

@@ -10,7 +10,7 @@ import {
   scanTriviaInto,
   type ParserDiagnostic
 } from '../scanner/index.js';
-import { SourceText, sourceSpan, type TriviaRun } from '../source/index.js';
+import { SourceText, sourceSpan, type SourceSpan, type TriviaRun } from '../source/index.js';
 import { StructuralDocument } from './document.js';
 import type {
   ErrorNode,
@@ -400,9 +400,15 @@ function appendContainerIslands(
   owner: StructuralContainerNode,
   islands: RawIslandNode[]
 ): void {
+  const span = owner.kind === 'at-rule'
+    ? atRulePreludeSpan(source, owner.headerStart, owner.headerEnd)
+    : sourceSpan(owner.headerStart, owner.headerEnd);
+  if (span.start >= span.end) {
+    return;
+  }
   const islandKinds = profile.classifyIsland(
     source,
-    sourceSpan(owner.headerStart, owner.headerEnd),
+    span,
     { parentKind: owner.kind === 'at-rule' ? 'at-rule' : 'document', statementKind: 'rule' }
   );
 
@@ -410,12 +416,19 @@ function appendContainerIslands(
     islands.push({
       kind: 'raw-island',
       islandKind,
-      start: owner.headerStart,
-      end: owner.headerEnd,
+      start: span.start,
+      end: span.end,
       parent: owner.parent,
       owner
     });
   }
+}
+
+function atRulePreludeSpan(source: SourceText, start: number, end: number): SourceSpan {
+  const header = source.slice(start, end);
+  const name = AT_RULE_HEADER_PATTERN.exec(header)?.[0];
+  const offset = name ? start + name.length : start;
+  return sourceSpan(trimStart(source, offset, end), end);
 }
 
 /**
