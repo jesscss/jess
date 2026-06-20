@@ -499,6 +499,68 @@ describe('scanner-first CSS/Less e2e probe', () => {
     ]));
   });
 
+  it('feeds reordered declarations in one ruleset through structural parse', async () => {
+    const source = '.a { width: 1px; color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('width: 1px');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 3,
+      requestedIslands: 3
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
+      ['selector', 1],
+      ['declaration-value', 2]
+    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
+      ['rule', 1],
+      ['declaration', 2]
+    ]));
+  });
+
+  it('feeds a ruleset-local Less variable and sibling declaration through structural parse', async () => {
+    const source = '.a { @brand: blue; color: @brand; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 3,
+      requestedIslands: 3
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
+      ['selector', 1],
+      ['declaration-value', 2]
+    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
+      ['rule', 1],
+      ['variable-declaration', 1],
+      ['declaration', 1]
+    ]));
+  });
+
   it('feeds nested Less variable declarations through structural parse', async () => {
     const source = '.a { @brand: blue; color: @brand; .b { border-color: @brand; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
