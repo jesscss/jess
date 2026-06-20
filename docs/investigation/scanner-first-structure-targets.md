@@ -1,10 +1,11 @@
 # Scanner-First Structure Targets
 
-This file is a seed corpus for deciding the cheapest structural shape that can
+This file is a seed corpus for deciding the cheapest parser-ready shape that can
 still render, evaluate, and JIT-parse correctly. These are targets, not frozen
-AST contracts. Field names such as `sourceRef` are placeholders for stable
-source identity; the final storage may be inline offsets, packed range tables,
-field metadata, or another measured representation.
+AST contracts. The preferred implementation direction is progressively enhanced
+core nodes: normal `Ruleset`, `Declaration`, `AtRule`, and rules-container nodes
+start with raw field payloads and stable source identity, then parse/cache richer
+field nodes only when demanded.
 
 Each target separates:
 
@@ -15,21 +16,23 @@ Each target separates:
   objects.
 
 The goal is for these examples to become a structure-parse corpus: parse source,
-compare cheap structure, assert no eager JIT parse, then run targeted JIT
-requests only for the listed triggers.
+compare cheap raw field facts, assert no eager JIT parse or child-node creation,
+then run targeted JIT requests only for the listed triggers.
 
 ## Illustrative Assertion Vocabulary
 
 The pseudo-types below are a compact way to write expected corpus facts. They
-are not implementation interfaces. Automated cases may assert equivalent facts
-with different property names, enum names, or source-identity storage.
+are not implementation interfaces and should not force a separate structural
+runtime node layer. Automated cases may assert equivalent facts on progressive
+core nodes with different property names, enum names, or source-identity
+storage.
 
 ```ts
 type SourceRef = unknown; // final storage deliberately unspecified
 
 type StructuralRuleset = {
   kind: 'ruleset';
-  selector: string;
+  selectorRaw: string;
   selectorKind: 'simple' | 'compound' | 'list' | 'complex' | 'unknown';
   sourceRef: SourceRef;
   rules: StructuralRule[];
@@ -37,9 +40,9 @@ type StructuralRuleset = {
 
 type StructuralDeclaration = {
   kind: 'declaration';
-  name: string;
+  nameRaw: string;
   nameKind: 'property' | 'custom-property' | 'less-variable' | 'interpolated';
-  value: string;
+  valueRaw: string;
   valueKind:
     | 'literal'
     | 'reference'
@@ -52,8 +55,8 @@ type StructuralDeclaration = {
 
 type StructuralAtRule = {
   kind: 'at-rule';
-  name: string;
-  prelude: string;
+  nameRaw: string;
+  preludeRaw: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
   sourceRef: SourceRef;
   rules: StructuralRule[];
@@ -61,8 +64,8 @@ type StructuralAtRule = {
 
 type StructuralAtRuleStatement = {
   kind: 'at-rule-statement';
-  name: string;
-  prelude: string;
+  nameRaw: string;
+  preludeRaw: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
   sourceRef: SourceRef;
 };
@@ -86,13 +89,13 @@ type StructuralRule =
 
 ```ts
 Ruleset {
-  selector: ".a",
+  selectorRaw: ".a",
   selectorKind: "simple",
   rules: [
     Declaration {
-      name: "color",
+      nameRaw: "color",
       nameKind: "property",
-      value: "blue",
+      valueRaw: "blue",
       valueKind: "literal"
     }
   ]
@@ -117,11 +120,11 @@ Target structure:
 
 ```ts
 Ruleset {
-  selector: ".a",
+  selectorRaw: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { name: "width", value: "1px", valueKind: "literal" },
-    Declaration { name: "color", value: "blue", valueKind: "literal" }
+    Declaration { nameRaw: "width", valueRaw: "1px", valueKind: "literal" },
+    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" }
   ]
 }
 ```
@@ -149,15 +152,15 @@ string. Do not build selector ASTs merely because nesting exists.
 
 ```ts
 Ruleset {
-  selector: ".a",
+  selectorRaw: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { name: "color", value: "blue", valueKind: "literal" },
+    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" },
     Ruleset {
-      selector: ".b",
+      selectorRaw: ".b",
       selectorKind: "simple",
       rules: [
-        Declaration { name: "width", value: "1px", valueKind: "literal" }
+        Declaration { nameRaw: "width", valueRaw: "1px", valueKind: "literal" }
       ]
     }
   ]
@@ -184,10 +187,10 @@ Target structure:
 
 ```ts
 Ruleset {
-  selector: ".a, .b",
+  selectorRaw: ".a, .b",
   selectorKind: "list",
   rules: [
-    Declaration { name: "color", value: "blue", valueKind: "literal" }
+    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" }
   ]
 }
 ```
@@ -247,7 +250,7 @@ prototype may still fall back where trivia/raw-value preservation is not proven.
 }
 ```
 
-Target structure: `AtRule { name: "@media", prelude: "screen", rules: [...] }`.
+Target structure: `AtRule { nameRaw: "@media", preludeRaw: "screen", rules: [...] }`.
 Prelude stays a string with `preludeKind: "literal"` until query semantics are
 needed.
 
@@ -290,9 +293,9 @@ Target structure:
 
 ```ts
 Declaration {
-  name: "@brand",
+  nameRaw: "@brand",
   nameKind: "less-variable",
-  value: "blue",
+  valueRaw: "blue",
   valueKind: "literal"
 }
 ```
@@ -341,11 +344,11 @@ Target structure:
 
 ```ts
 Ruleset {
-  selector: ".a",
+  selectorRaw: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { name: "color", value: "@brand", valueKind: "reference" },
-    Declaration { name: "@brand", value: "blue", valueKind: "literal" }
+    Declaration { nameRaw: "color", valueRaw: "@brand", valueKind: "reference" },
+    Declaration { nameRaw: "@brand", valueRaw: "blue", valueKind: "literal" }
   ]
 }
 ```
@@ -405,9 +408,9 @@ Current status: canonical fallback.
 }
 ```
 
-Target structure: mixin signature can be indexed structurally from selector
-text; body can remain structural rules. Call statement stays a string/span until
-call resolution.
+Target structure: mixin signature can be indexed from raw selector text on the
+owning mixin node; body rules can remain raw-field core nodes. Call statement
+stays raw text/source identity until call resolution.
 
 Direct behavior: registering a mixin should not parse every body value. Calling
 the mixin should instantiate/evaluate only the body parts that are needed for
@@ -429,8 +432,9 @@ Target structure: ruleset selector string includes an extend marker and is
 classified as needing selector semantics. Do not parse unrelated declaration
 values just because extend exists.
 
-Direct behavior: declaration bodies remain structural. Extend graph
-construction JIT-parses only selector fields participating in extend.
+Direct behavior: declaration bodies remain raw-field nodes. Extend graph
+construction JIT-parses only selector fields participating in extend and caches
+those parsed selectors on their owning rulesets.
 
 JIT triggers: `:extend(` in selector text.
 
@@ -448,8 +452,8 @@ Target structure:
 
 ```ts
 AtRuleStatement {
-  name: "@import",
-  prelude: "\"tokens.less\"",
+  nameRaw: "@import",
+  preludeRaw: "\"tokens.less\"",
   preludeKind: "literal"
 }
 ```
@@ -457,8 +461,8 @@ AtRuleStatement {
 Import resolution is a compile stage, not a reason to parse every selector/value
 in either file.
 
-Direct behavior: resolve/load imported file, then structural-parse imported
-source and merge structural bindings/rules according to Less import semantics.
+Direct behavior: resolve/load imported file, parse it into raw-field core nodes,
+and merge cheap bindings/rules according to Less import semantics.
 
 JIT triggers: import options, reference/inline/css/plugin imports, media
 wrapping, or imported-file constructs that demand richer parsing.
@@ -474,14 +478,14 @@ Current status: canonical fallback in structural-fed corpus.
 }
 ```
 
-Target structure: at the Less structural stage, `& { ... }` is eligible to
-become a direct rules-container/scope block when parent-selector resolution
-would otherwise produce no concrete selector. It should not become a synthetic
-ruleset that later serializes `&`.
+Target structure: during scanner-first parse, `& { ... }` is eligible to become
+a direct rules-container/scope core node when parent-selector resolution would
+otherwise produce no concrete selector. It should not become a synthetic ruleset
+that later serializes `&`.
 
-Direct behavior: create scope isolation and evaluate child structural rules in
+Direct behavior: create scope isolation and evaluate child raw-field rules in
 that scope. The block itself should not serialize braces when emitted directly
-as a structural rules container.
+as a rules-container node.
 
 JIT triggers: non-trivial parent selector merging, guarded/control semantics,
 or visitor access to a typed selector node for the original `&` text.
@@ -501,9 +505,9 @@ distinct from ordinary selector rulesets.
 Target structure: a direct `Rules`/rules-container block with a child rule list,
 not a synthetic `&` selector and not a nested wrapper node inside `.rules`.
 
-Direct behavior: create scope isolation and evaluate child structural rules in
+Direct behavior: create scope isolation and evaluate child raw-field rules in
 that scope. The block itself should not serialize braces when emitted directly
-as a structural rules container.
+as a rules-container node.
 
 JIT triggers: guard/control semantics if the same body form is later attached to
 `$if`, `$when`, loops, or mixins.
@@ -519,6 +523,8 @@ Before a target graduates into an automated structure corpus case:
   identity availability, not the exact source-identity representation;
 - assert no legacy parser execution during the structural parse;
 - assert no field-level JIT parse until the target's listed trigger is invoked;
+- assert triggered JIT parsing caches onto the owning core node and does not
+  create repeated adapter-owned core subtrees for the same field/cache key;
 - when direct render/eval is claimed, compare CSS output to the current compiler
   or upstream expected CSS;
 - when fallback is expected, record the fallback reason as part of the case.

@@ -1722,34 +1722,69 @@ Less variable references, arithmetic, functions, mixin calls, extends, and
 broader selectors currently fall back canonically until their materializers are
 scanner-native.
 
-The target runtime shape should be even cheaper than the temporary core bridge:
+The target runtime shape should be even cheaper than the temporary core bridge,
+and it should avoid a second long-lived structural-node hierarchy where possible.
+Prefer progressively enhanced core nodes: the parser constructs the normal
+`Ruleset`, `Declaration`, `AtRule`, and rules-container surfaces with raw field
+payloads first, then those same nodes parse and cache richer selector/value/
+prelude objects only when a compile stage demands them.
 
 ```ts
 Ruleset {
-  selector: ".a",
+  selectorRaw: ".a",
+  selector: unparsed,
   rules: [
     Declaration {
-      name: "foo",
-      value: "bar"
+      nameRaw: "foo",
+      valueRaw: "bar",
+      name: unparsed,
+      value: unparsed
     }
   ],
-  sourceRanges: ... // exact storage is still a design choice
+  source: sourceRef
 }
 ```
 
-That structure should render and evaluate directly while the fields remain
-semantically plain. A field should JIT-parse only when demanded by a feature
-that needs richer meaning: variable/reference resolution, arithmetic, function
-calls, selector nesting/ampersand resolution, `:extend()`, interpolation,
-plugin/visitor access to typed selector/value nodes, detailed diagnostics, or
-source-map detail beyond the stored span. Put differently: scanner-first does
-not mean "create cheaper core AST nodes sooner"; it means "keep strings/spans
-until a specific compile stage proves it needs a parsed shape."
+For the cheapest path, render can write `selectorRaw`, `nameRaw`, `valueRaw`,
+and simple at-rule preludes directly. Eval can treat literal values as scalar
+payloads without manufacturing `Any` wrappers until a feature needs node
+semantics. A field should JIT-parse only when demanded by a feature that needs
+richer meaning: variable/reference resolution, arithmetic, function calls,
+selector nesting/ampersand resolution, `:extend()`, interpolation, plugin/
+visitor access to typed selector/value nodes, detailed diagnostics, or source
+map detail beyond the stored source identity. Put differently: scanner-first
+does not mean "create cheaper core AST nodes sooner"; it means "let the core
+node itself start raw and progressively enhance its fields."
 
-Do not take `sourceRanges` or `selectorSpan`/`valueSpan`-style field names as
-the proposal. The requirement is stable source identity for cheap fields; the
-storage may be per-node offsets, a packed range table, field metadata, or
-another lower-allocation representation after measurement.
+The progressive fields should be single-owner caches, not adapter outputs:
+
+```ts
+Declaration {
+  nameRaw: "color",
+  valueRaw: "@brand",
+  parsedName?: Any<"property">,
+  parsedValue?: Reference | Node,
+  valueKind: "reference",
+  source: sourceRef
+}
+```
+
+Accessors or stage helpers can expose `getParsedValue()` / `ensureValueNode()`,
+but ordinary rendering and structural indexing should not call them. When a
+field is parsed, the parsed node is attached to the same declaration, so later
+visitors, eval stages, and diagnostics reuse it instead of allocating a parallel
+core subtree each time.
+
+Parsed-field caches must be keyed by the source version, field range, language
+configuration, and target semantic shape. A field should parse at most once for
+that cache key; source edits or parser-configuration changes invalidate the
+cached enhancement instead of leaving stale parsed nodes attached to raw text.
+
+Do not take `source`, `sourceRef`, `selectorRaw`, or `valueRaw` as fixed field
+names. The requirement is stable source identity and raw field payloads for the
+cheap path; the storage may be per-node offsets, a packed range table, field
+metadata, interned text slices, or another lower-allocation representation after
+measurement.
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default
@@ -1788,6 +1823,10 @@ another lower-allocation representation after measurement.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   scanner-native materialization, selected-island adapter parsing, fallback
   full-tree parsing, or the existing parser path.
+  - Future progressive-node proof should replace this subtree accounting with
+    per-field enhancement counters: raw fields rendered directly, fields parsed
+    and cached on their owning core node, cache hits, cache invalidations, and
+    any fallback full-tree parse.
 - [x] Ensure failures report source offsets and human diagnostics through the
   same diagnostic path expected by compiler users.
   - [x] Prototype records offset-first structural diagnostic ranges before
@@ -1813,10 +1852,15 @@ another lower-allocation representation after measurement.
   compiler tree.
 - [x] Seed structure-target examples for CSS/Less so minimal structural shape
   can be reasoned about before implementing more JIT parsing.
-- [ ] Replace the temporary core-node bridge with structural runtime nodes that
-  carry strings/spans for simple selectors, declaration names, declaration
-  values, and at-rule preludes, then JIT-parse individual fields only when
-  eval/render/visitor/plugin behavior requires richer semantics.
+- [ ] Replace the temporary core-node bridge with progressively enhanced core
+  nodes that carry raw selector/name/value/prelude payloads plus stable source
+  identity, render/evaluate simple fields directly, and JIT-parse individual
+  fields onto the same node only when eval/render/visitor/plugin behavior
+  requires richer semantics.
+- [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
+  parse `.a { color: blue; }` into normal core nodes with raw selector/name/value
+  slots, render from those slots, and assert no selector/value child nodes are
+  created until a typed accessor or richer feature requests them.
 - [ ] Structural-fed prototype: add scanner-native Less variable-reference
   materialization so plain Less variable declarations and reads can run without
   canonical fallback.
