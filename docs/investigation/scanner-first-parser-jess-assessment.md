@@ -1959,16 +1959,18 @@ storage.
   can be reasoned about before implementing more JIT parsing.
   - [x] Added the first executable thin target proof in
     `packages/jess/test/scanner-first-e2e.test.ts`: plain rule, ordered
-    declarations, nested ordinary rule, and single-line custom-property raw
-    value parse through the structural-fed path, render equal CSS, serialize
-    raw-field core nodes, and assert zero island requests / zero legacy parser
-    executions / no eager selector or value child nodes.
+    declarations, nested ordinary rule, single-line custom-property raw value,
+    and a root `@media` block with raw prelude parse through the structural-fed
+    path, render equal CSS, serialize raw-field core nodes, and assert zero
+    island requests / zero legacy parser executions / no eager selector,
+    prelude, or value child nodes.
   - [x] Extended that proof to packed field-range metadata for the same thin
-    targets: structural parse records selector, declaration-name, and value
-    ranges/kinds in `FieldRangeTable`, and the test asserts those ranges map
-    back to the exact raw strings later used by the raw-field core nodes. This
-    proves the cheap path is parser-ready without per-string wrapper nodes, but
-    it does not yet freeze a core-side field metadata API.
+    targets: structural parse records selector, at-rule name/prelude,
+    declaration-name, and value ranges/kinds in `FieldRangeTable`, and the test
+    asserts those ranges map back to the exact raw strings later used by the
+    raw-field core nodes. This proves the cheap path is parser-ready without
+    per-string wrapper nodes, but it does not yet freeze a core-side field
+    metadata API.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
   nodes that carry raw-or-parsed selector/name/value/prelude payloads plus
   stable source identity, render/evaluate simple string segments directly, and

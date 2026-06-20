@@ -700,6 +700,33 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
         progressiveNodes: 3
+      },
+      {
+        name: 'at-rule with raw prelude',
+        source: '@media screen { .a { color: blue; } }\n',
+        renderedSnippets: ['@media screen', '.a', 'color: blue'],
+        rawTypeSnippets: [
+          'rawName: \'@media\'',
+          'rawPrelude: \'screen\'',
+          'rawSelector: \'.a\'',
+          'rawName: \'color\'',
+          'rawValueSegments:',
+          '[\'blue\']'
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=atkeyword] \'@media\')',
+          'prelude: (Any \'screen\')',
+          'valueNode: (Any \'blue\')'
+        ],
+        fieldRangeFacts: [
+          { nodeKind: 'at-rule', field: 'name', kind: 'at-rule-name', text: '@media' },
+          { nodeKind: 'at-rule', field: 'prelude', kind: 'prelude', text: 'screen' },
+          { nodeKind: 'rule', field: 'selector', kind: 'selector', text: '.a' },
+          { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
+          { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
+        ],
+        progressiveNodes: 3
       }
     ];
 
