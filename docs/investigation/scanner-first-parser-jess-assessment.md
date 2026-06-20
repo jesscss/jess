@@ -2145,22 +2145,30 @@ storage.
     where feasible, and explicit broad overhead thresholds. The thresholds
     catch catastrophic regressions against Jess current; they do not prove the
     parser/eval path is competitive.
-  - [ ] Add a Less 4.x reference comparison gate before this benchmark gate can
+  - [x] Add a Less 4.x reference comparison gate before this benchmark gate can
     be considered complete. The nearby Less benchmark history reports Less
     4.5.0 `benchmark.less` median render at 42.16ms, while the Jess current
     one-off smoke in this worktree was 450.40ms on the same benchmark input.
     That roughly 10.7x gap is a red flag for the whole Jess parser/eval/render
     path and must not be normalized by comparing scanner-first only against
     Jess current.
+    - [x] The scanner-first Less corpus benchmark test now loads the Less 4.5
+      median from Less's checked-in historical benchmark JSON and fails if the
+      reference entry is missing or malformed. Benchmark-smoke summaries compute
+      each Jess mode's median-render ratio against that Less 4.5 reference so
+      scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 237.43ms, structural sidecar full render
-    232.32ms across 306 probe records, selected-materialization sidecar full
-    render 252.69ms across 306 probe records with 5,391
-    requested/materialized islands and 150,297 promoted bytes, and
-    structural-fed prototype 234.45ms across 249 prototype records with 24
-    structural-fed records, 225 canonical fallbacks, zero
-    requested/materialized islands, and zero promoted bytes. These medians are gate evidence for
+    current parser/eval/render 210.38ms, structural sidecar full render
+    217.79ms across 306 probe records, selected-materialization sidecar full
+    render 243.02ms across 306 probe records with 5,301
+    requested/materialized islands and 148,710 promoted bytes, and
+    structural-fed prototype 212.56ms across 249 prototype records with 30
+    structural-fed records, 219 canonical fallbacks, zero
+    requested/materialized islands, and zero promoted bytes. The corresponding
+    ratios against the Less 4.5 `benchmark.less` median were current 4.99x,
+    structural sidecar 5.17x, selected materialization 5.76x, and
+    structural-fed 5.04x. These medians are gate evidence for
     parity/instrumentation and broad overhead bounds, not a speed claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an
     additional smoke input. The selected-materialization sidecar originally

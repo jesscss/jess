@@ -66,12 +66,21 @@ const benchmarkWarmupRuns = 1;
 const benchmarkSampleRuns = 3;
 const structuralBenchmarkWarmupRuns = 5;
 const structuralBenchmarkSampleRuns = 20;
-const less45BenchmarkLessMedianRenderMs = 42.16;
 const testData = resolveLessTestDataRoot();
 const corpusCases = collectCorpusCases();
 const lessBenchmarkPath = path.resolve(testData, '../less/benchmark/benchmark.less');
+const less45BenchmarkReference = loadLess45BenchmarkReference('benchmark.less');
+const less45BenchmarkLessMedianRenderMs = less45BenchmarkReference.renderMedianMs;
 
 describe('scanner-first structural-fed Less corpus parity audit', () => {
+  it('loads the Less 4.x benchmark reference used by scanner-first comparisons', () => {
+    expect(less45BenchmarkReference.tag).toBe('v4.5.1');
+    expect(less45BenchmarkReference.compilerVersion).toBe('4.5.0');
+    expect(less45BenchmarkReference.file).toBe('benchmark.less');
+    expect(less45BenchmarkReference.renderMedianMs).toBeGreaterThan(0);
+    expect(less45BenchmarkReference.renderMedianMs).toBe(42.16);
+  });
+
   it('keeps raw outer-structure parsing separate from full compiler sidecar timing', () => {
     const benchmarkSource = readFileSync(lessBenchmarkPath, 'utf8');
     const samples: number[] = [];
@@ -111,7 +120,7 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
       minMs: sortedSamples[0] ?? 0,
       medianMs: median(sortedSamples),
       maxMs: sortedSamples.at(-1) ?? 0,
-      less45BenchmarkLessMedianRenderMs,
+      less45BenchmarkReference,
       structuralRecords: benchmarkStats.structuralRecords,
       rawIslands: benchmarkStats.rawIslands,
       triviaRanges: benchmarkStats.triviaRanges,
@@ -257,9 +266,11 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
     };
     for (const mode of benchmarkModes) {
       const modeMetrics = metrics.get(mode)!;
+      const modeSummary = summarizeBenchmarkMode(modeMetrics);
       expect(modeMetrics.renders).toBe(corpusCases.length * benchmarkSampleRuns);
       expect(Number.isFinite(modeMetrics.durationMs)).toBe(true);
       expect(modeMetrics.sampleDurationsMs).toHaveLength(benchmarkSampleRuns);
+      expect(modeSummary.less45MedianRenderRatio).toBeGreaterThan(0);
     }
     const structuralSidecarMetrics = metrics.get('structural-sidecar')!;
     const selectedMaterializationMetrics = metrics.get('selected-materialization')!;
@@ -382,13 +393,16 @@ function summarizeBenchmarkMode(metrics: BenchmarkModeMetrics): BenchmarkModeMet
   minSampleDurationMs: number;
   medianSampleDurationMs: number;
   maxSampleDurationMs: number;
+  less45MedianRenderRatio: number;
 } {
   const sortedSamples = [...metrics.sampleDurationsMs].sort((a, b) => a - b);
+  const medianSampleDurationMs = median(sortedSamples);
   return {
     ...metrics,
     minSampleDurationMs: sortedSamples[0] ?? 0,
-    medianSampleDurationMs: median(sortedSamples),
-    maxSampleDurationMs: sortedSamples.at(-1) ?? 0
+    medianSampleDurationMs,
+    maxSampleDurationMs: sortedSamples.at(-1) ?? 0,
+    less45MedianRenderRatio: medianSampleDurationMs / less45BenchmarkLessMedianRenderMs
   };
 }
 
@@ -479,6 +493,83 @@ function corpusLabel(corpusCase: CorpusCase): string {
 
 function increment(counter: Record<string, number>, key: string): void {
   counter[key] = (counter[key] ?? 0) + 1;
+}
+
+function loadLess45BenchmarkReference(file: string): {
+  source: string;
+  tag: string;
+  compilerVersion: string;
+  file: string;
+  renderMedianMs: number;
+} {
+  const source = path.resolve(testData, '../less/benchmark/results/latest/macbook-pro_arm64.json');
+  const data = readJsonRecord(source);
+  const versions = readArray(data, 'versions', source);
+  for (const entry of versions) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const tag = typeof entry.tag === 'string' ? entry.tag : '';
+    const version = typeof entry.version === 'string' ? entry.version : '';
+    if (tag !== 'v4.5.1' && !version.startsWith('4.5')) {
+      continue;
+    }
+    const benchmarks = readRecord(entry, 'benchmarks', source);
+    const benchmark = readRecord(benchmarks, file, source);
+    const render = readRecord(benchmark, 'render', source);
+    return {
+      source,
+      tag,
+      compilerVersion: readString(benchmark, 'version', source),
+      file: readString(benchmark, 'file', source),
+      renderMedianMs: readNumber(render, 'median', source)
+    };
+  }
+  throw new Error(`Less 4.5 benchmark reference not found in ${source}`);
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> {
+  const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
+  if (!isRecord(parsed)) {
+    throw new Error(`Expected JSON object in ${filePath}`);
+  }
+  return parsed;
+}
+
+function readRecord(owner: Record<string, unknown>, key: string, source: string): Record<string, unknown> {
+  const value = owner[key];
+  if (!isRecord(value)) {
+    throw new Error(`Expected object at ${key} in ${source}`);
+  }
+  return value;
+}
+
+function readArray(owner: Record<string, unknown>, key: string, source: string): readonly unknown[] {
+  const value = owner[key];
+  if (!Array.isArray(value)) {
+    throw new Error(`Expected array at ${key} in ${source}`);
+  }
+  return value;
+}
+
+function readString(owner: Record<string, unknown>, key: string, source: string): string {
+  const value = owner[key];
+  if (typeof value !== 'string') {
+    throw new Error(`Expected string at ${key} in ${source}`);
+  }
+  return value;
+}
+
+function readNumber(owner: Record<string, unknown>, key: string, source: string): number {
+  const value = owner[key];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Expected finite number at ${key} in ${source}`);
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function nowMs(): number {
