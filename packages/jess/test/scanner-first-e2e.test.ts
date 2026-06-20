@@ -3128,6 +3128,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@namespace svg url("http://www.w3.org/2000/svg");\n.a { color: blue; }\n',
         prelude: 'svg url("http://www.w3.org/2000/svg")'
+      },
+      {
+        source: '@namespace foo url(http://www.example.com);\n.a { color: blue; }\n',
+        prelude: 'foo url(http://www.example.com)'
       }
     ];
 

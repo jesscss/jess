@@ -2322,7 +2322,8 @@ storage.
   rule bodies, root `@supports` blocks with a single scanner-native declaration
   condition, root `@charset` statement at-rules with scanner-native quoted
   preludes, root `@namespace` statement at-rules with quoted or
-  prefix-plus-quoted/quoted-`url(...)` preludes, CSS-preserved root `@import`
+  prefix-plus-quoted/quoted-`url(...)`/unquoted-`url(...)` preludes,
+  CSS-preserved root `@import`
   statements with quoted CSS paths or quoted `url(...)` preludes, and simple
   Less variable declaration/reference
   token detection for already-seen and same-scope hoisted simple literal/raw
@@ -2944,7 +2945,11 @@ storage.
     plus the exact literal-list `each(...)` callback shape used by that
     fixture.
     Declaration-value fallbacks are seven, and declaration-name fallbacks are
-    currently gone from the included-corpus first-fallback surface. Legacy
+    currently gone from the included-corpus first-fallback surface. Root
+    `@namespace foo url(http://www.example.com)` now passes scanner-native
+    statement admission; `tests-unit/css-3/css-3.less` now progresses to its
+    multiline declaration-value boundary instead of stopping at the namespace
+    prelude. Legacy
     star-property names such as `*zoom`, statement-form `&:extend(...)`, and
     preserved modern CSS color functions in `tests-unit/color-functions/modern-syntax.less`
     now flow through structural-fed nodes; richer extend selectors now progress
