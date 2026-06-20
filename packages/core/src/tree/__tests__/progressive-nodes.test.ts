@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { Context } from '../../context.js';
 import {
   N,
+  ProgressiveAtRule,
   ProgressiveDeclaration,
   ProgressiveRuleset,
+  progressiveatrule,
   progressivedecl,
   progressiveruleset
 } from '../index.js';
@@ -68,6 +70,48 @@ describe('progressive scanner-first proof nodes', () => {
     `);
   });
 
+  test('renders progressive string-backed at-rules', () => {
+    const progressive = progressiveatrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        progressiveruleset({
+          selector: '.a',
+          rules: [
+            progressivedecl({
+              name: 'color',
+              value: ['blue']
+            })
+          ]
+        })
+      ]
+    });
+
+    expect(progressive).toBeInstanceOf(ProgressiveAtRule);
+    expect(progressive.toTrimmedString()).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
+    expect(progressive.toTrimmedString({ compress: true })).toBe('@media screen { .a { color: blue; } }');
+    expect(serializeTypes(progressive)).toBeString(`
+      (ProgressiveAtRule
+        name: '@media'
+        prelude: 'screen'
+        rules:
+          [
+            (ProgressiveRuleset
+              selector: '.a'
+              rules:
+                [
+                  (ProgressiveDeclaration
+                    name: 'color'
+                    valueSegments:
+                      ['blue']
+                  )
+                ]
+            )
+          ]
+      )
+    `);
+  });
+
   test('keeps raw rule strings and nested rules from gaining declaration semicolons', () => {
     const progressive = progressiveruleset({
       selector: '.a',
@@ -100,5 +144,25 @@ describe('progressive scanner-first proof nodes', () => {
 
     expect(node.render(context, buffer)).toBe('.a {\n  color: blue;\n}\n');
     expect(buffer.segments).toEqual(['.a {\n  color: blue;\n}\n']);
+  });
+
+  test('writes progressive at-rule render output without prelude child nodes', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const node = progressiveatrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        progressiveruleset({
+          selector: '.a',
+          rules: [
+            progressivedecl({ name: 'color', value: ['blue'] })
+          ]
+        })
+      ]
+    });
+
+    expect(node.render(context, buffer)).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
+    expect(buffer.segments).toEqual(['@media screen {\n  .a {\n    color: blue;\n  }\n}\n']);
   });
 });

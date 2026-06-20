@@ -1755,15 +1755,16 @@ nested ordinary rules where selectors and values are all simple scanner-native
 tokens. The scanner/materializer layer stores token text, kind, and source
 spans; it does not treat current canonical selector/value nodes as the parser's
 internal representation. The current compiler prototype constructs
-experimental progressive core nodes for `Ruleset` and `Declaration` in that
-literal subset, so simple selector/declaration strings render without
-`Any` value wrappers or selector AST nodes. It still returns a root `Rules`
-tree because `safeParse` is a core-tree boundary. It records zero requested
-islands / zero actual parser execution for that path. Block at-rules, Less
-variable references, arithmetic, functions, mixin calls, extends, imports,
-reference import boundaries, broader selectors, and trivia-preservation cases
-currently fall back canonically until their progressive materializers are
-scanner-native.
+experimental progressive core nodes for `Ruleset`, `Declaration`, and a narrow
+root `@media` block in that literal subset, so simple selector/declaration/
+prelude strings render without `Any` value wrappers, selector AST nodes, or
+canonical at-rule prelude nodes. It still returns a root `Rules` tree because
+`safeParse` is a core-tree boundary. It records zero requested islands / zero
+actual parser execution for that path. Nested block at-rules, other block
+at-rule families, Less variable references, arithmetic, functions, mixin calls,
+extends, imports, reference import boundaries, broader selectors, and
+trivia-preservation cases currently fall back canonically until their
+progressive materializers are scanner-native.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.
@@ -1908,9 +1909,10 @@ storage.
 - [x] Structural-fed prototype: use structural results and scanner-native
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
-- [x] Structural-fed prototype: support simple selector and simple literal
-  declaration value token detection with zero legacy island parser executions.
-  Less variable declarations and block at-rules remain canonical fallbacks until
+- [x] Structural-fed prototype: support simple selector, simple literal
+  declaration value, and simple root `@media` prelude token detection with zero
+  legacy island parser executions. Less variable declarations, nested block
+  at-rules, and other block at-rule families remain canonical fallbacks until
   their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
@@ -1928,9 +1930,14 @@ storage.
     render/serialize string-backed selector/name/value/body payloads, preserve
     exact value segments, and handle nested progressive rules without creating
     selector/value child nodes.
+  - [x] Second thin proof: `ProgressiveAtRule` renders/serializes string-backed
+    root `@media` name/prelude/body payloads and reuses already-supported
+    progressive rule/declaration children without creating canonical
+    `AtRule`/prelude/value nodes.
   - [x] Structural-fed prototype now uses those progressive nodes for ordinary
-    rule/declaration success cases and records `progressiveNodes` so tests and
-    corpus logs prove the cheap path was actually used.
+    rule/declaration/root `@media` success cases and records
+    `progressiveNodes` so tests and corpus logs prove the cheap path was
+    actually used.
 - [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `{ name: "color", value: ["blue"], important: false }`, render
@@ -1940,11 +1947,11 @@ storage.
 - [ ] Structural-fed prototype: add scanner-native Less variable-reference
   materialization so plain Less variable declarations and reads can run without
   canonical fallback.
-- [ ] Structural-fed prototype: support `@media` block at-rules containing
+- [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native.
-  - Current decision: block at-rules fall back while progressive at-rule body
-    formatting and reference/import semantics are unproven.
+  - Current limit: nested block at-rules still fall back while Less bubbling,
+    reference/import semantics, and other at-rule families remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2004,11 +2011,11 @@ storage.
     Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 238.10ms, structural sidecar full render
-    234.74ms across 306 probe records, selected-materialization sidecar full
-    render 256.72ms across 306 probe records with 5,391
+    current parser/eval/render 224.23ms, structural sidecar full render
+    228.96ms across 306 probe records, selected-materialization sidecar full
+    render 256.11ms across 306 probe records with 5,391
     requested/materialized islands and 150,297 promoted bytes, and
-    structural-fed prototype 239.39ms across 249 prototype records with 18
+    structural-fed prototype 211.89ms across 249 prototype records with 18
     structural-fed records, 231 canonical fallbacks, zero
     requested/materialized islands, and zero promoted bytes. These medians are gate evidence for
     parity/instrumentation and broad overhead bounds, not a speed claim.

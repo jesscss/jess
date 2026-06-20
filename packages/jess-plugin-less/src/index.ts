@@ -5,6 +5,7 @@ import {
   JessError,
   JsFunction,
   Rules,
+  ProgressiveAtRule,
   ProgressiveDeclaration,
   ProgressiveRuleset,
   Node,
@@ -356,7 +357,17 @@ export class LessPlugin extends AbstractPlugin {
         return fallback('Less variable declarations are not in the progressive structural-fed subset');
       }
       if (child.kind === 'at-rule') {
-        return fallback('block at-rules are not in the progressive structural-fed subset');
+        const eligibilityReason = validateStructuralFedAtRule(plan.document, child);
+        if (eligibilityReason) {
+          return fallback(eligibilityReason);
+        }
+        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        progressiveNodes += result.progressiveNodes ?? 0;
+        continue;
       }
       const eligibilityReason = validateStructuralFedRule(plan.document, child);
       if (eligibilityReason) {
@@ -772,6 +783,33 @@ function validateStructuralFedRule(
   return undefined;
 }
 
+function validateStructuralFedAtRule(
+  document: StructuralDocument,
+  atRule: StructuralContainerNode
+): string | undefined {
+  const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
+  if (name !== '@media') {
+    return 'only @media block at-rules are in the progressive structural-fed subset';
+  }
+  const prelude = structuralFieldText(document, atRule, 'prelude', 'prelude');
+  if (prelude === undefined) {
+    return 'at-rule prelude is outside the scanner-native structural-fed subset';
+  }
+  if (MULTILINE_VALUE_PATTERN.test(prelude)) {
+    return 'multiline at-rule preludes are not in the progressive structural-fed subset';
+  }
+  for (const child of atRule.children) {
+    if (child.kind !== 'rule') {
+      return `unsupported at-rule child ${child.kind}`;
+    }
+    const reason = validateStructuralFedRule(document, child);
+    if (reason) {
+      return reason;
+    }
+  }
+  return undefined;
+}
+
 function buildStructuralFedRuleset(
   plan: IslandParsePlan,
   rule: StructuralContainerNode,
@@ -800,6 +838,49 @@ function buildStructuralFedRuleset(
       selector: selectorToken.text,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),
+    progressiveNodes
+  };
+}
+
+function buildStructuralFedAtRule(
+  plan: IslandParsePlan,
+  atRule: StructuralContainerNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
+  if (name !== '@media') {
+    return { reason: 'only @media block at-rules are in the progressive structural-fed subset' };
+  }
+  const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
+  if (!preludeIsland) {
+    return { reason: 'at-rule prelude island missing' };
+  }
+  const preludeToken = readScannerNativeValueToken(plan, atRule, 'prelude', preludeIsland);
+  if (!preludeToken) {
+    return { reason: 'at-rule prelude is outside the scanner-native structural-fed subset' };
+  }
+
+  const rules: Node[] = [];
+  let progressiveNodes = 1;
+  for (const child of atRule.children) {
+    if (child.kind !== 'rule') {
+      return { reason: `unsupported at-rule child ${child.kind}` };
+    }
+    const builtChild = buildStructuralFedRuleset(plan, child, ownerIslands, context);
+    if ('reason' in builtChild) {
+      return builtChild;
+    }
+    rules.push(builtChild.node);
+    progressiveNodes += builtChild.progressiveNodes ?? 0;
+  }
+
+  return {
+    node: new ProgressiveAtRule({
+      name,
+      prelude: preludeToken.text,
+      rules
+    }, undefined, locationFromRange(plan.document, atRule.start, atRule.end), context),
     progressiveNodes
   };
 }

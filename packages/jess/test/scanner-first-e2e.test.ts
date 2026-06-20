@@ -754,7 +754,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back for block at-rules until progressive at-rule bodies are proven', async () => {
+  it('feeds root @media blocks with ordinary rules through structural parse', async () => {
     const source = '@media screen { .a { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -770,10 +770,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@media screen');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -823,7 +822,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
+      fallbackReason: 'only @media block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,
