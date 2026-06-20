@@ -2101,6 +2101,16 @@ storage.
     `.a .b, .c`: direct render still uses the raw selector string, while
     semantic registration/eval materializes canonical `ComplexSelector` /
     `SelectorList` nodes only when selector semantics are demanded.
+  - [x] Added the first structural-fed Less extend proof for simple exact
+    selector-header extends such as `.button:extend(.base) { width: 1px; }`.
+    The builder splits only the participating selector field, keeps the owning
+    ruleset selector as raw `.button`, constructs the existing core `Extend`
+    node for the target selector, leaves unrelated declarations as raw-field
+    payloads, renders equal CSS, and asserts zero selected island parser
+    executions / zero full-tree fallback.
+    - Current limit: `all`, complex targets, pseudo/attribute/interpolated
+      source selectors, `&:extend(...)` statements, multiple extend groups, and
+      richer selector semantics still fall back canonically.
   - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
     constructor can store raw scanner-native at-keyword/prelude strings, renders
     and serializes them as `rawName` / `rawPrelude` without canonical header

@@ -503,14 +503,21 @@ Target structure: ruleset selector string includes an extend marker and is
 classified as needing selector semantics. Do not parse unrelated declaration
 values just because extend exists.
 
-Direct behavior: declaration bodies remain raw-field payloads. Extend graph
-construction JIT-parses only selector fields participating in extend and caches
-those parsed selectors on their owning rulesets.
+Direct behavior: declaration bodies remain raw-field payloads. For a proven
+cheap extend subset, the participating selector field may be split directly into
+the owning raw selector plus the narrow core selector node needed by `Extend`.
+Richer extend selector semantics should still materialize only the participating
+selector fields, not unrelated declaration values.
 
 JIT triggers: `:extend(` in selector text.
 
-Current status: canonical fallback for structural-fed; selected adapter path
-is legacy-parser adapter comparison only; it is never completion proof.
+Current status: structural-fed prototype handles simple exact selector-header
+extends such as `.button:extend(.base) { width: 1px; }`. The source selector is
+kept as raw `.button`, an existing core `Extend` node is built only for the
+participating target selector, and unrelated declaration values remain raw-field
+payloads. `all`, complex targets, pseudo/attribute/interpolated source
+selectors, `&:extend(...)` statements, multiple extend groups, and richer
+selector semantics still fall back canonically.
 
 ### LESS-008 Import
 

@@ -8,9 +8,12 @@ import {
   Ruleset,
   AtRule,
   AtRuleStatement,
+  BasicSelector,
   Color,
   Declaration,
   Dimension,
+  Extend,
+  ExtendFlag,
   Mixin,
   Call,
   Reference,
@@ -1053,7 +1056,15 @@ function buildStructuralFedRuleset(
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   const selectorText = structuralFieldText(plan.document, rule, 'selector', 'selector');
   const scopeOnly = selectorText === '&' || selectorText === '';
-  const selectorToken = readScannerNativeSelectorToken(plan, rule, selectorIsland);
+  const extendSelector = readScannerNativeExtendSelectorToken(plan, rule, selectorIsland, context);
+  const selectorToken = extendSelector
+    ? {
+        kind: 'selector' as const,
+        start: extendSelector.start,
+        end: extendSelector.selectorEnd,
+        text: extendSelector.selectorText
+      }
+    : readScannerNativeSelectorToken(plan, rule, selectorIsland);
   if (!selectorToken && !scopeOnly) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
@@ -1061,6 +1072,10 @@ function buildStructuralFedRuleset(
   const rules: Node[] = [];
   const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, rule.children, variables);
   let progressiveNodes = 1;
+  if (extendSelector) {
+    rules.push(extendSelector.node);
+    progressiveNodes++;
+  }
   for (const child of rule.children) {
     const builtChild = buildStructuralFedRuleChild(
       plan,
@@ -1604,6 +1619,60 @@ function readScannerNativeSelectorToken(
   };
 }
 
+function readScannerNativeExtendSelectorToken(
+  plan: IslandParsePlan,
+  owner: StructuralContainerNode,
+  island: RawIslandNode | undefined,
+  context: TreeContext
+): {
+  start: number;
+  selectorEnd: number;
+  selectorText: string;
+  node: Extend;
+} | undefined {
+  const range = structuralFieldRange(plan.document, owner, 'selector', 'selector');
+  if (!range || (island && (range.start !== island.start || range.end !== island.end))) {
+    return undefined;
+  }
+  const selectorText = plan.document.source.text.slice(range.start, range.end);
+  const match = SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN.exec(selectorText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const sourceSelector = match.groups.selector;
+  const targetSelector = match.groups.target;
+  if (
+    !sourceSelector
+    || !targetSelector
+    || !SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN.test(sourceSelector)
+    || !SCANNER_NATIVE_EXTEND_TARGET_PATTERN.test(targetSelector)
+  ) {
+    return undefined;
+  }
+  const selectorEnd = range.start + sourceSelector.length;
+  const targetStart = range.start + sourceSelector.length + ':extend('.length;
+  const targetEnd = targetStart + targetSelector.length;
+  return {
+    start: range.start,
+    selectorEnd,
+    selectorText: sourceSelector,
+    node: new Extend(
+      {
+        target: new BasicSelector(
+          targetSelector,
+          undefined,
+          locationFromRange(plan.document, targetStart, targetEnd),
+          context
+        ),
+        flag: ExtendFlag.Exact
+      },
+      undefined,
+      locationFromRange(plan.document, range.start, range.end),
+      context
+    )
+  };
+}
+
 function readScannerNativeAtRulePreludeToken(
   plan: IslandParsePlan,
   owner: StructuralContainerNode,
@@ -2102,6 +2171,11 @@ const SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE =
   String.raw`${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE})*`;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
   new RegExp(String.raw`^${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${SCANNER_NATIVE_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
+const SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN =
+  new RegExp(String.raw`^${SCANNER_NATIVE_SELECTOR_BRANCH_SOURCE}$`, 'u');
+const SCANNER_NATIVE_EXTEND_TARGET_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
+const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =
+  /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^()\s{},;\r\n]+)\)$/u;
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {
