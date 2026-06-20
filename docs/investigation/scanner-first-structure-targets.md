@@ -543,8 +543,12 @@ a rules-container node.
 JIT triggers: non-trivial parent selector merging, guarded/control semantics,
 or visitor access to a typed selector node for the original `&` text.
 
-Current status: not complete; this exists to keep Less parent scope handling
-distinct from ordinary selector rulesets.
+Current status: first thin structural-fed proof complete for `.a { & { color:
+blue; } }`. The prototype maps the `&` header to a raw `Rules` scope container,
+renders the child declaration without serializing `&` or braces for the scope
+node, and asserts zero island requests / zero legacy parser executions / no
+eager selector or value child nodes. Rich parent-selector merging remains a JIT
+trigger.
 
 ### LESS-010 Bare Scope Block
 
@@ -567,8 +571,13 @@ braces when emitted directly as a rules-container node.
 JIT triggers: guard/control semantics if the same body form is later attached to
 `$if`, `$when`, loops, or mixins.
 
-Current status: not complete; this exists to keep scope blocks distinct from
-selector rulesets before widening Less control-node parsing.
+Current status: first thin structural-fed proof complete for `{ @brand: blue;
+.a { color: @brand; } }`. The prototype maps the empty header to a raw `Rules`
+scope container, preserves the scoped variable read in the nested raw-field
+ruleset, renders without outer braces, and asserts zero island requests / zero
+legacy parser executions / no eager selector or value child nodes. This is
+hidden prototype behavior; the current canonical parser still rejects bare root
+scope blocks.
 
 ## Corpus Promotion Rules
 

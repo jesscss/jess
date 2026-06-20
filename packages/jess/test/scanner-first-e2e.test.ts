@@ -769,6 +769,70 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
+  it('feeds parent-scope blocks through structural parse as raw Rules containers', () => {
+    const source = '.a { & { color: blue; } }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = probePlugin.safeParse('/virtual/parent-scope.less', source);
+
+    expect(parseResult.errors).toEqual([]);
+    expect(parseResult.tree!.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('(Rules');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).toContain('rawValueSegments:');
+    expect(types).toContain('[\'blue\']');
+    expect(types).not.toContain('rawSelector: \'&\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('feeds bare scope blocks through structural parse as raw Rules containers', () => {
+    const source = '{ @brand: blue; .a { color: @brand; } }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = probePlugin.safeParse('/virtual/bare-scope.less', source);
+
+    expect(parseResult.errors).toEqual([]);
+    expect(parseResult.tree!.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Rules');
+    expect(types).toContain('(ProgressiveVariableDeclaration');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('rawSelector: \'\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
   it('feeds simple root Less variable declarations and reads through structural parse', async () => {
     const source = '@brand: blue;\n.a { color: @brand; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

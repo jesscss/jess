@@ -901,8 +901,10 @@ function buildStructuralFedRuleset(
   mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
+  const selectorText = structuralFieldText(plan.document, rule, 'selector', 'selector');
+  const scopeOnly = selectorText === '&' || selectorText === '';
   const selectorToken = readScannerNativeSelectorToken(plan, rule, selectorIsland);
-  if (!selectorToken) {
+  if (!selectorToken && !scopeOnly) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
 
@@ -931,9 +933,21 @@ function buildStructuralFedRuleset(
     progressiveNodes += builtChild.progressiveNodes ?? 0;
   }
 
+  if (scopeOnly) {
+    return {
+      node: new Rules(
+        rules,
+        undefined,
+        locationFromRange(plan.document, rule.start, rule.end),
+        context
+      ),
+      progressiveNodes
+    };
+  }
+
   return {
     node: new Ruleset({
-      selector: selectorToken.text,
+      selector: selectorToken!.text,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),
     progressiveNodes

@@ -1930,10 +1930,11 @@ storage.
   quoted `url(...)` preludes, and simple Less variable declaration/reference
   token detection for already-seen and same-scope hoisted simple literal/raw
   values, plus one-step same-unit `+`/`-` arithmetic over scanner-native
-  numbers/dimensions with zero legacy island parser executions. Dynamic/lazy
-  variable references that need richer Less lookup semantics, mixed-unit
-  arithmetic/calc behavior, Less-resolving imports, Less import options,
-  raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
+  numbers/dimensions, plus scope-only `& { ... }` and bare `{ ... }` blocks that
+  map to raw `Rules` containers with zero legacy island parser executions.
+  Dynamic/lazy variable references that need richer Less lookup semantics,
+  mixed-unit arithmetic/calc behavior, Less-resolving imports, Less import
+  options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
   root-`@supports` block at-rule families, pseudo/attribute/interpolated
   selectors, and richer nested at-rule bodies remain canonical fallbacks until
   their progressive materializers are proven.
@@ -1986,6 +1987,14 @@ storage.
     already-supported ordinary nested rules.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
+  - [x] Fourth thin proof: scope-only rule headers (`&` and an empty header from
+    a bare block) map to real core `Rules` containers instead of raw-selector
+    `Ruleset` nodes. The tests parse `.a { & { color: blue; } }` and
+    `{ @brand: blue; .a { color: @brand; } }`, render/serialize the resulting
+    scope containers, and assert zero selected island parser executions, no
+    `rawSelector: '&'` / `rawSelector: ''`, no eager `BasicSelector`, and no
+    `Any` declaration value wrapper. This is a hidden structural-fed prototype
+    proof; bare root scope remains rejected by the current canonical parser.
   - Current limit: invisible progressive bookkeeping nodes are proven for
     normal render output. Full-render/debug surfaces may intentionally force
     invisible nodes, so any broader replacement must specify whether those
