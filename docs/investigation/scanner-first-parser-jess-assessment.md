@@ -2108,13 +2108,14 @@ storage.
     or execute legacy island parsers. Custom-property `!important`, multiline
     custom-property values, interpolation, and un-interpolated Less variable-like
     tokens still fall back so canonical warning/eval behavior is not skipped.
-  - [x] Extended raw-field declaration transport to exact trailing `!important`
-    flags on already-supported simple/flat literal values. The structural-fed
-    Less path strips the flag into `rawImportant` while keeping the declaration
-    value as one raw string segment, so direct render and serialization still do
-    not allocate value or important child nodes. Spaced/alternate important
-    spellings, important Less variable references, and important variable
-    declarations remain canonical fallbacks.
+  - [x] Extended raw-field declaration transport to trailing important flags on
+    already-supported simple/flat literal values, including exact `!important`,
+    spaced `! important`, and case-variant `!IMPORTANT` spellings. The
+    structural-fed Less path strips the flag into `rawImportant` exactly as the
+    current renderer preserves it, while keeping the declaration value as one
+    raw string segment, so direct render and serialization still do not allocate
+    value or important child nodes. Important Less variable references and
+    important variable declarations remain canonical fallbacks.
   - [x] Added the first raw-field core `Ruleset` proof: the normal core
     `Ruleset` constructor accepts a raw selector string for the scanner-native
     simple selector subset, renders and serializes it as `rawSelector` without
@@ -2247,8 +2248,8 @@ storage.
     themselves inside at-rules remain fallback until that wider recursion policy
     is proven.
   - Current limit: this proves wrapper avoidance and direct render for normalized
-    declaration syntax, not exact source-token preservation for alternate
-    assignment spacing, semicolon trivia, or non-exact important-flag spelling.
+    declaration syntax and raw important-flag spelling, not exact source-token
+    preservation for alternate assignment spacing or semicolon trivia.
   - Current limit: semantic materialization preserves an existing single `Node`
     segment as the canonical value and turns mixed string/`Node` segments into a
     reachable sequence container. Rich mixed segment semantics still need a

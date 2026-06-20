@@ -1560,6 +1560,50 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds spaced and case-variant important declarations through structural parse without value materialization', async () => {
+    const cases = [
+      '! important',
+      '!IMPORTANT'
+    ];
+
+    for (const sourceImportant of cases) {
+      const source = `.a { color: blue ${sourceImportant}; }\n`;
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(`color: blue ${sourceImportant}`);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/raw-important-spelling-declaration.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('(Ruleset');
+      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('rawName: \'color\'');
+      expect(types).toContain('[\'blue\']');
+      expect(types).toContain(`rawImportant: '${sourceImportant}'`);
+      expect(types).not.toContain('valueNode: (Any');
+      expect(types).not.toContain('important: (Any');
+    }
+  });
+
   it('feeds adjacent compound selectors through structural parse', async () => {
     const cases = ['.a.b', 'button.primary', '.-utility.active'];
 
@@ -3983,14 +4027,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
         reason: 'declaration name is outside the first structural-fed subset'
       },
       {
-        source: '.a { color: blue ! important; }\n',
-        reason: 'important declarations are not in the first structural-fed subset'
-      },
-      {
-        source: '.a { color: blue !IMPORTANT; }\n',
-        reason: 'important declarations are not in the first structural-fed subset'
-      },
-      {
         source: '@prop: color;\n.a { @{prop}: blue; }\n',
         reason: 'mixin call signature is outside the scanner-native structural-fed subset'
       },
@@ -4080,7 +4116,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('preflights nested unsupported syntax before materializing islands', async () => {
+  it('preflights nested declarations without materializing supported important syntax', async () => {
     const source = '.a { color: blue; .b { width: 1px ! important; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -4094,9 +4130,8 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'important declarations are not in the first structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
       requestedIslands: 0,
       actualParses: 0,
       promotedBytes: 0

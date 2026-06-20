@@ -306,13 +306,22 @@ with `--no-verify` after the explicit gates pass.
   add another render traversal. `AtRuleStatement` raw-name import detection is
   a direct string read during existing registration scanning; it does not
   materialize statement header nodes and adds no new traversal.
+- Aggressive Cutting Self-Prosecution, scanner-first important spelling proof:
+  Widening the important splitter to accept spaced/case-variant flags is not a
+  new parser and does not add a traversal. The structural-fed declaration path
+  still carries one raw value segment plus one `rawImportant` string and direct
+  render/serialization still avoids value-node and important-node allocation.
+  This is deliberately a behavior-preservation proof: `! important` and
+  `!IMPORTANT` render the way the current Less path renders them, not as a
+  forced canonical spelling. It also does not widen custom-property important
+  handling or Less-variable important handling.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat
   literal declaration cases keep the value as one raw string segment for direct
-  render/serialization; exact important declarations additionally store the
-  flag as `rawImportant`. Neither path tokenizes into arrays/nodes until a
-  later semantic materializer is requested. Focused tests add normal
+  render/serialization; important declarations additionally store the raw flag
+  as `rawImportant`. Neither path tokenizes into arrays/nodes until a later
+  semantic materializer is requested. Focused tests add normal
   `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
   constructs one `BasicSelector` for simple raw selectors, or a `CompoundSelector`
   plus `BasicSelector` parts for adjacent basic compound raw selectors, only

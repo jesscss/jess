@@ -2671,7 +2671,7 @@ function splitScannerNativeDeclarationImportant(valueText: string): {
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
 const STRUCTURAL_FED_AT_RULE_FAMILY_REASON =
   'only @media, @supports, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset';
-const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!important)$/u;
+const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!\s*important)$/iu;
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
