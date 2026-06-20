@@ -1460,11 +1460,12 @@ a local object-count win if it adds more expensive side maps, recursive walks,
 or fallback full-tree materializations in the real path.
 
 Cutting total `packages/core/src` line count by roughly 50% is a stretch goal,
-not the primary acceptance metric. The primary target is faster real Less
-compile/eval/render behavior with fewer hot-path objects, fewer unnecessary
-branches, and simpler canonical runtime state. Line-count reduction should come
-from deleting proven redundant machinery, not from compressing code or moving
-complexity into equally expensive helpers.
+not a release gate and not the primary acceptance metric. The primary target is
+faster real Less compile/eval/render behavior with fewer hot-path objects, fewer
+unnecessary branches, and simpler canonical runtime state. Line-count reduction
+should come from deleting proven redundant machinery, not from compressing code,
+moving complexity into equally expensive helpers, or preserving machinery that a
+new scanner-first path made obsolete only because it helps hit a numeric target.
 
 ## Package Build Performance Guards
 
@@ -1951,6 +1952,25 @@ assignment, import, and callable mechanisms fighting each other. If an e2e
 parser proof fails because lookup/eval has no cohesive source of truth, stop
 and move that blocker to the binding lane instead of adding a parser-local
 workaround.
+
+Current focus rule: the next substantial implementation pass must push one
+major lane to its completion gate, not keep adding isolated scanner-fed proof
+cases. The two acceptable lanes are:
+
+- binding/lookup simplification: make one cohesive live-binding/lookup model
+  the source of truth for variables, properties, callables, assignments,
+  imports, and generated rules, with redundant `Rules`/`Reference`/direct lookup
+  machinery deleted or quarantined behind cold compatibility surfaces; or
+- CSS/Less parser replacement: finish the scanner-native CSS/Less parsing
+  layer that replaces Chevrotain for the covered CSS/Less language surface,
+  with corpus coverage, parser-shape assertions, diagnostics/recovery proof,
+  and benchmark output. Eval, render, and late/JIT materialization should be
+  staged as the next chunk after the parser layer is coherent; they should not
+  be used to disguise an incomplete parser replacement.
+
+Small focused tests remain allowed only as stepping stones inside the chosen
+lane. They are not acceptable as standalone progress once the current WIP proof
+has either gone green or been committed/recorded as WIP.
 
 Do this before adding or widening SCSS/Jess structural work. CSS/Less is not
 complete merely because focused e2e fixtures pass: the structural-fed Less path
@@ -2664,6 +2684,15 @@ storage.
     canonical fallback because only the CSS no-prelude block form is proven;
     rule-local nested-rule bodies, rule-local nested at-rule bodies, and
     mixin-body `@starting-style` also remain fallback until separately proven.
+  - [x] Completed the parked `starting-style.less` corpus blocker by lowering
+    the exact scanner-native Less `each(1 2 3 4, { padding+_: (@value * 10px);
+    })` shape inside `@starting-style` to the existing core `For` node with the
+    standard Less tuple variables `value`, `key`, and `index`. This proof
+    intentionally recognizes only a literal number list and one callback
+    declaration with sequence merge plus `@value * <dimension>` arithmetic.
+    It renders equal CSS, serializes as `For` rather than a function `Call`,
+    and still records zero island parser executions, zero full-tree fallback,
+    and zero promoted bytes for the covered shape.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax and raw important-flag spelling, not exact source-token
     preservation for alternate assignment spacing or semicolon trivia.
@@ -2887,11 +2916,11 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 15
-    structural-fed prototype records, 51 canonical fallback records, 19 current
+  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 16
+    structural-fed prototype records, 50 canonical fallback records, 19 current
     expected-CSS failures, 16 structural expected-CSS failures, zero
     requested/materialized islands, zero promoted bytes, zero actual parses,
-    and 93 progressive nodes from the upstream corpus. That is
+    and 136 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2901,7 +2930,8 @@ storage.
     `@starting-style` at-rule-family admission, the corpus-observed
     `scaleX(...)` transform values, Less merge declaration names
     (`padding+_`), and direct supported-at-rule mixin-call child admission,
-    then stops later at the richer `each(...)` mixin-call signature.
+    plus the exact literal-list `each(...)` callback shape used by that
+    fixture.
     Declaration-value fallbacks are seven, and declaration-name fallbacks are
     currently gone from the included-corpus first-fallback surface. Legacy
     star-property names such as `*zoom`, statement-form `&:extend(...)`, and
@@ -2909,7 +2939,7 @@ storage.
     now flow through structural-fed nodes; richer extend selectors now progress
     farther before stopping at selector or at-rule prelude limits.
     The current mixin-related fallback surface is six richer mixin definition
-    signatures and three richer mixin call signatures; the earlier generic
+    signatures and two richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
     gone, and the earlier generic `unsupported at-rule child mixin-call` reason

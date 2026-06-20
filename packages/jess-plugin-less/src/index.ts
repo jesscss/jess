@@ -18,15 +18,20 @@ import {
   AssignmentType,
   Extend,
   ExtendFlag,
+  For,
   Mixin,
   Call,
   Reference,
   List,
+  Operation,
   Num,
+  Nil,
   Any,
+  Sequence,
   Paren,
   QueryCondition,
   ProgressiveVariableDeclaration,
+  VarDeclaration,
   Node,
   getErrorFromParser,
   toDiagnostic,
@@ -1070,7 +1075,7 @@ function validateStructuralFedRule(
       continue;
     }
     if (child.kind === 'mixin-call') {
-      if (!scannerNativeMixinCall(document, child)) {
+      if (!scannerNativeMixinCall(document, child) && !scannerNativeEachParts(document, child)) {
         return 'mixin call signature is outside the scanner-native structural-fed subset';
       }
       continue;
@@ -1203,7 +1208,7 @@ function validateStructuralFedAtRule(
       if (rootDeclarationBlockPrelude !== undefined) {
         return `unsupported at-rule child ${child.kind}`;
       }
-      if (!scannerNativeMixinCall(document, child)) {
+      if (!scannerNativeMixinCall(document, child) && !scannerNativeEachParts(document, child)) {
         return 'mixin call signature is outside the scanner-native structural-fed subset';
       }
       continue;
@@ -1727,6 +1732,13 @@ function buildStructuralFedMixinCall(
   child: StructuralStatementNode,
   context: TreeContext
 ): StructuralFedBuildResult {
+  const each = scannerNativeEachCall(plan.document, child, context);
+  if (each) {
+    return {
+      node: each,
+      progressiveNodes: 1 + each.rules.length
+    };
+  }
   const call = scannerNativeMixinCall(plan.document, child, context);
   if (!call) {
     return { reason: 'mixin call signature is outside the scanner-native structural-fed subset' };
@@ -3047,6 +3059,13 @@ const SCANNER_NATIVE_MIXIN_DEFINITION_SIGNATURE_PATTERN =
   /^(?<name>[.#][-_a-zA-Z][\w-]*)\([ \t]*(?<params>(?:@[a-zA-Z_][\w-]*[ \t]*(?:,[ \t]*@[a-zA-Z_][\w-]*[ \t]*)*)?)\)$/u;
 const SCANNER_NATIVE_MIXIN_CALL_PATTERN =
   /^(?<name>[.#][-_a-zA-Z][\w-]*)\((?<args>[^(){};\r\n]*)\)$/u;
+const SCANNER_NATIVE_EACH_CALL_PATTERN =
+  /^each\([ \t]*(?<list>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[ \t]+[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+)))*)[ \t]*,[ \t]*\{(?<body>[\s\S]*)\}[ \t]*\)$/u;
+const SCANNER_NATIVE_EACH_LIST_PATTERN =
+  /^[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[ \t]+[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+)))*$/u;
+const SCANNER_NATIVE_EACH_LIST_ITEM_PATTERN = /[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))/gu;
+const SCANNER_NATIVE_EACH_BODY_DECLARATION_PATTERN =
+  /^[\s]*(?<name>-?[a-zA-Z_][\w-]*\+_)[ \t]*:[ \t]*\(@(?<variable>[a-zA-Z_][\w-]*)[ \t]*\*[ \t]*(?<factor>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+))\)[ \t]*;?[\s]*$/u;
 type ScannerNativeFunctionArgKind = 'hex-color' | 'dimension' | 'number';
 
 interface ScannerNativeFunctionPolicy {
@@ -3358,6 +3377,232 @@ type ScannerNativeMixinCall = {
   key: string | string[];
   args?: List<Node>;
 };
+
+type ScannerNativeEachParts = {
+  range: FieldRange;
+  listText: string;
+  listStart: number;
+  body: {
+    text: string;
+    start: number;
+    declaration: {
+      rawName: string;
+      nameStart: number;
+      variableName: 'value';
+      variableStart: number;
+      factor: string;
+      factorStart: number;
+    };
+  };
+};
+
+function scannerNativeEachParts(
+  document: StructuralDocument,
+  child: StructuralStatementNode
+): ScannerNativeEachParts | undefined {
+  const nameText = structuralFieldText(document, child, 'name', 'mixin-name');
+  const range = structuralFieldRange(document, child, 'name', 'mixin-name');
+  if (!nameText || !range) {
+    return undefined;
+  }
+  const match = SCANNER_NATIVE_EACH_CALL_PATTERN.exec(nameText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const listText = match.groups.list;
+  const bodyText = match.groups.body;
+  if (!listText || bodyText === undefined || !SCANNER_NATIVE_EACH_LIST_PATTERN.test(listText)) {
+    return undefined;
+  }
+  const listStart = range.start + nameText.indexOf(listText);
+  const bodyStart = range.start + nameText.indexOf(bodyText);
+  const declaration = scannerNativeEachBodyDeclarationParts(bodyText, bodyStart);
+  if (!declaration) {
+    return undefined;
+  }
+  return {
+    range,
+    listText,
+    listStart,
+    body: {
+      text: bodyText,
+      start: bodyStart,
+      declaration
+    }
+  };
+}
+
+function scannerNativeEachCall(
+  document: StructuralDocument,
+  child: StructuralStatementNode,
+  context?: TreeContext
+): For | undefined {
+  const parts = scannerNativeEachParts(document, child);
+  if (!parts) {
+    return undefined;
+  }
+  const listItems = scannerNativeEachListItems(document, parts.listText, parts.listStart, context);
+  if (!listItems) {
+    return undefined;
+  }
+  const body = scannerNativeEachBodyDeclaration(document, parts.body.declaration, parts.body.start, parts.body.text.length, context);
+  if (!body) {
+    return undefined;
+  }
+  if (!context) {
+    return new For({
+      pattern: scannerNativeEachPattern(document, parts.range.start, parts.range.end),
+      iterable: { kind: 'node', value: new Sequence(listItems) },
+      rules: [body]
+    });
+  }
+  const pattern = scannerNativeEachPattern(document, parts.range.start, parts.range.end, context);
+  const iterable = new Sequence(listItems, undefined, locationFromRange(document, parts.listStart, parts.listStart + parts.listText.length), context);
+  return new For({
+    pattern,
+    iterable: { kind: 'node', value: iterable },
+    rules: [body]
+  }, undefined, locationFromRange(document, child.start, child.end), context);
+}
+
+function scannerNativeEachPattern(
+  document: StructuralDocument,
+  start: number,
+  end: number,
+  context?: TreeContext
+): {
+  kind: 'tuple';
+  values: [VarDeclaration, VarDeclaration, VarDeclaration];
+} {
+  return {
+    kind: 'tuple',
+    values: [
+      scannerNativeEachPatternVar(document, 'value', start, end, context),
+      scannerNativeEachPatternVar(document, 'key', start, end, context),
+      scannerNativeEachPatternVar(document, 'index', start, end, context)
+    ]
+  };
+}
+
+function scannerNativeEachPatternVar(
+  document: StructuralDocument,
+  name: string,
+  start: number,
+  end: number,
+  context?: TreeContext
+): VarDeclaration {
+  const location = locationFromRange(document, start, end);
+  return new VarDeclaration({
+    name: new Any(name, { role: 'property' }, location, context),
+    value: new Nil(undefined, undefined, location, context)
+  }, { paramVar: true }, location, context);
+}
+
+function scannerNativeEachListItems(
+  document: StructuralDocument,
+  listText: string,
+  listStart: number,
+  context?: TreeContext
+): Node[] | undefined {
+  if (!SCANNER_NATIVE_EACH_LIST_PATTERN.test(listText)) {
+    return undefined;
+  }
+  const items: Node[] = [];
+  for (const match of listText.matchAll(SCANNER_NATIVE_EACH_LIST_ITEM_PATTERN)) {
+    const text = match[0];
+    const start = listStart + match.index;
+    const value = Number(text);
+    if (!Number.isFinite(value)) {
+      return undefined;
+    }
+    items.push(new Num(value, undefined, locationFromRange(document, start, start + text.length), context));
+  }
+  return items.length > 0 ? items : undefined;
+}
+
+function scannerNativeEachBodyDeclarationParts(
+  bodyText: string,
+  bodyStart: number
+): ScannerNativeEachParts['body']['declaration'] | undefined {
+  const match = SCANNER_NATIVE_EACH_BODY_DECLARATION_PATTERN.exec(bodyText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const rawName = match.groups.name;
+  const variableName = match.groups.variable;
+  const factor = match.groups.factor;
+  if (!rawName || variableName !== 'value' || !factor) {
+    return undefined;
+  }
+  const assign = structuralFedDeclarationAssign(rawName);
+  if (assign !== AssignmentType.MergeSequence) {
+    return undefined;
+  }
+  const declarationName = structuralFedDeclarationName(rawName, assign);
+  if (!declarationName) {
+    return undefined;
+  }
+  const factorMatch = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(factor);
+  const factorNumber = Number(factorMatch?.groups?.value);
+  const factorUnit = factorMatch?.groups?.unit;
+  if (!Number.isFinite(factorNumber) || !factorUnit) {
+    return undefined;
+  }
+  return {
+    rawName,
+    nameStart: bodyStart + bodyText.indexOf(rawName),
+    variableName,
+    variableStart: bodyStart + bodyText.indexOf(`@${variableName}`),
+    factor,
+    factorStart: bodyStart + bodyText.indexOf(factor)
+  };
+}
+
+function scannerNativeEachBodyDeclaration(
+  document: StructuralDocument,
+  parts: ScannerNativeEachParts['body']['declaration'],
+  bodyStart: number,
+  bodyLength: number,
+  context?: TreeContext
+): Declaration | undefined {
+  const assign = structuralFedDeclarationAssign(parts.rawName);
+  if (assign !== AssignmentType.MergeSequence) {
+    return undefined;
+  }
+  const declarationName = structuralFedDeclarationName(parts.rawName, assign);
+  if (!declarationName) {
+    return undefined;
+  }
+  const factorMatch = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(parts.factor);
+  const factorNumber = Number(factorMatch?.groups?.value);
+  const factorUnit = factorMatch?.groups?.unit;
+  if (!Number.isFinite(factorNumber) || !factorUnit) {
+    return undefined;
+  }
+  return new Declaration({
+    name: declarationName,
+    value: [
+      new Operation([
+        new Reference(
+          { key: parts.variableName },
+          { type: 'variable' },
+          locationFromRange(document, parts.variableStart, parts.variableStart + parts.variableName.length + 1),
+          context
+        ),
+        '*',
+        new Dimension(
+          { number: factorNumber, unit: factorUnit },
+          undefined,
+          locationFromRange(document, parts.factorStart, parts.factorStart + parts.factor.length),
+          context
+        )
+      ], undefined, locationFromRange(document, parts.variableStart, parts.factorStart + parts.factor.length), context)
+    ]
+  }, {
+    sourceBacked: true,
+    assign
+  }, locationFromRange(document, parts.nameStart, bodyStart + bodyLength), context);
+}
 
 function scannerNativeMixinCall(
   document: StructuralDocument,

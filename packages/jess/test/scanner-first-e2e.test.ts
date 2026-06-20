@@ -3562,6 +3562,52 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds literal Less each() callbacks inside @starting-style through structural parse', async () => {
+    const source = [
+      'aside > [popover]:popover-open {',
+      '  @starting-style {',
+      '    each(1 2 3 4, {',
+      '      padding+_: (@value * 10px);',
+      '    });',
+      '  }',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@starting-style');
+    expect(rendered).toContain('padding: 10px 20px 30px 40px');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/starting-style-each.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(For');
+    expect(types).toContain('name: \'@starting-style\'');
+    expect(types).toContain('name: \'padding\'');
+    expect(types).toContain('(Nil');
+    expect(types).not.toContain('(Call');
+    expect(types).not.toContain('key: \'each\'');
+    expect(types).not.toContain('value: (Any \'(@value * 10px)\')');
+  });
+
   it('falls back for @starting-style preludes because only the no-prelude block form is proven', async () => {
     const cases = [
       {
