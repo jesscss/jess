@@ -595,6 +595,38 @@ describe('scanner-first CSS/Less e2e probe', () => {
     ]));
   });
 
+  it('feeds multi-level nested ordinary rules through structural parse', async () => {
+    const source = '.a { width: 1px; .b { margin: 0; .c { color: blue; } } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('width: 1px');
+    expect(rendered).toContain('margin: 0');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 6,
+      requestedIslands: 6
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
+      ['selector', 3],
+      ['declaration-value', 3]
+    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
+      ['rule', 3],
+      ['declaration', 3]
+    ]));
+  });
+
   it('falls back canonically for Less features outside the first structural-fed subset', async () => {
     const source = '.rounded() { color: blue; }\n.a { .rounded(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
