@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
+import { any, atrule, decl, Declaration, list, mixin, rules, vardecl } from '../../index.js';
+import { serializeTypes } from '../serialize-types.js';
 import { F_STATIC } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
 import { createOwnedCallableRulesSurface, createUnlockedCallableRulesSurface } from '../callable-surface.js';
@@ -99,6 +100,43 @@ describe('callable candidate state helper', () => {
     expect(state.rules.parent).toBe(callSiteRules);
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
     expect(state.definitionFrame).toBeUndefined();
+  });
+
+  it('copies raw-field at-rules inside owned callable-rules surfaces', () => {
+    const callSiteRules = rules([]);
+    const sourceRules = rules([
+      atrule({
+        name: '@media',
+        prelude: 'screen',
+        rules: [
+          new Declaration({
+            name: 'color',
+            value: ['blue']
+          })
+        ]
+      })
+    ]);
+    const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules });
+
+    const state = prepareCallableCandidateState({
+      candidate,
+      callSiteRules,
+      leakyRules: false,
+      createOwnedRules: createOwnedCallableRulesSurface,
+      createUnlockedRules: createUnlockedCallableRulesSurface,
+      getRootSourceRules: rulesNode => rulesNode
+    });
+
+    expect(state.rules).not.toBe(sourceRules);
+    expect(state.rules.toString()).toContain('@media screen');
+    expect(state.rules.toString()).toContain('color: blue;');
+    const types = serializeTypes(state.rules);
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'screen\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).toContain('rawValueSegments:');
+    expect(types).not.toContain('name: (Any [role=atkeyword] \'@media\')');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
   it('keeps childless static callable-rules candidates on the unlocked rules path', () => {

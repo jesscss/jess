@@ -147,13 +147,23 @@ function copyCallableDirectFieldNode(node: Node): Node | undefined {
     );
   }
   if (isNode(node, N.AtRule)) {
+    const name = node.rawName !== undefined
+      ? node.rawName
+      : node.name !== undefined
+        ? copyCallableRulesNode(node.name)
+        : undefined;
+    if (name === undefined) {
+      throw new TypeError('AtRule requires a name before callable surface copying.');
+    }
     return constructCallableRulesContainer(
       node,
       {
-        name: copyCallableRulesNode(node.name),
-        ...(node.prelude !== undefined && {
-          prelude: copyCallableRulesNode(node.prelude)
-        }),
+        name,
+        ...(node.rawPrelude !== undefined
+          ? { prelude: node.rawPrelude }
+          : node.prelude !== undefined
+            ? { prelude: copyCallableRulesNode(node.prelude) }
+            : {}),
         rules: copyCallableRulesValue(node.rules)
       }
     );

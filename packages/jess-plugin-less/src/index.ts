@@ -1110,7 +1110,11 @@ function validateStructuralFedMixinDefinition(
       continue;
     }
     if (child.kind === 'at-rule') {
-      return 'at-rules inside mixin definitions are outside the scanner-native structural-fed subset';
+      const reason = validateStructuralFedAtRule(document, child, variables, 'mixin-definition', mathMode);
+      if (reason) {
+        return reason;
+      }
+      continue;
     }
     if (child.kind !== 'declaration') {
       return `unsupported mixin-definition child ${child.kind}`;

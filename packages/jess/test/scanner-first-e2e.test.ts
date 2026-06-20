@@ -3014,8 +3014,52 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('falls back canonically for at-rules inside Less mixin definitions', async () => {
+  it('feeds @media inside Less mixin definitions through structural parse', async () => {
     const source = '.m() { @media screen { color: blue; } }\n.a { .m(); }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/mixin-media.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Mixin');
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'screen\'');
+    expect(types).toContain('(Call');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('falls back canonically for non-media at-rules inside Less mixin definitions', async () => {
+    const source = '.m() { @supports (display: grid) { color: blue; } }\n.a { .m(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -3029,7 +3073,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'at-rules inside mixin definitions are outside the scanner-native structural-fed subset',
+      fallbackReason: 'only root @layer and @supports block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       actualParses: 0,
       requestedIslands: 0,

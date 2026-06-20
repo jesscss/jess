@@ -2198,8 +2198,19 @@ storage.
     fallback. The registration path now reads raw declaration names for static
     invalidation keys and only materializes declaration name/value nodes when
     registration or eval demands semantic fields. Parameters, guards,
-    namespaces, overload resolution, variable-bearing mixin bodies, at-rules
-    inside mixin bodies, and richer call syntax remain canonical fallback.
+    namespaces, overload resolution, variable-bearing mixin bodies, non-media
+    at-rules inside mixin bodies, and richer call syntax remain canonical
+    fallback.
+  - [x] Extended the no-argument Less mixin proof to scanner-native `@media`
+    blocks inside mixin definitions. The structural-fed path emits raw-field
+    `AtRule` nodes for the `@media` body, raw-field declaration nodes inside
+    the block, and copied callable output that preserves `rawName` /
+    `rawPrelude` instead of materializing canonical at-rule header/value
+    children. The focused proof renders equal CSS and serializes with zero
+    legacy island parser executions, zero full-tree fallback, zero promoted
+    bytes, and no `BasicSelector` or `Any` declaration value nodes for the
+    covered shape. Non-media at-rules in mixin bodies remain canonical fallback
+    until their runtime semantics are proven as thin progressive structures.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
@@ -2290,11 +2301,11 @@ storage.
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
-    The comma-value and standalone block-comment proofs above did not change the
-    included-corpus counts because the relevant upstream files also contain
-    other unsupported constructs. Progressive render/serialize proof is covered
-    by the dedicated thin structure-target tests rather than inferred
-    from this broad upstream corpus.
+    The comma-value, standalone block-comment, and mixin-local `@media` proofs
+    above did not change the included-corpus counts because the relevant
+    upstream files also contain other unsupported constructs. Progressive
+    render/serialize proof is covered by the dedicated thin structure-target
+    tests rather than inferred from this broad upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
   parser/eval/render, structural sidecar full-render probe, selected
   materialization sidecar full-render probe, and structural-fed prototype over
@@ -2303,11 +2314,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    1.98ms median over 20 samples, with 10,283 structural records, 5,762
+    2.07ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    8.82ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    8.95ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2331,16 +2342,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 220.73ms, structural sidecar full render
-    214.40ms across 306 probe records, selected-materialization sidecar full
-    render 230.62ms across 306 probe records with 5,295
+    current parser/eval/render 217.26ms, structural sidecar full render
+    209.33ms across 306 probe records, selected-materialization sidecar full
+    render 227.55ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 218.38ms across 198 prototype records with 21
+    structural-fed prototype 213.25ms across 198 prototype records with 21
     structural-fed records, 177 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 75 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.24x, structural sidecar 5.09x, selected
-    materialization 5.47x, and structural-fed 5.18x. These medians are gate
+    median were current 5.15x, structural sidecar 4.97x, selected
+    materialization 5.40x, and structural-fed 5.06x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

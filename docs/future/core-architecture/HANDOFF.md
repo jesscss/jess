@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first raw `@media` blocks inside no-argument Less mixin
+  definitions.
+- Verdict: accepted as a thin proof extension, not a performance claim. The
+  Less structural-fed validator now allows mixin-body `@media` blocks only by
+  reusing the existing at-rule validator; non-media at-rules still fall back.
+  Callable surface copying now preserves raw-field `AtRule` headers while
+  copying owned callable output, so a mixin call does not have to materialize
+  canonical `Any` name/prelude nodes just to emit copied `@media` output.
+- New traversal: none. The mixin validator delegates an already-visited
+  `at-rule` child to the existing at-rule validation path. The callable copy
+  change stays inside the existing recursive callable-copy traversal and only
+  chooses raw header strings when the source at-rule already carries them.
+- New node/materialization: no new production materialization. The review
+  script flagged `new Declaration(...)` and `rules([])` in
+  `callable-candidate-state.test.ts`; both are test fixtures for the raw
+  at-rule copy regression. Runtime code adds no new node construction for this
+  pass and specifically avoids constructing canonical at-rule header nodes for
+  raw-field at-rules during callable copy.
+- Render path: copied raw `AtRule` output renders through the existing raw
+  at-rule render path. The new e2e proof asserts equal CSS, zero requested
+  islands, zero actual parses, zero promoted bytes, and serialization without
+  `BasicSelector` or `Any` declaration value nodes for the covered mixin shape.
+- Helper/API surface: none added.
+- Metadata mutations: none added.
+- Review-flagged exception: the new `TypeError` is an invariant failure for an
+  impossible malformed `AtRule` copy source with neither raw nor canonical
+  name. It is not routine branch control, lookup miss handling, or a hot-path
+  negative result.
+- Evidence: touched-file eslint; core build; Less plugin build; focused core
+  callable-candidate-state test; scanner-first e2e test; scanner-first Less
+  corpus test; aggressive-cutting review.
+
 - Latest pass: scanner-first raw-field at-rule-statement/at-rule/ruleset/
   declaration proof.
 - Verdict: deferred. This pass intentionally adds a tiny raw-field construction
