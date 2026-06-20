@@ -936,6 +936,13 @@ detail.
 `LineMap` should be built on first use by scanning the source once, recording
 line-start offsets, and using binary search for offset-to-line/column
 conversion. Position-to-offset conversion should use the same line-start table.
+Do not build the map with `source.split('\n')` or any equivalent that creates
+one substring per line. A cursor loop over `charCodeAt()` is the simplest first
+implementation; a sticky/global newline regex is also worth benchmarking if it
+can walk the source without allocating matched line text. The stored result
+should be a numeric line-start table, preferably a plain `number[]` initially
+and a typed-array candidate only if measurement shows the conversion cost is
+worth the extra construction step.
 
 For incremental parsing, `SourceText.version` and structural document version
 become part of the cache key. When source changes, increment the version,
@@ -946,6 +953,8 @@ Benchmark questions:
 
 - full parse time with eager line tracking versus offset-only structures;
 - memory consumed by eager line/column fields versus lazy line starts;
+- source-map and diagnostic line-map construction with cursor scan versus
+  newline regex versus line-splitting substring allocation;
 - diagnostic rendering time after a parse;
 - completion generation time;
 - incremental edit performance when the edit does and does not require
