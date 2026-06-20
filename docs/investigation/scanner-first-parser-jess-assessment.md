@@ -1459,6 +1459,13 @@ Do not claim a speed win without before/after measurements. Also do not accept
 a local object-count win if it adds more expensive side maps, recursive walks,
 or fallback full-tree materializations in the real path.
 
+Cutting total `packages/core/src` line count by roughly 50% is a stretch goal,
+not the primary acceptance metric. The primary target is faster real Less
+compile/eval/render behavior with fewer hot-path objects, fewer unnecessary
+branches, and simpler canonical runtime state. Line-count reduction should come
+from deleting proven redundant machinery, not from compressing code or moving
+complexity into equally expensive helpers.
+
 ## Package Build Performance Guards
 
 As the packages are built, each package should add the smallest benchmark or
@@ -2881,8 +2888,8 @@ storage.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
   - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 13
-    structural-fed prototype records, 53 canonical fallback records, 20 current
-    expected-CSS failures, 17 structural expected-CSS failures, zero
+    structural-fed prototype records, 53 canonical fallback records, 19 current
+    expected-CSS failures, 16 structural expected-CSS failures, zero
     requested/materialized islands, zero promoted bytes, zero actual parses,
     and 75 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
@@ -2891,11 +2898,11 @@ storage.
     The current at-rule-family fallback surface is down to one corpus case:
     `tests-unit/at-rules-bubbling/at-rules-bubbling.less`. The
     `tests-unit/starting-style/starting-style.less` file now passes
-    `@starting-style` at-rule-family admission and the corpus-observed
-    `scaleX(...)` transform values, then stops later at Less merge declaration
-    names (`padding+_`). Declaration-value fallbacks are eight and
-    declaration-name fallbacks are five without changing the whole-file
-    structural-fed count.
+    `@starting-style` at-rule-family admission, the corpus-observed
+    `scaleX(...)` transform values, and Less merge declaration names
+    (`padding+_`), then stops later at an at-rule child mixin call.
+    Declaration-value fallbacks are eight and declaration-name fallbacks are
+    four without changing the whole-file structural-fed count.
     The current mixin-related fallback surface is six richer mixin definition
     signatures and two richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,

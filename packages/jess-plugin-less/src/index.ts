@@ -15,6 +15,7 @@ import {
   Color,
   Declaration,
   Dimension,
+  AssignmentType,
   Extend,
   ExtendFlag,
   Mixin,
@@ -1797,17 +1798,22 @@ function validateStructuralFedDeclaration(
   if (name === undefined || valueText === undefined) {
     return 'declaration metadata is missing from structural field table';
   }
+  const assign = structuralFedDeclarationAssign(name);
+  const declarationName = structuralFedDeclarationName(name, assign);
   const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
-  if (!isPlainStructuralFedDeclarationName(name)) {
+  if (!declarationName || !isPlainStructuralFedDeclarationName(declarationName)) {
     return 'declaration name is outside the first structural-fed subset';
   }
   if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
     return 'declaration assignment is outside the first structural-fed subset';
   }
-  if (MULTILINE_VALUE_PATTERN.test(valueText) && !isScannerNativeCssGridDeclarationValue(name, valueText)) {
+  if (MULTILINE_VALUE_PATTERN.test(valueText) && !isScannerNativeCssGridDeclarationValue(declarationName, valueText)) {
     return 'multiline declaration values are not in the first structural-fed subset';
   }
-  if (isCustomPropertyName(name)) {
+  if (isCustomPropertyName(declarationName)) {
+    if (assign) {
+      return 'custom property merge declarations are not in the scanner-native structural-fed subset';
+    }
     if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
       return 'custom property important values are not in the scanner-native structural-fed subset';
     }
@@ -1833,7 +1839,7 @@ function validateStructuralFedDeclaration(
   if (isScannerNativeMixedFunctionValue(scannerNativeValueText)) {
     return undefined;
   }
-  if (isScannerNativeCssGridDeclarationValue(name, scannerNativeValueText)) {
+  if (isScannerNativeCssGridDeclarationValue(declarationName, scannerNativeValueText)) {
     return undefined;
   }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
@@ -1868,6 +1874,11 @@ function buildStructuralFedDeclaration(
   if (name === undefined) {
     return { reason: 'declaration metadata is missing from structural field table' };
   }
+  const assign = structuralFedDeclarationAssign(name);
+  const declarationName = structuralFedDeclarationName(name, assign);
+  if (!declarationName) {
+    return { reason: 'declaration name is outside the first structural-fed subset' };
+  }
   const valueIsland = singleIsland(ownerIslands, child, 'declaration-value');
   if (!valueIsland) {
     return { reason: 'declaration value island missing' };
@@ -1886,10 +1897,13 @@ function buildStructuralFedDeclaration(
   }
   return {
     node: new Declaration({
-      name,
+      name: declarationName,
       value: valueToken.segments ?? [valueToken.node ?? valueToken.text],
       important: valueToken.important
-    }, { sourceBacked: true }, locationFromRange(plan.document, child.start, child.end), context),
+    }, {
+      sourceBacked: true,
+      ...(assign && { assign })
+    }, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
   };
 }
@@ -2805,6 +2819,25 @@ function isPlainStructuralFedDeclarationName(name: string): boolean {
     (PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_'))
     || isCustomPropertyName(name)
   );
+}
+
+function structuralFedDeclarationAssign(name: string): AssignmentType | undefined {
+  if (name.endsWith('+_')) {
+    return AssignmentType.MergeSequence;
+  }
+  if (name.endsWith('+')) {
+    return AssignmentType.MergeList;
+  }
+  return undefined;
+}
+
+function structuralFedDeclarationName(name: string, assign: AssignmentType | undefined): string | undefined {
+  if (!assign) {
+    return name;
+  }
+  const suffixLength = assign === AssignmentType.MergeSequence ? 2 : 1;
+  const declarationName = name.slice(0, -suffixLength);
+  return declarationName || undefined;
 }
 
 function isCustomPropertyName(name: string): boolean {

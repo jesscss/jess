@@ -6,6 +6,7 @@ import { Compiler } from '../src/index.js';
 import lessPlugin from '../../jess-plugin-less/src/index.js';
 import {
   Declaration,
+  AssignmentType,
   Extend,
   ExtendFlag,
   Node,
@@ -1745,6 +1746,59 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(types).not.toContain('value: (Any');
       expect(types).not.toContain('important: (Any');
     }
+  });
+
+  it('feeds Less merge declarations through structural parse', async () => {
+    const source = '.a { padding+_: 10px; padding+_: 8px; margin+: 1px; margin+: 2px; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('padding: 10px 8px');
+    expect(rendered).toContain('margin: 1px, 2px');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/merge-declarations.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const ruleset = parseResult.tree!.rules[0];
+    expect(ruleset).toBeInstanceOf(Ruleset);
+    if (!(ruleset instanceof Ruleset)) {
+      throw new Error('Expected structural-fed root child to be a Ruleset.');
+    }
+    const [paddingA, paddingB, marginA, marginB] = ruleset.rules;
+    for (const declaration of [paddingA, paddingB, marginA, marginB]) {
+      expect(declaration).toBeInstanceOf(Declaration);
+      if (!(declaration instanceof Declaration)) {
+        throw new Error('Expected merge declaration to stay a Declaration.');
+      }
+    }
+    expect(paddingA.options.assign).toBe(AssignmentType.MergeSequence);
+    expect(paddingB.options.assign).toBe(AssignmentType.MergeSequence);
+    expect(marginA.options.assign).toBe(AssignmentType.MergeList);
+    expect(marginB.options.assign).toBe(AssignmentType.MergeList);
+    const types = serializeRuntimeTypes(ruleset);
+    expect(types).toContain('name: \'padding\'');
+    expect(types).toContain('name: \'margin\'');
+    expect(types).not.toContain('name: \'padding+_\'');
+    expect(types).not.toContain('name: \'margin+\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('value: (Any');
   });
 
   it('feeds adjacent compound selectors through structural parse', async () => {
@@ -4559,10 +4613,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
   it('falls back canonically for declaration syntax the structural-fed subset cannot preserve', async () => {
     const cases = [
-      {
-        source: '.a { width+: 1px; }\n',
-        reason: 'declaration name is outside the first structural-fed subset'
-      },
       {
         source: '@prop: color;\n.a { @{prop}: blue; }\n',
         reason: 'mixin call signature is outside the scanner-native structural-fed subset'
