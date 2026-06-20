@@ -2060,6 +2060,13 @@ storage.
     promoted bytes. This deliberately proves only one flat scanner-native
     prefix followed by one supported function call; it is not a general value
     parser.
+  - [x] Added the first comment-trivia proof: Less `//` line comments at root,
+    inside a rule body, and after a declaration do not force canonical fallback
+    because normal CSS output drops them. The structural-fed path ignores those
+    line-comment trivia ranges, renders equal CSS, and still reports zero
+    requested islands / zero legacy parser executions. Block comments remain a
+    canonical fallback because CSS output preserves them and structural comment
+    placement has not been proven.
   - [x] Extended raw-field declaration transport to conservative quoted and
     URL-ish declaration values such as `content: "hello } world"`,
     `background: url(/assets/a}/b.png)`, and `font-family: "Open Sans",
@@ -2244,15 +2251,15 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 2 structural-fed prototype
-    records, 63 canonical fallback records, 22 current expected-CSS failures, 22
+  - Current audit snapshot: 64 files / 65 cases, 4 structural-fed prototype
+    records, 62 canonical fallback records, 22 current expected-CSS failures, 22
     structural expected-CSS failures, zero requested/materialized islands, zero
-    promoted bytes, and 1 progressive node from the upstream corpus. That is
+    promoted bytes, and 4 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
-    comments, richer selectors/values, mixins, imports, or diagnostics that still
-    fall back canonically. Progressive render/serialize proof is covered by the
-    dedicated thin structure-target tests rather than inferred from this broad
-    upstream corpus.
+    block comments, richer selectors/values, mixins, imports, or diagnostics
+    that still fall back canonically. Progressive render/serialize proof is
+    covered by the dedicated thin structure-target tests rather than inferred
+    from this broad upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
   parser/eval/render, structural sidecar full-render probe, selected
   materialization sidecar full-render probe, and structural-fed prototype over
@@ -2261,11 +2268,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the raw structural scan measured
-    2.41ms median over 20 samples, with 10,283 structural records, 5,762
+    2.12ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    9.08ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    6.78ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2289,16 +2296,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 211.52ms, structural sidecar full render
-    208.24ms across 306 probe records, selected-materialization sidecar full
-    render 242.43ms across 306 probe records with 5,301
+    current parser/eval/render 234.33ms, structural sidecar full render
+    227.15ms across 306 probe records, selected-materialization sidecar full
+    render 252.07ms across 306 probe records with 5,301
     requested/materialized islands and 148,710 promoted bytes, and
-    structural-fed prototype 214.73ms across 195 prototype records with 6
-    structural-fed records, 189 canonical fallbacks, zero
-    requested/materialized islands, zero promoted bytes, and 3 progressive
+    structural-fed prototype 234.21ms across 198 prototype records with 12
+    structural-fed records, 186 canonical fallbacks, zero
+    requested/materialized islands, zero promoted bytes, and 12 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.02x, structural sidecar 4.94x, selected
-    materialization 5.75x, and structural-fed 5.09x. These medians are gate
+    median were current 5.56x, structural sidecar 5.39x, selected
+    materialization 5.98x, and structural-fed 5.56x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

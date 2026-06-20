@@ -1164,6 +1164,63 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(callTypes).toContain('unit: \'%\'');
   });
 
+  it('drops Less line-comment trivia on the structural-fed path without materializing islands', async () => {
+    const cases = [
+      '// root note\n.a { color: blue; }\n',
+      '.a { // body note\n  color: blue;\n}\n',
+      '.a { color: blue; // trailing note\n  width: 1px; }\n'
+    ];
+
+    for (const source of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).not.toContain('//');
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+    }
+  });
+
+  it('falls back for block comments until structural comment preservation is proven', async () => {
+    const source = '/* keep */\n.a { color: blue; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('/* keep */');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'block comments require canonical trivia preservation',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+  });
+
   it('feeds exact important declarations through structural parse without value materialization', async () => {
     const cases = [
       { property: 'color', value: 'blue' },
@@ -1954,7 +2011,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
   });
 
-  it('falls back for raw HTTP url imports until url and Less line-comment ownership is proven', async () => {
+  it('falls back for raw HTTP url imports until url boundary scanning is proven', async () => {
     const source = '@import url(https://cdn.example.com/theme.css) screen;\n.a { color: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({

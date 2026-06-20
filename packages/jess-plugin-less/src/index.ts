@@ -375,8 +375,8 @@ export class LessPlugin extends AbstractPlugin {
     if (plan.document.diagnostics.length > 0) {
       return fallback('structural diagnostics are present');
     }
-    if (plan.document.trivia.some(trivia => trivia.kind === 'block-comment' || trivia.kind === 'line-comment')) {
-      return fallback('comments require canonical trivia preservation');
+    if (plan.document.trivia.some(trivia => trivia.kind === 'block-comment')) {
+      return fallback('block comments require canonical trivia preservation');
     }
     if (countRootImportStatements(plan.document) > 1) {
       return fallback('multiple import statements require canonical import ordering and de-dupe semantics');

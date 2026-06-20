@@ -12,7 +12,7 @@ import {
   resolveLessTestDataRoot,
   type TestCase
 } from './test-utils.js';
-import lessPlugin from '@jesscss/plugin-less';
+import lessPlugin from '../../jess-plugin-less/src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { parseLessStructure } from '../../less-parser/src/index.js';
 
