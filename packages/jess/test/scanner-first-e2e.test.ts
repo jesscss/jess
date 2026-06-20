@@ -1452,6 +1452,54 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds modern CSS color function syntax as thin declaration strings', async () => {
+    const source = [
+      'foo {',
+      '  color: rgb(0 128 255);',
+      '  color: rgb(0 128 255 / 50%);',
+      '  color: hsl(198deg 28% 50%);',
+      '  color: hsl(198deg 28% 50% / 50%);',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('color: rgb(0 128 255)');
+    expect(rendered).toContain('color: rgb(0 128 255 / 50%)');
+    expect(rendered).toContain('color: hsl(198deg 28% 50%)');
+    expect(rendered).toContain('color: hsl(198deg 28% 50% / 50%)');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/modern-css-color-functions.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('selector: \'foo\'');
+    expect(types).toContain('[\'rgb(0 128 255)\']');
+    expect(types).toContain('[\'rgb(0 128 255 / 50%)\']');
+    expect(types).toContain('[\'hsl(198deg 28% 50%)\']');
+    expect(types).toContain('[\'hsl(198deg 28% 50% / 50%)\']');
+    expect(types).not.toContain('(Call');
+    expect(types).not.toContain('value: (Any');
+  });
+
   it('falls back for function values outside the scanner-native boundary', async () => {
     const cases = [
       '.a { transform: scaleX(1, 2); }\n',

@@ -2887,11 +2887,11 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 14
-    structural-fed prototype records, 52 canonical fallback records, 19 current
+  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 15
+    structural-fed prototype records, 51 canonical fallback records, 19 current
     expected-CSS failures, 16 structural expected-CSS failures, zero
     requested/materialized islands, zero promoted bytes, zero actual parses,
-    and 88 progressive nodes from the upstream corpus. That is
+    and 93 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2901,9 +2901,10 @@ storage.
     `@starting-style` at-rule-family admission, the corpus-observed
     `scaleX(...)` transform values, and Less merge declaration names
     (`padding+_`), then stops later at an at-rule child mixin call.
-    Declaration-value fallbacks are eight, and declaration-name fallbacks are
+    Declaration-value fallbacks are seven, and declaration-name fallbacks are
     currently gone from the included-corpus first-fallback surface. Legacy
-    star-property names such as `*zoom` and statement-form `&:extend(...)`
+    star-property names such as `*zoom`, statement-form `&:extend(...)`, and
+    preserved modern CSS color functions in `tests-unit/color-functions/modern-syntax.less`
     now flow through structural-fed nodes; richer extend selectors now progress
     farther before stopping at selector or at-rule prelude limits.
     The current mixin-related fallback surface is six richer mixin definition

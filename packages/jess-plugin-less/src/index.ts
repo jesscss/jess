@@ -1858,6 +1858,9 @@ function validateStructuralFedDeclaration(
   if (isScannerNativeCssGridDeclarationValue(declarationName, scannerNativeValueText)) {
     return undefined;
   }
+  if (isScannerNativeModernCssColorFunctionValue(declarationName, scannerNativeValueText)) {
+    return undefined;
+  }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
     return 'string declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
   }
@@ -2519,6 +2522,15 @@ function structuralScannerNativeDeclarationValueToken(
       important: valueParts?.important
     };
   }
+  if (name !== undefined && isScannerNativeModernCssColorFunctionValue(name, scannerNativeValueText)) {
+    return {
+      kind: 'raw-value',
+      start: range.start,
+      end: range.end,
+      text: scannerNativeValueText,
+      important: valueParts?.important
+    };
+  }
   if (!SIMPLE_FLAT_VALUE_PATTERN.test(scannerNativeValueText)) {
     if (
       valueParts
@@ -2618,6 +2630,33 @@ function hasBalancedCssGridRawValueDelimiters(valueText: string): boolean {
     }
   }
   return stack.length === 0;
+}
+
+function isScannerNativeModernCssColorFunctionValue(name: string, valueText: string): boolean {
+  if (name !== 'color') {
+    return false;
+  }
+  if (
+    RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)
+    || valueText.includes('/*')
+    || valueText.includes('//')
+    || /[{},;"'\r\n]/u.test(valueText)
+  ) {
+    return false;
+  }
+  const match = MODERN_CSS_COLOR_FUNCTION_VALUE_PATTERN.exec(valueText);
+  const args = match?.groups?.args;
+  if (args === undefined) {
+    return false;
+  }
+  const [components, alpha, extra] = args.split('/');
+  if (extra !== undefined || components === undefined) {
+    return false;
+  }
+  const componentParts = components.trim().split(/[ \t]+/u);
+  return componentParts.length === 3
+    && componentParts.every(component => MODERN_CSS_COLOR_COMPONENT_PATTERN.test(component))
+    && (alpha === undefined || MODERN_CSS_COLOR_COMPONENT_PATTERN.test(alpha.trim()));
 }
 
 function scannerNativeFunctionValueToken(
@@ -3035,6 +3074,9 @@ const CSS_GRID_RAW_UNPROVEN_FUNCTION_PATTERN = /\b(?!repeat\b)[A-Za-z_][\w-]*\(/
 const CSS_GRID_TEMPLATE_AREAS_RAW_VALUE_PATTERN =
   /^(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')(?:[ \t\r\n]+(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'))*$/u;
 const CSS_GRID_TEMPLATE_AREAS_CONTINUATION_PATTERN = /^[ \t]{4,}(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')$/u;
+const MODERN_CSS_COLOR_FUNCTION_VALUE_PATTERN =
+  /^(?:rgb|hsl)\((?<args>[-+.\dA-Za-z% \t/]+)\)$/u;
+const MODERN_CSS_COLOR_COMPONENT_PATTERN = /^[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?$/u;
 const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
 const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{},a-zA-Z0-9]+\)$/u;
 const RAW_QUOTED_URL_PATTERN = /^url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\)$/u;
