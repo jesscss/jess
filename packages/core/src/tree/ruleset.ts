@@ -847,6 +847,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     if (isNode(rule, N.Comment) || isNode(rule, N.Nil)) {
       return true;
     }
+    if (isNode(rule, N.AtRuleStatement) && rule.hasFlag(F_STATIC)) {
+      return true;
+    }
     if (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC)) {
       return true;
     }

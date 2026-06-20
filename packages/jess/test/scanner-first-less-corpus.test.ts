@@ -76,6 +76,9 @@ const corpusCases = collectCorpusCases();
 const lessBenchmarkPath = path.resolve(testData, '../less/benchmark/benchmark.less');
 const less45BenchmarkReference = loadLess45BenchmarkReference('benchmark.less');
 const less45BenchmarkLessMedianRenderMs = less45BenchmarkReference.renderMedianMs;
+const structuralFedExpectedCssOverrides = new Set([
+  'tests-unit/tailwind/tailwind.less'
+]);
 
 describe('scanner-first structural-fed Less corpus parity audit', () => {
   it('loads the Less 4.x benchmark reference used by scanner-first comparisons', () => {
@@ -187,7 +190,10 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
       if (result.css !== expectedCss) {
         metrics.structuralExpectedFailures++;
       }
-      expect(result.css, `${corpusLabel(corpusCase)} structural-fed parity`).toBe(currentResult.css);
+      const structuralTargetCss = structuralFedExpectedCssOverrides.has(corpusCase.file)
+        ? expectedCss
+        : currentResult.css;
+      expect(result.css, `${corpusLabel(corpusCase)} structural-fed parity`).toBe(structuralTargetCss);
 
       const prototypes = probePlugin.scannerFirstPrototypeResults;
       expect(prototypes.length, corpusLabel(corpusCase)).toBeGreaterThan(0);
@@ -251,8 +257,11 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
         for (const mode of benchmarkModes) {
           const rendered = renderedModes.get(mode)!;
           if (mode !== 'current') {
+            const targetCss = mode === 'structural-fed' && structuralFedExpectedCssOverrides.has(corpusCase.file)
+              ? readFileSync(corpusCase.testCase.expectedFile, 'utf8')
+              : current.css;
             expect(rendered.css, `${corpusLabel(corpusCase)} ${mode} benchmark parity`)
-              .toBe(current.css);
+              .toBe(targetCss);
           }
           if (recordRun) {
             recordBenchmarkMode(metrics.get(mode)!, rendered);

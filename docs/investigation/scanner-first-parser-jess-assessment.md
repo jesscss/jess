@@ -2361,6 +2361,18 @@ storage.
     arithmetic beyond the already-proven one-step subset, richer body syntax,
     and mixin definitions nested inside mixin bodies remain canonical
     fallbacks.
+- [x] Structural-fed prototype: support rule-local Tailwind-style `@apply`
+  statement at-rules with scanner-native class-token preludes.
+  - Proof target: `.box { @apply h-64 w-64; }` renders from a structural-fed
+    raw `AtRuleStatement` inside a raw-selector `Ruleset`, records zero
+    full-tree fallback, zero actual parses, zero requested islands, and zero
+    promoted bytes, and serializes without eager `Any` prelude nodes or
+    `BasicSelector` nodes.
+  - Current limit: this is deliberately narrower than arbitrary rule-local
+    statement at-rules. The accepted prelude is a whitespace-separated set of
+    identifier-like class tokens; comments, Less variable-like tokens, multiline
+    preludes, other statement names, and richer Tailwind expressions remain
+    canonical fallbacks until separately proven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
@@ -2383,10 +2395,10 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 7 structural-fed prototype
-    records, 59 canonical fallback records, 22 current expected-CSS failures, 22
+  - Current audit snapshot: 64 files / 65 cases, 8 structural-fed prototype
+    records, 58 canonical fallback records, 22 current expected-CSS failures, 21
     structural expected-CSS failures, zero requested/materialized islands, zero
-    promoted bytes, and 25 progressive nodes from the upstream corpus. That is
+    promoted bytes, and 27 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2395,7 +2407,10 @@ storage.
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
     gone.
-    The comma-value, standalone block-comment, mixin-local `@media`, nested
+    Tailwind `@apply` in `tests-unit/tailwind/tailwind.less` is an explicit
+    structural-fed expected-CSS override because current Jess drops it while the
+    new structural-fed path now matches the upstream expected CSS. The
+    comma-value, standalone block-comment, mixin-local `@media`, nested
     `@supports`, direct nested at-rule, recursive nested supported at-rule,
     ruleset-local no-arg mixin, root-level no-arg mixin call, and at-rule-local
     variable proofs above did not change the included-corpus counts because the
@@ -2410,11 +2425,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.09ms median over 20 samples, with 10,283 structural records, 5,762
+    2.13ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    9.75ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    9.38ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2438,16 +2453,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 218.20ms, structural sidecar full render
-    197.69ms across 306 probe records, selected-materialization sidecar full
-    render 241.42ms across 306 probe records with 5,295
+    current parser/eval/render 244.33ms, structural sidecar full render
+    243.02ms across 306 probe records, selected-materialization sidecar full
+    render 261.04ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 215.99ms across 198 prototype records with 21
-    structural-fed records, 177 canonical fallbacks, zero
-    requested/materialized islands, zero promoted bytes, and 75 progressive
+    structural-fed prototype 241.62ms across 198 prototype records with 24
+    structural-fed records, 174 canonical fallbacks, zero
+    requested/materialized islands, zero promoted bytes, and 81 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.18x, structural sidecar 4.69x, selected
-    materialization 5.73x, and structural-fed 5.12x. These medians are gate
+    median were current 5.80x, structural sidecar 5.76x, selected
+    materialization 6.19x, and structural-fed 5.73x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

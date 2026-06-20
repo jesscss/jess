@@ -2077,6 +2077,44 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds rule-local Tailwind @apply statements through structural parse', async () => {
+    const source = '.box { @apply h-64 w-64; }\n';
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe('.box {\n  @apply h-64 w-64;\n}\n');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/tailwind-apply.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(AtRuleStatement');
+    expect(types).toContain('rawName: \'@apply\'');
+    expect(types).toContain('rawPrelude: \'h-64 w-64\'');
+    expect(types).toContain('rawSelector: \'.box\'');
+    expect(types).not.toContain('prelude: (Any');
+    expect(types).not.toContain('(BasicSelector');
+  });
+
   it('keeps duplicate @charset suppression on the structural-fed statement path', async () => {
     const source = '@charset "UTF-8";\n@charset "ISO-8859-1";\n.a { color: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

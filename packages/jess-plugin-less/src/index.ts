@@ -1002,6 +1002,13 @@ function validateStructuralFedRule(
       }
       continue;
     }
+    if (child.kind === 'at-rule-statement') {
+      const statementReason = validateStructuralFedRuleAtRuleStatement(document, child);
+      if (statementReason) {
+        return statementReason;
+      }
+      continue;
+    }
     if (child.kind === 'mixin-call') {
       if (!scannerNativeNoArgMixinName(structuralFieldText(document, child, 'name', 'mixin-name'))) {
         return 'mixin call signature is outside the scanner-native structural-fed subset';
@@ -1023,6 +1030,21 @@ function validateStructuralFedRule(
     if (declarationReason) {
       return declarationReason;
     }
+  }
+  return undefined;
+}
+
+function validateStructuralFedRuleAtRuleStatement(
+  document: StructuralDocument,
+  child: StructuralStatementNode
+): string | undefined {
+  const name = structuralFieldText(document, child, 'name', 'at-rule-name');
+  const prelude = structuralFieldText(document, child, 'prelude', 'prelude');
+  if (name !== '@apply') {
+    return `unsupported rule child ${child.kind}`;
+  }
+  if (!prelude || !isScannerNativeApplyPrelude(prelude)) {
+    return '@apply statement prelude is outside the scanner-native structural-fed subset';
   }
   return undefined;
 }
@@ -1503,6 +1525,12 @@ function buildStructuralFedRuleChild(
     }
     return buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, parentKind, mathMode);
   }
+  if (child.kind === 'at-rule-statement') {
+    if (parentKind !== 'rule') {
+      return { reason: `unsupported ${parentKind} child ${child.kind}` };
+    }
+    return buildStructuralFedRuleAtRuleStatement(plan, child, context);
+  }
   if (child.kind === 'variable-declaration') {
     if (!allowLessVariables) {
       return { reason: 'Less variable declarations are not in this structural-fed subset' };
@@ -1543,6 +1571,25 @@ function buildStructuralFedMixinCall(
         undefined,
         context
       )
+    }, undefined, locationFromRange(plan.document, child.start, child.end), context),
+    progressiveNodes: 1
+  };
+}
+
+function buildStructuralFedRuleAtRuleStatement(
+  plan: IslandParsePlan,
+  child: StructuralStatementNode,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const name = structuralFieldText(plan.document, child, 'name', 'at-rule-name');
+  const prelude = structuralFieldText(plan.document, child, 'prelude', 'prelude');
+  if (name !== '@apply' || !prelude || !isScannerNativeApplyPrelude(prelude)) {
+    return { reason: '@apply statement prelude is outside the scanner-native structural-fed subset' };
+  }
+  return {
+    node: new AtRuleStatement({
+      name,
+      prelude
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
   };
@@ -2511,6 +2558,13 @@ function isScannerNativeAtRuleStatementPrelude(name: string, preludeText: string
     return RAW_NAMESPACE_PRELUDE_PATTERN.test(preludeText);
   }
   return RAW_QUOTED_STRING_PATTERN.test(preludeText);
+}
+
+function isScannerNativeApplyPrelude(preludeText: string): boolean {
+  if (MULTILINE_VALUE_PATTERN.test(preludeText) || RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return false;
+  }
+  return /^-?[_a-zA-Z][\w-]*(?:\s+-?[_a-zA-Z][\w-]*)*$/u.test(preludeText);
 }
 
 function isCssImportPath(pathText: string): boolean {
