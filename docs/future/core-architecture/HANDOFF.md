@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first multiline CSS grid template-area raw declaration
+  proof.
+- Verdict: accepted as a bounded scanner-fed render proof, not a performance
+  claim. The Less structural-fed predicate now admits only property-specific
+  `grid-template-areas` quoted rows with proven continuation indentation; the
+  existing two-space multiline negative case remains canonical fallback.
+- New traversal: two short raw-string loops in
+  `packages/core/src/tree/declaration.ts` run only when a raw declaration has
+  all-string segments and at least one newline. They do not walk AST children,
+  parent links, source maps, side tables, or semantic scopes.
+- New node/materialization: none. Raw declarations still keep string segments
+  and the e2e proof asserts no `valueNode` materialization, zero requested
+  islands, zero actual parses, and zero promoted bytes.
+- Render path: direct raw writer output only. The writer restores canonical
+  colon/newline placement for multiline raw values without constructing `Any`,
+  `Sequence`, `List`, or declaration value wrappers.
+- Helper/API surface: two private helpers in `declaration.ts` and one private
+  Less plugin predicate helper. Nothing is exported; remove or narrow these
+  helpers when multiline raw declaration formatting is represented by packed
+  source-span metadata instead of string-segment normalization.
+- Metadata mutations: none added.
+- Review-flagged exception: `const segments = this._rawValueSegments ?? []`
+  reuses the existing raw declaration segment array; it is not a new side map,
+  semantic materialization, or eval isolation container.
+- Evidence: focused red-to-green multiline CSS grid e2e proof; full
+  `progressive-nodes.test.ts`; core build; full scanner-first e2e; scanner-first
+  Less corpus including `tests-unit/css-grid/css-grid.less` moving to
+  structural-fed; Less plugin build; eslint; `git diff --check`; aggressive
+  cutting review.
+
 - Latest pass: scanner-first recursive supported at-rules inside at-rule child
   rules.
 - Verdict: accepted as a thin scanner-fed proof, not a performance claim. The

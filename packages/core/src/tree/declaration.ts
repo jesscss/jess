@@ -48,6 +48,26 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
   return out;
 }
 
+function rawDeclarationLeadingMultilineIndent(segments: Array<string | Node>): string | undefined {
+  for (const segment of segments) {
+    if (typeof segment !== 'string') {
+      return undefined;
+    }
+    const sourceIndent = /\n([ \t]*)\S/u.exec(segment)?.[1];
+    if (sourceIndent !== undefined) {
+      return sourceIndent.startsWith('  ') ? sourceIndent.slice(2) : sourceIndent;
+    }
+    if (segment.includes('\n')) {
+      return '';
+    }
+  }
+  return undefined;
+}
+
+function rawDeclarationMultilineSegmentText(segment: string): string {
+  return segment.replace(/\n {2}/gu, '\n');
+}
+
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -848,10 +868,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const w = options.writer!;
     w.add(this.rawName!, this);
-    w.add(': ');
-    for (const segment of this._rawValueSegments ?? []) {
+    const segments = this._rawValueSegments ?? [];
+    const leadingMultilineIndent = rawDeclarationLeadingMultilineIndent(segments);
+    w.add(leadingMultilineIndent === undefined ? ': ' : `:\n${leadingMultilineIndent}`);
+    for (const segment of segments) {
       if (typeof segment === 'string') {
-        w.add(segment, this);
+        w.add(
+          leadingMultilineIndent === undefined ? segment : rawDeclarationMultilineSegmentText(segment),
+          this
+        );
       } else {
         segment.writeSyntax(options);
       }

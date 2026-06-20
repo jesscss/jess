@@ -2232,8 +2232,22 @@ function isScannerNativeCssGridDeclarationValue(name: string, valueText: string)
   ) {
     return false;
   }
+  if (name === 'grid-template-areas') {
+    return isScannerNativeCssGridTemplateAreasValue(valueText);
+  }
   return CSS_GRID_RAW_VALUE_PATTERN.test(valueText)
     && hasBalancedCssGridRawValueDelimiters(valueText);
+}
+
+function isScannerNativeCssGridTemplateAreasValue(valueText: string): boolean {
+  if (!CSS_GRID_TEMPLATE_AREAS_RAW_VALUE_PATTERN.test(valueText)) {
+    return false;
+  }
+  if (!valueText.includes('\n')) {
+    return true;
+  }
+  const [, ...continuationLines] = valueText.split(/\r?\n/u);
+  return continuationLines.every(line => CSS_GRID_TEMPLATE_AREAS_CONTINUATION_PATTERN.test(line));
 }
 
 function hasBalancedCssGridRawValueDelimiters(valueText: string): boolean {
@@ -2575,6 +2589,9 @@ const RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a
 const CSS_GRID_RAW_VALUE_PROPERTY_PATTERN = /^grid(?:-|$)/u;
 const CSS_GRID_RAW_VALUE_PATTERN = /^[A-Za-z0-9_ \t%.,/()+\[\]-]+$/u;
 const CSS_GRID_RAW_UNPROVEN_FUNCTION_PATTERN = /\b(?!repeat\b)[A-Za-z_][\w-]*\(/u;
+const CSS_GRID_TEMPLATE_AREAS_RAW_VALUE_PATTERN =
+  /^(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')(?:[ \t\r\n]+(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'))*$/u;
+const CSS_GRID_TEMPLATE_AREAS_CONTINUATION_PATTERN = /^[ \t]{4,}(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*')$/u;
 const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
 const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{},a-zA-Z0-9]+\)$/u;
 const RAW_QUOTED_URL_PATTERN = /^url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\)$/u;

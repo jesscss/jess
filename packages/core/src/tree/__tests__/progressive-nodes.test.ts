@@ -265,6 +265,20 @@ describe('progressive scanner-first proof nodes', () => {
     expect(buffer.segments).toEqual(['width: calc(100% - 1px) !important']);
   });
 
+  test('writes multiline raw-field core declaration values on continuation lines', () => {
+    const declaration = rawdecl({
+      name: 'grid-template-areas',
+      value: ['"header header header"\n    "content . sidebar"\n    "footer footer footer"']
+    });
+
+    expect(declaration.toTrimmedString()).toBe([
+      'grid-template-areas:',
+      '  "header header header"',
+      '  "content . sidebar"',
+      '  "footer footer footer"'
+    ].join('\n'));
+  });
+
   test('parents explicit raw-field declaration node segments without value wrapper allocation', () => {
     const segment = any('100%');
     const declaration = rawdecl({

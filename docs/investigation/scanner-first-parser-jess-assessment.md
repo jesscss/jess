@@ -2378,16 +2378,15 @@ storage.
   - Proof target: `grid-column: container-left / span 1`,
     `grid-template-columns: [col1-start] 9fr [col1-end] 10px [col2-start] 3fr
     [col2-end]`, and `grid-template-rows: repeat(14, [gutter] 10px [row]
-    60px)` render from structural-fed raw `Declaration` nodes. A separate
-    existing-path proof covers single-line quoted `grid-template-areas: "head
-    head" "nav main"`. Both record zero full-tree fallback, zero actual parses,
-    zero requested islands, and zero promoted bytes, and serialize without
-    `valueNode` materialization.
+    60px)` render from structural-fed raw `Declaration` nodes. Separate proofs
+    cover single-line quoted `grid-template-areas: "head head" "nav main"` and
+    multiline quoted `grid-template-areas` rows. All record zero full-tree
+    fallback, zero actual parses, zero requested islands, and zero promoted
+    bytes, and serialize without `valueNode` materialization.
   - Current limit: this is property-sensitive to `grid*` declarations and
     rejects Less variable-like tokens, comments, braces, semicolons,
     unbalanced `[]`/`()`, unproven functions other than `repeat(...)`, and
-    multiline values. Multiline `grid-template-areas` remains canonical fallback
-    until exact colon/newline serialization is proven.
+    multiline values other than quoted `grid-template-areas` rows.
 - [x] Structural-fed prototype: support root unknown statement at-rules with
   scanner-native raw preludes when the name does not have Less import/plugin
   semantics.
@@ -2433,10 +2432,10 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 10 structural-fed prototype
-    records, 56 canonical fallback records, 22 current expected-CSS failures, 19
+  - Current audit snapshot: 64 files / 65 cases, 11 structural-fed prototype
+    records, 55 canonical fallback records, 22 current expected-CSS failures, 19
     structural expected-CSS failures, zero requested/materialized islands, zero
-    promoted bytes, and 29 progressive nodes from the upstream corpus. That is
+    promoted bytes, and 49 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2455,14 +2454,14 @@ storage.
     now matches the upstream expected CSS. The
     comma-value, standalone block-comment, mixin-local `@media`, nested
     `@supports`, direct nested at-rule, recursive nested supported at-rule,
-    ruleset-local no-arg mixin, root-level no-arg mixin call, at-rule-local
-    variable, and single-line CSS grid value proofs above did not change the
-    included-corpus counts because the relevant upstream files also contain
-    other unsupported constructs. For `tests-unit/css-grid/css-grid.less`, the
-    remaining first blocker is now the multiline `grid-template-areas` value,
-    not the single-line grid track values. Progressive render/serialize proof is
-    covered by the dedicated thin structure-target tests rather than inferred
-    from this broad upstream corpus.
+    ruleset-local no-arg mixin, root-level no-arg mixin call, and at-rule-local
+    variable proofs above did not change the included-corpus counts because the
+    relevant upstream files also contain other unsupported constructs. The CSS
+    grid proof moves `tests-unit/css-grid/css-grid.less` onto the structural-fed
+    path by preserving single-line grid tracks plus multiline
+    `grid-template-areas` rows without parsing declaration values. Progressive
+    render/serialize proof is covered by the dedicated thin structure-target
+    tests rather than inferred only from this broad upstream corpus.
 - [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
   parser/eval/render, structural sidecar full-render probe, selected
   materialization sidecar full-render probe, and structural-fed prototype over
@@ -2471,11 +2470,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.03ms median over 20 samples, with 10,283 structural records, 5,762
+    2.33ms median over 20 samples, with 10,283 structural records, 5,762
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    5.85ms total, producing 5,322 structural records, 3,091 raw islands, and 5
+    10.02ms total, producing 5,322 structural records, 3,091 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2499,16 +2498,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 241.15ms, structural sidecar full render
-    224.24ms across 306 probe records, selected-materialization sidecar full
-    render 259.99ms across 306 probe records with 5,295
+    current parser/eval/render 225.41ms, structural sidecar full render
+    228.89ms across 306 probe records, selected-materialization sidecar full
+    render 255.80ms across 306 probe records with 5,295
     requested/materialized islands and 148,572 promoted bytes, and
-    structural-fed prototype 237.54ms across 198 prototype records with 30
-    structural-fed records, 168 canonical fallbacks, zero
-    requested/materialized islands, zero promoted bytes, and 87 progressive
+    structural-fed prototype 220.04ms across 198 prototype records with 33
+    structural-fed records, 165 canonical fallbacks, zero
+    requested/materialized islands, zero promoted bytes, and 147 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 5.72x, structural sidecar 5.32x, selected
-    materialization 6.17x, and structural-fed 5.63x. These medians are gate
+    median were current 5.35x, structural sidecar 5.43x, selected
+    materialization 6.07x, and structural-fed 5.22x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an
