@@ -1910,8 +1910,8 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
-  selector, simple literal declaration value, simple root or ruleset-local
-  `@media` prelude/body shape, and simple already-seen Less variable
+  selector, simple and flat literal declaration values, simple root or
+  ruleset-local `@media` prelude/body shape, and simple already-seen Less variable
   declaration/reference token detection with zero legacy island parser
   executions. Hoisted/lazy variable references, non-`@media` block at-rule
   families, complex/list/interpolated selectors, and richer nested at-rule
@@ -1978,6 +1978,14 @@ storage.
     `Ruleset` containing a real core `Declaration` with raw `name` / `value`
     payloads before semantic materialization. The render/e2e tests still prove
     output equality with zero legacy island parser executions.
+  - [x] Extended the raw-field declaration proof to flat literal values such as
+    `border: 1px solid red`, `box-shadow: 0 1px #000`, and `font: 16px serif`.
+    The structural-fed Less path keeps the entire value as one raw string
+    segment for direct render/serialization and still reports zero selected
+    island parser executions. This is deliberately not a general value parser:
+    quoted strings, `url()`, functions, comments, custom-property bodies,
+    interpolation, arithmetic, comma lists, and mixed variable/value streams
+    remain outside the proven cheap subset.
   - [x] Added the first raw-field core `Ruleset` proof: the normal core
     `Ruleset` constructor accepts a raw selector string for the scanner-native
     simple selector subset, renders and serializes it as `rawSelector` without
@@ -2005,6 +2013,10 @@ storage.
     segment as the canonical value and turns mixed string/`Node` segments into a
     reachable sequence container. Rich mixed segment semantics still need a
     broader segment-to-node policy before they can be used as a broad eval path.
+  - Current limit: flat literal declaration values are stored as one raw segment
+    for parser-ready direct render, not as a pre-tokenized value AST. Any
+    consumer that needs value internals still needs an explicit JIT value
+    materializer for the requested field/span.
   - Current limit: raw `Ruleset` semantic materialization only covers the
     scanner-native simple selector subset (`*`, tag, `.class`, `#id`) plus
     adjacent basic compound selectors. Complex, list, interpolated, nested, and

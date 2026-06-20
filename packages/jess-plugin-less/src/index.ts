@@ -1085,7 +1085,7 @@ type ScannerNativeSelectorToken = {
 };
 
 type ScannerNativeValueToken = {
-  kind: 'hex-color' | 'dimension-or-number' | 'identifier';
+  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list';
   start: number;
   end: number;
   text: string;
@@ -1156,7 +1156,7 @@ function readScannerNativeDeclarationValueToken(
         }
       : undefined;
   }
-  return structuralScannerNativeLiteralValueToken(plan.document, owner);
+  return structuralScannerNativeDeclarationValueToken(plan.document, owner);
 }
 
 function structuralScannerNativeLiteralValueToken(
@@ -1172,11 +1172,44 @@ function structuralScannerNativeLiteralValueToken(
   if (!match) {
     return undefined;
   }
+  return scannerNativeLiteralValueTokenFromMatch(valueText, range.start, range.end, match);
+}
+
+function structuralScannerNativeDeclarationValueToken(
+  document: StructuralDocument,
+  owner: StructuralStatementNode
+): ScannerNativeValueToken | undefined {
+  const range = structuralFieldRange(document, owner, 'value', 'value');
+  if (!range) {
+    return undefined;
+  }
+  const valueText = document.source.text.slice(range.start, range.end);
+  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
+  if (literalMatch) {
+    return scannerNativeLiteralValueTokenFromMatch(valueText, range.start, range.end, literalMatch);
+  }
+  if (!SIMPLE_FLAT_VALUE_PATTERN.test(valueText)) {
+    return undefined;
+  }
   return {
-    kind: scannerNativeValueKind(match),
+    kind: 'flat-literal-list',
     start: range.start,
     end: range.end,
     text: valueText
+  };
+}
+
+function scannerNativeLiteralValueTokenFromMatch(
+  text: string,
+  start: number,
+  end: number,
+  match: RegExpExecArray
+): ScannerNativeValueToken {
+  return {
+    kind: scannerNativeValueKind(match),
+    start,
+    end,
+    text
   };
 }
 
@@ -1236,6 +1269,8 @@ const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
+const SIMPLE_FLAT_VALUE_PATTERN =
+  /^(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*)(?:[ \t]+(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[a-zA-Z_][\w-]*))*$/u;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
   /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)$/u;
 

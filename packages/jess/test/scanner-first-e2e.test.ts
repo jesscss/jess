@@ -630,6 +630,50 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
+  it('feeds flat literal declaration values through structural parse without value materialization', async () => {
+    const cases = [
+      { property: 'border', value: '1px solid red' },
+      { property: 'box-shadow', value: '0 1px #000' },
+      { property: 'font', value: '16px serif' }
+    ];
+
+    for (const { property, value } of cases) {
+      const source = `.a { ${property}: ${value}; }\n`;
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(`${property}: ${value}`);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/flat-value.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('(Ruleset');
+      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain(`rawName: '${property}'`);
+      expect(types).toContain(`['${value}']`);
+      expect(types).not.toContain('valueNode: (Sequence');
+      expect(types).not.toContain('valueNode: (List');
+      expect(types).not.toContain('valueNode: (Any');
+    }
+  });
+
   it('feeds adjacent compound selectors through structural parse', async () => {
     const cases = ['.a.b', 'button.primary', '.-utility.active'];
 
