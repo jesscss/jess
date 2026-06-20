@@ -408,6 +408,7 @@ export class LessPlugin extends AbstractPlugin {
         && child.kind !== 'at-rule-statement'
         && child.kind !== 'import'
         && child.kind !== 'mixin-definition'
+        && child.kind !== 'mixin-call'
         && child.kind !== 'variable-declaration'
       ) {
         return fallback(`unsupported root node ${child.kind}`);
@@ -446,6 +447,15 @@ export class LessPlugin extends AbstractPlugin {
       }
       if (child.kind === 'mixin-definition') {
         const result = buildStructuralFedMixinDefinition(plan, child, ownerIslands, context, variables, this.mathMode);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        progressiveNodes += result.progressiveNodes ?? 0;
+        continue;
+      }
+      if (child.kind === 'mixin-call') {
+        const result = buildStructuralFedMixinCall(plan, child, context);
         if ('reason' in result) {
           return fallback(result.reason);
         }
