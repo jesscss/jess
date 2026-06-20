@@ -5,7 +5,7 @@ still render, evaluate, and JIT-parse correctly. These are targets, not frozen
 AST contracts. The preferred implementation direction is progressively enhanced
 core nodes: normal `Ruleset`, `Declaration`, `AtRule`, and rules-container nodes
 start with raw field payloads and stable source identity, then parse/cache richer
-field nodes only when demanded.
+field payloads only when demanded.
 
 Each target separates:
 
@@ -25,24 +25,32 @@ The pseudo-types below are a compact way to write expected corpus facts. They
 are not implementation interfaces and should not force a separate structural
 runtime node layer. Automated cases may assert equivalent facts on progressive
 core nodes with different property names, enum names, or source-identity
-storage.
+storage. `StructuralDeclaration` mirrors the first implementation candidate,
+but `StructuralRule` is only a shorthand for "an existing core node once that
+body segment has been promoted." Fields like `selector`, `prelude`, `sourceRef`,
+and `valueKind` are assertion facts/placeholders until the matching core-node
+prototype proves its storage. String literals in examples may be represented by
+cheap offset-backed segments instead of eager strings.
 
 ```ts
 type SourceRef = unknown; // final storage deliberately unspecified
+type RawSegment = { start: number; end: number; kind: string }; // illustrative
+type Node = unknown; // existing core node when a segment is already parsed
+type Interpolated = unknown; // existing core interpolated name/value node
 
 type StructuralRuleset = {
   kind: 'ruleset';
-  selectorRaw: string;
+  selector: string;
   selectorKind: 'simple' | 'compound' | 'list' | 'complex' | 'unknown';
   sourceRef: SourceRef;
-  rules: StructuralRule[];
+  rules: (RawSegment | string | StructuralRule)[];
 };
 
 type StructuralDeclaration = {
   kind: 'declaration';
-  nameRaw: string;
+  name: string | Interpolated;
   nameKind: 'property' | 'custom-property' | 'less-variable' | 'interpolated';
-  valueRaw: string;
+  value: (RawSegment | string | Node)[];
   valueKind:
     | 'literal'
     | 'reference'
@@ -50,22 +58,23 @@ type StructuralDeclaration = {
     | 'function-call'
     | 'custom-property-raw'
     | 'unknown';
+  important: boolean;
   sourceRef: SourceRef;
 };
 
 type StructuralAtRule = {
   kind: 'at-rule';
-  nameRaw: string;
-  preludeRaw: string;
+  name: string;
+  prelude: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
   sourceRef: SourceRef;
-  rules: StructuralRule[];
+  rules: (RawSegment | string | StructuralRule)[];
 };
 
 type StructuralAtRuleStatement = {
   kind: 'at-rule-statement';
-  nameRaw: string;
-  preludeRaw: string;
+  name: string;
+  prelude: string;
   preludeKind: 'literal' | 'query' | 'reference' | 'unknown';
   sourceRef: SourceRef;
 };
@@ -89,13 +98,13 @@ type StructuralRule =
 
 ```ts
 Ruleset {
-  selectorRaw: ".a",
+  selector: ".a",
   selectorKind: "simple",
   rules: [
     Declaration {
-      nameRaw: "color",
+      name: "color",
       nameKind: "property",
-      valueRaw: "blue",
+      value: ["blue"],
       valueKind: "literal"
     }
   ]
@@ -120,11 +129,11 @@ Target structure:
 
 ```ts
 Ruleset {
-  selectorRaw: ".a",
+  selector: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { nameRaw: "width", valueRaw: "1px", valueKind: "literal" },
-    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" }
+    Declaration { name: "width", value: ["1px"], valueKind: "literal" },
+    Declaration { name: "color", value: ["blue"], valueKind: "literal" }
   ]
 }
 ```
@@ -152,15 +161,15 @@ string. Do not build selector ASTs merely because nesting exists.
 
 ```ts
 Ruleset {
-  selectorRaw: ".a",
+  selector: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" },
+    Declaration { name: "color", value: ["blue"], valueKind: "literal" },
     Ruleset {
-      selectorRaw: ".b",
+      selector: ".b",
       selectorKind: "simple",
       rules: [
-        Declaration { nameRaw: "width", valueRaw: "1px", valueKind: "literal" }
+        Declaration { name: "width", value: ["1px"], valueKind: "literal" }
       ]
     }
   ]
@@ -187,10 +196,10 @@ Target structure:
 
 ```ts
 Ruleset {
-  selectorRaw: ".a, .b",
+  selector: ".a, .b",
   selectorKind: "list",
   rules: [
-    Declaration { nameRaw: "color", valueRaw: "blue", valueKind: "literal" }
+    Declaration { name: "color", value: ["blue"], valueKind: "literal" }
   ]
 }
 ```
@@ -250,7 +259,7 @@ prototype may still fall back where trivia/raw-value preservation is not proven.
 }
 ```
 
-Target structure: `AtRule { nameRaw: "@media", preludeRaw: "screen", rules: [...] }`.
+Target structure: `AtRule { name: "@media", prelude: "screen", rules: [...] }`.
 Prelude stays a string with `preludeKind: "literal"` until query semantics are
 needed.
 
@@ -293,9 +302,9 @@ Target structure:
 
 ```ts
 Declaration {
-  nameRaw: "@brand",
+  name: "@brand",
   nameKind: "less-variable",
-  valueRaw: "blue",
+  value: ["blue"],
   valueKind: "literal"
 }
 ```
@@ -316,8 +325,9 @@ surface for literal values.
 .a { color: @brand; }
 ```
 
-Target structure: declaration value `@brand` should remain a string with
-`valueKind: "reference"`; it should not eagerly become a full value AST.
+Target structure: declaration value `@brand` should remain a single string
+segment with `valueKind: "reference"`; it should not eagerly become a full
+value AST.
 
 Direct behavior: eval needs a cheap reference lookup against structural
 variable bindings. If the referenced value is literal, render the literal
@@ -344,11 +354,11 @@ Target structure:
 
 ```ts
 Ruleset {
-  selectorRaw: ".a",
+  selector: ".a",
   selectorKind: "simple",
   rules: [
-    Declaration { nameRaw: "color", valueRaw: "@brand", valueKind: "reference" },
-    Declaration { nameRaw: "@brand", valueRaw: "blue", valueKind: "literal" }
+    Declaration { name: "color", value: ["@brand"], valueKind: "reference" },
+    Declaration { name: "@brand", value: ["blue"], valueKind: "literal" }
   ]
 }
 ```
@@ -371,7 +381,8 @@ Current status: not complete.
 .a { width: @gap + 2px; }
 ```
 
-Target structure: value string `@gap + 2px` with `valueKind: "expression"`.
+Target structure: value segment list `["@gap + 2px"]` with
+`valueKind: "expression"`.
 
 Direct behavior: cannot render as raw string because Less arithmetic changes
 output. Eval should JIT-parse this value field only when evaluating the
@@ -388,7 +399,8 @@ Current status: canonical fallback.
 .a { color: lighten(@brand, 10%); }
 ```
 
-Target structure: value string with `valueKind: "function-call"`.
+Target structure: value segment list with one function-call string segment and
+`valueKind: "function-call"`.
 
 Direct behavior: no direct render; evaluating the value demands JIT parsing
 only that value field and its argument substructure.
@@ -432,7 +444,7 @@ Target structure: ruleset selector string includes an extend marker and is
 classified as needing selector semantics. Do not parse unrelated declaration
 values just because extend exists.
 
-Direct behavior: declaration bodies remain raw-field nodes. Extend graph
+Direct behavior: declaration bodies remain raw-field payloads. Extend graph
 construction JIT-parses only selector fields participating in extend and caches
 those parsed selectors on their owning rulesets.
 
@@ -452,8 +464,8 @@ Target structure:
 
 ```ts
 AtRuleStatement {
-  nameRaw: "@import",
-  preludeRaw: "\"tokens.less\"",
+  name: "@import",
+  prelude: "\"tokens.less\"",
   preludeKind: "literal"
 }
 ```
@@ -484,8 +496,10 @@ otherwise produce no concrete selector. It should not become a synthetic ruleset
 that later serializes `&`.
 
 Direct behavior: create scope isolation and evaluate child raw-field rules in
-that scope. The block itself should not serialize braces when emitted directly
-as a rules-container node.
+that scope. Its `.rules` body may start as a mixed raw-segment/string/node
+stream at structural parse time, promoting only demanded body segments. The
+block itself should not serialize braces when emitted directly as a
+rules-container node.
 
 JIT triggers: non-trivial parent selector merging, guarded/control semantics,
 or visitor access to a typed selector node for the original `&` text.
@@ -502,12 +516,14 @@ distinct from ordinary selector rulesets.
 }
 ```
 
-Target structure: a direct `Rules`/rules-container block with a child rule list,
+Target structure: a direct `Rules`/rules-container block with a thin body stream,
 not a synthetic `&` selector and not a nested wrapper node inside `.rules`.
 
 Direct behavior: create scope isolation and evaluate child raw-field rules in
-that scope. The block itself should not serialize braces when emitted directly
-as a rules-container node.
+that scope. Its `.rules` body may be a raw-segment/string/node stream during
+structural parsing; raw body segments are promoted only when a stage demands
+node semantics. The block itself should not serialize braces when emitted
+directly as a rules-container node.
 
 JIT triggers: guard/control semantics if the same body form is later attached to
 `$if`, `$when`, loops, or mixins.
@@ -523,8 +539,17 @@ Before a target graduates into an automated structure corpus case:
   identity availability, not the exact source-identity representation;
 - assert no legacy parser execution during the structural parse;
 - assert no field-level JIT parse until the target's listed trigger is invoked;
+- assert raw field/body segments can be stored as cheap offset-backed records
+  into the source, with eager strings allowed only when measurement supports
+  them;
+- assert raw `.rules` segments preserve ordering, source identity, and renderable
+  boundaries without reparsing adjacent body text merely so traversal can walk
+  the body;
 - assert triggered JIT parsing caches onto the owning core node and does not
   create repeated adapter-owned core subtrees for the same field/cache key;
+- assert segment promotion replaces or annotates only the demanded field/body
+  segment on the owning node; rebuilding whole `value` or `.rules` arrays must
+  be measured and justified before it is accepted as the default strategy;
 - when direct render/eval is claimed, compare CSS output to the current compiler
   or upstream expected CSS;
 - when fallback is expected, record the fallback reason as part of the case.

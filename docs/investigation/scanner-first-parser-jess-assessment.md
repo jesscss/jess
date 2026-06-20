@@ -36,6 +36,13 @@ implementation plan should include a deliberate audit of where existing
 single-payload node fields can collapse back to `.value` without breaking
 user-visible behavior.
 
+The same rule applies to rules-container bodies. `Rules.rules` is a justified
+role name because rules containers have a distinct body role, but at structural
+parse time that body can still be thin: a mixed raw-segment/string/node stream
+is a valid target when raw spans can render or defer work without creating child
+nodes. Promotion from raw segment to node should happen only for the specific
+body segment demanded by eval/render/visitor/plugin behavior.
+
 The best near-term shape is staged:
 
 ```text
@@ -157,6 +164,14 @@ Compiler-facing island executors should return current core AST nodes when a
 compile stage demands them. The structural island APIs themselves should stay
 core-blind and should not create a second permanent AST type that drifts from
 `@jesscss/core`.
+
+The cheapest value segment does not have to be an eager JavaScript string. The
+first implementation should evaluate a tiny offset-backed segment record for
+each raw value/body span, for example `{ start, end, kind }` plus access to the
+owning source. Rendering can write from offsets, diagnostics can ask the lazy
+line map for human positions, and JIT parsing can slice only the demanded span.
+If eager strings are faster in measurement, that is fine, but the default design
+should not assume a string allocation per value segment is free.
 
 ### 3. Shared scanner/token classification
 
@@ -281,9 +296,11 @@ and runtime work because it adds one more object and one more parent boundary
 around a block body. The alternative to investigate is making `Rules` a base
 class or shared superclass for rule-container behavior. In that model,
 `Ruleset`, `AtRule`, and `Mixin` can inherit rules-container behavior and own
-`rules: Node[]` directly as their body array, instead of owning `rules: Rules`.
-That keeps `.rules` as the meaningful semantic body field on multi-role nodes,
-but removes the nested wrapper node.
+`.rules` directly as their body stream, instead of owning `rules: Rules`. At
+structural parse time that stream may contain raw offset-backed segments,
+strings, and promoted nodes; it should not be forced into `Node[]` just so
+traversal can walk it. That keeps `.rules` as the meaningful semantic body field
+on multi-role nodes, but removes the nested wrapper node.
 
 `Rules` should also be understood as a transparent body surface, not as
 "whatever prints braces." A stylesheet-root `Rules` serializes as a document.
@@ -297,14 +314,14 @@ wrapper whose only job is to print `{}`.
 
 In that model:
 
-- `Ruleset.rules` is a `Node[]` body array inherited from the `Rules` base
+- `Ruleset.rules` is a progressive body stream inherited from the `Rules` base
   behavior, while selector and guard remain separate role fields.
   `AtRuleStatement` owns statement-form at-rules such as `@charset` and
   `@import`; block-bearing `AtRule` inherits from `Rules` and owns
-  `rules: Node[]`.
-- `Mixin.rules` is a `Node[]` body array, while name/params/guard remain
+  the same progressive body stream.
+- `Mixin.rules` is a progressive body stream, while name/params/guard remain
   separate role fields.
-- `If`, `For`, and `While` inherit from `Rules` for their active body arrays.
+- `If`, `For`, and `While` inherit from `Rules` for their active body streams.
   `If.rules` is the then-body array; `If.else` is an optional alternate
   execution surface (`If` for else-if chains, plain `Rules` for final else).
   There should be no separate `IfBranch`/branch-wrapper AST node.
@@ -1731,60 +1748,73 @@ prelude objects only when a compile stage demands them.
 
 ```ts
 Ruleset {
-  selectorRaw: ".a",
-  selector: unparsed,
+  selector: ".a",
   rules: [
     Declaration {
-      nameRaw: "foo",
-      valueRaw: "bar",
-      name: unparsed,
-      value: unparsed
+      name: "foo",
+      value: ["bar"],
+      important: false
     }
   ],
   source: sourceRef
 }
 ```
 
-For the cheapest path, render can write `selectorRaw`, `nameRaw`, `valueRaw`,
-and simple at-rule preludes directly. Eval can treat literal values as scalar
-payloads without manufacturing `Any` wrappers until a feature needs node
-semantics. A field should JIT-parse only when demanded by a feature that needs
-richer meaning: variable/reference resolution, arithmetic, function calls,
-selector nesting/ampersand resolution, `:extend()`, interpolation, plugin/
-visitor access to typed selector/value nodes, detailed diagnostics, or source
-map detail beyond the stored source identity. Put differently: scanner-first
-does not mean "create cheaper core AST nodes sooner"; it means "let the core
-node itself start raw and progressively enhance its fields."
+For declarations, the candidate cheap shape is thinner than separate raw and
+parsed slots:
 
-The progressive fields should be single-owner caches, not adapter outputs:
+```ts
+interface Declaration {
+  name: string | Interpolated;
+  value: (RawSegment | string | Node)[];
+  important: boolean;
+}
+```
+
+For the cheapest path, render can write selector strings or ranges, declaration
+name strings or ranges, declaration value segments, and simple at-rule preludes
+directly. Eval can treat literal raw segments as scalar payloads without
+manufacturing `Any` wrappers until a feature needs node semantics. A field or
+segment should JIT-parse only when demanded by a feature that needs richer
+meaning: variable/reference resolution, arithmetic, function calls, selector
+nesting/ampersand resolution, `:extend()`, interpolation, plugin/visitor access
+to typed selector/value nodes, detailed diagnostics, or source map detail beyond
+the stored source identity. Put differently: scanner-first does not mean
+"create cheaper core AST nodes sooner"; it means "let the core node itself
+start raw and progressively enhance its fields."
+
+The progressive fields should be single-owner caches, not adapter outputs.
+When a segment is parsed, the parsed node replaces or annotates that segment on
+the same declaration:
 
 ```ts
 Declaration {
-  nameRaw: "color",
-  valueRaw: "@brand",
-  parsedName?: Any<"property">,
-  parsedValue?: Reference | Node,
+  name: "color",
+  value: [Reference("@brand")],
   valueKind: "reference",
   source: sourceRef
 }
 ```
 
-Accessors or stage helpers can expose `getParsedValue()` / `ensureValueNode()`,
-but ordinary rendering and structural indexing should not call them. When a
-field is parsed, the parsed node is attached to the same declaration, so later
-visitors, eval stages, and diagnostics reuse it instead of allocating a parallel
-core subtree each time.
+Accessors or stage helpers can expose `getParsedValueSegment()` /
+`ensureValueNode()`, but ordinary rendering and structural indexing should not
+call them. When a segment is parsed, the parsed node is attached to the same
+declaration, so later visitors, eval stages, and diagnostics reuse it instead
+of allocating a parallel core subtree each time.
 
 Parsed-field caches must be keyed by the source version, field range, language
 configuration, and target semantic shape. A field should parse at most once for
 that cache key; source edits or parser-configuration changes invalidate the
 cached enhancement instead of leaving stale parsed nodes attached to raw text.
 
-Do not take `source`, `sourceRef`, `selectorRaw`, or `valueRaw` as fixed field
-names. The requirement is stable source identity and raw field payloads for the
-cheap path; the storage may be per-node offsets, a packed range table, field
-metadata, interned text slices, or another lower-allocation representation after
-measurement.
+Do not take `source`, `sourceRef`, `selector`, `value`, or `valueKind` as fixed
+field names. The requirement is stable source identity and raw-or-parsed field
+payloads for the cheap path; the storage may be per-node offsets, a packed range
+table, field metadata, interned text slices, or another lower-allocation
+representation after measurement. The `Declaration { name, value, important }`
+shape is the first implementation candidate; other names in examples are
+assertion vocabulary until each corresponding core node prototype proves its
+storage.
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default
@@ -1811,15 +1841,19 @@ measurement.
   - Current decision: `List`, `Sequence`, and selector collection nodes already
     use `.value`/`childKeys = ['value']`; old `items`/`components` names are
     not reintroduced. `Rules.rules` remains the semantic body contract for
-    rules-bearing containers. `Declaration.valueNode` is not collapsed in this
-    slice because `Declaration.value` is the full `{ name, value, important }`
-    payload; collapsing it would require a broader DeclarationValue redesign,
-    not a scanner-first provider change.
+    rules-bearing containers, and scanner-first structural parsing may make
+    that body a mixed raw-or-node segment stream before later promotion.
+    `Declaration.valueNode` is not sacred: the next prototype should evaluate
+    `Declaration { name, value: (RawSegment | string | Node)[], important }` as
+    the cheap progressive shape instead of preserving the old
+    full-payload/value-node split.
 - [x] Prototype a `Rules` wrapper reduction design: determine whether nested
   `Ruleset`/`AtRule`/`Mixin` can inherit rules-container behavior so their
-  `.rules` field is a `Node[]` body array instead of a nested `Rules` node,
-  while preserving scope frames, lookup, extend, import/reference boundaries,
-  render ordering, and parent/source ownership.
+  `.rules` field is the inherited body surface instead of a nested `Rules` node.
+  The body may be a progressive raw-segment/string/node stream at structural
+  parse time and should promote only demanded segments while preserving scope
+  frames, lookup, extend, import/reference boundaries, render ordering, and
+  parent/source ownership.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
   scanner-native materialization, selected-island adapter parsing, fallback
   full-tree parsing, or the existing parser path.
@@ -1853,13 +1887,14 @@ measurement.
 - [x] Seed structure-target examples for CSS/Less so minimal structural shape
   can be reasoned about before implementing more JIT parsing.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
-  nodes that carry raw selector/name/value/prelude payloads plus stable source
-  identity, render/evaluate simple fields directly, and JIT-parse individual
-  fields onto the same node only when eval/render/visitor/plugin behavior
-  requires richer semantics.
+  nodes that carry raw-or-parsed selector/name/value/prelude payloads plus
+  stable source identity, render/evaluate simple raw segments directly, and
+  JIT-parse individual fields/segments onto the same node only when
+  eval/render/visitor/plugin behavior requires richer semantics.
 - [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
-  parse `.a { color: blue; }` into normal core nodes with raw selector/name/value
-  slots, render from those slots, and assert no selector/value child nodes are
+  parse `.a { color: blue; }` into normal core nodes with a selector string and
+  declaration `{ name: "color", value: ["blue"], important: false }`, render
+  from those string segments, and assert no selector/value child nodes are
   created until a typed accessor or richer feature requests them.
 - [ ] Structural-fed prototype: add scanner-native Less variable-reference
   materialization so plain Less variable declarations and reads can run without
@@ -1996,7 +2031,8 @@ Current broad-parser gate snapshot, 2026-06-20:
   including plugin-owned structural activation and island-plan wiring.
 - `pnpm vitest run packages/core/src/__tests__/jess-error.test.ts
   packages/jess/test/scanner-first-e2e.test.ts` passes, including the
-  structural-fed prototype path after the `Ruleset.rules: Node[]` migration.
+  structural-fed prototype path after the current `Ruleset.rules` body-array
+  migration.
 
 ### Slice 9b: SCSS And Jess Island Provider Entrypoints
 
