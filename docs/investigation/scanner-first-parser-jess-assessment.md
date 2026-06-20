@@ -1807,6 +1807,8 @@ visitor APIs.
   reaches them.
 - [ ] Ensure structural-only consumers use `StructuralDocument`, not
   `Node.accept`.
+- [x] Guard plugin structural activation paths so plugin-level structural-only
+  queries use `StructuralDocument` and prove zero island materialization.
 - [x] Test `@jesscss/plugin-less` structural activation through the plugin
   extension binding and island parse plan.
 - [x] Add JSDoc for plugin activation helpers and why `safeParse` remains the
