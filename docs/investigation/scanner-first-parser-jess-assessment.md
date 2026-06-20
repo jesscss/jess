@@ -1910,11 +1910,11 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, simple literal
-  declaration value, simple root `@media` prelude, and simple already-seen Less
-  variable declaration/reference token detection with zero legacy island parser
-  executions. Hoisted/lazy variable references, nested block at-rules, and
-  other block at-rule families remain canonical fallbacks until their
-  progressive materializers are proven.
+  declaration value, simple root or ruleset-local `@media` prelude/body shape,
+  and simple already-seen Less variable declaration/reference token detection
+  with zero legacy island parser executions. Hoisted/lazy variable references,
+  non-`@media` block at-rule families, and richer nested at-rule bodies remain
+  canonical fallbacks until their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -1945,7 +1945,8 @@ storage.
     claiming Less lazy/hoisted variable semantics.
   - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
-    and raw-field core `AtRule` nodes for covered root `@media` success cases.
+    and raw-field core `AtRule` nodes for covered root and ruleset-local
+    `@media` success cases.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
   - Current limit: invisible progressive bookkeeping nodes are proven for

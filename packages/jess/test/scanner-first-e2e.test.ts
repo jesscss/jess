@@ -878,7 +878,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
-  it('falls back for nested block at-rules until progressive at-rule bodies are proven', async () => {
+  it('feeds nested @media blocks with ordinary declarations through structural parse', async () => {
     const source = '.a { @media screen { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -892,17 +892,69 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     expect(rendered).toBe(baseline);
     expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('.a');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'block at-rules are not in the progressive structural-fed subset',
-      fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
     expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-media.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'screen\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(ProgressiveAtRule');
+    expect(types).not.toContain('name: (Any \'@media\')');
+    expect(types).not.toContain('prelude: (Any \'screen\')');
+  });
+
+  it('falls back for richer nested @media bodies until those shapes are proven', async () => {
+    const cases = [
+      {
+        source: '.a { @media screen { @media print { color: blue; } } }\n',
+        reason: 'unsupported at-rule child at-rule'
+      },
+      {
+        source: '.a { @media screen { @brand: blue; color: @brand; } }\n',
+        reason: 'unsupported at-rule child variable-declaration'
+      },
+      {
+        source: '.a { @media screen { .b { color: blue; } } }\n',
+        reason: 'unsupported at-rule child rule'
+      }
+    ];
+
+    for (const { source, reason } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+    }
   });
 
   it('falls back canonically for unproven block at-rule families', async () => {

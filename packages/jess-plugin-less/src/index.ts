@@ -370,11 +370,11 @@ export class LessPlugin extends AbstractPlugin {
         continue;
       }
       if (child.kind === 'at-rule') {
-        const eligibilityReason = validateStructuralFedAtRule(plan.document, child, variables);
+        const eligibilityReason = validateStructuralFedAtRule(plan.document, child, variables, 'root');
         if (eligibilityReason) {
           return fallback(eligibilityReason);
         }
-        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables);
+        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, 'root');
         if ('reason' in result) {
           return fallback(result.reason);
         }
@@ -784,32 +784,19 @@ function validateStructuralFedRule(
       continue;
     }
     if (child.kind === 'at-rule') {
-      return 'block at-rules are not in the progressive structural-fed subset';
+      const atRuleReason = validateStructuralFedAtRule(document, child, localVariables, 'rule');
+      if (atRuleReason) {
+        return atRuleReason;
+      }
+      continue;
     }
     if (child.kind !== 'declaration') {
       return `unsupported rule child ${child.kind}`;
     }
 
-    const name = structuralFieldText(document, child, 'name', 'declaration-name');
-    const valueText = structuralFieldText(document, child, 'value', 'value');
-    if (name === undefined || valueText === undefined) {
-      return 'declaration metadata is missing from structural field table';
-    }
-    const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
-    if (!isPlainStructuralFedDeclarationName(name)) {
-      return 'declaration name is outside the first structural-fed subset';
-    }
-    if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
-      return 'declaration assignment is outside the first structural-fed subset';
-    }
-    if (MULTILINE_VALUE_PATTERN.test(valueText)) {
-      return 'multiline declaration values are not in the first structural-fed subset';
-    }
-    if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
-      return 'important declarations are not in the first structural-fed subset';
-    }
-    if (looksLikeSimpleVariableReference(valueText) && !localVariables.has(valueText)) {
-      return 'Less variable reference is outside the scanner-native structural-fed subset';
+    const declarationReason = validateStructuralFedDeclaration(document, child, localVariables);
+    if (declarationReason) {
+      return declarationReason;
     }
   }
   return undefined;
@@ -818,7 +805,8 @@ function validateStructuralFedRule(
 function validateStructuralFedAtRule(
   document: StructuralDocument,
   atRule: StructuralContainerNode,
-  variables: ReadonlyMap<string, ScannerNativeValueToken>
+  variables: ReadonlyMap<string, ScannerNativeValueToken>,
+  parentKind: 'root' | 'rule' | 'at-rule'
 ): string | undefined {
   const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
   if (name !== '@media') {
@@ -832,12 +820,22 @@ function validateStructuralFedAtRule(
     return 'multiline at-rule preludes are not in the progressive structural-fed subset';
   }
   for (const child of atRule.children) {
-    if (child.kind !== 'rule') {
+    if (child.kind === 'rule') {
+      if (parentKind !== 'root') {
+        return `unsupported at-rule child ${child.kind}`;
+      }
+      const reason = validateStructuralFedRule(document, child, variables);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
+    if (parentKind === 'root' || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
-    const reason = validateStructuralFedRule(document, child, variables);
-    if (reason) {
-      return reason;
+    const declarationReason = validateStructuralFedDeclaration(document, child, variables);
+    if (declarationReason) {
+      return declarationReason;
     }
   }
   return undefined;
@@ -885,7 +883,8 @@ function buildStructuralFedAtRule(
   atRule: StructuralContainerNode,
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext,
-  variables: ReadonlyMap<string, ScannerNativeValueToken>
+  variables: ReadonlyMap<string, ScannerNativeValueToken>,
+  parentKind: 'root' | 'rule' | 'at-rule'
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
   if (name !== '@media') {
@@ -903,10 +902,22 @@ function buildStructuralFedAtRule(
   const rules: Node[] = [];
   let progressiveNodes = 1;
   for (const child of atRule.children) {
-    if (child.kind !== 'rule') {
+    if (child.kind === 'rule') {
+      if (parentKind !== 'root') {
+        return { reason: `unsupported at-rule child ${child.kind}` };
+      }
+      const builtChild = buildStructuralFedRuleset(plan, child, ownerIslands, context, variables);
+      if ('reason' in builtChild) {
+        return builtChild;
+      }
+      rules.push(builtChild.node);
+      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      continue;
+    }
+    if (parentKind === 'root' || child.kind !== 'declaration') {
       return { reason: `unsupported at-rule child ${child.kind}` };
     }
-    const builtChild = buildStructuralFedRuleset(plan, child, ownerIslands, context, variables);
+    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables);
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -936,7 +947,10 @@ function buildStructuralFedRuleChild(
     return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables);
   }
   if (child.kind === 'at-rule') {
-    return { reason: 'block at-rules are not in the progressive structural-fed subset' };
+    if (parentKind === 'at-rule') {
+      return { reason: `unsupported ${parentKind} child ${child.kind}` };
+    }
+    return buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, parentKind);
   }
   if (child.kind === 'variable-declaration') {
     return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
@@ -945,6 +959,35 @@ function buildStructuralFedRuleChild(
     return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables);
   }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
+}
+
+function validateStructuralFedDeclaration(
+  document: StructuralDocument,
+  child: StructuralStatementNode,
+  variables: ReadonlyMap<string, ScannerNativeValueToken>
+): string | undefined {
+  const name = structuralFieldText(document, child, 'name', 'declaration-name');
+  const valueText = structuralFieldText(document, child, 'value', 'value');
+  if (name === undefined || valueText === undefined) {
+    return 'declaration metadata is missing from structural field table';
+  }
+  const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
+  if (!isPlainStructuralFedDeclarationName(name)) {
+    return 'declaration name is outside the first structural-fed subset';
+  }
+  if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
+    return 'declaration assignment is outside the first structural-fed subset';
+  }
+  if (MULTILINE_VALUE_PATTERN.test(valueText)) {
+    return 'multiline declaration values are not in the first structural-fed subset';
+  }
+  if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+    return 'important declarations are not in the first structural-fed subset';
+  }
+  if (looksLikeSimpleVariableReference(valueText) && !variables.has(valueText)) {
+    return 'Less variable reference is outside the scanner-native structural-fed subset';
+  }
+  return undefined;
 }
 
 function buildStructuralFedDeclaration(
