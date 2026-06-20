@@ -111,11 +111,12 @@ with `--no-verify` after the explicit gates pass.
   and declaration value payloads without allocating canonical header/selector/
   value child nodes on the direct render path. Semantic registration/eval
   materializes only the currently proven scanner-native at-rule header storage,
-  simple selector subset (`*`, tag, `.class`, `#id`), and declaration parts on
-  demand. The current Less structural-fed emitter uses raw core `AtRule` for
-  root `@media` and ruleset-local `@media` with scanner-native declaration
-  bodies; nested block at-rule families outside that shape remain outside this
-  proof and still require materializers or canonical fallback.
+  simple selector subset (`*`, tag, `.class`, `#id`), adjacent basic compound
+  selector subset, and declaration parts on demand. The current Less
+  structural-fed emitter uses raw core `AtRule` for root `@media` and
+  ruleset-local `@media` with scanner-native declaration bodies; nested block
+  at-rule families outside that shape remain outside this proof and still
+  require materializers or canonical fallback.
 - New traversal: `packages/core/src/tree/declaration.ts`
   `Declaration.writeRawDeclarationSyntax(...)` loops over
   `rawValueSegments`. This is bounded to the raw segment count and replaces
@@ -124,19 +125,26 @@ with `--no-verify` after the explicit gates pass.
   segments only when semantic registration needs to turn mixed raw segments into
   a reachable canonical value container. `Ruleset.materializeRawSelectorForSemantics(...)`
   performs no traversal; it validates and materializes one raw simple selector
-  string at registration/eval boundaries. `AtRule.materializeRawHeaderForSemantics(...)`
-  performs no traversal; it materializes one raw at-rule name and optional raw
-  prelude string at registration/eval boundaries.
+  string or adjacent basic compound selector at registration/eval boundaries.
+  Compound selector materialization runs `splitRawCompoundSelector(...)` over the
+  raw selector string and then loops over the returned parts only when semantics
+  are requested; direct raw render does not enter either loop.
+  `AtRule.materializeRawHeaderForSemantics(...)` performs no traversal; it
+  materializes one raw at-rule name and optional raw prelude string at
+  registration/eval boundaries.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Focused tests add
   normal `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
-  constructs one `BasicSelector` only when a raw ruleset crosses into
-  semantic registration/eval; direct raw render keeps `selector` undefined and
-  uses `rawSelector`. `packages/core/src/tree/at-rule.ts` constructs `Any`
-  header nodes only when a raw at-rule crosses into semantic registration/eval;
-  direct raw render keeps `name` / `prelude` undefined and uses `rawName` /
-  `rawPrelude`.
+  constructs one `BasicSelector` for simple raw selectors, or a `CompoundSelector`
+  plus `BasicSelector` parts for adjacent basic compound raw selectors, only
+  when a raw ruleset crosses into semantic registration/eval; direct raw render
+  keeps `selector` undefined and uses `rawSelector`. The temporary `parts` and
+  `components` arrays exist only inside that cold semantic materialization
+  boundary and are not used to stringify. `packages/core/src/tree/at-rule.ts`
+  constructs `Any` header nodes only when a raw at-rule crosses into semantic
+  registration/eval; direct raw render keeps `name` / `prelude` undefined and
+  uses `rawName` / `rawPrelude`.
 - Review-flagged array helper: `segments.map(...)` appears only in the semantic
   materialization fallback for mixed raw string/Node segments, where it creates
   the reachable canonical sequence payload. Direct raw render does not use this

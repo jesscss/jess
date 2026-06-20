@@ -1909,12 +1909,14 @@ storage.
 - [x] Structural-fed prototype: use structural results and scanner-native
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
-- [x] Structural-fed prototype: support simple selector, simple literal
-  declaration value, simple root or ruleset-local `@media` prelude/body shape,
-  and simple already-seen Less variable declaration/reference token detection
-  with zero legacy island parser executions. Hoisted/lazy variable references,
-  non-`@media` block at-rule families, and richer nested at-rule bodies remain
-  canonical fallbacks until their progressive materializers are proven.
+- [x] Structural-fed prototype: support simple selector, adjacent basic compound
+  selector, simple literal declaration value, simple root or ruleset-local
+  `@media` prelude/body shape, and simple already-seen Less variable
+  declaration/reference token detection with zero legacy island parser
+  executions. Hoisted/lazy variable references, non-`@media` block at-rule
+  families, complex/list/interpolated selectors, and richer nested at-rule
+  bodies remain canonical fallbacks until their progressive materializers are
+  proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -1984,6 +1986,10 @@ storage.
     Less prototype now emits those raw core `Ruleset` nodes for covered
     ordinary rules, and e2e tests assert the raw selector/declaration shape
     before semantic materialization.
+  - [x] Extended that raw-field `Ruleset` proof to adjacent basic compound
+    selectors such as `.a.b` and `button.primary`: direct render still uses the
+    raw selector string, while semantic registration/eval materializes a
+    canonical `CompoundSelector` containing `BasicSelector` parts only on demand.
   - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
     constructor can store raw scanner-native at-keyword/prelude strings, renders
     and serializes them as `rawName` / `rawPrelude` without canonical header
@@ -2000,10 +2006,10 @@ storage.
     reachable sequence container. Rich mixed segment semantics still need a
     broader segment-to-node policy before they can be used as a broad eval path.
   - Current limit: raw `Ruleset` semantic materialization only covers the
-    scanner-native simple selector subset (`*`, tag, `.class`, `#id`). Compound,
-    complex, list, interpolated, nested, and `:extend()` selectors still need a
-    real selector materializer or canonical fallback before they count as
-    completed scanner-first selector support.
+    scanner-native simple selector subset (`*`, tag, `.class`, `#id`) plus
+    adjacent basic compound selectors. Complex, list, interpolated, nested, and
+    `:extend()` selectors still need a real selector materializer or canonical
+    fallback before they count as completed scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain already-seen Less variable declarations and reads
   so they can run without canonical fallback.

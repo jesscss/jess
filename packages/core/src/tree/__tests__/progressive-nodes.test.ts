@@ -383,11 +383,56 @@ describe('progressive scanner-first proof nodes', () => {
     expect(serializeTypes(node)).not.toContain('rawSelector');
   });
 
+  test('materializes raw-field compound ruleset selectors only when semantic registration asks', () => {
+    const context = new Context();
+    const classCompound = ruleset({
+      selector: '.a.b',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    const elementCompound = ruleset({
+      selector: 'button.primary',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(classCompound.toTrimmedString()).toBe('.a.b {\n  color: blue;\n}\n');
+    expect(classCompound.selector).toBeUndefined();
+    expect(classCompound.rawSelector).toBe('.a.b');
+    expect(serializeTypes(classCompound)).toContain('rawSelector: \'.a.b\'');
+    void classCompound.prepareRegistration(context);
+    expect(classCompound.rawSelector).toBeUndefined();
+    expect(classCompound.selector).toBeDefined();
+    const classTypes = serializeTypes(classCompound);
+    expect(classTypes).toContain('(CompoundSelector');
+    expect(classTypes).toContain('(BasicSelector \'.a\')');
+    expect(classTypes).toContain('(BasicSelector \'.b\')');
+    expect(classTypes).not.toContain('rawSelector');
+
+    expect(elementCompound.toTrimmedString()).toBe('button.primary {\n  color: blue;\n}\n');
+    expect(elementCompound.selector).toBeUndefined();
+    expect(elementCompound.rawSelector).toBe('button.primary');
+    void elementCompound.prepareRegistration(context);
+    const elementTypes = serializeTypes(elementCompound);
+    expect(elementTypes).toContain('(CompoundSelector');
+    expect(elementTypes).toContain('(BasicSelector \'button\')');
+    expect(elementTypes).toContain('(BasicSelector \'.primary\')');
+  });
+
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
       selector: '.a .b',
       rules: []
-    })).toThrow('Raw ruleset selector is outside the scanner-native simple selector subset.');
+    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
   });
 
   test('renders raw-field core at-rules without name or prelude child nodes', () => {

@@ -1101,7 +1101,7 @@ function readScannerNativeSimpleSelectorToken(
     return undefined;
   }
   const selectorText = plan.document.source.text.slice(range.start, range.end);
-  if (!SIMPLE_SELECTOR_PATTERN.test(selectorText)) {
+  if (!SCANNER_NATIVE_SELECTOR_PATTERN.test(selectorText)) {
     return undefined;
   }
   return {
@@ -1236,7 +1236,8 @@ const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
-const SIMPLE_SELECTOR_PATTERN = /^(?:[.#]?-?[a-zA-Z_][\w-]*|\*)$/u;
+const SCANNER_NATIVE_SELECTOR_PATTERN =
+  /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)$/u;
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {
   return SIMPLE_VARIABLE_REFERENCE_PATTERN.test(valueText);

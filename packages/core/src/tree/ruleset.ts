@@ -104,6 +104,32 @@ function canMaterializeRawSimpleSelector(value: string): boolean {
     || /^[.#][-_a-zA-Z][\w-]*$/u.test(value);
 }
 
+const rawCompoundSelectorPartPattern = /(?:[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|\*)/gu;
+
+function splitRawCompoundSelector(value: string): string[] | undefined {
+  const parts: string[] = [];
+  let offset = 0;
+  for (const match of value.matchAll(rawCompoundSelectorPartPattern)) {
+    if (match.index !== offset) {
+      return undefined;
+    }
+    const part = match[0];
+    if (part === '*' && parts.length > 0) {
+      return undefined;
+    }
+    if (!part.startsWith('.') && !part.startsWith('#') && part !== '*' && parts.length > 0) {
+      return undefined;
+    }
+    parts.push(part);
+    offset += part.length;
+  }
+  return parts.length > 0 && offset === value.length ? parts : undefined;
+}
+
+function canMaterializeRawSelector(value: string): boolean {
+  return canMaterializeRawSimpleSelector(value) || splitRawCompoundSelector(value) !== undefined;
+}
+
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
@@ -158,8 +184,8 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       value.rules
     );
     if (typeof value.selector === 'string') {
-      if (!canMaterializeRawSimpleSelector(value.selector)) {
-        throw new TypeError('Raw ruleset selector is outside the scanner-native simple selector subset.');
+      if (!canMaterializeRawSelector(value.selector)) {
+        throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
       }
       this.selector = undefined;
       this.rawSelector = value.selector;
@@ -246,8 +272,26 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     if (rawSelector === undefined) {
       throw new TypeError('Ruleset requires a selector before semantic materialization.');
     }
-    const selector = new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
-      .inherit(this);
+    let selector: Selector;
+    if (canMaterializeRawSimpleSelector(rawSelector)) {
+      selector = new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+        .inherit(this);
+    } else {
+      const parts = splitRawCompoundSelector(rawSelector);
+      if (!parts || parts.length < 2) {
+        throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
+      }
+      const components: BasicSelector[] = [];
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]!;
+        const component = new BasicSelector(part, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+          .inherit(this);
+        this.adopt(component);
+        components.push(component);
+      }
+      selector = CompoundSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+        .inherit(this);
+    }
     this.adopt(selector);
     this.selector = selector;
     this.rawSelector = undefined;
