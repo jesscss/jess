@@ -44,6 +44,43 @@ complete only when the covered simple path proves it does not enter the
 fallback bridge, direct child scan, broad invalidation lane, or public
 materialization wrapper for that semantic case.
 
+## Core Size-Cut Target
+
+The core cleanup target is a real deletion target, not a file-shuffling target:
+cut non-test `packages/core/src` TypeScript line count by at least 50% while
+preserving Jess/Less behavior. Current measured baseline in this worktree:
+
+```txt
+55008 packages/core/src non-test TypeScript lines
+target <= 27504 lines
+```
+
+Largest current files:
+
+```txt
+5946 packages/core/src/tree/rules.ts
+4234 packages/core/src/tree/util/extend.ts
+3758 packages/core/src/tree/reference.ts
+2283 packages/core/src/tree/ruleset.ts
+2085 packages/core/src/tree/util/selector-match-core.ts
+1945 packages/core/src/tree/call.ts
+1845 packages/core/src/tree/declaration.ts
+1738 packages/core/src/tree/at-rule.ts
+1446 packages/core/src/tree/util/extend-walk.ts
+1434 packages/core/src/tree/import-style.ts
+```
+
+Rules for counting progress:
+
+- moving code from one core file to another is not a cut;
+- replacing node methods with equally large service wrappers is not a cut;
+- deleting compatibility shims, duplicate lookup paths, defensive runtime
+  checks, duplicate visitors/traversals, repeated serializer paths, and
+  parallel binding/index mechanisms counts only when tests preserve behavior;
+- generated files, tests, snapshots, and docs do not count toward the source
+  target;
+- every cut pass should report before/after non-test `packages/core/src` lines.
+
 ## Active Binding Queue
 
 Complete every item in this queue before committing the next binding/lookup
@@ -1486,11 +1523,68 @@ Required sub-slices:
   handles as source AST identity, runtime binding cell, lookup index, import
   summary, callable namespace surface, eval placement state, or render-only
   state. Do not edit behavior in this slice except comments/docs.
+  Current map starter:
+  - `Rules.rules`: canonical source child stream. Retain on the node.
+  - `Rules.functionsByName`: static function index currently on source
+    container. Candidate for the declaration/function binding index service.
+  - `Rules.varsByName`: static variable declaration `BindingEntry[]` source
+    index. Overlaps `ScopeFrame.declarationBucketsByName` and should become
+    input to one declaration binding layer, not a separate answer surface.
+  - `Rules.directDeclarationsByName`, `directDeclarationLookupCache`,
+    `declarationLookupVersion`, and `declarationLookupVersionsByName`: direct
+    declaration/property lookup cache/version state. This overlaps variable
+    binding handles and direct occurrence lookup in
+    `util/direct-rules-lookup.ts`.
+  - `Rules.callableLookupCache` and `callableLookupVersion`: callable
+    namespace index/cache. This overlaps `ScopeFrame.callableBucketsByName`
+    and the callable traversal methods in `Rules`.
+  - `Rules.directChildRuleEntries` / `directDeclarationChildEntries` and
+    `has*ChildSurface` booleans: import/child surface summaries. These are
+    placement facts, but `Rules` also owns the traversal algorithms that use
+    them; split facts from traversal.
+  - `ScopeFrame.liveSlotsByName`, `currentBindingsByName`, `BindingCell`, and
+    `BindingEntry`: current runtime binding model. This should be the canonical
+    owner for evaluated values, readonly/live flags, and source-node identity.
+  - `ScopeFrame.assignmentBindingsByName`, `assignmentReadonlyByName`, and
+    `hasUncoveredAssignmentTargetSurface`: setDefined/import assignment model.
+    Keep the runtime cell semantics, but fold the record shape into the same
+    declaration binding layer.
+  - `ReferenceRulesLookupHandle` and `ScopeFrameVariableBindingHandle` in
+    `reference.ts`: cached read handles. They should cache binding-layer
+    identities/versions, not duplicate declaration occurrence semantics.
+  First cleanup candidate: declaration binding unification, because
+  `setDefined` already proves evaluated replacements belong in cells while
+  authored declaration nodes must remain stable.
 - [ ] 87b. Declaration binding model: specify and implement the canonical
   declaration binding record shape: stable `sourceNode`, mutable runtime cell,
   visibility/import/readonly metadata, and source-order facts. Variable,
   property, and assignment reads must share this shape instead of duplicating
   `varsByName`, direct occurrence, and scope-frame answers.
+  Target shape:
+  ```ts
+  type DeclarationBindingKind = 'variable' | 'property' | 'any';
+
+  type DeclarationBindingVisibility = 'local' | 'public' | 'optional';
+
+  interface DeclarationBinding {
+    key: string;
+    kind: DeclarationBindingKind;
+    sourceNode: Declaration | VarDeclaration;
+    ownerRules: Rules;
+    sourceIndex: number | undefined;
+    cell: BindingCell;
+    visibility: DeclarationBindingVisibility;
+    readonly: boolean;
+    assignmentTarget: boolean;
+    importBoundary?: 'reference' | 'public' | 'optional';
+  }
+  ```
+  This is a design target, not a committed public API. The same record should
+  answer ordinary variable reads, property reads, direct declaration occurrence
+  lookup, and `setDefined` assignment target updates. Direct occurrence APIs can
+  return a small public projection of this record when callers need
+  `ownerRules`, `node`, and `index`, but they should not keep an independent
+  cache/index with separate invalidation.
 - [ ] 87c. `setDefined` and live current reads: convert all modeled
   `setDefined` paths to update binding cells or insert runtime declarations
   when no cell exists. Evaluated replacements must not mutate authored
