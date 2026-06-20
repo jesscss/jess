@@ -159,7 +159,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        valueNode:
+        value:
           (Reference
               type: 'index'
             target: 
@@ -187,7 +187,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        valueNode:
+        value:
           (Reference
               type: 'variable'
             target: 
@@ -212,7 +212,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        valueNode:
+        value:
           (Call
             name: 
               (Reference [role=name]

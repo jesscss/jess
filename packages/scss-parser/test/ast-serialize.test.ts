@@ -6,7 +6,7 @@ import { assertValidTree } from './assert-valid-tree.js';
 const parser = new Parser();
 
 function firstRuleDeclValue(tree: any) {
-  return tree?.rules?.[0]?.rules?.[0]?.valueNode;
+  return tree?.rules?.[0]?.rules?.[0]?.value;
 }
 
 describe('scss-parser (ast serialize)', () => {
@@ -39,13 +39,13 @@ describe('scss-parser (ast serialize)', () => {
           (Declaration
             name:
               (Any [role=property] 'regular')
-            valueNode:
+            value:
               (Num 400)
           )
           (Declaration
             name:
               (Any [role=property] 'medium')
-            valueNode:
+            value:
               (Num 500)
           )
         ]
@@ -109,7 +109,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'font')
-        valueNode:
+        value:
           (Collection
     `);
     expect(serializeTypes(tree)).toContainString(`size`);
@@ -125,7 +125,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'margin')
-        valueNode:
+        value:
           (Sequence
     `);
     expect(serializeTypes(tree)).toContainString(`(Collection`);

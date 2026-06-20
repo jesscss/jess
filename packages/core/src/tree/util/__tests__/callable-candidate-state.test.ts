@@ -102,7 +102,7 @@ describe('callable candidate state helper', () => {
     expect(state.definitionFrame).toBeUndefined();
   });
 
-  it('copies raw-field at-rules inside owned callable-rules surfaces', () => {
+  it('copies string-backed at-rules inside owned callable-rules surfaces', () => {
     const callSiteRules = rules([]);
     const sourceRules = rules([
       atrule({
@@ -131,12 +131,12 @@ describe('callable candidate state helper', () => {
     expect(state.rules.toString()).toContain('@media screen');
     expect(state.rules.toString()).toContain('color: blue;');
     const types = serializeTypes(state.rules);
-    expect(types).toContain('rawName: \'@media\'');
-    expect(types).toContain('rawPrelude: \'screen\'');
-    expect(types).toContain('rawName: \'color\'');
-    expect(types).toContain('rawValueSegments:');
+    expect(types).toContain('name: \'@media\'');
+    expect(types).toContain('prelude: \'screen\'');
+    expect(types).toContain('name: \'color\'');
+    expect(types).toContain('value:');
     expect(types).not.toContain('name: (Any [role=atkeyword] \'@media\')');
-    expect(types).not.toContain('valueNode: (Any \'blue\')');
+    expect(types).not.toContain('value: (Any \'blue\')');
   });
 
   it('keeps childless static callable-rules candidates on the unlocked rules path', () => {

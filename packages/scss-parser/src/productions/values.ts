@@ -959,14 +959,14 @@ export function scssMapLiteral(this: P, T: TokenMap): ProductionRule {
           DEF: () => {
             const keyNode = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
             $.CONSUME($.T.Colon);
-            const valueNode = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+            const value = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
 
             const keyStr = toDeclKey(keyNode);
             const declName = new Any(keyStr, { role: 'property' });
             const decl = new Declaration(
-              { name: declName, value: valueNode },
+              { name: declName, value: value },
               undefined,
-              $.getLocationFromNodes([keyNode, valueNode]),
+              $.getLocationFromNodes([keyNode, value]),
               $.context
             );
             decls.push(decl);

@@ -12,16 +12,16 @@ export type ProgressiveVariableDeclarationValue = {
 /**
  * Experimental scanner-first variable declaration node.
  *
- * It keeps Less-style variable names and raw value segments as cheap structural
+ * It keeps Less-style variable names and source-backed values as cheap structural
  * data. The node is invisible during normal render, so supported references can
- * resolve to raw declaration segments without allocating canonical variable or
+ * resolve to declaration text without allocating canonical variable or
  * reference nodes in the first proof path.
  */
 export class ProgressiveVariableDeclaration extends Node<ProgressiveVariableDeclarationValue> {
-  static override childKeys = ['name', 'valueSegments'] as const;
+  static override childKeys = ['name', 'value'] as const;
 
   readonly name: string;
-  readonly valueSegments: Array<string | Node>;
+  readonly value: Array<string | Node>;
 
   override allowRuleRoot = true;
   override allowRoot = true;
@@ -35,7 +35,7 @@ export class ProgressiveVariableDeclaration extends Node<ProgressiveVariableDecl
     super(value, options, location);
     this._treeContext = treeContext;
     this.name = value.name;
-    this.valueSegments = value.value;
+    this.value = value.value;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -49,7 +49,7 @@ export class ProgressiveVariableDeclaration extends Node<ProgressiveVariableDecl
   override writeSyntax(options: FinalPrintOptions): void {
     const writer = options.writer;
     writer.add(`${this.name}: `, this);
-    for (const segment of this.valueSegments) {
+    for (const segment of this.value) {
       if (typeof segment === 'string') {
         writer.add(segment, this);
       } else {

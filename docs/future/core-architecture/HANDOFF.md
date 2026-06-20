@@ -103,6 +103,73 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first direct semantic fields, Rules inheritance cleanup,
+  and callable namespace frame-chain repair.
+- Verdict: accepted as a correctness/architecture cleanup slice, not a speed
+  claim. This pass removes the invented declaration `raw*`/`valueNode` public
+  surface, keeps scanner-first cheap text on semantic fields, makes wrapper
+  `Rules` bodies illegal where rules-bearing nodes now own arrays directly, and
+  fixes array-path mixin namespace lookup so a covered miss in the current
+  frame does not suppress allowed parent-frame lookup.
+- Architecture surface: core node constructors/field names for declaration,
+  var declaration, at-rule/statement, ruleset/mixin/control rules-bearing
+  shapes; Less compat adapter tests; parser serializer fixtures; scanner-first
+  Jess e2e proofs; and docs. Language service and VSCode plugin remain outside
+  this slice.
+- Separation/duplication: the pass deliberately cuts duplicate textual-vs-node
+  declaration storage instead of adding aliases. `name`, `value`, `important`,
+  `prelude`, and inherited `rules` are the semantic storage locations. The
+  parser packages keep their existing parser ownership; the scanner-first e2e
+  path proves thin source-backed core nodes without adding a second production
+  stack for SCSS/Jess.
+- Cumulative node weight: normal render paths can keep declaration names,
+  values, at-rule headers, and simple selectors as strings or mixed
+  string/node arrays. Materialized `Any`, `Sequence`, selector containers, and
+  at-rule header nodes are cold semantic boundaries for registration, visitors,
+  or parser compatibility. The lookup fix adds no retained maps, side tables,
+  wrapper nodes, or fallback parser islands.
+- New traversal: [loop/traversal] declaration adoption/materialization walks
+  only the directly-owned mixed string/node field arrays; parser/test loops are
+  fixture or existing production assembly; the lookup repair prepares/searches
+  the existing callable frame chain only when `searchParents` is enabled.
+- New node/materialization: [node construction] string-backed declaration,
+  at-rule, at-rule statement, and selector materializers create canonical nodes
+  only when semantic registration or tests explicitly request them. Render-only
+  structural-fed paths remain string-backed. [materialized array/object] arrays
+  introduced in the diff are direct rule/value payloads, clone payloads, parser
+  fixture expectations, or cold materialization results rather than retained
+  hot-path side graphs.
+- Render path: scanner-first render proofs still render CSS/Less-equivalent
+  output without eager field materialization for structural-only cases. The
+  namespace lookup change only affects callable resolution; it does not build
+  output nodes just to stringify.
+- Helper/API surface: `getCallableSelectorTextKeyPath` is a small local helper
+  to route string-backed selectors through the same callable key-path logic as
+  node-backed selectors. The public-looking raw/value wrapper names are removed
+  instead of preserved. Less compat adapter tests now construct `Ruleset` with
+  direct `rules: []` arrays rather than compatibility `Rules` wrappers.
+- Metadata mutations: [inherit/adopt/frozen] declaration/at-rule adoption is
+  the ownership boundary for real child nodes inside mixed fields; string fields
+  are not adopted. [parent/source mutation] source/root/location propagation is
+  limited to cold materialization/clone paths. [generic defensive read] the
+  remaining `Reflect.construct` in declaration clone/derive preserves subclass
+  construction for inherited declaration types and is recorded as follow-up
+  audit debt, not a pattern to widen.
+- Review-flagged diff tokens: [array helper] parser/test array helpers and
+  value splitting are bounded fixture or production assembly, not retained
+  caches; [generator] yielded pairs are existing callable/declaration iterator
+  surfaces updated for field names; [copy helper] copy calls remain in clone,
+  derive, and callable output ownership paths; [routine error control] new
+  throws are test assertions or cold subset-boundary materialization errors,
+  not expected lookup/render control flow.
+- Evidence: `git diff --check`; forbidden field/vocabulary scan for
+  `rawName|rawPrelude|rawValueSegments|rawImportant|valueNode|valueSegments`;
+  `pnpm --filter @jesscss/core build`; focused namespace test; broad focused
+  core slice; `pnpm --filter @jesscss/plugin-less-compat exec vitest --run
+  test/unit/transform/adapter.test.ts`; parser AST suites for css/less/scss;
+  `pnpm --filter @jesscss/fns test -- --run src/__tests__/each.test.ts`; and
+  `pnpm --filter jess test -- --run test/scanner-first-e2e.test.ts`.
+
 - Latest pass: scanner-first CSS transform function declaration proof.
 - Verdict: accepted as a narrow structural-fed correctness proof, not a speed
   claim. The Less structural-fed path now admits `scaleX(<number>)` only

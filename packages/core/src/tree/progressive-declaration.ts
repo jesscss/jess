@@ -18,10 +18,10 @@ export type ProgressiveDeclarationValue = {
  * the final `Declaration` migration shape is still being measured.
  */
 export class ProgressiveDeclaration extends Node<ProgressiveDeclarationValue> {
-  static override childKeys = ['name', 'valueSegments', 'important'] as const;
+  static override childKeys = ['name', 'value', 'important'] as const;
 
   readonly name: string;
-  readonly valueSegments: Array<string | Node>;
+  readonly value: Array<string | Node>;
   readonly important: boolean | string | undefined;
 
   override allowRuleRoot = true;
@@ -35,7 +35,7 @@ export class ProgressiveDeclaration extends Node<ProgressiveDeclarationValue> {
     super(value, options, location);
     this._treeContext = treeContext;
     this.name = value.name;
-    this.valueSegments = value.value;
+    this.value = value.value;
     this.important = value.important;
   }
 
@@ -49,8 +49,8 @@ export class ProgressiveDeclaration extends Node<ProgressiveDeclarationValue> {
   override writeSyntax(options: FinalPrintOptions): void {
     const writer = options.writer;
     writer.add(`${this.name}: `, this);
-    for (let i = 0; i < this.valueSegments.length; i++) {
-      const segment = this.valueSegments[i]!;
+    for (let i = 0; i < this.value.length; i++) {
+      const segment = this.value[i]!;
       if (typeof segment === 'string') {
         writer.add(segment, this);
       } else {

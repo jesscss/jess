@@ -743,7 +743,7 @@ export function mixinArgList(this: P, T: TokenMap): ProductionRule {
         const [head, ...rest] = commaNodes;
         let hasDeclarations = false;
         if (head instanceof VarDeclaration) {
-          const nodes = [head.valueNode, ...rest];
+          const nodes = [head.value, ...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
           const value = new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
           semiNodes.push(new VarDeclaration({

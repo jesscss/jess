@@ -50,8 +50,8 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
   return out;
 }
 
-function rawDeclarationLeadingMultilineIndent(segments: Array<string | Node>): string | undefined {
-  for (const segment of segments) {
+function declarationLeadingMultilineIndent(value: Array<string | Node>): string | undefined {
+  for (const segment of value) {
     if (typeof segment !== 'string') {
       return undefined;
     }
@@ -66,8 +66,15 @@ function rawDeclarationLeadingMultilineIndent(segments: Array<string | Node>): s
   return undefined;
 }
 
-function rawDeclarationMultilineSegmentText(segment: string): string {
+function declarationMultilineSegmentText(segment: string): string {
   return segment.replace(/\n {2}/gu, '\n');
+}
+
+function multilineValueIndent(text: string | undefined): string | undefined {
+  if (!text?.includes('\n')) {
+    return undefined;
+  }
+  return /\n([ \t]*)\S/u.exec(text)?.[1] ?? '';
 }
 
 export const enum AssignmentType {
@@ -89,6 +96,8 @@ export const enum AssignmentType {
 
 export type DeclarationOptions = {
   assign?: AssignmentType;
+  /** Internal scanner-first hint: this declaration began as source-backed fields. */
+  sourceBacked?: boolean;
   /** Tracks that this declaration was created via assignment normalization (e.g. +:, +_:). */
   normalizedFromAssign?: AssignmentType;
   semi?: boolean;
@@ -121,30 +130,28 @@ export type DeclarationOptions = {
 /** Should be Any<'property'> | Interpolated<'property'> */
 type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
 
-export type DeclarationValue<T extends AnyRole = 'property'> = {
+export type MaterializedDeclarationValue<T extends AnyRole = 'property'> = {
   name: NameValue<T>;
   value: Node;
   /** The actual string representation of important, if it exists */
   important?: Any<'flag'>;
 };
 
-export type RawDeclarationValue = {
-  name: string;
-  value: Array<string | Node>;
-  important?: boolean | string;
-};
+export type DeclarationName<T extends AnyRole = 'property'> = string | NameValue<T>;
+export type DeclarationFieldValue = string | Node | Array<string | Node>;
+export type DeclarationImportant = boolean | string | Any<'flag'> | undefined;
 
-type RawDeclarationInput = {
-  name: string;
-  value: string | Array<string | Node>;
-  important?: boolean | string;
+export type DeclarationValue<T extends AnyRole = 'property'> = {
+  name: DeclarationName<T>;
+  value: DeclarationFieldValue;
+  important?: DeclarationImportant;
 };
 
 type DeclarationEvalState = {
   output: Node;
-  name?: DeclarationValue['name'];
+  name?: MaterializedDeclarationValue['name'];
   value?: Node;
-  important?: Any<'flag'>;
+  important?: MaterializedDeclarationValue['important'];
   nil: boolean;
 };
 
@@ -154,7 +161,7 @@ type CustomInterpolatedRenderValue = {
 };
 
 type DeclarationRenderState = {
-  name: DeclarationValue['name'];
+  name: MaterializedDeclarationValue['name'];
   value: Node;
   customInterpolatedValue?: CustomInterpolatedRenderValue;
   mergeAdapter?: DeclarationMergeAdapterState;
@@ -193,7 +200,7 @@ export function finalizeContextualImportantState(
 export function finalizeContextualImportantPublicState(
   context: Context,
   important: Any<'flag'> | undefined
-): { important?: Any<'flag'>; importantText?: string } {
+): { important?: MaterializedDeclarationValue['important']; importantText?: string } {
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
@@ -261,12 +268,12 @@ export function createDeclarationMergeAdapterState(
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
-  important?: Any<'flag'>;
+  important?: MaterializedDeclarationValue['important'];
   changed: boolean;
 };
 
 type DeclarationRegistrationState = {
-  name: DeclarationValue['name'];
+  name: MaterializedDeclarationValue['name'];
   value: Node;
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
@@ -495,42 +502,48 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue | RawDeclarationValue, Opts> {
-  static override childKeys = ['name', 'valueNode', 'rawName', 'rawValueSegments', 'important', 'rawImportant'];
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<undefined, Opts> {
+  static override childKeys = ['name', 'value', 'important'];
 
-  name!: DeclarationValue['name'];
-  valueNode!: DeclarationValue['value'];
-  important: DeclarationValue['important'];
-  readonly rawName: string | undefined;
-  private readonly _rawValueSegments: Array<string | Node> | undefined;
-
-  get rawValueSegments(): Array<string | Node> | undefined {
-    return this.name === undefined ? this._rawValueSegments : undefined;
-  }
-
-  readonly rawImportant: boolean | string | undefined;
+  name: DeclarationName;
+  declare readonly value: DeclarationFieldValue;
+  important: DeclarationImportant;
 
   override allowRuleRoot = true;
 
   constructor(
-    value: DeclarationValue | RawDeclarationValue,
+    value: MaterializedDeclarationValue | DeclarationValue,
     options?: Opts,
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location, treeContext);
-    if (isRawDeclarationValue(value)) {
-      this.rawName = value.name;
-      this._rawValueSegments = value.value;
-      this.rawImportant = value.important;
-    } else {
-      this.name = value.name;
-      this.valueNode = value.value;
-      this.important = value.important;
+    super(undefined, options, location);
+    this._treeContext = treeContext;
+    this.name = value.name;
+    this.value = value.value;
+    this.important = value.important;
+    this.adoptDeclarationParts();
+  }
+
+  private adoptDeclarationParts(): void {
+    if (isNode(this.name)) {
+      this.adopt(this.name);
+    }
+    if (isNode(this.value)) {
+      this.adopt(this.value);
+    } else if (Array.isArray(this.value)) {
+      for (const segment of this.value) {
+        if (isNode(segment)) {
+          this.adopt(segment);
+        }
+      }
+    }
+    if (isNode(this.important)) {
+      this.adopt(this.important);
     }
   }
 
-  private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
+  private copyNameForDerived(node: MaterializedDeclarationValue['name']): MaterializedDeclarationValue['name'] {
     if (canReuseLeaf(node)) {
       return reuseLeaf(node);
     }
@@ -546,6 +559,46 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
   }
 
+  private cloneDeclarationField<T>(value: T, deep: boolean | undefined, cloneFn: ((n: Node) => Node) | undefined): T {
+    if (isNode(value)) {
+      return (deep ? (cloneFn ?? ((node: Node) => node.clone(deep)))(value) : value) as T;
+    }
+    if (Array.isArray(value)) {
+      const out = new Array<unknown>(value.length);
+      for (let i = 0; i < value.length; i++) {
+        out[i] = this.cloneDeclarationField(value[i], deep, cloneFn);
+      }
+      return out as T;
+    }
+    if (isRecord(value)) {
+      const out: Record<string, unknown> = {};
+      for (const key in value) {
+        out[key] = this.cloneDeclarationField(value[key], deep, cloneFn);
+      }
+      return out as T;
+    }
+    return value;
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    const value: DeclarationValue = {
+      name: this.cloneDeclarationField(this.name, deep, cloneFn),
+      value: this.cloneDeclarationField(this.value, deep, cloneFn),
+      ...(this.important !== undefined && {
+        important: this.cloneDeclarationField(this.important, deep, cloneFn)
+      })
+    };
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        value,
+        this._options ? { ...this._options } : undefined,
+        this.location
+      ]
+    );
+    return node.inherit(this);
+  }
+
   private ownRenderAssignmentInput(node: Node): Node {
     return canReuseLeaf(node) || canReuseSourceFreeAssignmentInput(node)
       ? reuseLeaf(node)
@@ -556,7 +609,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
   }
 
-  private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
+  private copyImportantForDerived(node: MaterializedDeclarationValue['important']): MaterializedDeclarationValue['important'] {
     if (!node) {
       return undefined;
     }
@@ -575,7 +628,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node.inherit(this);
   }
 
-  private withParts(value: DeclarationValue): this {
+  private withParts(value: MaterializedDeclarationValue): this {
     const node: this = Reflect.construct(
       this.constructor,
       [
@@ -588,10 +641,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private derive(): this {
-    this.materializeRawDeclarationParts();
+    this.materializeDeclarationParts();
     return this.withParts({
       name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
+      value: this.copyValueForDerived(this.value),
       important: this.copyImportantForDerived(this.important)
     });
   }
@@ -602,14 +655,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  deriveWithParts(parts: Partial<DeclarationValue>): this {
-    this.materializeRawDeclarationParts();
+  deriveWithParts(parts: Partial<MaterializedDeclarationValue>): this {
+    this.materializeDeclarationParts();
     const node = this.withParts({
       name: parts.name === undefined
         ? this.copyNameForDerived(this.name)
         : parts.name,
       value: parts.value === undefined
-        ? this.copyValueForDerived(this.valueNode)
+        ? this.copyValueForDerived(this.value)
         : parts.value,
       important: parts.important === undefined
         ? this.copyImportantForDerived(this.important)
@@ -619,7 +672,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  private formatNonCustomValue(valOut: string, _options: PrintOptions) {
+  private formatNonCustomValue(
+    valOut: string,
+    _options: PrintOptions,
+    colonLineBreakIndent?: string
+  ) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -633,6 +690,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let out = '';
     const [firstLine = '', ...restLines] = lines;
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
+
+    if (colonLineBreakIndent !== undefined) {
+      const firstIndent = ' '.repeat(Math.max(0, colonLineBreakIndent.length - 2));
+      const restIndent = ' '.repeat(Math.max(0, colonLineBreakIndent.length - 2));
+      out = firstContent ? `${firstIndent}${firstContent}` : '';
+      for (const line of restLines) {
+        if (!line.trim()) {
+          out += '\n';
+          continue;
+        }
+        const content = line.replace(/^[ \t]+/g, '').trimEnd();
+        out += `\n${restIndent}${content}`;
+      }
+      return out || `\n${restIndent}`;
+    }
 
     if (firstContent) {
       out = ` ${firstContent}`;
@@ -658,10 +730,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    if (this.isRawDeclaration()) {
+    if (this.hasTextualDeclarationParts()) {
       return true;
     }
-    return this.valueRequiresSemi(this.valueNode);
+    this.materializeDeclarationParts();
+    return this.valueRequiresSemi(this.value);
   }
 
   private valueRequiresSemi(value: Node): boolean {
@@ -669,15 +742,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   protected declTrimmedString(options?: PrintOptions) {
+    this.materializeDeclarationParts();
     return this.declValueTrimmedString({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
 
   private declValueTrimmedString(
-    valueParts: DeclarationValue,
+    valueParts: MaterializedDeclarationValue,
     options?: PrintOptions,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
@@ -694,7 +768,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private writeDeclarationValueSyntax(
-    valueParts: DeclarationValue,
+    valueParts: MaterializedDeclarationValue,
     options: ReturnType<typeof getPrintOptions>,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
@@ -734,6 +808,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       //   drop that trailing line break so semicolon insertion stays inline.
       const customValueText = nodeValueText(value);
       const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+      if (this._options?.sourceBacked && (customValueText === undefined || !/^[\s]/u.test(customValueText))) {
+        w.add(' ');
+      }
       if (
         renderState?.customInterpolatedValue?.source !== value
         && fallbackOut === undefined
@@ -768,9 +845,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (mergeAdapter?.kind === 'list') {
         this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
+        const sourceBackedValueText = this._options?.sourceBacked ? nodeValueText(value) : undefined;
+        const multilineIndent = multilineValueIndent(sourceBackedValueText);
+        if (multilineIndent !== undefined) {
+          w.add('\n');
+        }
         const valueMark = w.mark();
         value.writeSyntax(options);
-        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
+        w.replaceSince(
+          valueMark,
+          valOut => this.formatNonCustomValue(valOut, options, multilineIndent),
+          value
+        );
       }
       if (!isNode(value, N.Collection)) {
         if (important || importantText) {
@@ -823,76 +909,95 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    if (this.isRawDeclaration()) {
+    if (this.hasTextualDeclarationParts()) {
       options = getPrintOptions(options);
       const w = options.writer!;
       const position = w.position();
-      this.writeRawDeclarationSyntax(options);
+      this.writeTextualDeclarationSyntax(options);
       return getWriterTextSincePosition(w, position);
     }
     return this.declTrimmedString(options);
   }
 
-  private isRawDeclaration(): boolean {
-    return this.rawName !== undefined;
+  private hasTextualDeclarationParts(): boolean {
+    return typeof this.name === 'string'
+      || typeof this.value === 'string'
+      || Array.isArray(this.value)
+      || typeof this.important === 'string';
   }
 
-  private materializeRawDeclarationParts(): void {
-    if (!this.isRawDeclaration() || this.name !== undefined) {
-      return;
+  private materializeDeclarationParts(): void {
+    if (typeof this.name === 'string') {
+      this.name = any(this.name, { role: 'property' });
+      this.adopt(this.name);
     }
-    const name = any(this.rawName!, { role: 'property' });
-    const segments = this._rawValueSegments ?? [];
-    let value: Node;
-    if (segments.length === 1 && segments[0] instanceof Node) {
-      value = segments[0];
-    } else if (segments.some(segment => segment instanceof Node)) {
-      value = spaced(segments.map(segment => (
-        typeof segment === 'string' ? any(segment) : segment
-      )));
-    } else {
-      let text = '';
-      for (const segment of segments) {
-        text += segment;
+    if (!isNode(this.value)) {
+      const parts = typeof this.value === 'string' ? [this.value] : this.value;
+      if (!Array.isArray(parts)) {
+        const value = parts as unknown as { type?: unknown; constructor?: { name?: string } };
+        const keys = parts && typeof parts === 'object' ? Object.keys(parts as object).join(',') : '';
+        throw new TypeError(
+          `Declaration value must be a string, node, or segment array before materialization; got ${typeof parts} ${String(value?.constructor?.name ?? '')} ${String(value?.type ?? '')} keys=${keys}`
+        );
       }
-      value = any(text);
+      let value: Node;
+      if (parts.length === 1 && isNode(parts[0])) {
+        value = parts[0];
+      } else if (parts.some(segment => isNode(segment))) {
+        value = spaced(parts.map(segment => (
+          typeof segment === 'string' ? any(segment) : segment
+        )));
+      } else {
+        let text = '';
+        for (const segment of parts) {
+          text += segment;
+        }
+        value = any(text);
+      }
+      this.value = value;
+      this.adopt(value);
     }
-    const important = this.rawImportant === undefined || this.rawImportant === false
-      ? undefined
-      : any(this.rawImportant === true ? '!important' : this.rawImportant, { role: 'flag' });
-    this.name = name;
-    this.valueNode = value;
-    this.important = important;
-    this.adopt(name);
-    this.adopt(value);
-    if (important) {
-      this.adopt(important);
+    if (typeof this.important === 'string' || typeof this.important === 'boolean') {
+      this.important = this.important === false
+        ? undefined
+        : any(this.important === true ? '!important' : this.important, { role: 'flag' });
+      if (this.important) {
+        this.adopt(this.important);
+      }
     }
   }
 
-  private writeRawDeclarationSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
-    if (!this.isRawDeclaration()) {
+  private writeTextualDeclarationSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
+    if (!this.hasTextualDeclarationParts()) {
       return false;
     }
     const w = options.writer!;
-    w.add(this.rawName!, this);
-    const segments = this._rawValueSegments ?? [];
-    const leadingMultilineIndent = rawDeclarationLeadingMultilineIndent(segments);
+    const name = typeof this.name === 'string' ? this.name : this.name.valueOf();
+    w.add(name, this);
+    const value = isNode(this.value)
+      ? [this.value]
+      : typeof this.value === 'string'
+        ? [this.value]
+        : this.value;
+    const leadingMultilineIndent = declarationLeadingMultilineIndent(value);
     w.add(leadingMultilineIndent === undefined ? ': ' : `:\n${leadingMultilineIndent}`);
-    for (const segment of segments) {
+    for (const segment of value) {
       if (typeof segment === 'string') {
         w.add(
-          leadingMultilineIndent === undefined ? segment : rawDeclarationMultilineSegmentText(segment),
+          leadingMultilineIndent === undefined ? segment : declarationMultilineSegmentText(segment),
           this
         );
       } else {
         segment.writeSyntax(options);
       }
     }
-    if (this.rawImportant === true) {
+    if (this.important === true) {
       w.add(' !important', this);
-    } else if (typeof this.rawImportant === 'string') {
-      w.add(` ${this.rawImportant}`, this);
+    } else if (typeof this.important === 'string') {
+      w.add(` ${this.important}`, this);
+    } else if (isNode(this.important)) {
+      w.add(' ');
+      this.important.writeSyntax(options);
     }
     return true;
   }
@@ -902,7 +1007,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return false;
     }
     const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
-    const valueText = maybeDirectSyntheticDeclarationLeafText(this.valueNode);
+    if (!isNode(this.value)) {
+      return false;
+    }
+    const valueText = maybeDirectSyntheticDeclarationLeafText(this.value);
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
       return false;
     }
@@ -918,7 +1026,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     w.add(nameText, this.name);
     w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
-    w.add(valueText, this.valueNode);
+    w.add(valueText, this.value);
     if (importantText !== undefined) {
       w.add(` ${importantText}`, this.important);
     }
@@ -926,15 +1034,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
-    if (this.writeRawDeclarationSyntax(options)) {
+    if (this.writeTextualDeclarationSyntax(options)) {
       return;
     }
+    this.materializeDeclarationParts();
     if (this.writeDirectSyntheticScalarSyntax(options)) {
       return;
     }
     this.writeDeclarationValueSyntax({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
@@ -957,9 +1066,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (this.isRawDeclaration()) {
+    if (this.hasTextualDeclarationParts()) {
       const prepared = prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-      this.writeRawDeclarationSyntax(prepared);
+      this.writeTextualDeclarationSyntax(prepared);
       return isRenderBuffer(bufferOrOptions)
         ? writeRenderText(bufferOrOptions, prepared.writer.toString())
         : prepared.writer.toString();
@@ -1003,7 +1112,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }, options)
         : state.output.renderDeclarationPartsToBuffer(context, buffer, {
             name: state.output.name,
-            value: state.output.valueNode,
+            value: state.output.value,
             important: state.output.important
           }, options);
     }
@@ -1285,7 +1394,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         output,
         name: output instanceof Declaration ? output.name : undefined,
-        value: output instanceof Declaration ? output.valueNode : undefined,
+        value: output instanceof Declaration ? output.value : undefined,
         important: output instanceof Declaration ? output.important : undefined,
         nil: output instanceof Nil
       };
@@ -1315,26 +1424,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private createRegistrationState(
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
-    this.materializeRawDeclarationParts();
+    this.materializeDeclarationParts();
     if (options.reuseCanonical === true) {
       return {
         name: this.name,
-        value: this.valueNode,
+        value: this.value,
         important: this.important
       };
     }
     return {
       name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
+      value: this.copyValueForDerived(this.value),
       important: this.copyImportantForDerived(this.important)
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
-    this.materializeRawDeclarationParts();
+    this.materializeDeclarationParts();
     return {
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important,
       renderOnly: true
     };
@@ -1389,10 +1498,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
     /** Normalize assignment types */
     let assign = this.options?.assign;
-    const rawAssign = assign as string | undefined;
-    if (rawAssign === '+,:') {
+    const sourceAssign = assign as string | undefined;
+    if (sourceAssign === '+,:') {
       assign = AssignmentType.MergeList;
-    } else if (rawAssign === '+_:') {
+    } else if (sourceAssign === '+_:') {
       assign = AssignmentType.MergeSequence;
     }
     if (!assign && this.options?.normalizedFromAssign) {
@@ -1523,7 +1632,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): this {
     const changed = (
       state.name !== this.name
-      || state.value !== this.valueNode
+      || state.value !== this.value
       || state.important !== this.important
       || state.normalizedFromAssign !== undefined
       || state.bindOutput !== undefined
@@ -1534,7 +1643,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const node = this.withParts({
       name: state.name === this.name ? this.copyNameForDerived(state.name) : state.name,
-      value: state.value === this.valueNode ? this.copyValueForDerived(state.value) : state.value,
+      value: state.value === this.value ? this.copyValueForDerived(state.value) : state.value,
       important: state.important === this.important
         ? this.copyImportantForDerived(state.important)
         : state.important
@@ -1548,12 +1657,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    this.materializeRawDeclarationParts();
+    this.materializeDeclarationParts();
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
       return {
         source: this,
-        value: this.valueNode,
+        value: this.value,
         important: this.important,
         changed: false
       };
@@ -1562,7 +1671,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let node = this;
       const state: DeclarationValueState = {
         source: node,
-        value: node.valueNode,
+        value: node.value,
         important: node.important,
         changed: false
       };
@@ -1606,8 +1715,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (node.type === 'VarDeclaration') {
         return state;
       }
-      const { name, valueNode: value } = node;
-      if (value instanceof Node) {
+      const { name, value: value } = node;
+      if (isNode(value)) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
           if (!shouldResolveCustomPropertyValue(value)) {
@@ -1635,7 +1744,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (maybeNewValue instanceof Nil) {
           return maybeNewValue.inherit(node);
         }
-        if (!(maybeNewValue instanceof Node)) {
+        if (!isNode(maybeNewValue)) {
           return node;
         }
         setVal(maybeNewValue);
@@ -1656,7 +1765,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const output = node.withParts({
       name: this.copyNameForDerived(node.name),
-      value: state.value === node.valueNode
+      value: state.value === node.value
         ? this.copyValueForDerived(state.value)
         : state.value,
       important: state.important === node.important
@@ -1707,33 +1816,12 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
-function isRawDeclarationValue(value: DeclarationValue | RawDeclarationValue): value is RawDeclarationValue {
-  return typeof value.name === 'string' && Array.isArray(value.value);
-}
-
-function isDeclarationValue(
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> }
-): value is DeclarationValue {
-  return typeof value.name !== 'string';
-}
-
-function normalizeRawDeclarationInput(value: RawDeclarationInput): RawDeclarationValue {
-  return {
-    name: value.name,
-    value: typeof value.value === 'string' ? [value.value] : value.value,
-    important: value.important
-  };
-}
-
 export const decl = (
-  value: DeclarationValue | RawDeclarationInput | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
   location?: LocationInfo
 ) => {
-  if (!isDeclarationValue(value)) {
-    if (typeof value.value === 'string' || Array.isArray(value.value)) {
-      return new Declaration(normalizeRawDeclarationInput(value), options, location);
-    }
+  if (typeof value.name === 'string' && isNode(value.value)) {
     return new Declaration({
       name: any(value.name, { role: 'property' }),
       value: value.value,

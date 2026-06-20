@@ -181,6 +181,37 @@ function copyImportPlacementNode(node: Node): Node {
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
+  if (isNode(node, N.AtRuleStatement)) {
+    return constructImportPlacementNode(
+      node,
+      {
+        name: typeof node.name === 'string'
+          ? node.name
+          : copyImportPlacementNode(node.name),
+        ...(typeof node.prelude === 'string'
+          ? { prelude: node.prelude }
+          : node.prelude !== undefined
+            ? { prelude: copyImportPlacementNode(node.prelude) }
+            : {})
+      }
+    );
+  }
+  if (isNode(node, N.Declaration | N.VarDeclaration)) {
+    return constructImportPlacementNode(
+      node,
+      {
+        name: typeof node.name === 'string'
+          ? node.name
+          : copyImportPlacementNode(node.name),
+        value: copyImportPlacementValue(node.value),
+        ...(node.important !== undefined && {
+          important: typeof node.important === 'string' || typeof node.important === 'boolean'
+            ? node.important
+            : copyImportPlacementNode(node.important)
+        })
+      }
+    );
+  }
   return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
 }
 
@@ -391,6 +422,14 @@ function findImportPlacementValuePath(
     return out;
   }
   if (value instanceof Node) {
+    if (isNode(value, N.Declaration | N.VarDeclaration)) {
+      path.push('value');
+      const found = findImportPlacementValuePath(value.value, target, path);
+      path.pop();
+      if (found) {
+        return found;
+      }
+    }
     return findImportPlacementValuePath(value.value, target, path);
   }
   if (Array.isArray(value)) {
@@ -421,6 +460,10 @@ function readImportPlacementValuePath(value: unknown, path: ImportPlacementValue
   let cursor = value;
   for (const segment of path) {
     if (cursor instanceof Node) {
+      if (isNode(cursor, N.Declaration | N.VarDeclaration) && segment === 'value') {
+        cursor = cursor.value;
+        continue;
+      }
       cursor = cursor.value;
     }
     if (Array.isArray(cursor)) {
@@ -792,7 +835,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         continue;
       }
       liveSlots.set(name, {
-        value: node.valueNode,
+        value: node.value,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);

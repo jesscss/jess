@@ -58,7 +58,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.resolve(context);
+            const out = decl.value.resolve(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -142,7 +142,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.eval(context);
+            const out = decl.value.eval(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }

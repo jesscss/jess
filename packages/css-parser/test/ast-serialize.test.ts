@@ -24,7 +24,7 @@ describe('serializeTypes coverage', () => {
                   (Declaration
                     name:
                       (Any [role=property] 'b')
-                    valueNode:
+                    value:
                       (Any [role=ident] 'c')
                   )
                 ]
@@ -232,7 +232,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'w')
-        valueNode:
+        value:
           (Dimension
             number: 10
             unit: 'px'
@@ -242,7 +242,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'z')
-        valueNode:
+        value:
           (Num 2)
     `);
   });
@@ -273,7 +273,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
     if (!isNode(value, N.Call) || !isNode(value.args, N.List)) {
       throw new Error('Expected declaration value to be a function call with list args');
     }
@@ -393,7 +393,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
     expect(trivia.lookup(value.location[3], 'after')?.map(token => token.image)).toEqual([
@@ -420,7 +420,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const { name } = declaration.value;
+    const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
     expect(trivia.lookup(name.location[3], 'after')?.map(token => token.image)).toEqual([
@@ -471,7 +471,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'm')
-        valueNode:
+        value:
           (List
             value:
               [
@@ -485,7 +485,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'n')
-        valueNode:
+        value:
           (Sequence
             value:
               [

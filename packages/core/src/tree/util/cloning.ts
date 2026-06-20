@@ -162,6 +162,23 @@ function constructPseudoCopy(node: Node, preserveComments: boolean): Node | unde
   return copy;
 }
 
+function copyDeclarationPayload(node: Node, preserveComments: boolean): unknown | undefined {
+  if (!isNode(node, N.Declaration | N.VarDeclaration)) {
+    return undefined;
+  }
+  const copy = preserveComments ? copyChildPreservingComments : copyChild;
+  const declaration = node as Node & {
+    name: unknown;
+    value: unknown;
+    important?: unknown;
+  };
+  return {
+    name: copy(declaration.name),
+    value: copy(declaration.value),
+    ...(declaration.important !== undefined && { important: copy(declaration.important) })
+  };
+}
+
 function deriveAmpersand(node: Node): Node | undefined {
   if (!isNode(node, N.Ampersand)) {
     return undefined;
@@ -193,7 +210,7 @@ export function copyWithReusableLeaves(node: Node): Node {
     pseudoCopy.frozen = true;
     return pseudoCopy;
   }
-  const copy = constructCopy(node, copyChild(node.value));
+  const copy = constructCopy(node, copyDeclarationPayload(node, false) ?? copyChild(node.value));
   copy.frozen = true;
   return copy;
 }
@@ -212,7 +229,10 @@ export function copyWithReusableLeavesPreservingComments(node: Node): Node {
     pseudoCopy.frozen = true;
     return pseudoCopy;
   }
-  const copy = constructCopy(node, copyChildPreservingComments(node.value));
+  const copy = constructCopy(
+    node,
+    copyDeclarationPayload(node, true) ?? copyChildPreservingComments(node.value)
+  );
   copy.frozen = true;
   return copy;
 }
@@ -234,7 +254,7 @@ export function copyOwnedWithReusableLeaves(node: Node): Node {
     pseudoCopy.frozen = true;
     return pseudoCopy;
   }
-  const copy = constructCopy(node, copyChild(node.value));
+  const copy = constructCopy(node, copyDeclarationPayload(node, false) ?? copyChild(node.value));
   copy.frozen = true;
   return copy;
 }

@@ -15,8 +15,10 @@ import {
   progressivedecl,
   progressiveruleset,
   progressivevardecl,
+  ref,
   rules,
-  ruleset
+  ruleset,
+  vardecl
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -34,7 +36,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(serializeTypes(declaration)).toBeString(`
       (ProgressiveDeclaration
         name: 'color'
-        valueSegments:
+        value:
           ['blue']
       )
     `);
@@ -71,7 +73,7 @@ describe('progressive scanner-first proof nodes', () => {
           [
             (ProgressiveDeclaration
               name: 'color'
-              valueSegments:
+              value:
                 ['blue']
             )
           ]
@@ -111,7 +113,7 @@ describe('progressive scanner-first proof nodes', () => {
                 [
                   (ProgressiveDeclaration
                     name: 'color'
-                    valueSegments:
+                    value:
                       ['blue']
                   )
                 ]
@@ -133,7 +135,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(serializeTypes(declaration)).toBeString(`
       (ProgressiveVariableDeclaration
         name: '@brand'
-        valueSegments:
+        value:
           ['blue']
       )
     `);
@@ -177,7 +179,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(progressive.toTrimmedString({ compress: true })).toBe('');
   });
 
-  test('keeps raw rule strings and nested rules from gaining declaration semicolons', () => {
+  test('keeps string rule entries and nested rules from gaining declaration semicolons', () => {
     const progressive = progressiveruleset({
       selector: '.a',
       rules: [
@@ -231,7 +233,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(buffer.segments).toEqual(['@media screen {\n  .a {\n    color: blue;\n  }\n}\n']);
   });
 
-  test('renders raw-field core declarations without name or value child nodes', () => {
+  test('renders string-backed core declarations without allocating value wrappers', () => {
     const declaration = decl({
       name: 'color',
       value: ['blue']
@@ -239,20 +241,18 @@ describe('progressive scanner-first proof nodes', () => {
 
     expect(declaration).toBeInstanceOf(Declaration);
     expect(declaration.toTrimmedString()).toBe('color: blue');
-    expect(declaration.name).toBeUndefined();
-    expect(declaration.valueNode).toBeUndefined();
-    expect(declaration.rawName).toBe('color');
-    expect(declaration.rawValueSegments).toEqual(['blue']);
+    expect(declaration.name).toBe('color');
+    expect(declaration.value).toEqual(['blue']);
     expect(serializeTypes(declaration)).toBeString(`
       (Declaration
-        rawName: 'color'
-        rawValueSegments:
+        name: 'color'
+        value:
           ['blue']
       )
     `);
   });
 
-  test('writes raw-field core declaration render output without allocating value wrappers', () => {
+  test('writes string-backed core declaration render output without allocating value wrappers', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const declaration = decl({
@@ -265,7 +265,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(buffer.segments).toEqual(['width: calc(100% - 1px) !important']);
   });
 
-  test('writes multiline raw-field core declaration values on continuation lines', () => {
+  test('writes multiline string-backed core declaration values on continuation lines', () => {
     const declaration = decl({
       name: 'grid-template-areas',
       value: ['"header header header"\n    "content . sidebar"\n    "footer footer footer"']
@@ -279,7 +279,7 @@ describe('progressive scanner-first proof nodes', () => {
     ].join('\n'));
   });
 
-  test('parents explicit raw-field declaration node segments without value wrapper allocation', () => {
+  test('parents explicit declaration node segments without value wrapper allocation', () => {
     const segment = any('100%');
     const declaration = decl({
       name: 'width',
@@ -287,18 +287,18 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(segment.parent).toBe(declaration);
-    expect(declaration.valueNode).toBeUndefined();
+    expect(declaration.value).toEqual(['calc(', segment, ' - 1px)']);
     expect(declaration.toTrimmedString()).toBe('width: calc(100% - 1px)');
     expect(serializeTypes(declaration)).toBeString(`
       (Declaration
-        rawName: 'width'
-        rawValueSegments:
+        name: 'width'
+        value:
           ['calc(', Any, ' - 1px)']
       )
     `);
   });
 
-  test('materializes explicit raw-field declaration node segments when semantic registration asks', () => {
+  test('materializes explicit declaration node segments when semantic registration asks', () => {
     const context = new Context();
     const segment = any('100%');
     const declaration = decl({
@@ -307,13 +307,11 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     void declaration.prepareRegistration(context);
-    expect(declaration.valueNode).toBe(segment);
-    expect(declaration.valueNode.parent).toBe(declaration);
-    expect(declaration.rawValueSegments).toBeUndefined();
-    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
+    expect(declaration.value).toBe(segment);
+    expect(declaration.value.parent).toBe(declaration);
   });
 
-  test('materializes mixed raw-field segments into a reachable value container', () => {
+  test('materializes mixed declaration segments into a reachable value container', () => {
     const context = new Context();
     const segment = any('100%');
     const declaration = decl({
@@ -322,14 +320,12 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     void declaration.prepareRegistration(context);
-    expect(isNode(declaration.valueNode, N.Sequence)).toBe(true);
-    expect(segment.parent).toBe(declaration.valueNode);
-    expect(declaration.rawValueSegments).toBeUndefined();
-    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
+    expect(isNode(declaration.value, N.Sequence)).toBe(true);
+    expect(segment.parent).toBe(declaration.value);
     expect(serializeTypes(declaration)).toContain('(Sequence');
   });
 
-  test('renders raw-field core declarations through existing rule containers', () => {
+  test('renders string-backed core declarations through existing rule containers', () => {
     const rootDeclaration = decl({
       name: 'color',
       value: ['blue']
@@ -367,8 +363,8 @@ describe('progressive scanner-first proof nodes', () => {
         rules:
           [
             (Declaration
-              rawName: 'color'
-              rawValueSegments:
+              name: 'color'
+              value:
                 ['blue']
             )
           ]
@@ -394,7 +390,7 @@ describe('progressive scanner-first proof nodes', () => {
     const selector = node.selector;
     expect(isNode(selector, N.CompoundSelector)).toBe(true);
     if (!selector || !isNode(selector, N.CompoundSelector)) {
-      throw new Error('Expected raw string selector to remain a CompoundSelector.');
+      throw new Error('Expected string selector to remain a CompoundSelector.');
     }
     expect(selector.eval(context)).toBe(selector);
     expect(selector.resolve(context)).toBe(selector);
@@ -436,7 +432,7 @@ describe('progressive scanner-first proof nodes', () => {
     const classTypes = serializeTypes(classCompound);
     expect(classTypes).toContain('(CompoundSelector');
     if (!classCompound.selector || !isNode(classCompound.selector, N.CompoundSelector)) {
-      throw new Error('Expected class compound raw selector to materialize as a CompoundSelector.');
+      throw new Error('Expected class compound string selector to materialize as a CompoundSelector.');
     }
     expect(classCompound.selector.value).toEqual(['.a', '.b']);
     expect(classTypes).not.toContain('(BasicSelector');
@@ -448,7 +444,7 @@ describe('progressive scanner-first proof nodes', () => {
     const elementTypes = serializeTypes(elementCompound);
     expect(elementTypes).toContain('(CompoundSelector');
     if (!elementCompound.selector || !isNode(elementCompound.selector, N.CompoundSelector)) {
-      throw new Error('Expected element compound raw selector to materialize as a CompoundSelector.');
+      throw new Error('Expected element compound string selector to materialize as a CompoundSelector.');
     }
     expect(elementCompound.selector.value).toEqual(['button', '.primary']);
     expect(elementTypes).not.toContain('(BasicSelector');
@@ -473,7 +469,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(node.selector).toBeDefined();
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
-      throw new Error('Expected raw selector list materialization to create a SelectorList.');
+      throw new Error('Expected string selector list materialization to create a SelectorList.');
     }
     expect(selector.parent).toBe(node);
     expect(selector.value[0]!.parent).toBe(selector);
@@ -509,7 +505,7 @@ describe('progressive scanner-first proof nodes', () => {
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.ComplexSelector)) {
-      throw new Error('Expected raw complex selector materialization to create a ComplexSelector.');
+      throw new Error('Expected string complex selector materialization to create a ComplexSelector.');
     }
     expect(selector.parent).toBe(node);
     expect(selector.value[0]!.parent).toBe(selector);
@@ -542,7 +538,7 @@ describe('progressive scanner-first proof nodes', () => {
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
-      throw new Error('Expected raw selector list materialization to create a SelectorList.');
+      throw new Error('Expected string selector list materialization to create a SelectorList.');
     }
     expect(selector.value[0]!.parent).toBe(selector);
     expect(selector.value[1]!.parent).toBe(selector);
@@ -632,22 +628,22 @@ describe('progressive scanner-first proof nodes', () => {
     }
   });
 
-  test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
+  test('rejects string-backed core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
       selector: ':hover(1)',
       rules: []
-    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
+    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
     expect(() => ruleset({
       selector: '&:focus, .b',
       rules: []
-    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
+    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
     expect(() => ruleset({
       selector: '.a &:focus',
       rules: []
-    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
+    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
   });
 
-  test('renders raw-field core at-rules without name or prelude child nodes', () => {
+  test('renders string-backed core at-rules without name or prelude child nodes', () => {
     const node = atrule({
       name: '@media',
       prelude: 'screen',
@@ -665,14 +661,12 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@media');
-    expect(node.prelude).toBeUndefined();
-    expect(node.rawPrelude).toBe('screen');
+    expect(node.name).toBe('@media');
+    expect(node.prelude).toBe('screen');
     expect(serializeTypes(node)).toBeString(`
       (AtRule
-        rawName: '@media'
-        rawPrelude: 'screen'
+        name: '@media'
+        prelude: 'screen'
         rules:
           [
             (Ruleset
@@ -680,8 +674,8 @@ describe('progressive scanner-first proof nodes', () => {
               rules:
                 [
                   (Declaration
-                    rawName: 'color'
-                    rawValueSegments:
+                    name: 'color'
+                    value:
                       ['blue']
                   )
                 ]
@@ -691,7 +685,7 @@ describe('progressive scanner-first proof nodes', () => {
     `);
   });
 
-  test('prepares raw-field rulesets under raw at-rule parents without materializing the header', () => {
+  test('prepares string-backed rulesets under string-backed at-rule parents without materializing the header', () => {
     const context = new Context();
     const child = ruleset({
       selector: '.a',
@@ -708,14 +702,12 @@ describe('progressive scanner-first proof nodes', () => {
       rules: [child]
     });
 
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@media');
+    expect(node.name).toBe('@media');
     expect(() => child.prepareRegistration(context)).not.toThrow();
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@media');
+    expect(node.name).toBe('@media');
   });
 
-  test('materializes raw-field core at-rule headers only when semantic registration asks', () => {
+  test('materializes string-backed core at-rule headers only when semantic registration asks', () => {
     const context = new Context();
     const node = atrule({
       name: '@media',
@@ -728,21 +720,17 @@ describe('progressive scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@media');
+    expect(node.name).toBe('@media');
+    expect(node.prelude).toBe('screen');
     void node.prepareRegistration(context);
-    expect(node.rawName).toBeUndefined();
-    expect(node.rawPrelude).toBeUndefined();
     expect(node.name).toBeDefined();
     expect(node.prelude).toBeDefined();
     const types = serializeTypes(node);
     expect(types).toContain('(Any [role=atkeyword] \'@media\')');
     expect(types).toContain('prelude:\n    (Any \'screen\')');
-    expect(types).not.toContain('rawName');
-    expect(types).not.toContain('rawPrelude');
   });
 
-  test('renders raw-field core at-rule statements without name or prelude child nodes', () => {
+  test('renders string-backed core at-rule statements without name or prelude child nodes', () => {
     const context = new Context();
     const node = atrulestatement({
       name: '@charset',
@@ -750,55 +738,65 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('@charset "UTF-8";');
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@charset');
-    expect(node.prelude).toBeUndefined();
-    expect(node.rawPrelude).toBe('"UTF-8"');
+    expect(node.name).toBe('@charset');
+    expect(node.prelude).toBe('"UTF-8"');
     expect(serializeTypes(node).trim()).toBe(`(AtRuleStatement
-  rawName: '@charset'
-  rawPrelude: '"UTF-8"'
+  name: '@charset'
+  prelude: '"UTF-8"'
 )`);
 
     void rules([node]).prepareRegistration(context);
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@charset');
-    expect(node.prelude).toBeUndefined();
-    expect(node.rawPrelude).toBe('"UTF-8"');
+    expect(node.name).toBe('@charset');
+    expect(node.prelude).toBe('"UTF-8"');
   });
 
-  test('renders raw-field core import statements without name or prelude child nodes', () => {
+  test('evaluates node preludes on string-name core at-rule statements', async () => {
+    const context = new Context();
+    const node = atrulestatement({
+      name: '@import',
+      prelude: ref({ key: 'target' }, { type: 'variable' })
+    });
+    const root = rules([
+      vardecl({ name: 'target', value: any('"theme.css"') }),
+      node
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('@import "theme.css";');
+  });
+
+  test('renders string-backed core import statements without name or prelude child nodes', () => {
     const node = atrulestatement({
       name: '@import',
       prelude: '"theme.css" screen'
     });
 
     expect(node.toTrimmedString()).toBe('@import "theme.css" screen;');
-    expect(node.name).toBeUndefined();
-    expect(node.rawName).toBe('@import');
-    expect(node.prelude).toBeUndefined();
-    expect(node.rawPrelude).toBe('"theme.css" screen');
+    expect(node.name).toBe('@import');
+    expect(node.prelude).toBe('"theme.css" screen');
     expect(serializeTypes(node).trim()).toBe(`(AtRuleStatement
-  rawName: '@import'
-  rawPrelude: '"theme.css" screen'
+  name: '@import'
+  prelude: '"theme.css" screen'
 )`);
   });
 
-  test('materializes raw-field core declarations only when semantic registration asks', () => {
+  test('materializes string-backed core declarations only when semantic registration asks', () => {
     const context = new Context();
     const declaration = decl({
       name: 'color',
       value: ['blue']
     });
 
-    expect(declaration.name).toBeUndefined();
-    expect(declaration.valueNode).toBeUndefined();
+    expect(declaration.name).toBe('color');
+    expect(declaration.value).toEqual(['blue']);
     void declaration.prepareRegistration(context);
     expect(declaration.name).toBeDefined();
-    expect(declaration.valueNode).toBeDefined();
+    expect(declaration.value).toBeDefined();
     expect(declaration.name.parent).toBe(declaration);
-    expect(declaration.valueNode.parent).toBe(declaration);
+    expect(declaration.value.parent).toBe(declaration);
     expect(declaration.toTrimmedString()).toBe('color: blue');
     expect(serializeTypes(declaration)).toContain('(Any [role=property] \'color\')');
-    expect(serializeTypes(declaration)).not.toContain('rawValueSegments');
   });
 });

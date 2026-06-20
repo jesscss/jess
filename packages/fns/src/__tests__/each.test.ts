@@ -23,7 +23,7 @@ function assertTupleBindings(loop: For, expectedNames: string[]) {
   expect(names).toEqual(expectedNames);
   for (const variable of vars) {
     expect(variable).toBeInstanceOf(VarDeclaration);
-    expect(variable.valueNode).toBeInstanceOf(Nil);
+    expect(variable.value).toBeInstanceOf(Nil);
     expect(variable.options.paramVar).toBe(true);
   }
 }

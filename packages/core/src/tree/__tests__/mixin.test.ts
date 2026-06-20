@@ -361,8 +361,8 @@ describe('Mixin', () => {
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(firstDecl?.type).toBe('Declaration');
       expect(secondDecl?.type).toBe('Declaration');
-      expect(firstDecl.valueNode).toBe(sourceValue);
-      expect(secondDecl.valueNode).toBe(sourceValue);
+      expect(firstDecl.value).toBe(sourceValue);
+      expect(secondDecl.value).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {

@@ -100,7 +100,7 @@ describe('Style import', () => {
       ]);
 
       await node.prepareRegistration(context);
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
       expect(findPropertyDeclarationOccurrence(node, 'imported-color')).toBeUndefined();
       const buckets = node.directDeclarationsByName;
@@ -129,7 +129,7 @@ describe('Style import', () => {
       expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
         key => key.startsWith('imported-color\u001f')
       )).toEqual([]);
-      expect(findPropertyDeclarationOccurrence(node, 'imported-color')?.node.valueNode.valueOf()).toBe('green');
+      expect(findPropertyDeclarationOccurrence(node, 'imported-color')?.node.value.valueOf()).toBe('green');
     });
 
     it('tracks reference-import presence on evaluated Rules wrappers', async () => {
@@ -756,7 +756,7 @@ describe('Style import', () => {
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.valueNode;
+      const injectedVarValueNode = injectedVar!.value;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
 
@@ -801,7 +801,7 @@ describe('Style import', () => {
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.valueNode;
+      const injectedVarValueNode = injectedVar!.value;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('orange');
 
@@ -839,13 +839,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.valueNode.eval(context);
+      const baseColorValue = await baseColor!.value.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('blue');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.valueNode.eval(context);
+      const derivedColorValue = await derivedColor!.value.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
@@ -879,13 +879,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.valueNode.eval(context);
+      const baseColorValue = await baseColor!.value.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('green');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.valueNode.eval(context);
+      const derivedColorValue = await derivedColor!.value.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('green');
     });
 
@@ -919,13 +919,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.valueNode.eval(context);
+      const baseColorValue = await baseColor!.value.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('yellow');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.valueNode.eval(context);
+      const derivedColorValue = await derivedColor!.value.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
@@ -963,7 +963,7 @@ describe('Style import', () => {
       // Verify baseColor was injected (should be the injected one, not the original)
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.valueNode.eval(context);
+      const baseColorValue = await baseColor!.value.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('cyan');
 
       // Verify derivedColor reflects the injected value (linear lookup)
@@ -973,7 +973,7 @@ describe('Style import', () => {
       expect(derivedColor).toBeDefined();
       // The value should already be evaluated during the import evaluation
       // and should have used the injected baseColor
-      const derivedColorValue = await derivedColor!.valueNode.eval(context);
+      const derivedColorValue = await derivedColor!.value.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('cyan');
     });
 
@@ -1162,7 +1162,7 @@ describe('Style import', () => {
       expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
-      const injectedVarValue = await injectedVar!.valueNode.eval(context);
+      const injectedVarValue = await injectedVar!.value.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
       expect(css).toContain('.base');
       expect(css).toContain('color: purple');
@@ -1451,7 +1451,7 @@ describe('Style import', () => {
 
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
         expect(derivedColor).toBeDefined();
-        const derivedColorValue = await derivedColor!.valueNode.eval(context);
+        const derivedColorValue = await derivedColor!.value.eval(context);
         expect(derivedColorValue.toTrimmedString()).toBe('teal');
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -2082,7 +2082,7 @@ describe('Style import', () => {
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected placement child to be a declaration');
       }
-      expect(placementDecl.valueNode).toBe(red);
+      expect(placementDecl.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -2137,7 +2137,7 @@ describe('Style import', () => {
       expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
       expect(getImportPlacementSourceChild(placement, red)).toBe(red);
       expect(getImportPlacementSegmentSourceChild(placement, red)).toBe(red);
-      expect(placementDecl.valueNode).toBe(red);
+      expect(placementDecl.value).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -2687,7 +2687,7 @@ describe('Style import', () => {
         expect(findPropertyDeclarationOccurrence(evald, 'fromRefProp', {
           context,
           searchParents: false
-        })?.node.valueNode.valueOf()).toBe('24');
+        })?.node.value.valueOf()).toBe('24');
         expect(findPropertyDeclarationOccurrence(evald, 'missingFromRefProp', {
           context,
           searchParents: false

@@ -526,7 +526,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
         && !splitRawSelectorList(value.selector)
         && !isScannerNativeRawSelector(value.selector, true)
       ) {
-        throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
+        throw new TypeError('Ruleset selector is outside the scanner-native selector subset.');
       }
       this.selector = selectorNode ? selectorNode.inherit(this) : value.selector;
       if (this.selector instanceof Node) {
@@ -612,12 +612,13 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     if (selector instanceof Selector || selector instanceof Nil) {
       return selector;
     }
-    if (typeof selector === 'string') {
+    if (typeof selector === 'string' || selector instanceof Node) {
+      const rawSelector = typeof selector === 'string' ? selector : selector.valueOf();
       const materialized = createRawSelectorNode(
-        selector,
+        rawSelector,
         this.location.length ? this.location : undefined,
         this.sourceRoot?._treeContext
-      ) ?? this.materializeRawSelectorBranch(selector);
+      ) ?? this.materializeRawSelectorBranch(rawSelector);
       this.adopt(materialized);
       this.selector = materialized;
       this.value.selector = materialized;
@@ -636,7 +637,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
     const parts = splitRawCompoundSelector(rawSelector);
     if (!parts || parts.length < 1) {
-      throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
+      throw new TypeError('Ruleset selector is outside the scanner-native selector subset.');
     }
     return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }

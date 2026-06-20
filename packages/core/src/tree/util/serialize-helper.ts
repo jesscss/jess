@@ -554,10 +554,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     );
     const keepsDuplicateGeneratedOutput = (n: any): boolean => keepsDuplicateMixinOutputDeclaration(n);
     const declarationNameText = (n: any): string => {
-      if (typeof n.rawName === 'string') {
-        return n.rawName;
-      }
-      return n.name.valueOf();
+      return typeof n.name === 'string' ? n.name : n.name.valueOf();
     };
     if (rulesToRender.length === 0) {
       return '';

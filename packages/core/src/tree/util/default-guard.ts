@@ -34,13 +34,13 @@ export function getDefaultGuardValue(node: Node | undefined, context: Context): 
   if (node.type !== 'Call') {
     return;
   }
-  const rawValue = node.value;
-  if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
+  const callValue = node.value;
+  if (!callValue || typeof callValue !== 'object' || !('name' in callValue)) {
     return;
   }
-  const rawName = rawValue.name;
-  const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-  const refKey = getCallReferenceKey(rawName);
+  const name = callValue.name;
+  const callName = String(name?.valueOf?.() ?? name ?? '');
+  const refKey = getCallReferenceKey(name);
   if (callName === 'default' || refKey === 'default') {
     return Boolean(context.isDefault);
   }

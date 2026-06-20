@@ -67,7 +67,7 @@ export interface BindingEntry {
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
   return {
     cell: {
-      value: decl.valueNode,
+      value: decl.value,
       sourceNode: decl,
       readonly: decl.options?.readonly
     },

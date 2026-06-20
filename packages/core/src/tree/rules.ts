@@ -144,8 +144,7 @@ type UncoveredCallableResult =
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
 function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
-  declaration.value.value = value;
-  Object.defineProperty(declaration, 'valueNode', {
+  Object.defineProperty(declaration, 'value', {
     configurable: true,
     enumerable: true,
     writable: true,
@@ -177,27 +176,18 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImport {
 }
 
 function atRuleStatementNameText(node: AtRuleStatement): string {
-  return String(node.rawName ?? node.name?.valueOf?.() ?? node.name ?? '').trim();
+  return String(typeof node.name === 'string' ? node.name : node.name.valueOf()).trim();
 }
 
 function atRuleNameText(node: AtRule): string {
-  if (node.rawName !== undefined) {
-    return node.rawName.trim();
-  }
-  if (node.name === undefined) {
-    throw new TypeError('AtRule requires a name.');
-  }
-  return String(node.name.valueOf()).trim();
+  return String(typeof node.name === 'string' ? node.name : node.name.valueOf()).trim();
 }
 
 function declarationNameText(node: Declaration | VarDeclaration): string | undefined {
-  if (node.rawName !== undefined) {
-    return node.rawName;
-  }
   if (node.name === undefined) {
     return undefined;
   }
-  return String(node.name.valueOf());
+  return String(typeof node.name === 'string' ? node.name : node.name.valueOf());
 }
 
 function isImportAtRule(node: Node): node is AtRuleStatement {
@@ -266,10 +256,23 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
   return out;
 }
 
+function getCallableSelectorTextKeyPath(selector: string): string[] {
+  const path = splitStaticCallablePathKey(selector);
+  return path ?? (selector ? [selector] : []);
+}
+
 function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
   const selector = ruleset.selector;
   if (isNode(selector, N.Nil)) {
     return [];
+  }
+  if (typeof selector === 'string') {
+    const keys = getCallableSelectorTextKeyPath(selector);
+    return keys.length > 0 ? [keys] : [];
+  }
+  if (selector instanceof Node && !isSelectorLikeNode(selector)) {
+    const keys = getCallableSelectorTextKeyPath(selector.valueOf());
+    return keys.length > 0 ? [keys] : [];
   }
   if (isNode(selector, N.SelectorList)) {
     const out: string[][] = [];
@@ -1844,7 +1847,7 @@ export class Rules<
             }
           }
           const cell = varEntry?.cell ?? {
-            value: changedVariable.valueNode,
+            value: changedVariable.value,
             sourceNode: changedVariable,
             readonly: Boolean(changedVariable.options?.readonly)
           };
@@ -2287,7 +2290,6 @@ export class Rules<
         includeRulesets,
         searchParents
       });
-
 	      if (matches.length === 0) {
 	        if (filterType !== 'Mixin' && restLength > 0) {
 	          const prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path.slice(offset), {
@@ -3248,14 +3250,19 @@ export class Rules<
 	        if (options.searchParents === false && rulesetNamespaceFast !== undefined && rulesetNamespaceFast.length === 0) {
 	          return undefined;
 	        }
-	        let namespaceMixins: MixinEntry[] | undefined;
+        let namespaceMixins: MixinEntry[] | undefined;
         let namespaceMixinMissCovered = false;
         if (this._scopeFrame && !options.hasTarget && !options.local) {
           const namespaceKey = keys[0]!;
-          this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
+          const searchParents = options.searchParents !== false;
+          if (searchParents) {
+            this.prepareCallableLookupFrameChain(this._scopeFrame, namespaceKey, false, true);
+          } else {
+            this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
+          }
           const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
             includeRulesets: false,
-            searchParents: false
+            searchParents
           });
           if (frameHit.kind === 'hit') {
             namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
@@ -4200,7 +4207,7 @@ export class Rules<
             if (variableHit.readonly || variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
             }
-            let assignedValue = node.valueNode;
+            let assignedValue = node.value;
             if (context) {
               const evaluatedValue = assignedValue.eval(context);
               if (!isThenable(evaluatedValue)) {
@@ -4231,7 +4238,7 @@ export class Rules<
         }
         const result = resultOccurrence.node;
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-          let assignedValue = node.valueNode;
+          let assignedValue = node.value;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
             if (!isThenable(evaluatedValue)) {
@@ -4738,7 +4745,7 @@ export class Rules<
    */
   private _hasStaticName(node: Node): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      const name = node.rawName ?? node.name;
+      const name = node.name;
       if (name === undefined) {
         return false;
       }
@@ -4749,7 +4756,7 @@ export class Rules<
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      const name = node.rawName ?? node.name;
+      const name = node.name;
       if (name === undefined) {
         return false;
       }
@@ -5283,7 +5290,7 @@ export class Rules<
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return decl.valueNode;
+      return decl.value;
     };
     const replaceOwnedDeclaration = (
       ownerRules: Rules,
@@ -5445,7 +5452,7 @@ export class Rules<
           ownerRules,
           outputDecl,
           outputDecl.deriveWithParts({
-            value: outputDecl.valueNode,
+            value: outputDecl.value,
             important: priorImportant
           })
         );
@@ -5937,7 +5944,7 @@ function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
-      if (param.valueNode instanceof Nil) {
+      if (param.value instanceof Nil) {
         return false;
       }
       continue;

@@ -1823,7 +1823,7 @@ function validateStructuralFedDeclaration(
     return undefined;
   }
   if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
-    return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
+    return 'string declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
   }
   if (
     !valueParts
@@ -1875,7 +1875,7 @@ function buildStructuralFedDeclaration(
       name,
       value: valueToken.segments ?? [valueToken.node ?? valueToken.text],
       important: valueToken.important
-    }, undefined, locationFromRange(plan.document, child.start, child.end), context),
+    }, { sourceBacked: true }, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
   };
 }

@@ -76,7 +76,7 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree);
     expect(out).toContain('(VarDeclaration');
-    expect(out).toContain("valueNode:");
+    expect(out).toContain("value:");
     expect(out).toContain("['#ns', '.breakpoint']");
     expect(out).toContain("key: '.valToGet'");
     expect(out).toContain('key: -1');
@@ -88,7 +88,7 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContain('(VarDeclaration');
     expect(out).toContain("(Any [role=ident] 'color')");
-    expect(out).toContain('valueNode:');
+    expect(out).toContain('value:');
     expect(out).toContain('(Color');
     expect(out).toContain("node: 'red'");
   });
@@ -100,7 +100,7 @@ describe('serializeTypes coverage', () => {
       (CustomDeclaration
         name:
           (Any [role=property] '--custom')
-        valueNode:
+        value:
           (Sequence
             value:
               [
@@ -228,7 +228,7 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContain('(VarDeclaration');
     expect(out).toContain("(Any [role=ident] 'rules')");
-    expect(out).toContain('(Mixin');
+    expect(out).toContain('(Collection');
     expect(out).toContain('rules:');
     expect(out).toContain('(Declaration');
     expect(out).toContain("(Any [role=property] 'color')");
@@ -570,7 +570,7 @@ test('parse known at-rule as variable declaration', () => {
   const node = result.tree.value[0] as any;
   expect(node.type).toBe('VarDeclaration');
   expect(node.name.toString()).toBe('property');
-  expect(textOf(node.valueNode)).toBe('foo');
+  expect(textOf(node.value)).toBe('foo');
 });
 
 /** If it has a colon and no spaces, still a variable declaration */
@@ -579,7 +579,7 @@ test('parse known at-rule as variable declaration', () => {
   const node = result.tree.value[0] as any;
   expect(node.type).toBe('VarDeclaration');
   expect(node.name.toString()).toBe('property');
-  expect(textOf(node.valueNode)).toBe('foo');
+  expect(textOf(node.value)).toBe('foo');
 });
 
 /** If it has a parens immediately after, it's a call */
@@ -607,8 +607,8 @@ test('namespace reference - simple id', () => {
   expect(errors.length).toBe(0);
   const node = tree.value[0] as any;
   expect(node.type).toBe('VarDeclaration');
-  expect(node.valueNode.type).toBe('Reference');
-  expect(node.valueNode.key).toBe('#id');
+  expect(node.value.type).toBe('Reference');
+  expect(node.value.key).toBe('#id');
 });
 
 test('namespace reference - simple class', () => {
@@ -616,8 +616,8 @@ test('namespace reference - simple class', () => {
   expect(errors.length).toBe(0);
   const node = tree.value[0] as any;
   expect(node.type).toBe('VarDeclaration');
-  expect(node.valueNode.type).toBe('Reference');
-  expect(node.valueNode.key).toBe('.class');
+  expect(node.value.type).toBe('Reference');
+  expect(node.value.key).toBe('.class');
 });
 
 test('namespace reference - complex selector', () => {
@@ -633,8 +633,8 @@ test('namespace call - simple id with parentheses', () => {
   expect(errors.length).toBe(0);
   const node = tree.value[0] as any;
   expect(node.type).toBe('VarDeclaration');
-  expect(node.valueNode.type).toBe('Call');
-  expect(node.valueNode.name.key).toBe('#id');
+  expect(node.value.type).toBe('Call');
+  expect(node.value.name.key).toBe('#id');
 });
 
 test('namespace call - complex selector with parentheses', () => {

@@ -69,8 +69,8 @@ export type AtRuleValue = {
   rules: Node[];
 };
 
-export type RawAtRuleValue = {
-  name: string;
+export type AtRuleParts = {
+  name: string | AtRuleValue['name'];
   prelude?: string | Node;
   rules: Node[];
 };
@@ -433,7 +433,7 @@ function createAtRuleEvalResultNode(
   }
   return applyAtRuleBodyPublicResultState(
     source.deriveAtRule({
-      ...source.materializeRawHeaderForSemantics(),
+      ...source.materializeHeaderForSemantics(),
       rules: source.rules
     }),
     record,
@@ -588,81 +588,50 @@ export type AtRuleOptions = NodeOptions;
 /**
  * A block-bearing at-rule like @media, @supports, or @font-face.
  */
-export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
-  // AUDIT: No. "raw" is wrong
-  static override childKeys = ['name', 'rawName', 'prelude', 'rawPrelude', 'rules'] as const;
+export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
+  static override childKeys = ['name', 'prelude', 'rules'] as const;
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
 
   protected _valueOf: string | undefined;
-  name: AtRuleValue['name'] | undefined;
-  rawName: string | undefined;
-  prelude: AtRuleValue['prelude'];
-  rawPrelude: string | undefined;
+  name: AtRuleParts['name'];
+  prelude: AtRuleParts['prelude'];
   declare readonly rules: Node[];
 
-  constructor(value: AtRuleValue | RawAtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: AtRuleValue | AtRuleParts, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     if (!Array.isArray(value.rules)) {
       throw new TypeError('AtRule requires rules to be a Node array. Use AtRuleStatement for semicolon at-rules.');
     }
     super(value, options, location, treeContext, value.rules);
-    if (typeof value.name === 'string') {
-      if (!/^@[a-zA-Z][\w-]*$/u.test(value.name)) {
-        throw new TypeError('Raw at-rule name is outside the scanner-native at-rule subset.');
-      }
-      this.name = undefined;
-      this.rawName = value.name;
-      if (typeof value.prelude === 'string') {
-        this.prelude = undefined;
-        this.rawPrelude = value.prelude;
-      } else {
-        this.prelude = value.prelude;
-        this.rawPrelude = undefined;
-      }
-    } else {
-      this.name = value.name;
-      this.rawName = undefined;
-      this.prelude = value.prelude;
-      this.rawPrelude = undefined;
+    if (typeof value.name === 'string' && !/^@[a-zA-Z][\w-]*$/u.test(value.name)) {
+      throw new TypeError('At-rule name is outside the scanner-native at-rule subset.');
     }
+    this.name = value.name;
+    this.prelude = value.prelude;
   }
 
-  private materializeRawHeaderForSemantics(): { name: AtRuleValue['name']; prelude: AtRuleValue['prelude'] } {
-    if (this.name !== undefined) {
-      return { name: this.name, prelude: this.prelude };
+  private materializeHeaderForSemantics(): { name: AtRuleValue['name']; prelude: AtRuleValue['prelude'] } {
+    if (typeof this.name === 'string') {
+      const name = new Any(this.name, { role: 'atkeyword' }, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+        .inherit(this);
+      this.adopt(name);
+      this.name = name;
+      this.value.name = name;
     }
-    const rawName = this.rawName;
-    if (rawName === undefined) {
-      throw new TypeError('AtRule requires a name before semantic materialization.');
-    }
-    const name = new Any(rawName, { role: 'atkeyword' }, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
-      .inherit(this);
-    this.adopt(name);
-    this.name = name;
-    this.rawName = undefined;
-    this.value.name = name;
-    const rawPrelude = this.rawPrelude;
-    if (rawPrelude !== undefined) {
-      const prelude = new Any(rawPrelude, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+    if (typeof this.prelude === 'string') {
+      const prelude = new Any(this.prelude, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
         .inherit(this);
       this.adopt(prelude);
       this.prelude = prelude;
-      this.rawPrelude = undefined;
       this.value.prelude = prelude;
     }
     this._valueOf = undefined;
-    return { name, prelude: this.prelude };
+    return { name: this.name, prelude: this.prelude };
   }
 
   private atRuleNameText(): string {
-    if (this.rawName !== undefined) {
-      return this.rawName;
-    }
-    if (this.name === undefined) {
-      throw new TypeError('AtRule requires a name.');
-    }
-    return this.name.valueOf();
+    return typeof this.name === 'string' ? this.name : this.name.valueOf();
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
@@ -696,7 +665,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   deriveAtRule(parts: AtRuleValue, sourceParts: AtRuleValue = {
-    ...this.materializeRawHeaderForSemantics(),
+    ...this.materializeHeaderForSemantics(),
     prelude: this.prelude,
     rules: this.rules
   }): AtRule {
@@ -715,14 +684,10 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
-    return (this._valueOf ??= (
-      this.rawName !== undefined
-        ? this.rawName + (
-          this.prelude !== undefined
-            ? ' ' + getAtRuleSourceIdentityText(this.prelude)
-            : this.rawPrelude !== undefined ? ' ' + this.rawPrelude : ''
-        )
-        : this.atRuleNameText() + (this.prelude ? ' ' + this.prelude.valueOf() : '')
+    return (this._valueOf ??= this.atRuleNameText() + (
+      this.prelude
+        ? ' ' + (typeof this.prelude === 'string' ? this.prelude : this.prelude.valueOf())
+        : ''
     ));
   }
 
@@ -891,9 +856,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
-    if (this.rawName !== undefined) {
-      this.materializeRawHeaderForSemantics();
-    }
+    this.materializeHeaderForSemantics();
     const { prelude } = this;
     if (!prelude) {
       return undefined;
@@ -912,7 +875,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   private resolveBodyResult(record: AtRuleBodyEvalRecord): AtRule {
     return applyAtRuleBodyPublicResultState(
       this.deriveAtRule({
-        ...this.materializeRawHeaderForSemantics(),
+        ...this.materializeHeaderForSemantics(),
         rules: this.rules
       }),
       record
@@ -1055,13 +1018,13 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   private _prepareAtRuleNameIdentity(context: Context): MaybePromise<AtRule> {
-    this.materializeRawHeaderForSemantics();
+    this.materializeHeaderForSemantics();
     if (!(this.name instanceof Interpolated)) {
       return this;
     }
 
     const node = this.deriveAtRule({
-      ...this.materializeRawHeaderForSemantics(),
+      ...this.materializeHeaderForSemantics(),
       rules: this.rules
     });
     const finish = (key: Node): AtRule => {
@@ -1121,7 +1084,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
         node = original.deriveAtRule({
-          ...original.materializeRawHeaderForSemantics(),
+          ...original.materializeHeaderForSemantics(),
           rules: original.rules
         });
       }
@@ -1315,14 +1278,13 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   getComparableHeaderString(options: FinalPrintOptions): string {
-    if (this.rawName !== undefined && options.atRuleHeaderNode !== this) {
-      if (this.prelude !== undefined) {
-        return buildComparableAtRuleHeader(
-          this.rawName,
-          renderAtRuleHeaderNodeSyntax(this.prelude, options, true)
-        );
-      }
-      return buildComparableAtRuleHeader(this.rawName, this.rawPrelude);
+    if (typeof this.name === 'string' && options.atRuleHeaderNode !== this) {
+      const prelude = typeof this.prelude === 'string'
+        ? this.prelude
+        : this.prelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, true)
+          : undefined;
+      return buildComparableAtRuleHeader(this.name, prelude);
     }
     let { name } = this;
     let prelude = options.atRuleHeaderNode === this
@@ -1356,18 +1318,20 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   writeHeader(options: FinalPrintOptions, withoutComments?: boolean): boolean {
-    if (!withoutComments && this.rawName !== undefined && options.atRuleHeaderNode !== this) {
+    if (!withoutComments && typeof this.name === 'string' && options.atRuleHeaderNode !== this) {
       const w = options.writer;
       const idt = indent(options.depth);
       if (idt) {
         w.add(idt);
       }
-      w.add(this.rawName, this);
-      const preludeOut = this.prelude !== undefined
-        ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
-        : this.rawPrelude;
+      w.add(this.name, this);
+      const preludeOut = typeof this.prelude === 'string'
+        ? this.prelude
+        : this.prelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+          : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
-        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(preludeOut)) {
+        if (!endsWithAtRuleWhitespace(this.name) && !startsWithAtRuleWhitespace(preludeOut)) {
           w.add(' ');
         }
         w.add(preludeOut, this.prelude ?? this);
@@ -1428,17 +1392,19 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
 
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    if (!withoutComments && this.rawName !== undefined && options.atRuleHeaderNode !== this) {
+    if (!withoutComments && typeof this.name === 'string' && options.atRuleHeaderNode !== this) {
       const rules = options.atRuleBodyNode === this
         ? options.atRuleBodyOverride
         : this.getRenderRules();
       const idt = indent(options.depth);
-      let out = idt + this.rawName;
-      const preludeOut = this.prelude !== undefined
-        ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
-        : this.rawPrelude;
+      let out = idt + this.name;
+      const preludeOut = typeof this.prelude === 'string'
+        ? this.prelude
+        : this.prelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+          : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
-        if (!endsWithAtRuleWhitespace(this.rawName) && !startsWithAtRuleWhitespace(preludeOut)) {
+        if (!endsWithAtRuleWhitespace(this.name) && !startsWithAtRuleWhitespace(preludeOut)) {
           out += ' ';
         }
         out += preludeOut;
@@ -1537,7 +1503,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    this.materializeRawHeaderForSemantics();
+    this.materializeHeaderForSemantics();
     let hasRulesetFrame = false;
     for (let i = 0; i < context.frames.length; i++) {
       if (isNode(context.frames[i], N.Ruleset)) {
@@ -1576,7 +1542,7 @@ export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRule | Nil> {
     const source = bodyEvalRecord.source;
     let node = bodyEvalRecord.evalFrame;
-    node.materializeRawHeaderForSemantics();
+    node.materializeHeaderForSemantics();
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.name?.valueOf?.() ?? '');

@@ -2864,7 +2864,7 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.valueNode;
+  const declarationValue = declaration.value;
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
@@ -3184,10 +3184,10 @@ function finalizeRawReferenceLookupTarget(
     return getBindingHandleValue(returnVal);
   }
   if (isDirectDeclarationOccurrence(returnVal)) {
-    return returnVal.node.valueNode;
+    return returnVal.node.value;
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return returnVal.valueNode;
+    return returnVal.value;
   }
   return returnVal;
 }

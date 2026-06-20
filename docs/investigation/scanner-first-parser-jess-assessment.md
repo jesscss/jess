@@ -29,8 +29,9 @@ list of children, the default shape should be `.value`. Alternate child names
 such as `left`/`right`, `name`/`value`, `selector`/`rules`, or
 `guard`/`body` are justified when the node has multiple distinct roles.
 Legacy names such as `List.items`, `Sequence.items`,
-`CompoundSelector.components`, and `Declaration.valueNode` should be treated as
-shape debt and migration candidates, not as names to preserve by default.
+`CompoundSelector.components`, and declaration value wrapper fields should be
+treated as shape debt and migration candidates, not as names to preserve by
+default.
 Scanner-first work should not invent more arbitrary list-field names, and the
 implementation plan should include a deliberate audit of where existing
 single-payload node fields can collapse back to `.value` without breaking
@@ -227,7 +228,7 @@ solve a real lifetime or memory problem.
 
 Declarations should use the same cheap-storage instinct. A scanner-fed
 declaration should be able to enter core as ordinary `decl({ name: 'color',
-value: 'blue' })` when the name and value are raw scanner-native text. There is
+value: 'blue' })` when the name and value are scanner-native text. There is
 no inherent value in allocating a keyword/anonymous wrapper solely so a renderer
 can print `blue`, especially if the active visitor surface does not expose
 keyword leaves and no declaration visitor will inspect the canonical value node.
@@ -261,7 +262,7 @@ Raw strings are still most valuable as atom-like payloads. A string leaf such
 as `.a`, `>`, `screen`, `grid`, or `blue` can be cheap and honest. Selectors,
 media queries, and supports conditions are different: a full complex selector,
 a supports condition like `(display: grid)`, or a media query with
-parenthesized features should not be accepted as one opaque raw string merely
+parenthesized features should not be accepted as one opaque string merely
 because a regex can recognize its outer shape. Those parens and separators are
 grammar-significant, so if the scanner/sub-parser validates that they are
 balanced in a particular query/condition shape, the structural-fed path should
@@ -295,43 +296,45 @@ Conceptually:
 
 ```ts
 class Declaration {
-  #rawName?: string;
-  #rawValue?: string | Array<string | Node>;
-  #nameNode?: Any<'property'> | Interpolated<'property'>;
-  #valueNode?: Node;
+  #name: string | Any<'property'> | Interpolated<'property'>;
+  #value: string | Node | Array<string | Node>;
 
   get name(): string | Any<'property'> | Interpolated<'property'> {
-    return this.#nameNode ?? this.#rawName!;
+    return this.#name;
   }
 
   get value(): string | Array<string | Node> | Node {
-    return this.#valueNode ?? this.#rawValue!;
+    return this.#value;
   }
 
   /** Explicit semantic boundary for eval, mutation, or compatible visitors. */
   materializeValue(): Node {
-    return this.#valueNode ??= parseOrWrapRawDeclarationValue(this.#rawValue);
+    const value = this.#value;
+    if (typeof value === 'string' || Array.isArray(value)) {
+      return this.#value = parseOrWrapDeclarationValue(value);
+    }
+    return value;
   }
 }
 ```
 
 There are two variants worth testing:
 
-- **Read-only getter stays raw:** `decl.value` returns a string or mixed segment
+- **Read-only getter stays textual:** `decl.value` returns a string or mixed segment
   array until a semantic method such as `materializeValue()`, eval, mutation, or
   a compatible visitor asks for a node. This maximizes cheap reads and makes
   direct render simple, but existing callers that assume `value.writeSyntax()`
   must be audited.
 - **Getter materializes on node-shaped access:** `decl.value` itself promotes
-  raw storage to a canonical node the first time code inspects it. This can
+  textual storage to a canonical node the first time code inspects it. This can
   radically simplify reasoning because ordinary property access becomes the JIT
   boundary, but it can also hide work in innocent-looking reads and make visitor
   planning less explicit. It needs counters and tests so a debug, serialization,
   or visitor path does not accidentally promote the whole tree.
 
-The likely compromise is to expose raw-friendly public fields for the new Jess
+The likely compromise is to expose source-backed public fields for the new Jess
 surface while keeping explicit semantic methods for old Less-compatible visitor
-adapters and eval paths. That lets code which only renders or compares raw text
+adapters and eval paths. That lets code which only renders or compares text
 stay allocation-light, while code that genuinely needs canonical nodes can ask
 for them through a single well-named boundary.
 
@@ -339,13 +342,35 @@ Guardrails for this experiment:
 
 - do not allocate `Any`/`Keyword`/`Anonymous` wrappers merely to store literal
   declaration values;
-- do not create both raw and canonical value objects until the canonical value
+- do not create secondary `raw*`, `*Text`, or `*Segments` fields as substitutes
+  for semantic fields; cheap text and mixed string/node arrays belong directly
+  in `name`, `value`, `important`, `prelude`, or the relevant semantic field;
+- do not create both textual and canonical value objects until the canonical value
   is requested;
-- property-name indexing should use raw `name` strings directly when present;
+- property-name indexing should use `name` strings directly when present;
 - visitor planning must decide whether `visitDeclaration` requires the
   declaration shell only, canonical name/value nodes, or neither;
 - getter-triggered materialization must increment the same counters as explicit
   materialization so tests can prove what was promoted;
+- progressive getters/materializers must read each backing field once into a
+  local (`const value = this.#value`) and reuse that local for every type check,
+  branch, parse input, and return decision in the method. Do not write hot code
+  like `typeof this.#value === ...` and then read `this.#value` again for
+  `Array.isArray()`, parsing, or returning; repeated private-field/property
+  access is avoidable overhead and makes the materialization path harder to
+  audit. The intended pattern is:
+
+  ```ts
+  const value = this.#value;
+  if (typeof value === 'string' || Array.isArray(value)) {
+    const parsed = parseOrWrapDeclarationValue(value);
+    this.#value = parsed;
+    return parsed;
+  }
+  return value;
+  ```
+
+  rather than branching on `this.#value` repeatedly;
 - source maps and diagnostics should use offset metadata first and only ask for
   line/column or canonical value nodes when the requested mapping actually needs
   that detail.
@@ -454,7 +479,7 @@ node assertions for the materialized compiler subtree.
 
 Field-name compatibility should be audited separately from semantic
 compatibility. If a node has a single payload currently exposed as
-`items`, `components`, `valueNode`, or another arbitrary role name, the
+`items`, `components`, or another arbitrary role name, the
 scanner-first replacement should evaluate whether that payload can become
 `.value` as part of an intentional AST cleanup. Serializer updates for today's
 field names are only a way to classify current behavior; they should not
@@ -1942,8 +1967,8 @@ canonical at-rule prelude nodes. It still returns a root `Rules` tree because
 `safeParse` is a core-tree boundary. It records zero requested islands / zero
 actual parser execution for that path. The prototype also covers exact
 no-argument Less mixin definitions and calls: scanner text builds the current
-core `Mixin`/`Call` surfaces, mixin body declarations stay raw-field nodes, and
-registration uses raw declaration names for invalidation keys before semantic
+core `Mixin`/`Call` surfaces, mixin body declarations stay thin-field nodes, and
+registration uses declaration names for invalidation keys before semantic
 name/value materialization is demanded. Nested block at-rules, other block
 at-rule families, Less variable references outside the proven already-seen
 subset, arithmetic, functions beyond exact no-argument mixin calls, extends,
@@ -1952,17 +1977,17 @@ complex/interpolated selectors, parameters, guards, namespaces, and
 trivia-preservation cases currently fall back canonically until their
 progressive materializers are scanner-native.
 
-- [x] DRY/performance follow-up: make raw selector subset classification have
+- [x] DRY/performance follow-up: make selector subset classification have
   one owner before widening selectors again. The current prototype has a
-  plugin-side structural-fed admission check and a core-side raw selector
+  plugin-side structural-fed admission check and a core-side selector
   constructor/materializer check. That duplication is tolerable for the current
   narrow proof, but future selector work should move toward a single small
   classifier/materialization plan so plugin admission and core materialization
   cannot drift and so cold semantic materialization does not repeatedly split
-  the same raw selector string.
+  the same selector string.
   - Current implementation: `@jesscss/core` owns the shared scanner-native raw
     selector admission predicates used by the Less plugin's structural-fed
-    admission gate and by `Ruleset`'s raw selector materialization boundary.
+    admission gate and by `Ruleset`'s selector materialization boundary.
     The public export is marked internal scanner-first machinery. The hot
     admission helper is boolean/no-allocation; `Ruleset` still owns the local
     branch splitting arrays needed only when semantics demand materialization,
@@ -1979,7 +2004,7 @@ progressive materializers are scanner-native.
     start with the combinator, for example
     `RelativeSelector { value: ['>', '.class', '+', 'div'] }`, while offsets
     live in the packed field/range metadata. Attribute selectors can likely
-    remain raw string atoms too, unless equality/matching needs parsed attribute
+    remain string atoms too, unless equality/matching needs parsed attribute
     fields. Visitor exposure is a separate compatibility decision, not an
     automatic reason to create attribute nodes: plugin research may justify
     exposing some selector internals, while other atoms may intentionally stay
@@ -1994,10 +2019,10 @@ progressive materializers are scanner-native.
     adjacent compound/list/complex selector e2e render. A follow-up within the
     same proof admits simple raw attribute selector atoms such as `[data-kind]`
     and `button[data-kind="primary"].active`, plus no-argument pseudo atoms
-    such as `:root`, `button:hover`, and `.a::before`. Single raw string atoms
+    such as `:root`, `button:hover`, and `.a::before`. Single string atoms
     stay `CompoundSelector` surfaces across semantic materialization and extend
     processing instead of collapsing into `BasicSelector`. The extend processor
-    must preserve raw string compound components and only recurse into
+    must preserve string compound components and only recurse into
     already-materialized selector-node components.
     - Current limit: this is compound-only. `ComplexSelector` still owns
       combinator nodes, selector lists still own selector branch nodes, and
@@ -2027,7 +2052,7 @@ progressive materializers are scanner-native.
       ampersand, conflict validation, chained extends, and import/reference
       behavior. Mark which cases are already covered by `walkAndExtend` tests,
       which only pass through the legacy location path, and which are missing.
-      Current result: simple/compound/selector-list/raw-string/single-component
+      Current result: simple/compound/selector-list/string/single-component
       complex cases are covered by walk tests; complex dispatch,
       ampersand-boundary behavior, chained extends, and import/reference
       activation still need bounded migration before deletion.
@@ -2040,7 +2065,7 @@ progressive materializers are scanner-native.
     - [x] Implement missing walk-path semantics in bounded slices, starting
       with the smallest failure that affects scanner-first CSS/Less output
       equality. Do not preserve a fallback merely because it exists today.
-      Current result: raw string compound matching, single-component complex
+      Current result: string compound matching, single-component complex
       whole-item matching, import root selection, and reference-mode generated
       `:is(...)` simplification are implemented and covered by focused tests.
     - [x] Redirect one proven legacy matcher branch: `applyBatchedExtend` no
@@ -2204,19 +2229,19 @@ storage.
   tests can assert both "this feature materialized" and "this feature did not
   materialize."
 - [x] Audit single-payload AST fields reached by CSS/Less materialization
-  (`items`, `components`, `valueNode`, and similar names) and decide which can
+  (`items`, `components`, and similar names) and decide which can
   collapse to `.value` before scanner-first shapes are treated as replacement
   architecture.
   - Current decision: `List`, `Sequence`, and selector collection nodes already
     use `.value`/`childKeys = ['value']`; old `items`/`components` names are
     not reintroduced. `Rules.rules` remains the semantic body contract for
     rules-bearing containers, and scanner-first structural parsing may make
-    that body a mixed string-or-node segment stream before later promotion.
-    `Declaration.valueNode` is not sacred: the next prototype should evaluate
-    `Declaration { name, value: (string | Node)[], important }` plus compact
+    that body a mixed string-or-node stream before later promotion. The
+    declaration payload shape is `Declaration { name, value, important }`, where
+    `value` may be a string, a node, or a mixed string/node array plus compact
     offset/kind metadata (`valueOffsets`/`valueKinds`, a packed side table, or a
-    measured equivalent) as the cheap progressive shape instead of preserving the
-    old full-payload/value-node split.
+    measured equivalent). The old full-payload/value-wrapper split should not be
+    preserved.
 - [x] Prototype a `Rules` wrapper reduction design: determine whether nested
   `Ruleset`/`AtRule`/`Mixin` can inherit rules-container behavior so their
   `.rules` field is the inherited body surface instead of a nested `Rules` node.
@@ -2270,7 +2295,7 @@ storage.
   `&:pseudo` selector branch, with zero legacy island parser executions.
   Dynamic/lazy variable references that need richer Less lookup semantics,
   mixed-unit arithmetic/calc behavior, Less import options, reference/multiple/
-  once/de-dupe behavior, unresolved imports, raw HTTP `url(...)` imports,
+  once/de-dupe behavior, unresolved imports, unquoted HTTP `url(...)` imports,
   block at-rule families outside the root `@media` / `@layer` / `@supports` /
   declaration-block `@font-face` / `@page` / `@counter-style` subset,
   pseudo selectors outside the proven nested `&:pseudo` branch,
@@ -2287,14 +2312,14 @@ storage.
     `packages/jess/test/scanner-first-e2e.test.ts`: plain rule, ordered
     declarations, nested ordinary rule, single-line custom-property raw value,
     and a root `@media` block with raw prelude parse through the structural-fed
-    path, render equal CSS, serialize raw-field core nodes, and assert zero
+    path, render equal CSS, serialize thin-field core nodes, and assert zero
     island requests / zero legacy parser executions / no eager selector,
     prelude, or value child nodes.
   - [x] Extended that proof to packed field-range metadata for the same thin
     targets: structural parse records selector, at-rule name/prelude,
     declaration-name, and value ranges/kinds in `FieldRangeTable`, and the test
-    asserts those ranges map back to the exact raw strings later used by the
-    raw-field core nodes. This proves the cheap path is parser-ready without
+    asserts those ranges map back to the exact strings later used by the
+    thin-field core nodes. This proves the cheap path is parser-ready without
     per-string wrapper nodes, but it does not yet freeze a core-side field
     metadata API.
 - [ ] Replace the temporary core-node bridge with progressively enhanced core
@@ -2314,23 +2339,23 @@ storage.
     string-backed Less variable declarations while the structural-fed builder
     resolves already-seen and same-scope hoisted simple `@ident` reads into raw
     declaration value segments. Variable declaration values are simple literals
-    or the same conservative raw quoted/url subset used by raw declaration
+    or the same conservative raw quoted/url subset used by declaration
     values in this proof; alias declarations such as `@b: @a` and
-    interpolation-like raw strings fall back canonically so broader Less lazy
+    interpolation-like strings fall back canonically so broader Less lazy
     lookup semantics are not frozen into scanner-native strings. This proves
     zero `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path
     while only claiming the bounded same-scope hoisting covered by e2e tests.
-  - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
+  - [x] Structural-fed prototype now uses thin-field core `Ruleset` and
     `Declaration` nodes for covered ordinary rule/declaration success cases,
-    and raw-field core `AtRule` nodes for covered root and ruleset-local
+    and thin-field core `AtRule` nodes for covered root and ruleset-local
     `@media` success cases, including ruleset-local `@media` blocks that contain
     already-supported ordinary nested rules.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
   - [x] Added the first root declaration-block at-rule proofs. Root
-    `@font-face`, `@page`, and `@counter-style <ident>` now build raw-field
-    core `AtRule` nodes with raw declaration children, render equal CSS,
-    serialize raw at-rule names/preludes plus raw declaration names/values, and
+    `@font-face`, `@page`, and `@counter-style <ident>` now build thin-field
+    core `AtRule` nodes with declaration children, render equal CSS,
+    serialize raw at-rule names/preludes plus declaration names/values, and
     report zero island requests, zero legacy parser executions, and zero
     promoted bytes. The proof covers the upstream
     `tests-unit/at-rules-declarations/at-rules-declarations.less` shape,
@@ -2353,28 +2378,29 @@ storage.
     structural scope. That is acceptable for the narrow proof, but widening the
     variable path must benchmark this against a cheaper scope stack or packed
     side-table representation before treating it as architecture.
-- [x] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
+- [x] Add a first thin-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `decl({ name: "color", value: "blue", important: false })`, render
   from those string segments, maintain per-field/per-segment offsets separately,
   and assert no selector/value child nodes are created until a typed accessor or
   richer feature requests them.
-  - [x] Added the first raw-field core `Declaration` proof through ordinary
-    `decl(...)`: it creates a real `Declaration` instance with `rawName` and
-    `rawValueSegments`, renders/serializes string segments, and leaves
-    canonical `name` / `valueNode` undefined so no hidden name/value child nodes
-    are allocated for the direct render proof path. If the declaration enters
-    semantic registration/eval, it materializes canonical name/value nodes on
-    demand; that is the progressive-enhancement boundary, not the cheap render
-    path.
+  - [ ] Enforce the progressive-field invariant before widening declaration or
+    at-rule coverage further: no node should use secondary `raw*`, `*Text`, or
+    `*Segments` fields as substitutes for the actual semantic field. Cheap
+    source-backed structure belongs directly in the named field, such as
+    `Declaration.name`, `Declaration.value`, `Declaration.important`,
+    `AtRule.name`, and `AtRule.prelude`. Those fields may hold `string | Node`
+    or, where the value is naturally mixed, `Array<string | Node>`.
+    Materialization upgrades the same field to node-backed structure only when a
+    semantic operation actually needs it.
   - [x] Connected that proof to the structural-fed Less prototype for covered
-    declarations: `.a { color: blue; }` now parses into a raw-field core
-    `Ruleset` containing a real core `Declaration` with raw `name` / `value`
+    declarations: `.a { color: blue; }` now parses into a thin-field core
+    `Ruleset` containing a real core `Declaration` with `name` / `value`
     payloads before semantic materialization. The render/e2e tests still prove
     output equality with zero legacy island parser executions.
-  - [x] Extended the raw-field declaration proof to flat literal values such as
+  - [x] Extended the thin-field declaration proof to flat literal values such as
     `border: 1px solid red`, `box-shadow: 0 1px #000`, and `font: 16px serif`.
-    The structural-fed Less path keeps the entire value as one raw string
+    The structural-fed Less path keeps the entire value as one string
     segment for direct render/serialization and still reports zero selected
     island parser executions. This is deliberately not a general value parser:
     comments, interpolation, rich comma lists, and mixed variable/value streams
@@ -2382,7 +2408,7 @@ storage.
   - [x] Added a thin progressive declaration value proof for the simple literal
     Less/CSS color functions currently proven by tests: `lighten(#000, 10%)`,
     `darken(#fff, 10%)`, `rgb(10, 20, 30)`, and
-    `rgba(10, 20, 30, 50%)`. The declaration still stores a raw-field payload,
+    `rgba(10, 20, 30, 50%)`. The declaration still stores a thin-field payload,
     but the single value segment can now be a core `Call` with `Reference`,
     `List`, and scalar literal argument nodes when the function text is
     trivially scanner-native. Render/eval tests assert output equality, raw
@@ -2392,10 +2418,10 @@ storage.
       variable arguments, nested calls, quoted arguments, comments,
       interpolation, unproven function names, or richer value grammar still fall
       back canonically.
-  - [x] Added the first mixed raw-string plus parsed-node value proof:
+  - [x] Added the first mixed string plus parsed-node value proof:
     `box-shadow: 0 0 2px lighten(#000, 10%)` stores
-    `rawValueSegments` as `["0 0 2px ", Call]`, renders equal CSS, serializes
-    the raw declaration payload plus the parsed `Call` segment, and still
+    `value` as `["0 0 2px ", Call]`, renders equal CSS, serializes
+    the declaration payload plus the parsed `Call` segment, and still
     reports zero requested islands, zero legacy parser executions, and zero
     promoted bytes. This deliberately proves only one flat scanner-native
     prefix followed by one supported function call; it is not a general value
@@ -2412,63 +2438,63 @@ storage.
     comment nodes, and still reports zero requested islands / zero legacy parser
     executions. Inline block comments and unterminated block comments remain
     canonical fallbacks because exact placement/recovery has not been proven.
-  - [x] Extended raw-field declaration transport to conservative quoted and
+  - [x] Extended thin-field declaration transport to conservative quoted and
     URL-ish declaration values such as `content: "hello } world"`,
     `background: url(/assets/a}/b.png)`, `background: url(/assets/a,b.png)`,
     and `font-family: "Open Sans", sans-serif`. These values are carried as one
-    raw string segment and rely on the structural scanner's existing string/url
+    string segment and rely on the structural scanner's existing string/url
     boundary handling; they do not allocate value child nodes or execute legacy
     island parsers. Values that contain Less variable/interpolation-looking
     tokens still fall back so canonical eval behavior is not skipped.
-  - [x] Extended raw-field declaration transport to comma-separated flat CSS
+  - [x] Extended thin-field declaration transport to comma-separated flat CSS
     value lists such as `text-shadow: -1px -1px 1px red, 6px 5px 5px yellow`
-    and `box-shadow: 0 0 1px red, 0 0 2px blue`. This is still a raw string
+    and `box-shadow: 0 0 1px red, 0 0 2px blue`. This is still a string
     proof, not list parsing: nested functions, comments, variables,
     interpolation, and multiline values remain outside the subset.
-  - [x] Extended raw-field declaration transport to conservative custom
+  - [x] Extended thin-field declaration transport to conservative custom
     property declarations such as `--brand: #06c` and raw single-line
     brace/string payloads such as `--raw: { token: "}"; }`. These values are
-    carried as one raw string segment and rely on the structural scanner's
+    carried as one string segment and rely on the structural scanner's
     existing balanced-boundary handling; they do not allocate value child nodes
     or execute legacy island parsers. Custom-property `!important`, multiline
     custom-property values, interpolation, and un-interpolated Less variable-like
     tokens still fall back so canonical warning/eval behavior is not skipped.
-  - [x] Extended raw-field declaration transport to trailing important flags on
+  - [x] Extended thin-field declaration transport to trailing important flags on
     already-supported simple/flat literal values, including exact `!important`,
     spaced `! important`, and case-variant `!IMPORTANT` spellings. The
-    structural-fed Less path strips the flag into `rawImportant` exactly as the
+    structural-fed Less path strips the flag into `important` exactly as the
     current renderer preserves it, while keeping the declaration value as one
-    raw string segment, so direct render and serialization still do not allocate
+    string segment, so direct render and serialization still do not allocate
     value or important child nodes. Important Less variable references and
     important variable declarations remain canonical fallbacks.
-  - [x] Added the first raw-field core `Ruleset` proof: the normal core
-    `Ruleset` constructor accepts a raw selector string for the scanner-native
+  - [x] Added the first thin-field core `Ruleset` proof: the normal core
+    `Ruleset` constructor accepts a selector string for the scanner-native
     simple selector subset and stores atom selectors as strings without a
     selector child node. If a semantic boundary needs selector structure, the
-    atom is promoted to a `CompoundSelector` with a raw string component rather
+    atom is promoted to a `CompoundSelector` with a string component rather
     than a `BasicSelector`. The structural-fed
-    Less prototype now emits those raw core `Ruleset` nodes for covered
+    Less prototype now emits those thin core `Ruleset` nodes for covered
     ordinary rules, and e2e tests assert the string selector/declaration shape
     before semantic materialization.
-  - [x] Extended that raw-field `Ruleset` proof to adjacent basic compound
+  - [x] Extended that thin-field `Ruleset` proof to adjacent basic compound
     selectors such as `.a.b` and `button.primary`: the constructor now creates
-    a thin `CompoundSelector` containing raw string components, without
+    a thin `CompoundSelector` containing string components, without
     `BasicSelector` leaves.
-  - [x] Extended that raw-field `Ruleset` proof to comma-separated selector
+  - [x] Extended that thin-field `Ruleset` proof to comma-separated selector
     lists whose branches are already in the scanner-native simple/adjacent
     compound selector subset, such as `.a, .b` and `.a, button.primary`: the
     constructor now creates a thin `SelectorList` containing branch selector
-    containers with raw string leaves. `valueOf()` returns normalized selector
+    containers with string leaves. `valueOf()` returns normalized selector
     text; exact source spacing belongs to spans/trivia.
-  - [x] Extended that raw-field `Ruleset` proof to cheap complex
+  - [x] Extended that thin-field `Ruleset` proof to cheap complex
     selectors and selector-list branches whose parts are already in the
     scanner-native simple/adjacent compound selector subset and whose
     combinators are descendant, child, adjacent sibling, or general sibling,
     such as `.a .b`, `button > .icon.active`, `.a + .b`, `.a ~ .b`, and
     `.a .b, .c`: the constructor creates thin `ComplexSelector` /
-    `SelectorList` containers with `Combinator` nodes and raw string selector
+    `SelectorList` containers with `Combinator` nodes and string selector
     components, avoiding richer selector leaf allocation.
-  - [x] Extended the raw selector transport proof to the narrow nested
+  - [x] Extended the selector transport proof to the narrow nested
     ampersand-pseudo branch `&:focus`. Direct render and serialization keep the
     selector as the string `&:focus` with no eager `Ampersand` or
     `PseudoSelector` child nodes; semantic registration materializes a
@@ -2476,10 +2502,10 @@ storage.
     `CompoundSelector` containing `Ampersand` plus `PseudoSelector` only if
     selector semantics are requested. This is not a general pseudo-selector
     parser and does not claim nested selector collapse.
-  - [x] Extended the raw selector transport proof to nested leading-combinator
+  - [x] Extended the selector transport proof to nested leading-combinator
     selectors such as `> #second .two` and `+ #third`. The structural-fed path
     admits these only for nested rule bodies and constructs a relative
-    `ComplexSelector` with leading `Combinator` nodes plus raw string selector
+    `ComplexSelector` with leading `Combinator` nodes plus string selector
     components.
     Root-level relative selectors remain outside the scanner-native admission
     gate.
@@ -2492,35 +2518,35 @@ storage.
     ruleset selector as raw `.button`, constructs the existing core `Extend`
     node for the target selector and exact/all flag, materializes only the
     target selector nodes needed for Less extend matching, leaves unrelated
-    declarations as raw-field payloads, renders equal CSS, and asserts zero
+    declarations as thin-field payloads, renders equal CSS, and asserts zero
     selected island parser executions / zero full-tree fallback.
     - Current limit: pseudo/attribute/interpolated source selectors,
       compound/pseudo target selectors, `&:extend(...)` statements, multiple
       extend groups, and richer selector semantics still fall back canonically.
-  - [x] Added the first raw-field core `AtRule` proof: the normal core `AtRule`
-    constructor can store raw scanner-native at-keyword/prelude strings, renders
-    and serializes them as `rawName` / `rawPrelude` without canonical header
+  - [x] Added the first thin-field core `AtRule` proof: the normal core `AtRule`
+    constructor can store scanner-native at-keyword/prelude strings, renders
+    and serializes them as `name` / `prelude` without canonical header
     child nodes, and materializes canonical `Any` name/prelude nodes only when
     semantic registration/eval requests at-rule header semantics. The current
-    structural-fed Less prototype emits those raw core `AtRule` nodes for covered
+    structural-fed Less prototype emits those thin core `AtRule` nodes for covered
     root `@media`, root `@layer`, root `@supports`, and ruleset-local `@media`
     blocks; other at-rule families remain unproven even though the core raw
     storage primitive is not hard-coded to `@media`.
-  - [x] Added the first raw-field core `AtRuleStatement` proof: the normal core
-    `AtRuleStatement` constructor can store raw scanner-native at-keyword/prelude
+  - [x] Added the first thin-field core `AtRuleStatement` proof: the normal core
+    `AtRuleStatement` constructor can store scanner-native at-keyword/prelude
     strings, renders and serializes root `@charset "UTF-8";` directly from
-    `rawName` / `rawPrelude`, and does not allocate canonical `Any` name/prelude
+    `name` / `prelude`, and does not allocate canonical `Any` name/prelude
     nodes during direct render or existing registration/import scanning. The
-    structural-fed Less prototype emits that raw statement node for the covered
+    structural-fed Less prototype emits that thin statement node for the covered
     root `@charset` subset and records zero legacy island parser executions.
-  - [x] Extended the raw-field `AtRuleStatement` proof to CSS-preserved root
+  - [x] Extended the thin-field `AtRuleStatement` proof to CSS-preserved root
     `@import` statements whose prelude is a quoted path or quoted `url(...)`
     plus optional media text. These render through the structural-fed Less path
-    with zero legacy island parser executions and serialize with `rawName` /
-    `rawPrelude` instead of canonical `Any` header children. Less import options
-    and raw HTTP `url(...)` imports still fall back canonically until option
+    with zero legacy island parser executions and serialize with `name` /
+    `prelude` instead of canonical `Any` header children. Less import options
+    and unquoted HTTP `url(...)` imports still fall back canonically until option
     semantics and URL/comment ownership are proven in the cheap path.
-  - [x] Extended the raw-field `AtRuleStatement` proof to root `@namespace`
+  - [x] Extended the thin-field `AtRuleStatement` proof to root `@namespace`
     statements with quoted preludes and prefix plus quoted `url(...)` preludes.
     This also fixed the structural scanner's declaration-colon detector so
     colons inside quoted strings no longer misclassify statement at-rules as
@@ -2530,7 +2556,7 @@ storage.
   - [x] Extended the structural-fed import proof to exact quoted Less imports
     such as `@import "tokens.less";` when the imported file itself stays in the
     scanner-native subset. The prototype resolves and reads the imported file,
-    recursively builds its raw-field structural-fed tree, inlines those rules,
+    recursively builds its thin-field structural-fed tree, inlines those rules,
     merges cheap root variable bindings into the importing file, and tests both
     files for zero legacy island parser executions / zero full-tree fallback.
     Import options, reference/multiple/once/de-dupe behavior, missing files,
@@ -2539,9 +2565,9 @@ storage.
   - [x] Added the first structural-fed Less mixin proof for exact no-argument
     definitions and calls. The prototype indexes `.rounded()` from scanner text,
     emits the current core `Mixin` plus `Call`/`Reference` surfaces, keeps mixin
-    body declarations and nested ordinary rules as raw-field core nodes, renders
+    body declarations and nested ordinary rules as thin-field core nodes, renders
     equal CSS, and asserts zero island parser executions / zero full-tree
-    fallback. The registration path now reads raw declaration names for static
+    fallback. The registration path now reads declaration names for static
     invalidation keys and only materializes declaration name/value nodes when
     registration or eval demands semantic fields. Richer parameters, guards,
     namespaces, overload resolution, richer variable-bearing mixin bodies,
@@ -2579,10 +2605,10 @@ storage.
     zero requested islands, zero actual parser executions, and zero promoted
     bytes for the structural-fed path.
   - [x] Extended the no-argument Less mixin proof to scanner-native `@media`
-    blocks inside mixin definitions. The structural-fed path emits raw-field
-    `AtRule` nodes for the `@media` body, raw-field declaration nodes inside
-    the block, and copied callable output that preserves `rawName` /
-    `rawPrelude` instead of materializing canonical at-rule header/value
+    blocks inside mixin definitions. The structural-fed path emits thin-field
+    `AtRule` nodes for the `@media` body, thin-field declaration nodes inside
+    the block, and copied callable output that preserves `name` /
+    `prelude` instead of materializing canonical at-rule header/value
     children. The focused proof renders equal CSS and serializes with zero
     legacy island parser executions, zero full-tree fallback, zero promoted
     bytes, and no `BasicSelector` or `Any` declaration value nodes for the
@@ -2603,7 +2629,7 @@ storage.
     prelude blob for the condition.
   - [x] Extended nested at-rule proof to direct scanner-native `@media`
     children inside already-supported at-rule bodies, covering `@media` inside
-    `@media`. The builder recursively emits raw core `AtRule` nodes for the
+    `@media`. The builder recursively emits thin core `AtRule` nodes for the
     direct at-rule child, preserves atom-like raw preludes such as `screen` and
     `print`, renders equal CSS, and asserts zero island parser executions, zero
     full-tree fallback, zero promoted bytes, no eager selector node, and no
@@ -2613,7 +2639,7 @@ storage.
   - [x] Extended the structural-fed at-rule proof to no-prelude CSS
     `@starting-style` block at-rules. Root `@starting-style { .a { opacity:
     0; } }` and rule-local `.a { opacity: 1; @starting-style { opacity: 0; } }`
-    render and serialize from raw-field `AtRule` nodes with zero selected
+    render and serialize from thin-field `AtRule` nodes with zero selected
     island parser executions, zero full-tree fallback, zero promoted bytes, no
     raw prelude, no eager at-rule name wrapper, and no `Any` value wrapper for
     the covered declaration values. `@starting-style` with a prelude remains
@@ -2655,7 +2681,7 @@ storage.
   `+` and `-` when both operands are simple numbers or same-unit dimensions,
   either side may be a scanner-native variable reference, and an exact trailing
   `!important` flag may be carried separately. The structural-fed path computes
-  the rendered scalar string directly into the raw declaration segment, with
+  the rendered scalar string directly into the declaration segment, with
   zero `Operation`/`Reference`/dimension wrapper nodes and zero legacy island
   parser executions.
   - Current limit: mixed-unit arithmetic that emits `calc(...)`, operation
@@ -2682,7 +2708,7 @@ storage.
     zero full-tree fallback, zero actual parses, zero requested islands, zero
     promoted bytes, and serializes raw at-rule names/preludes plus raw
     declarations rather than eager selector/value wrappers. Core regression
-    coverage also proves a raw-field `Ruleset` can prepare under a raw-field
+    coverage also proves a thin-field `Ruleset` can prepare under a thin-field
     `AtRule` parent without materializing the at-rule header.
   - Current limit: this proves recursion through supported `@media` families
     only. Unsupported at-rule families, supports expressions, richer
@@ -2695,7 +2721,7 @@ storage.
   - Proof target: render parity, `runtimeTreeSource: 'structural-fed'`, zero
     full-tree fallback, zero actual parses, zero requested islands, zero
     promoted bytes, empty island/request owner maps, and serialized runtime
-    trees containing `ProgressiveVariableDeclaration` plus raw declaration
+    trees containing `ProgressiveVariableDeclaration` plus declaration
     values rather than `VarDeclaration`, `Reference`, or `Any` value wrappers.
   - Current limit: this is still a thin same-scope/simple-value proof. Less
     variables in root declaration-block at-rules such as `@font-face`, richer
@@ -2720,7 +2746,7 @@ storage.
   - Proof target: `.m() { .a { color: blue; } } .m();` renders equal CSS
     through the scanner-fed path, records zero full-tree fallback, zero actual
     parses, zero requested islands, zero promoted bytes, and serializes the root
-    `Call` plus raw selector/declaration fields rather than eager selector/value
+    `Call` plus selector/declaration fields rather than eager selector/value
     wrappers.
   - Current limit: this proves root placement for exact no-argument calls only.
     Namespaced calls outside the cheap descendant/child no-parens path, chained
@@ -2746,7 +2772,7 @@ storage.
     blue;` feeding direct declarations or nested ordinary rules render equal
     CSS through the scanner-fed path, record zero full-tree fallback, zero
     actual parses, zero requested islands, zero promoted bytes, and serialize
-    `ProgressiveVariableDeclaration` plus raw selector/declaration fields
+    `ProgressiveVariableDeclaration` plus selector/declaration fields
     rather than `VarDeclaration`, `Reference [role=value]`, or `Any` value
     wrappers.
   - Scope guard: a variable declared only inside the mixin body does not leak
@@ -2771,15 +2797,15 @@ storage.
     preludes, other statement names, and richer Tailwind expressions remain
     canonical fallbacks until separately proven.
 - [x] Structural-fed prototype: support single-line CSS grid track declaration
-  values as raw scanner-native declaration segments.
+  values as scanner-native declaration segments.
   - Proof target: `grid-column: container-left / span 1`,
     `grid-template-columns: [col1-start] 9fr [col1-end] 10px [col2-start] 3fr
     [col2-end]`, and `grid-template-rows: repeat(14, [gutter] 10px [row]
-    60px)` render from structural-fed raw `Declaration` nodes. Separate proofs
+    60px)` render from structural-fed thin `Declaration` nodes. Separate proofs
     cover single-line quoted `grid-template-areas: "head head" "nav main"` and
     multiline quoted `grid-template-areas` rows. All record zero full-tree
     fallback, zero actual parses, zero requested islands, and zero promoted
-    bytes, and serialize without `valueNode` materialization.
+    bytes, and serialize without `declaration value-node` materialization.
   - Current limit: this is property-sensitive to `grid*` declarations and
     rejects Less variable-like tokens, comments, braces, semicolons,
     unbalanced `[]`/`()`, unproven functions other than `repeat(...)`, and
@@ -2787,11 +2813,11 @@ storage.
 - [x] Structural-fed prototype: support the corpus-observed CSS transform
   function value `scaleX(<number>)` through the existing progressive function
   segment path.
-  - Proof target: `transform: scaleX(1)` renders from a raw-name declaration
+  - Proof target: `transform: scaleX(1)` renders from a string-name declaration
     whose value segment is a `Call` with a numeric argument, records zero
     full-tree fallback, zero actual parses, zero requested islands, and zero
     promoted bytes, and serializes without eager `Any` property wrappers or a
-    `valueNode`.
+    `declaration value-node`.
   - Current limit: this deliberately admits only a proven function token shape
     with a function-specific one-number argument policy. It does not allow
     arbitrary raw parenthesized declaration strings, dimensions, colors,
@@ -3035,9 +3061,9 @@ visitor APIs.
   Less-adapter-shaped island parse requests.
 - [x] Ensure Less-compat visitors receive adapter-shaped nodes as traversal
   reaches them.
-  - [x] Primitive raw selector/value segments remain outside the Less visitor
+  - [x] Primitive selector/value segments remain outside the Less visitor
     surface. Less-compatible visitors return primitive raw segments unchanged,
-    `visitArray()` preserves those primitives, and raw selector adapters do not
+    `visitArray()` preserves those primitives, and selector adapters do not
     feed strings into `WeakSet`-backed adapter state.
 - [x] Ensure structural-only consumers use `StructuralDocument`, not
   `Node.accept`.

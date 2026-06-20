@@ -312,7 +312,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      yield [rule.value, rule.name];
     }
     return;
   }
@@ -325,7 +325,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      yield [rule.value, rule.name];
     }
     return;
   }

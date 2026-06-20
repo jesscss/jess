@@ -149,24 +149,50 @@ function copyCallableDirectFieldNode(node: Node): Node | undefined {
     );
   }
   if (isNode(node, N.AtRule)) {
-    const name = node.rawName !== undefined
-      ? node.rawName
-      : node.name !== undefined
-        ? copyCallableRulesNode(node.name)
-        : undefined;
-    if (name === undefined) {
-      throw new TypeError('AtRule requires a name before callable surface copying.');
-    }
+    const name = typeof node.name === 'string'
+      ? node.name
+      : copyCallableRulesNode(node.name);
     return constructCallableRulesContainer(
       node,
       {
         name,
-        ...(node.rawPrelude !== undefined
-          ? { prelude: node.rawPrelude }
+        ...(typeof node.prelude === 'string'
+          ? { prelude: node.prelude }
           : node.prelude !== undefined
             ? { prelude: copyCallableRulesNode(node.prelude) }
             : {}),
         rules: copyCallableRulesValue(node.rules)
+      }
+    );
+  }
+  if (isNode(node, N.AtRuleStatement)) {
+    return constructCallableRulesContainer(
+      node,
+      {
+        name: typeof node.name === 'string'
+          ? node.name
+          : copyCallableRulesNode(node.name),
+        ...(typeof node.prelude === 'string'
+          ? { prelude: node.prelude }
+          : node.prelude !== undefined
+            ? { prelude: copyCallableRulesNode(node.prelude) }
+            : {})
+      }
+    );
+  }
+  if (isNode(node, N.Declaration | N.VarDeclaration)) {
+    return constructCallableRulesNode(
+      node,
+      {
+        name: typeof node.name === 'string'
+          ? node.name
+          : copyCallableRulesNode(node.name),
+        value: copyCallableRulesValue(node.value),
+        ...(node.important !== undefined && {
+          important: typeof node.important === 'string' || typeof node.important === 'boolean'
+            ? node.important
+            : copyCallableRulesNode(node.important)
+        })
       }
     );
   }

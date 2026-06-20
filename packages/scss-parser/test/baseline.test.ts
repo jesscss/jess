@@ -256,7 +256,7 @@ describe('scss-parser (baseline)', () => {
         const decl = ruleset.rules.find(n => isNode(n, N.Declaration));
         expect(decl && isNode(decl, N.Declaration)).toBe(true);
         if (decl && isNode(decl, N.Declaration)) {
-          const val = decl.valueNode;
+          const val = decl.value;
           expect(isNode(val, N.Call)).toBe(true);
           if (isNode(val, N.Call)) {
             expect(isNode(val.name, N.Reference)).toBe(true);

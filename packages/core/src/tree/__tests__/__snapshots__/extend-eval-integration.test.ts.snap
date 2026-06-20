@@ -13,7 +13,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -73,7 +73,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -95,7 +95,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -120,7 +120,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'inherit')
             )
           ]
@@ -145,7 +145,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -249,7 +249,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -287,7 +287,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -325,7 +325,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'x')
             )
           ]
@@ -342,7 +342,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'y')
             )
           ]
@@ -359,7 +359,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'z')
             )
           ]
@@ -373,7 +373,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -393,7 +393,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'inherit')
             )
           ]
@@ -469,7 +469,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                   (Declaration
                     name:
                       (Any [role=property] 'color')
-                    valueNode:
+                    value:
                       (Color
                         node: 'black'
                       )
@@ -484,7 +484,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                   (Declaration
                     name:
                       (Any [role=property] 'color')
-                    valueNode:
+                    value:
                       (Any 'inherit')
                   )
                 ]
@@ -540,7 +540,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                               (Declaration
                                 name:
                                   (Any [role=property] 'background')
-                                valueNode:
+                                value:
                                   (Color
                                     node: 'red'
                                   )
@@ -599,7 +599,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -666,7 +666,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -714,7 +714,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -746,7 +746,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'inherit')
             )
           ]
@@ -781,7 +781,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -937,7 +937,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -999,7 +999,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -1055,7 +1055,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'x')
             )
           ]
@@ -1076,7 +1076,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'y')
             )
           ]
@@ -1097,7 +1097,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'z')
             )
           ]
@@ -1118,7 +1118,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Color
                   node: 'black'
                 )
@@ -1141,7 +1141,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             (Declaration
               name:
                 (Any [role=property] 'color')
-              valueNode:
+              value:
                 (Any 'inherit')
             )
           ]
@@ -1187,7 +1187,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                   (Declaration
                     name:
                       (Any [role=property] 'color')
-                    valueNode:
+                    value:
                       (Color
                         node: 'black'
                       )
@@ -1210,7 +1210,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                   (Declaration
                     name:
                       (Any [role=property] 'color')
-                    valueNode:
+                    value:
                       (Any 'inherit')
                   )
                 ]
@@ -1249,7 +1249,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                               (Declaration
                                 name:
                                   (Any [role=property] 'background')
-                                valueNode:
+                                value:
                                   (Color
                                     node: 'red'
                                   )

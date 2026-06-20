@@ -161,6 +161,23 @@ describe('Declaration', () => {
     expect(rendered).toBe('color: red');
   });
 
+  it('does not let boolean important skip semantic value evaluation', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const rendered = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' }),
+      important: false
+    }).render(context);
+
+    expect(rendered).toBe('color: red');
+  });
+
   it('writes resolved declaration output into segmented buffers', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
@@ -404,7 +421,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
-    const sourceValue = node.valueNode;
+    const sourceValue = node.value;
 
     const resolved = await node.resolve(context);
 
@@ -463,8 +480,8 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.type).toBe('Sequence');
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.type).toBe('Sequence');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
     expect(value.registrationPrepared).toBe(false);
   });
@@ -486,7 +503,7 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(deriveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -1086,7 +1103,7 @@ describe('Declaration', () => {
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1152,7 +1169,7 @@ describe('Declaration', () => {
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
