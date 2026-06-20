@@ -674,6 +674,51 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds exact important declarations through structural parse without value materialization', async () => {
+    const cases = [
+      { property: 'color', value: 'blue' },
+      { property: 'border', value: '1px solid red' }
+    ];
+
+    for (const { property, value } of cases) {
+      const source = `.a { ${property}: ${value} !important; }\n`;
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(`${property}: ${value} !important`);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 2,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/important-declaration.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      expect(types).toContain('(Ruleset');
+      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain(`rawName: '${property}'`);
+      expect(types).toContain(`['${value}']`);
+      expect(types).toContain('rawImportant: \'!important\'');
+      expect(types).not.toContain('valueNode: (Sequence');
+      expect(types).not.toContain('valueNode: (List');
+      expect(types).not.toContain('valueNode: (Any');
+      expect(types).not.toContain('important: (Any');
+    }
+  });
+
   it('feeds adjacent compound selectors through structural parse', async () => {
     const cases = ['.a.b', 'button.primary', '.-utility.active'];
 
@@ -1092,6 +1137,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '.a { color: blue ! important; }\n',
+        reason: 'important declarations are not in the first structural-fed subset'
+      },
+      {
+        source: '.a { color: blue !IMPORTANT; }\n',
         reason: 'important declarations are not in the first structural-fed subset'
       },
       {

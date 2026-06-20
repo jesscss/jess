@@ -1910,13 +1910,13 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
-  selector, simple and flat literal declaration values, simple root or
-  ruleset-local `@media` prelude/body shape, and simple already-seen Less variable
-  declaration/reference token detection with zero legacy island parser
-  executions. Hoisted/lazy variable references, non-`@media` block at-rule
-  families, complex/list/interpolated selectors, and richer nested at-rule
-  bodies remain canonical fallbacks until their progressive materializers are
-  proven.
+  selector, simple and flat literal declaration values, exact `!important`
+  declaration flags on those values, simple root or ruleset-local `@media`
+  prelude/body shape, and simple already-seen Less variable declaration/reference
+  token detection with zero legacy island parser executions. Hoisted/lazy
+  variable references, non-`@media` block at-rule families,
+  complex/list/interpolated selectors, and richer nested at-rule bodies remain
+  canonical fallbacks until their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -1986,6 +1986,13 @@ storage.
     quoted strings, `url()`, functions, comments, custom-property bodies,
     interpolation, arithmetic, comma lists, and mixed variable/value streams
     remain outside the proven cheap subset.
+  - [x] Extended raw-field declaration transport to exact trailing `!important`
+    flags on already-supported simple/flat literal values. The structural-fed
+    Less path strips the flag into `rawImportant` while keeping the declaration
+    value as one raw string segment, so direct render and serialization still do
+    not allocate value or important child nodes. Spaced/alternate important
+    spellings, important Less variable references, and important variable
+    declarations remain canonical fallbacks.
   - [x] Added the first raw-field core `Ruleset` proof: the normal core
     `Ruleset` constructor accepts a raw selector string for the scanner-native
     simple selector subset, renders and serializes it as `rawSelector` without
@@ -2008,7 +2015,7 @@ storage.
     though the core raw storage primitive is not hard-coded to `@media`.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
-    assignment spacing, semicolon trivia, or important-flag spelling.
+    assignment spacing, semicolon trivia, or non-exact important-flag spelling.
   - Current limit: semantic materialization preserves an existing single `Node`
     segment as the canonical value and turns mixed string/`Node` segments into a
     reachable sequence container. Rich mixed segment semantics still need a

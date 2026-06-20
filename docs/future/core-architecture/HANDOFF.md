@@ -113,7 +113,7 @@ with `--no-verify` after the explicit gates pass.
   materializes only the currently proven scanner-native at-rule header storage,
   simple selector subset (`*`, tag, `.class`, `#id`), adjacent basic compound
   selector subset, simple/flat literal declaration value text, and declaration
-  parts on demand. The current Less
+  exact `!important` flag text on demand. The current Less
   structural-fed emitter uses raw core `AtRule` for root `@media` and
   ruleset-local `@media` with scanner-native declaration bodies; nested block
   at-rule families outside that shape remain outside this proof and still
@@ -137,9 +137,10 @@ with `--no-verify` after the explicit gates pass.
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat
   literal declaration cases keep the value as one raw string segment for direct
-  render/serialization and do not tokenize into arrays/nodes until a later
-  semantic materializer is requested. Focused tests add normal `new Context()`
-  render setup. `packages/core/src/tree/ruleset.ts`
+  render/serialization; exact important declarations additionally store the
+  flag as `rawImportant`. Neither path tokenizes into arrays/nodes until a
+  later semantic materializer is requested. Focused tests add normal
+  `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
   constructs one `BasicSelector` for simple raw selectors, or a `CompoundSelector`
   plus `BasicSelector` parts for adjacent basic compound raw selectors, only
   when a raw ruleset crosses into semantic registration/eval; direct raw render

@@ -981,10 +981,15 @@ function validateStructuralFedDeclaration(
   if (MULTILINE_VALUE_PATTERN.test(valueText)) {
     return 'multiline declaration values are not in the first structural-fed subset';
   }
-  if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+  const valueParts = splitScannerNativeDeclarationImportant(valueText);
+  if (IMPORTANT_FLAG_PATTERN.test(valueText) && !valueParts) {
     return 'important declarations are not in the first structural-fed subset';
   }
-  if (looksLikeSimpleVariableReference(valueText) && !variables.has(valueText)) {
+  if (valueParts?.important && looksLikeSimpleVariableReference(valueParts.valueText)) {
+    return 'important declarations with Less variable references are not in the scanner-native structural-fed subset';
+  }
+  const scannerNativeValueText = valueParts?.valueText ?? valueText;
+  if (looksLikeSimpleVariableReference(scannerNativeValueText) && !variables.has(scannerNativeValueText)) {
     return 'Less variable reference is outside the scanner-native structural-fed subset';
   }
   return undefined;
@@ -1012,7 +1017,8 @@ function buildStructuralFedDeclaration(
   return {
     node: new Declaration({
       name,
-      value: [valueToken.text]
+      value: [valueToken.text],
+      important: valueToken.important
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
     progressiveNodes: 1
   };
@@ -1089,6 +1095,7 @@ type ScannerNativeValueToken = {
   start: number;
   end: number;
   text: string;
+  important?: string;
 };
 
 function readScannerNativeSimpleSelectorToken(
@@ -1146,6 +1153,10 @@ function readScannerNativeDeclarationValueToken(
     return undefined;
   }
   const valueText = plan.document.source.text.slice(range.start, range.end);
+  const valueParts = splitScannerNativeDeclarationImportant(valueText);
+  if (valueParts?.important && looksLikeSimpleVariableReference(valueParts.valueText)) {
+    return undefined;
+  }
   if (looksLikeSimpleVariableReference(valueText)) {
     const variable = variables.get(valueText);
     return variable
@@ -1184,18 +1195,28 @@ function structuralScannerNativeDeclarationValueToken(
     return undefined;
   }
   const valueText = document.source.text.slice(range.start, range.end);
-  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
+  const valueParts = splitScannerNativeDeclarationImportant(valueText);
+  const scannerNativeValueText = valueParts?.valueText ?? valueText;
+  const tokenEnd = valueParts ? range.start + valueParts.valueLength : range.end;
+  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(scannerNativeValueText);
   if (literalMatch) {
-    return scannerNativeLiteralValueTokenFromMatch(valueText, range.start, range.end, literalMatch);
+    return scannerNativeLiteralValueTokenFromMatch(
+      scannerNativeValueText,
+      range.start,
+      tokenEnd,
+      literalMatch,
+      valueParts?.important
+    );
   }
-  if (!SIMPLE_FLAT_VALUE_PATTERN.test(valueText)) {
+  if (!SIMPLE_FLAT_VALUE_PATTERN.test(scannerNativeValueText)) {
     return undefined;
   }
   return {
     kind: 'flat-literal-list',
     start: range.start,
-    end: range.end,
-    text: valueText
+    end: tokenEnd,
+    text: scannerNativeValueText,
+    important: valueParts?.important
   };
 }
 
@@ -1203,13 +1224,15 @@ function scannerNativeLiteralValueTokenFromMatch(
   text: string,
   start: number,
   end: number,
-  match: RegExpExecArray
+  match: RegExpExecArray,
+  important?: string
 ): ScannerNativeValueToken {
   return {
     kind: scannerNativeValueKind(match),
     start,
     end,
-    text
+    text,
+    important
   };
 }
 
@@ -1261,7 +1284,33 @@ function isPlainStructuralFedDeclarationName(name: string): boolean {
   return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
 }
 
+function splitScannerNativeDeclarationImportant(valueText: string): {
+  valueText: string;
+  valueLength: number;
+  important: string;
+} | undefined {
+  const match = SCANNER_NATIVE_IMPORTANT_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const important = match.groups.important;
+  const value = match.groups.value;
+  if (!important || !value) {
+    return undefined;
+  }
+  const valueTextWithoutTrailingWhitespace = value.replace(/[ \t]+$/u, '');
+  if (valueTextWithoutTrailingWhitespace.length === 0) {
+    return undefined;
+  }
+  return {
+    valueText: valueTextWithoutTrailingWhitespace,
+    valueLength: valueTextWithoutTrailingWhitespace.length,
+    important
+  };
+}
+
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
+const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!important)$/u;
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
