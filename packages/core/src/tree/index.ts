@@ -60,6 +60,7 @@ export * from './range.js';
 export * from './progressive-at-rule.js';
 export * from './progressive-declaration.js';
 export * from './progressive-ruleset.js';
+export * from './progressive-variable-declaration.js';
 export * from './ruleset.js';
 export * from './rules.js';
 export * from './rules-raw.js';

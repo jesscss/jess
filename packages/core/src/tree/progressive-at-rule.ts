@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, defineType, type LocationInfo } from './node.js';
+import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { ProgressiveDeclaration } from './progressive-declaration.js';
 import { ProgressiveRuleset } from './progressive-ruleset.js';
@@ -12,6 +12,10 @@ export type ProgressiveAtRuleValue = {
   prelude?: string;
   rules: Array<string | Node>;
 };
+
+function isRenderableProgressiveRule(rule: string | Node): boolean {
+  return typeof rule === 'string' || rule.visible || rule.fullRender;
+}
 
 /**
  * Experimental scanner-first at-rule block node.
@@ -40,6 +44,9 @@ export class ProgressiveAtRule extends Node<ProgressiveAtRuleValue> {
     this.name = value.name;
     this.prelude = value.prelude;
     this.rules = value.rules;
+    if (!this.rules.some(isRenderableProgressiveRule)) {
+      this.removeFlag(F_VISIBLE);
+    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -50,6 +57,9 @@ export class ProgressiveAtRule extends Node<ProgressiveAtRuleValue> {
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
+    if (!this.visible && !this.fullRender) {
+      return;
+    }
     if (options.compress) {
       this.writeCompressedSyntax(options);
       return;
@@ -62,6 +72,9 @@ export class ProgressiveAtRule extends Node<ProgressiveAtRuleValue> {
     writer.add(`${currentIndent}${this.name}${prelude} {\n`, this);
     options.depth++;
     for (const rule of this.rules) {
+      if (typeof rule !== 'string' && !rule.visible && !rule.fullRender) {
+        continue;
+      }
       if (typeof rule === 'string') {
         writer.add(childIndent, this);
         writer.add(rule, this);
@@ -91,10 +104,16 @@ export class ProgressiveAtRule extends Node<ProgressiveAtRuleValue> {
   }
 
   private writeCompressedSyntax(options: FinalPrintOptions): void {
+    if (!this.visible && !this.fullRender) {
+      return;
+    }
     const writer = options.writer;
     const prelude = this.prelude ? ` ${this.prelude}` : '';
     writer.add(`${this.name}${prelude} {`, this);
     for (const rule of this.rules) {
+      if (typeof rule !== 'string' && !rule.visible && !rule.fullRender) {
+        continue;
+      }
       writer.add(' ');
       if (typeof rule === 'string') {
         writer.add(rule, this);

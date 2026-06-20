@@ -1910,10 +1910,11 @@ storage.
   materialization in a real compile/eval/render path for a tiny CSS/Less
   subset.
 - [x] Structural-fed prototype: support simple selector, simple literal
-  declaration value, and simple root `@media` prelude token detection with zero
-  legacy island parser executions. Less variable declarations, nested block
-  at-rules, and other block at-rule families remain canonical fallbacks until
-  their progressive materializers are proven.
+  declaration value, simple root `@media` prelude, and simple already-seen Less
+  variable declaration/reference token detection with zero legacy island parser
+  executions. Hoisted/lazy variable references, nested block at-rules, and
+  other block at-rule families remain canonical fallbacks until their
+  progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful progressive-fed rules/declarations render without core
@@ -1934,19 +1935,38 @@ storage.
     root `@media` name/prelude/body payloads and reuses already-supported
     progressive rule/declaration children without creating canonical
     `AtRule`/prelude/value nodes.
+  - [x] Third thin proof: `ProgressiveVariableDeclaration` stores invisible
+    string-backed Less variable declarations while the structural-fed builder
+    resolves only already-seen simple `@ident` reads into raw declaration value
+    segments. Variable declaration values are literal-only in this proof; alias
+    declarations such as `@b: @a` fall back canonically so Less lazy lookup
+    semantics are not frozen into scanner-native strings. This proves zero
+    `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path without
+    claiming Less lazy/hoisted variable semantics.
   - [x] Structural-fed prototype now uses those progressive nodes for ordinary
-    rule/declaration/root `@media` success cases and records
+    rule/declaration/root `@media`/simple variable success cases and records
     `progressiveNodes` so tests and corpus logs prove the cheap path was
     actually used.
+  - Current limit: invisible progressive bookkeeping nodes are proven for
+    normal render output. Full-render/debug surfaces may intentionally force
+    invisible nodes, so any broader replacement must specify whether those
+    surfaces should expose raw structural bookkeeping.
+  - Current performance watchpoint: the proof copies a small variable `Map` per
+    structural scope. That is acceptable for the narrow proof, but widening the
+    variable path must benchmark this against a cheaper scope stack or packed
+    side-table representation before treating it as architecture.
 - [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `{ name: "color", value: ["blue"], important: false }`, render
   from those string segments, maintain per-field/per-segment offsets separately,
   and assert no selector/value child nodes are created until a typed accessor or
   richer feature requests them.
-- [ ] Structural-fed prototype: add scanner-native Less variable-reference
-  materialization so plain Less variable declarations and reads can run without
-  canonical fallback.
+- [x] Structural-fed prototype: add scanner-native Less variable-reference
+  materialization for plain already-seen Less variable declarations and reads
+  so they can run without canonical fallback.
+  - Current limit: references that depend on Less lazy/hoisted lookup semantics,
+    complex variable values, interpolation, arithmetic, functions, accessors,
+    and variable values crossing import/reference boundaries still fall back.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native.
@@ -1974,9 +1994,9 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 6 structural-fed, 77 canonical
-    fallback, 22 current expected-CSS failures, 22 structural expected-CSS
-    failures, zero requested/materialized islands, zero promoted bytes, and 10
+  - Current audit snapshot: 64 files / 65 cases, 8 structural-fed, 75 canonical
+    fallback, 23 current expected-CSS failures, 23 structural expected-CSS
+    failures, zero requested/materialized islands, zero promoted bytes, and 16
     progressive nodes constructed directly from structural fields.
     Counts include imported/sub-rendered Less prototype records, so
     structural-fed plus fallback records can exceed the top-level case count.
@@ -2011,12 +2031,12 @@ storage.
     Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 224.23ms, structural sidecar full render
-    228.96ms across 306 probe records, selected-materialization sidecar full
-    render 256.11ms across 306 probe records with 5,391
+    current parser/eval/render 237.43ms, structural sidecar full render
+    232.32ms across 306 probe records, selected-materialization sidecar full
+    render 252.69ms across 306 probe records with 5,391
     requested/materialized islands and 150,297 promoted bytes, and
-    structural-fed prototype 211.89ms across 249 prototype records with 18
-    structural-fed records, 231 canonical fallbacks, zero
+    structural-fed prototype 234.45ms across 249 prototype records with 24
+    structural-fed records, 225 canonical fallbacks, zero
     requested/materialized islands, and zero promoted bytes. These medians are gate evidence for
     parity/instrumentation and broad overhead bounds, not a speed claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

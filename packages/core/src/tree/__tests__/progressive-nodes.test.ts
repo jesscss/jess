@@ -5,9 +5,11 @@ import {
   ProgressiveAtRule,
   ProgressiveDeclaration,
   ProgressiveRuleset,
+  ProgressiveVariableDeclaration,
   progressiveatrule,
   progressivedecl,
-  progressiveruleset
+  progressiveruleset,
+  progressivevardecl
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -110,6 +112,62 @@ describe('progressive scanner-first proof nodes', () => {
           ]
       )
     `);
+  });
+
+  test('serializes invisible progressive variable declarations without value nodes', () => {
+    const declaration = progressivevardecl({
+      name: '@brand',
+      value: ['blue']
+    });
+
+    expect(declaration).toBeInstanceOf(ProgressiveVariableDeclaration);
+    expect(declaration.visible).toBe(false);
+    expect(declaration.toTrimmedString()).toBe('@brand: blue');
+    expect(serializeTypes(declaration)).toBeString(`
+      (ProgressiveVariableDeclaration
+        name: '@brand'
+        valueSegments:
+          ['blue']
+      )
+    `);
+  });
+
+  test('omits progressive rulesets that only contain invisible variable declarations', () => {
+    const progressive = progressiveruleset({
+      selector: '.a',
+      rules: [
+        progressivevardecl({
+          name: '@brand',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(progressive.visible).toBe(false);
+    expect(progressive.toTrimmedString()).toBe('');
+    expect(progressive.toTrimmedString({ compress: true })).toBe('');
+  });
+
+  test('omits progressive at-rules whose descendants are all invisible', () => {
+    const progressive = progressiveatrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        progressiveruleset({
+          selector: '.a',
+          rules: [
+            progressivevardecl({
+              name: '@brand',
+              value: ['blue']
+            })
+          ]
+        })
+      ]
+    });
+
+    expect(progressive.visible).toBe(false);
+    expect(progressive.toTrimmedString()).toBe('');
+    expect(progressive.toTrimmedString({ compress: true })).toBe('');
   });
 
   test('keeps raw rule strings and nested rules from gaining declaration semicolons', () => {
