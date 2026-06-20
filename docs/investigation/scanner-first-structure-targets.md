@@ -416,13 +416,20 @@ ambiguous lookup semantics still fall back canonically.
 Target structure: value segment list `["@gap + 2px"]` with
 `valueKind: "expression"`.
 
-Direct behavior: cannot render as raw string because Less arithmetic changes
-output. Eval should JIT-parse this value field only when evaluating the
+Direct behavior: for the narrow scanner-native scalar case, eval may compute
+the result directly into the declaration's raw value segment. Richer arithmetic
+cannot render as the original raw string because Less arithmetic changes output;
+those value fields should JIT-parse or fall back only when evaluating the
 declaration value.
 
-JIT triggers: arithmetic operator detection is itself the trigger.
+JIT triggers: arithmetic outside the narrow scalar case is itself the trigger.
 
-Current status: canonical fallback.
+Current status: structural-fed prototype handles one binary `+` or `-`
+expression when the operands are simple numbers or same-unit dimensions, either
+side may be a scanner-native variable reference, and an exact trailing
+`!important` flag may be carried separately. Mixed units, operator chains,
+multiplication/division, parentheses, functions, and anything that needs Less
+math-mode nuance still fall back canonically.
 
 ### LESS-005 Function Call
 

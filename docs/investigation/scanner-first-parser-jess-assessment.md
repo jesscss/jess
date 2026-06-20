@@ -1929,9 +1929,11 @@ storage.
   preludes, CSS-preserved root `@import` statements with quoted CSS paths or
   quoted `url(...)` preludes, and simple Less variable declaration/reference
   token detection for already-seen and same-scope hoisted simple literal/raw
-  values with zero legacy island parser executions. Dynamic/lazy variable
-  references that need richer Less lookup semantics, Less-resolving imports,
-  Less import options, raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
+  values, plus one-step same-unit `+`/`-` arithmetic over scanner-native
+  numbers/dimensions with zero legacy island parser executions. Dynamic/lazy
+  variable references that need richer Less lookup semantics, mixed-unit
+  arithmetic/calc behavior, Less-resolving imports, Less import options,
+  raw HTTP `url(...)` imports, non-`@media`/root-`@layer`/
   root-`@supports` block at-rule families, pseudo/attribute/interpolated
   selectors, and richer nested at-rule bodies remain canonical fallbacks until
   their progressive materializers are proven.
@@ -2130,6 +2132,16 @@ storage.
     complex variable values, interpolation, arithmetic, functions, accessors,
     guards, mixin scopes, rich comma lists, comments, and variable values
     crossing import/reference boundaries still fall back.
+- [x] Structural-fed prototype: add scanner-native one-step Less arithmetic for
+  `+` and `-` when both operands are simple numbers or same-unit dimensions,
+  either side may be a scanner-native variable reference, and an exact trailing
+  `!important` flag may be carried separately. The structural-fed path computes
+  the rendered scalar string directly into the raw declaration segment, with
+  zero `Operation`/`Reference`/dimension wrapper nodes and zero legacy island
+  parser executions.
+  - Current limit: mixed-unit arithmetic that emits `calc(...)`, operation
+    chains, multiplication/division, parentheses, functions, and
+    math-mode-sensitive expressions still fall back canonically.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native, and support ruleset-local `@media` blocks

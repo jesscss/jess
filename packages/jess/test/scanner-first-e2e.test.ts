@@ -1231,6 +1231,140 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds simple Less arithmetic through structural parse without value materialization', async () => {
+    const cases = [
+      {
+        source: '@gap: 4px;\n.a { width: @gap + 2px; }\n',
+        expected: 'width: 6px'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: 2px + @gap; }\n',
+        expected: 'width: 6px'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: @gap - 2px; }\n',
+        expected: 'width: 2px'
+      },
+      {
+        source: '@n: 4;\n.a { z-index: @n + 2; }\n',
+        expected: 'z-index: 6'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: @gap + 2px !important; }\n',
+        expected: 'width: 6px !important'
+      }
+    ];
+
+    for (const { source, expected } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(expected);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes: 3,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parseResult = probePlugin.safeParse('/virtual/simple-arithmetic.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!.rules[1]);
+      expect(types).toContain('rawValueSegments:');
+      expect(types).not.toContain('valueNode: (Operation');
+      expect(types).not.toContain('valueNode: (Reference');
+      expect(types).not.toContain('valueNode: (Dimension');
+    }
+  });
+
+  it('falls back for richer Less arithmetic so canonical math behavior stays intact', async () => {
+    const cases = [
+      {
+        source: '@gap: 4px;\n.a { width: @gap + 2em; }\n',
+        expected: 'calc(1px + 1em)'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: @gap + 2px + 1px; }\n',
+        expected: 'width: 7px'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: (@gap + 2px); }\n',
+        expected: 'width: 6px'
+      },
+      {
+        source: '@gap: 4px;\n.a { width: @gap * 2; }\n',
+        expected: 'width: 8px'
+      }
+    ];
+
+    for (const { source, expected } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(rendered).toContain(expected);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+    }
+  });
+
+  it('falls back for scanner-native arithmetic when Less math mode requires parens', async () => {
+    const source = '@gap: 4px;\n.a { width: @gap + 2px; }\n';
+    const baseline = await new Compiler({
+      compile: {
+        plugins: [lessPlugin({ mathMode: 'parens' })]
+      }
+    }).renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      mathMode: 'parens',
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('width: 4px + 2px');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+  });
+
   it('falls back for Less variable aliases so lazy variable semantics stay canonical', async () => {
     const source = '@a: blue;\n@b: @a;\n@a: red;\n.x { color: @b; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });

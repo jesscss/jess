@@ -396,11 +396,11 @@ export class LessPlugin extends AbstractPlugin {
         continue;
       }
       if (child.kind === 'at-rule') {
-        const eligibilityReason = validateStructuralFedAtRule(plan.document, child, variables, 'root');
+        const eligibilityReason = validateStructuralFedAtRule(plan.document, child, variables, 'root', this.mathMode);
         if (eligibilityReason) {
           return fallback(eligibilityReason);
         }
-        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, 'root');
+        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, 'root', this.mathMode);
         if ('reason' in result) {
           return fallback(result.reason);
         }
@@ -408,11 +408,11 @@ export class LessPlugin extends AbstractPlugin {
         progressiveNodes += result.progressiveNodes ?? 0;
         continue;
       }
-      const eligibilityReason = validateStructuralFedRule(plan.document, child, variables);
+      const eligibilityReason = validateStructuralFedRule(plan.document, child, variables, true, true, this.mathMode);
       if (eligibilityReason) {
         return fallback(eligibilityReason);
       }
-      const result = buildStructuralFedRuleset(plan, child, ownerIslands, context, variables);
+      const result = buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, true, true, this.mathMode);
       if ('reason' in result) {
         return fallback(result.reason);
       }
@@ -787,12 +787,13 @@ function validateStructuralFedRule(
   rule: StructuralContainerNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   allowLessVariables = true,
-  allowAtRules = true
+  allowAtRules = true,
+  mathMode: MathMode = 'parens-division'
 ): string | undefined {
   const { variables: localVariables } = collectStructuralFedScopeVariables(document, rule.children, variables);
   for (const child of rule.children) {
     if (child.kind === 'rule') {
-      const nestedReason = validateStructuralFedRule(document, child, localVariables, allowLessVariables, allowAtRules);
+      const nestedReason = validateStructuralFedRule(document, child, localVariables, allowLessVariables, allowAtRules, mathMode);
       if (nestedReason) {
         return nestedReason;
       }
@@ -818,7 +819,7 @@ function validateStructuralFedRule(
       if (!allowAtRules) {
         return `unsupported rule child ${child.kind}`;
       }
-      const atRuleReason = validateStructuralFedAtRule(document, child, localVariables, 'rule');
+      const atRuleReason = validateStructuralFedAtRule(document, child, localVariables, 'rule', mathMode);
       if (atRuleReason) {
         return atRuleReason;
       }
@@ -828,7 +829,7 @@ function validateStructuralFedRule(
       return `unsupported rule child ${child.kind}`;
     }
 
-    const declarationReason = validateStructuralFedDeclaration(document, child, localVariables, allowLessVariables);
+    const declarationReason = validateStructuralFedDeclaration(document, child, localVariables, allowLessVariables, mathMode);
     if (declarationReason) {
       return declarationReason;
     }
@@ -840,7 +841,8 @@ function validateStructuralFedAtRule(
   document: StructuralDocument,
   atRule: StructuralContainerNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  parentKind: 'root' | 'rule' | 'at-rule'
+  parentKind: 'root' | 'rule' | 'at-rule',
+  mathMode: MathMode = 'parens-division'
 ): string | undefined {
   const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
   if (name !== '@media' && name !== '@layer' && name !== '@supports') {
@@ -869,7 +871,8 @@ function validateStructuralFedAtRule(
         child,
         variables,
         parentKind === 'root' && name !== '@layer',
-        parentKind === 'root'
+        parentKind === 'root',
+        mathMode
       );
       if (reason) {
         return reason;
@@ -879,7 +882,7 @@ function validateStructuralFedAtRule(
     if (parentKind === 'root' || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
-    const declarationReason = validateStructuralFedDeclaration(document, child, variables, true);
+    const declarationReason = validateStructuralFedDeclaration(document, child, variables, true, mathMode);
     if (declarationReason) {
       return declarationReason;
     }
@@ -894,7 +897,8 @@ function buildStructuralFedRuleset(
   context: TreeContext,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   allowLessVariables = true,
-  allowAtRules = true
+  allowAtRules = true,
+  mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   const selectorToken = readScannerNativeSelectorToken(plan, rule, selectorIsland);
@@ -914,7 +918,8 @@ function buildStructuralFedRuleset(
       'rule',
       localVariables,
       allowLessVariables,
-      allowAtRules
+      allowAtRules,
+      mathMode
     );
     if ('reason' in builtChild) {
       return builtChild;
@@ -960,7 +965,8 @@ function buildStructuralFedAtRule(
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  parentKind: 'root' | 'rule' | 'at-rule'
+  parentKind: 'root' | 'rule' | 'at-rule',
+  mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
   if (name !== '@media' && name !== '@layer' && name !== '@supports') {
@@ -997,7 +1003,8 @@ function buildStructuralFedAtRule(
         context,
         variables,
         parentKind === 'root' && name !== '@layer',
-        parentKind === 'root'
+        parentKind === 'root',
+        mathMode
       );
       if ('reason' in builtChild) {
         return builtChild;
@@ -1009,7 +1016,7 @@ function buildStructuralFedAtRule(
     if (parentKind === 'root' || child.kind !== 'declaration') {
       return { reason: `unsupported at-rule child ${child.kind}` };
     }
-    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables);
+    const builtChild = buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, true, mathMode);
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -1035,10 +1042,11 @@ function buildStructuralFedRuleChild(
   parentKind: 'at-rule' | 'rule',
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   allowLessVariables = true,
-  allowAtRules = true
+  allowAtRules = true,
+  mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult | StructuralFedVariableBuildResult {
   if (child.kind === 'rule') {
-    return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, allowLessVariables, allowAtRules);
+    return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, allowLessVariables, allowAtRules, mathMode);
   }
   if (child.kind === 'at-rule') {
     if (!allowAtRules) {
@@ -1047,7 +1055,7 @@ function buildStructuralFedRuleChild(
     if (parentKind === 'at-rule') {
       return { reason: `unsupported ${parentKind} child ${child.kind}` };
     }
-    return buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, parentKind);
+    return buildStructuralFedAtRule(plan, child, ownerIslands, context, variables, parentKind, mathMode);
   }
   if (child.kind === 'variable-declaration') {
     if (!allowLessVariables) {
@@ -1056,7 +1064,7 @@ function buildStructuralFedRuleChild(
     return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
   }
   if (child.kind === 'declaration') {
-    return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables);
+    return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables, mathMode);
   }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
 }
@@ -1114,7 +1122,8 @@ function validateStructuralFedDeclaration(
   document: StructuralDocument,
   child: StructuralStatementNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariableReferences = true
+  allowLessVariableReferences = true,
+  mathMode: MathMode = 'parens-division'
 ): string | undefined {
   const name = structuralFieldText(document, child, 'name', 'declaration-name');
   const valueText = structuralFieldText(document, child, 'value', 'value');
@@ -1140,9 +1149,6 @@ function validateStructuralFedDeclaration(
     }
     return undefined;
   }
-  if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
-    return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
-  }
   const valueParts = splitScannerNativeDeclarationImportant(valueText);
   if (IMPORTANT_FLAG_PATTERN.test(valueText) && !valueParts) {
     return 'important declarations are not in the first structural-fed subset';
@@ -1151,6 +1157,12 @@ function validateStructuralFedDeclaration(
     return 'important declarations with Less variable references are not in the scanner-native structural-fed subset';
   }
   const scannerNativeValueText = valueParts?.valueText ?? valueText;
+  if (supportsScannerNativeArithmetic(mathMode) && resolveScannerNativeArithmeticValue(scannerNativeValueText, variables)) {
+    return undefined;
+  }
+  if (!looksLikeSimpleVariableReference(valueText) && RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText)) {
+    return 'raw declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset';
+  }
   if (
     !valueParts
     && isConservativeRawScannerNativeValue(scannerNativeValueText)
@@ -1173,7 +1185,8 @@ function buildStructuralFedDeclaration(
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariableReferences = true
+  allowLessVariableReferences = true,
+  mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, child, 'name', 'declaration-name');
   if (name === undefined) {
@@ -1183,7 +1196,7 @@ function buildStructuralFedDeclaration(
   if (!valueIsland) {
     return { reason: 'declaration value island missing' };
   }
-  const valueToken = readScannerNativeDeclarationValueToken(plan, child, valueIsland, variables, allowLessVariableReferences);
+  const valueToken = readScannerNativeDeclarationValueToken(plan, child, valueIsland, variables, allowLessVariableReferences, mathMode);
   if (!valueToken) {
     return { reason: 'declaration value is outside the scanner-native structural-fed subset' };
   }
@@ -1369,7 +1382,8 @@ function readScannerNativeDeclarationValueToken(
   owner: StructuralStatementNode,
   island: RawIslandNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  allowLessVariableReferences = true
+  allowLessVariableReferences = true,
+  mathMode: MathMode = 'parens-division'
 ): ScannerNativeValueToken | undefined {
   const range = structuralFieldRange(plan.document, owner, 'value', 'value');
   if (!range || range.start !== island.start || range.end !== island.end) {
@@ -1379,6 +1393,19 @@ function readScannerNativeDeclarationValueToken(
   const valueParts = splitScannerNativeDeclarationImportant(valueText);
   if (valueParts?.important && looksLikeSimpleVariableReference(valueParts.valueText)) {
     return undefined;
+  }
+  const scannerNativeValueText = valueParts?.valueText ?? valueText;
+  const arithmeticValue = supportsScannerNativeArithmetic(mathMode)
+    ? resolveScannerNativeArithmeticValue(scannerNativeValueText, variables)
+    : undefined;
+  if (arithmeticValue) {
+    return {
+      kind: 'dimension-or-number',
+      start: range.start,
+      end: range.end,
+      text: arithmeticValue,
+      important: valueParts?.important
+    };
   }
   if (looksLikeSimpleVariableReference(valueText)) {
     if (!allowLessVariableReferences) {
@@ -1394,6 +1421,63 @@ function readScannerNativeDeclarationValueToken(
       : undefined;
   }
   return structuralScannerNativeDeclarationValueToken(plan.document, owner);
+}
+
+function resolveScannerNativeArithmeticValue(
+  valueText: string,
+  variables: ReadonlyMap<string, ScannerNativeValueToken>
+): string | undefined {
+  const match = SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const left = scannerNativeArithmeticOperand(match.groups.left, variables);
+  const right = scannerNativeArithmeticOperand(match.groups.right, variables);
+  const operator = match.groups.operator;
+  if (!left || !right || (operator !== '+' && operator !== '-')) {
+    return undefined;
+  }
+  if (left.unit !== right.unit) {
+    return undefined;
+  }
+  const result = operator === '+'
+    ? left.value + right.value
+    : left.value - right.value;
+  return `${formatScannerNativeNumber(result)}${left.unit}`;
+}
+
+function supportsScannerNativeArithmetic(mathMode: MathMode): boolean {
+  return mathMode === 'always' || mathMode === 'parens-division';
+}
+
+function scannerNativeArithmeticOperand(
+  text: string | undefined,
+  variables: ReadonlyMap<string, ScannerNativeValueToken>
+): { value: number; unit: string } | undefined {
+  if (text === undefined) {
+    return undefined;
+  }
+  const variable = looksLikeSimpleVariableReference(text) ? variables.get(text) : undefined;
+  const operandText = variable?.text ?? text;
+  if (variable && variable.kind !== 'dimension-or-number') {
+    return undefined;
+  }
+  const match = SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN.exec(operandText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const value = Number(match.groups.value);
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+  return {
+    value,
+    unit: match.groups.unit ?? ''
+  };
+}
+
+function formatScannerNativeNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(12)));
 }
 
 function structuralScannerNativeDeclarationValueToken(
@@ -1563,6 +1647,10 @@ const CUSTOM_PROPERTY_NAME_PATTERN = /^--[-_a-zA-Z][\w-]*$/u;
 const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
+const SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN =
+  /^(?<value>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+)))(?<unit>%|[a-zA-Z]+)?$/u;
+const SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN =
+  /^(?<left>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)[ \t]*(?<operator>[+-])[ \t]*(?<right>@[a-zA-Z_][\w-]*|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)$/u;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
 const SIMPLE_FLAT_VALUE_PATTERN =
