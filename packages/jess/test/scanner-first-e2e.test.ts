@@ -969,7 +969,8 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       { property: 'border', value: '1px solid red' },
       { property: 'box-shadow', value: '0 1px #000' },
-      { property: 'font', value: '16px serif' }
+      { property: 'font', value: '16px serif' },
+      { property: '*zoom', value: '1' }
     ];
 
     for (const { property, value } of cases) {
@@ -2037,6 +2038,54 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('[\'blue\']');
     expect(types).toContain('[\'1px\']');
     expect(types).not.toContain('selector: \'.button:extend(.base all)\'');
+    expect(types).not.toContain('value: (Any');
+  });
+
+  it('feeds statement-form Less extends through structural parse', async () => {
+    const source = '.base { color: blue; }\n.button { &:extend(.base all); width: 1px; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('.base,\n.button');
+    expect(rendered).toContain('color: blue');
+    expect(rendered).toContain('width: 1px');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 5,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/statement-extend.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const ruleset = parseResult.tree!.rules[1];
+    if (!(ruleset instanceof Ruleset)) {
+      throw new Error('Expected statement-form extend source to produce a Ruleset.');
+    }
+    const extendNode = ruleset.rules[0];
+    if (!(extendNode instanceof Extend)) {
+      throw new Error('Expected statement-form extend source to produce an Extend node.');
+    }
+    expect(extendNode.flag).toBe(ExtendFlag.All);
+    const types = serializeRuntimeTypes(ruleset);
+    expect(types).toContain('selector: \'.button\'');
+    expect(types).toContain('(Extend');
+    expect(types).toContain('(BasicSelector \'.base\')');
+    expect(types).toContain('name: \'width\'');
+    expect(types).not.toContain('name: \'&\'');
+    expect(types).not.toContain('\'extend(.base all)\'');
     expect(types).not.toContain('value: (Any');
   });
 
@@ -4660,6 +4709,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.a { color: color("red"); }\n',
         reason: 'declaration value is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { *zoom+: 1; }\n',
+        reason: 'legacy star-property merge declarations are not in the scanner-native structural-fed subset'
       },
       {
         source: '.a { color: lighten(#00000, 10%); }\n',

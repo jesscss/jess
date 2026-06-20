@@ -1085,6 +1085,9 @@ function validateStructuralFedRule(
     if (child.kind !== 'declaration') {
       return `unsupported rule child ${child.kind}`;
     }
+    if (scannerNativeAmpersandExtendStatementParts(document, child)) {
+      continue;
+    }
 
     const declarationReason = validateStructuralFedDeclaration(document, child, localVariables, allowLessVariables, mathMode);
     if (declarationReason) {
@@ -1282,6 +1285,9 @@ function validateStructuralFedMixinDefinition(
     }
     if (child.kind !== 'declaration') {
       return `unsupported mixin-definition child ${child.kind}`;
+    }
+    if (scannerNativeAmpersandExtendStatementParts(document, child)) {
+      continue;
     }
     const reason = validateStructuralFedDeclaration(document, child, localVariables, true, mathMode);
     if (reason) {
@@ -1674,6 +1680,13 @@ function buildStructuralFedRuleChild(
     return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
   }
   if (child.kind === 'declaration') {
+    const ampersandExtend = buildScannerNativeAmpersandExtendStatement(plan.document, child, context);
+    if (ampersandExtend) {
+      return {
+        node: ampersandExtend,
+        progressiveNodes: 1
+      };
+    }
     return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables, mathMode);
   }
   if (child.kind === 'mixin-call') {
@@ -1803,6 +1816,9 @@ function validateStructuralFedDeclaration(
   const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
   if (!declarationName || !isPlainStructuralFedDeclarationName(declarationName)) {
     return 'declaration name is outside the first structural-fed subset';
+  }
+  if (assign && isLegacyStarDeclarationName(declarationName)) {
+    return 'legacy star-property merge declarations are not in the scanner-native structural-fed subset';
   }
   if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
     return 'declaration assignment is outside the first structural-fed subset';
@@ -2113,6 +2129,86 @@ function readScannerNativeExtendSelectorToken(
       context
     )
   };
+}
+
+type ScannerNativeAmpersandExtendStatementParts = {
+  targetSelector: string;
+  targetStart: number;
+  targetEnd: number;
+  flag: ExtendFlag;
+};
+
+function scannerNativeAmpersandExtendStatementParts(
+  document: StructuralDocument,
+  child: StructuralStatementNode
+): ScannerNativeAmpersandExtendStatementParts | undefined {
+  const name = structuralFieldText(document, child, 'name', 'declaration-name');
+  if (name !== '&') {
+    return undefined;
+  }
+  const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
+  if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
+    return undefined;
+  }
+  const valueRange = structuralFieldRange(document, child, 'value', 'value');
+  if (!valueRange) {
+    return undefined;
+  }
+  const valueText = document.source.text.slice(valueRange.start, valueRange.end);
+  const match = SCANNER_NATIVE_AMPERSAND_EXTEND_PATTERN.exec(valueText);
+  if (!match?.groups) {
+    return undefined;
+  }
+  const targetSelector = match.groups.target;
+  if (!targetSelector) {
+    return undefined;
+  }
+  const targetStart = valueRange.start + 'extend('.length;
+  const targetEnd = targetStart + targetSelector.length;
+  if (!isScannerNativeExtendTargetSelectorText(targetSelector)) {
+    return undefined;
+  }
+  return {
+    targetSelector,
+    targetStart,
+    targetEnd,
+    flag: match.groups.flag === 'all' ? ExtendFlag.All : ExtendFlag.Exact
+  };
+}
+
+function buildScannerNativeAmpersandExtendStatement(
+  document: StructuralDocument,
+  child: StructuralStatementNode,
+  context: TreeContext
+): Extend | undefined {
+  const parts = scannerNativeAmpersandExtendStatementParts(document, child);
+  if (!parts) {
+    return undefined;
+  }
+  const target = scannerNativeExtendTargetSelector(
+    document,
+    parts.targetSelector,
+    parts.targetStart,
+    parts.targetEnd,
+    context
+  );
+  if (!target) {
+    return undefined;
+  }
+  return new Extend(
+    {
+      target,
+      flag: parts.flag
+    },
+    undefined,
+    locationFromRange(document, child.start, child.end),
+    context
+  );
+}
+
+function isScannerNativeExtendTargetSelectorText(targetSelector: string): boolean {
+  return isScannerNativeRawExtendTargetSelector(targetSelector)
+    || isScannerNativeRawComplexExtendTargetSelector(targetSelector);
 }
 
 function scannerNativeExtendTargetSelector(
@@ -2817,6 +2913,7 @@ function structuralFieldText(
 function isPlainStructuralFedDeclarationName(name: string): boolean {
   return (
     (PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_'))
+    || isLegacyStarDeclarationName(name)
     || isCustomPropertyName(name)
   );
 }
@@ -2842,6 +2939,10 @@ function structuralFedDeclarationName(name: string, assign: AssignmentType | und
 
 function isCustomPropertyName(name: string): boolean {
   return CUSTOM_PROPERTY_NAME_PATTERN.test(name);
+}
+
+function isLegacyStarDeclarationName(name: string): boolean {
+  return LEGACY_STAR_DECLARATION_NAME_PATTERN.test(name);
 }
 
 function splitScannerNativeDeclarationImportant(valueText: string): {
@@ -2876,6 +2977,7 @@ const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!\s*i
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
+const LEGACY_STAR_DECLARATION_NAME_PATTERN = /^\*[a-zA-Z_][\w-]*$/u;
 const CUSTOM_PROPERTY_NAME_PATTERN = /^--[-_a-zA-Z][\w-]*$/u;
 const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
@@ -2968,6 +3070,8 @@ const SCANNER_NATIVE_EXTEND_TARGET_TOKEN_PATTERN =
   /(?<combinator>[ \t]*[>+~][ \t]*)|(?<space>[ \t]+)|(?<selector>[.#][-_a-zA-Z][\w-]*)/gu;
 const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =
   /^(?<selector>[^:(){}\r\n]+):extend\((?<target>[^(){},;\r\n]+?)(?:[ \t]+(?<flag>all))?\)$/u;
+const SCANNER_NATIVE_AMPERSAND_EXTEND_PATTERN =
+  /^extend\((?<target>[^(){},;\r\n]+?)(?:[ \t]+(?<flag>all))?\)$/u;
 
 function isConservativeRawScannerNativeValue(valueText: string): boolean {
   if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(valueText) || valueText.includes('/*')) {
