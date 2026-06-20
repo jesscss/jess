@@ -568,12 +568,14 @@ describe('LanguageActivationRegistry', () => {
       ...fixtureLessProfile,
       name: 'tailwind-utility-css'
     };
+    let providerConfigurations = 0;
 
     registry.register({
       name: 'tailwind-plugin',
       profile: tailwindProfile,
       supportedExtensions: ['pcss'],
       configureIslandProviders(islandRegistry) {
+        providerConfigurations++;
         islandRegistry.register(providerKey('tailwind-utility-css', 'declaration-value', 'tailwind-value'), context => ({
           value: context.document.source.slice(context.island.start, context.island.end)
         }));
@@ -582,8 +584,10 @@ describe('LanguageActivationRegistry', () => {
 
     const document = registry.parseStructureForExtension('.pcss', '.btn { color: theme(colors.red.500); }');
     expect(document?.profile.name).toBe('tailwind-utility-css');
+    expect(providerConfigurations).toBe(0);
 
     const plan = registry.createIslandParsePlanForExtension('pcss', document!);
+    expect(providerConfigurations).toBe(1);
     const rule = document!.root.children[0]!;
     if (!('children' in rule)) {
       throw new Error('Expected custom profile document to contain a rule.');

@@ -2264,8 +2264,14 @@ visitor APIs.
   Less-adapter-shaped island parse requests.
 - [x] Ensure Less-compat visitors receive adapter-shaped nodes as traversal
   reaches them.
-- [ ] Ensure structural-only consumers use `StructuralDocument`, not
+- [x] Ensure structural-only consumers use `StructuralDocument`, not
   `Node.accept`.
+  - [x] Shared `LanguageActivationRegistry.parseStructureForExtension(...)`
+    returns a `StructuralDocument` without configuring island providers; provider
+    setup happens only when `createIslandParsePlanForExtension(...)` is called.
+  - [x] Less and SCSS plugin structural-activation tests spy on
+    `Node.prototype.accept` and prove structural-only folding/symbol/node-at
+    queries do not call core visitor traversal or materialize islands.
 - [x] Guard plugin structural activation paths so plugin-level structural-only
   queries use `StructuralDocument` and prove zero island materialization.
 - [x] Test `@jesscss/plugin-less` structural activation through the plugin
