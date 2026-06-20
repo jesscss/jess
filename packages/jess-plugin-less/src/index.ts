@@ -817,11 +817,11 @@ function validateStructuralFedAtRule(
   parentKind: 'root' | 'rule' | 'at-rule'
 ): string | undefined {
   const name = structuralFieldText(document, atRule, 'name', 'at-rule-name');
-  if (name !== '@media' && name !== '@layer') {
-    return 'only @media and root @layer block at-rules are in the progressive structural-fed subset';
+  if (name !== '@media' && name !== '@layer' && name !== '@supports') {
+    return 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset';
   }
-  if (name === '@layer' && parentKind !== 'root') {
-    return 'only root @layer block at-rules are in the progressive structural-fed subset';
+  if ((name === '@layer' || name === '@supports') && parentKind !== 'root') {
+    return 'only root @layer and @supports block at-rules are in the progressive structural-fed subset';
   }
   const prelude = structuralFieldText(document, atRule, 'prelude', 'prelude');
   if (prelude === undefined && name !== '@layer') {
@@ -829,6 +829,9 @@ function validateStructuralFedAtRule(
   }
   if (prelude !== undefined && MULTILINE_VALUE_PATTERN.test(prelude)) {
     return 'multiline at-rule preludes are not in the progressive structural-fed subset';
+  }
+  if (prelude !== undefined && !isScannerNativeAtRulePrelude(name, prelude)) {
+    return 'at-rule prelude is outside the scanner-native structural-fed subset';
   }
   for (const child of atRule.children) {
     if (child.kind === 'rule') {
@@ -915,18 +918,18 @@ function buildStructuralFedAtRule(
   parentKind: 'root' | 'rule' | 'at-rule'
 ): StructuralFedBuildResult {
   const name = structuralFieldText(plan.document, atRule, 'name', 'at-rule-name');
-  if (name !== '@media' && name !== '@layer') {
-    return { reason: 'only @media and root @layer block at-rules are in the progressive structural-fed subset' };
+  if (name !== '@media' && name !== '@layer' && name !== '@supports') {
+    return { reason: 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset' };
   }
-  if (name === '@layer' && parentKind !== 'root') {
-    return { reason: 'only root @layer block at-rules are in the progressive structural-fed subset' };
+  if ((name === '@layer' || name === '@supports') && parentKind !== 'root') {
+    return { reason: 'only root @layer and @supports block at-rules are in the progressive structural-fed subset' };
   }
   const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
   if (!preludeIsland && name !== '@layer') {
     return { reason: 'at-rule prelude island missing' };
   }
   const preludeToken = preludeIsland
-    ? readScannerNativeValueToken(plan, atRule, 'prelude', preludeIsland)
+    ? readScannerNativeAtRulePreludeToken(plan, atRule, preludeIsland, name)
     : undefined;
   if (!preludeToken && preludeIsland) {
     return { reason: 'at-rule prelude is outside the scanner-native structural-fed subset' };
@@ -1206,7 +1209,14 @@ type ScannerNativeSelectorToken = {
 };
 
 type ScannerNativeValueToken = {
-  kind: 'hex-color' | 'dimension-or-number' | 'identifier' | 'flat-literal-list' | 'custom-property-raw' | 'raw-value';
+  kind:
+    | 'hex-color'
+    | 'dimension-or-number'
+    | 'identifier'
+    | 'flat-literal-list'
+    | 'custom-property-raw'
+    | 'raw-value'
+    | 'raw-at-rule-prelude';
   start: number;
   end: number;
   text: string;
@@ -1234,26 +1244,29 @@ function readScannerNativeSimpleSelectorToken(
   };
 }
 
-function readScannerNativeValueToken(
+function readScannerNativeAtRulePreludeToken(
   plan: IslandParsePlan,
-  owner: StructuralContainerNode | StructuralStatementNode,
-  field: 'prelude' | 'value',
-  island: RawIslandNode
+  owner: StructuralContainerNode,
+  island: RawIslandNode,
+  atRuleName: string
 ): ScannerNativeValueToken | undefined {
-  const range = structuralFieldRange(plan.document, owner, field, field === 'prelude' ? 'prelude' : 'value');
+  const range = structuralFieldRange(plan.document, owner, 'prelude', 'prelude');
   if (!range || range.start !== island.start || range.end !== island.end) {
     return undefined;
   }
-  const valueText = plan.document.source.text.slice(range.start, range.end);
-  const match = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
-  if (!match) {
+  const preludeText = plan.document.source.text.slice(range.start, range.end);
+  if (!isScannerNativeAtRulePrelude(atRuleName, preludeText)) {
     return undefined;
   }
+  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(preludeText);
+  if (literalMatch) {
+    return scannerNativeLiteralValueTokenFromMatch(preludeText, range.start, range.end, literalMatch);
+  }
   return {
-    kind: scannerNativeValueKind(match),
+    kind: 'raw-at-rule-prelude',
     start: range.start,
     end: range.end,
-    text: valueText
+    text: preludeText
   };
 }
 
@@ -1465,6 +1478,8 @@ const RAW_QUOTED_STRING_PATTERN = /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')$/u;
 const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{}a-zA-Z0-9]+\)$/u;
 const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
+const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
+  /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
 const SCANNER_NATIVE_SELECTOR_PATTERN =
   /^(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)$/u;
 
@@ -1477,6 +1492,16 @@ function isConservativeRawScannerNativeValue(valueText: string): boolean {
     || RAW_SIMPLE_URL_PATTERN.test(valueText)
     || RAW_FONT_LIST_PATTERN.test(valueText)
   );
+}
+
+function isScannerNativeAtRulePrelude(atRuleName: string | undefined, preludeText: string): boolean {
+  if (RAW_VALUE_LESS_VARIABLE_LIKE_PATTERN.test(preludeText) || preludeText.includes('/*')) {
+    return false;
+  }
+  if (atRuleName === '@supports') {
+    return RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN.test(preludeText);
+  }
+  return SIMPLE_LITERAL_VALUE_PATTERN.test(preludeText);
 }
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {

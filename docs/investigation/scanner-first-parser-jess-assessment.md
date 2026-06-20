@@ -1912,14 +1912,15 @@ storage.
 - [x] Structural-fed prototype: support simple selector, adjacent basic compound
   selector, simple and flat literal declaration values, conservative quoted/url
   declaration and Less variable values, conservative raw custom property
-  declarations, exact `!important` declaration flags on non-custom values, simple root or
-  ruleset-local `@media` prelude/body shape including ordinary nested rules,
-  simple root `@layer` blocks with ordinary rule bodies, and simple already-seen
-  Less variable declaration/reference token detection with zero legacy island
-  parser executions. Hoisted/lazy variable references,
-  non-`@media`/root-`@layer` block at-rule families, complex/list/interpolated
-  selectors, and richer nested at-rule bodies remain canonical fallbacks until
-  their progressive
+  declarations, exact `!important` declaration flags on non-custom values, simple
+  root or ruleset-local `@media` prelude/body shape including ordinary nested
+  rules, simple root `@layer` blocks with ordinary rule bodies, root `@supports`
+  blocks with a single scanner-native declaration condition, and simple
+  already-seen Less variable declaration/reference token detection with zero
+  legacy island parser executions. Hoisted/lazy variable references,
+  non-`@media`/root-`@layer`/root-`@supports` block at-rule families,
+  complex/list/interpolated selectors, and richer nested at-rule bodies remain
+  canonical fallbacks until their progressive
   materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
@@ -2032,15 +2033,22 @@ storage.
     and serializes them as `rawName` / `rawPrelude` without canonical header
     child nodes, and materializes canonical `Any` name/prelude nodes only when
     semantic registration/eval requests at-rule header semantics. The current
-    structural-fed Less prototype only emits those raw core `AtRule` nodes for
-    covered root `@media` and root `@layer` blocks; other at-rule families remain
-    unproven even though the core raw storage primitive is not hard-coded to
-    `@media`.
+    structural-fed Less prototype emits those raw core `AtRule` nodes for covered
+    root `@media`, root `@layer`, root `@supports`, and ruleset-local `@media`
+    blocks; other at-rule families remain unproven even though the core raw
+    storage primitive is not hard-coded to `@media`.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
     render and serialize from raw at-rule header fields with zero selected island
     parser executions.
+  - [x] Extended the structural-fed at-rule proof to root `@supports` blocks with
+    a single scanner-native declaration condition such as
+    `@supports (display: grid) { ... }`. The prelude is carried as one raw string
+    and renders/serializes without a canonical prelude node or legacy island
+    parser execution. Boolean supports expressions, nested `@supports`, Less
+    variable/interpolation-looking condition text, and richer condition values
+    remain canonical fallbacks.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or non-exact important-flag spelling.
@@ -2067,12 +2075,15 @@ storage.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native, and support ruleset-local `@media` blocks
-  containing already-supported ordinary nested rules.
+  containing already-supported ordinary nested rules. Support root `@supports`
+  blocks whose prelude is a single scanner-native declaration condition and whose
+  body contains already-supported ordinary rules.
   - Current limit: raw `AtRule` semantic materialization is proven for the
-    scanner-native root `@media`, ruleset-local `@media`, and root `@layer`
-    subsets only. Nested block at-rules still fall back while Less variables
-    inside nested `@media`, reference/import semantics, `@supports` conditions,
-    and other at-rule families remain unproven.
+    scanner-native root `@media`, ruleset-local `@media`, root `@layer`, and root
+    `@supports (property: value)` subsets only. Nested block at-rules still fall
+    back while Less variables inside nested `@media`, reference/import semantics,
+    boolean supports expressions, nested `@supports`, and other at-rule families
+    remain unproven.
 - [ ] Structural-fed prototype: replace selected-materialization adapter proof
   with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,

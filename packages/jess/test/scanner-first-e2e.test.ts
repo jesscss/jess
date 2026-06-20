@@ -1214,6 +1214,44 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds root @supports blocks with ordinary rules through structural parse', async () => {
+    const source = '@supports (display: grid) { .a { display: grid; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@supports (display: grid)');
+    expect(rendered).toContain('display: grid');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/root-supports.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(AtRule');
+    expect(types).toContain('rawName: \'@supports\'');
+    expect(types).toContain('rawPrelude: \'(display: grid)\'');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('rawName: \'display\'');
+    expect(types).not.toContain('(ProgressiveAtRule');
+    expect(types).not.toContain('name: (Any \'@supports\')');
+    expect(types).not.toContain('prelude: (Any \'(display: grid)\')');
+  });
+
   it('falls back for root @layer shapes outside the structural-fed subset', async () => {
     const cases = [
       {
@@ -1227,6 +1265,45 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@brand: blue;\n@layer utilities { .a { color: @brand; } }\n',
         reason: 'Less variable references are not in this structural-fed subset'
+      }
+    ];
+
+    for (const { source, reason } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: reason,
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0
+      });
+    }
+  });
+
+  it('falls back for @supports shapes outside the structural-fed subset', async () => {
+    const cases = [
+      {
+        source: '@supports not (display: grid) { .a { display: grid; } }\n',
+        reason: 'at-rule prelude is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '@brand: grid;\n@supports (display: @brand) { .a { display: grid; } }\n',
+        reason: 'at-rule prelude is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a { @supports (display: grid) { display: grid; } }\n',
+        reason: 'only root @layer and @supports block at-rules are in the progressive structural-fed subset'
       }
     ];
 
@@ -1378,7 +1455,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
   });
 
   it('falls back canonically for unproven block at-rule families', async () => {
-    const source = '@supports (display: grid) { .a { color: blue; } }\n';
+    const source = '@font-face { font-family: demo; src: url(/demo.woff); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
@@ -1392,7 +1469,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media and root @layer block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, and root @layer block at-rules are in the progressive structural-fed subset',
       fallbackFullTreeMaterializations: 1,
       progressiveNodes: 0,
       actualParses: 0,

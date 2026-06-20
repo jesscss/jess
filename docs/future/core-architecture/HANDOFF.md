@@ -117,9 +117,10 @@ with `--no-verify` after the explicit gates pass.
   custom-property value text, and declaration exact `!important` flag text on
   demand. The current Less structural-fed emitter uses raw core `AtRule` for
   root `@media`, ruleset-local `@media` with scanner-native declaration bodies
-  or already-supported ordinary nested rules, and root `@layer` with ordinary
-  rule bodies; nested block at-rule families outside that shape remain outside
-  this proof and still require materializers or canonical fallback.
+  or already-supported ordinary nested rules, root `@layer` with ordinary rule
+  bodies, and root `@supports` with a single scanner-native declaration
+  condition. Nested block at-rule families outside that shape remain outside this
+  proof and still require materializers or canonical fallback.
 - New traversal: `packages/core/src/tree/declaration.ts`
   `Declaration.writeRawDeclarationSyntax(...)` loops over
   `rawValueSegments`. This is bounded to the raw segment count and replaces
@@ -135,11 +136,11 @@ with `--no-verify` after the explicit gates pass.
   `AtRule.materializeRawHeaderForSemantics(...)` performs no traversal; it
   materializes one raw at-rule name and optional raw prelude string at
   registration/eval boundaries. Extending the structural-fed emitter to root
-  `@layer` and ruleset-local `@media` with ordinary nested rules reuses existing
-  raw at-rule/ruleset storage and does not add render-time traversal. Extending
-  declarations and variables to conservative quoted/url and raw custom-property
-  values reuses the existing raw segment loop; it does not add another render
-  traversal.
+  `@layer`, root `@supports`, and ruleset-local `@media` with ordinary nested
+  rules reuses existing raw at-rule/ruleset storage and does not add render-time
+  traversal. Extending declarations and variables to conservative quoted/url and
+  raw custom-property values reuses the existing raw segment loop; it does not
+  add another render traversal.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat
