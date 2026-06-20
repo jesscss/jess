@@ -11,7 +11,7 @@ export const transformMixinToLess = createFromAdapter<Mixin>({
     },
     rules: (m, cache) => {
       const rules = m.rules;
-      return rules?.value ? rules.rules.map((r: Node) => toLessNode(r, { cache })) : [];
+      return rules.map((r: Node) => toLessNode(r, { cache }));
     },
     condition: (m, cache) => {
       const guard = m.guard;

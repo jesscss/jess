@@ -338,14 +338,10 @@ with `--no-verify` after the explicit gates pass.
   fall back canonically.
 - Aggressive Cutting Self-Prosecution, scanner-first raw selector classifier
   DRY pass: core now owns the scanner-native raw selector admission predicates
-  used by the Less plugin's structural-fed admission gate and by `Ruleset` raw
-  selector materialization. The hot admission helper is boolean and does not
-  allocate option objects or materialization arrays; `Ruleset` still owns local
-  branch splitting when semantics demand materialization, including the existing
-  trimmed selector-list constructor behavior. This pass does not widen selector
-  syntax, does not introduce string-backed selector semantics beyond the
-  existing raw-field render path, and does not settle visitor exposure for
-  selector leaf nodes.
+  used by the Less plugin's structural-fed admission gate and by `Ruleset`'s
+  progressive selector construction. The hot admission helper is boolean and
+  does not allocate option objects. This pass does not widen selector syntax and
+  does not settle visitor exposure for selector leaf nodes.
 - Aggressive Cutting Self-Prosecution, compound selector string-component
   proof: `CompoundSelector` now accepts scanner-native simple selector strings
   and raw ruleset compound materialization passes split strings through instead
@@ -363,13 +359,33 @@ with `--no-verify` after the explicit gates pass.
   requirement: some selector atoms may intentionally have no Jess visitor
   surface if plugin research and Jess semantics do not justify materializing
   them.
+  Latest correction: single raw string atoms also remain
+  `CompoundSelector` surfaces during semantic materialization and extend
+  processing. The extend processor now preserves raw string compound components
+  while recursing only into already-materialized selector-node components, so
+  `.base` can extend/serialize correctly without allocating a `BasicSelector`.
+  The scanner-first extend proof is green again for exact, `all`, and
+  complex-target Less extends with raw source selectors.
+  Latest cleanup proof: focused extend/import tests now cover raw string
+  compound exact matches, single-component `ComplexSelector` exact matches,
+  import-root selection, and reference-mode generated `:is(...)` simplification
+  for both `collapseNesting` modes. That does not complete the location-search
+  deletion: complex dispatch, ampersand-boundary behavior, chained extends, and
+  import/reference activation still need bounded migration before
+  `findExtendableLocations` can be removed.
+  Cleanup target: `walk-and-consume` should be the single extend matching
+  surface. The older location-search fallback remains transitional debt from
+  prior work; do not widen it as a design target. Before adding support for a
+  new scanner-first extend shape, ask whether the walk path can produce the
+  correct result directly from existing raw strings and nodes. Only keep
+  location-search behavior that is still absolutely necessary for a proven
+  correct result until it can be deleted.
   Danger-token prosecution: the touched `CompoundSelector` paths still allocate
   an owned component array when deriving evaluated component surfaces, because
   evaluated selector surfaces already need a placement-owned component list.
   This pass does not add another wrapper hierarchy; it removes `BasicSelector`
-  leaf construction for scanner-native compound raw selector branches. The only
-  new `BasicSelector` construction is the exceptional single-string collapse
-  fallback, where a one-part compound cannot remain a compound surface.
+  leaf construction for scanner-native compound raw selector branches, including
+  one-part raw compounds.
   `valueText(...)` is a small shared primitive for string-or-node comparison; it
   avoids parser-node allocation and avoids unsafe casts. The touched
   selector-match helper keeps one existing `ComplexSelector` remainder
@@ -379,20 +395,17 @@ with `--no-verify` after the explicit gates pass.
   materialization policy. The new `TypeError` is an invariant failure for
   invalid internal raw component input, not routine control flow. The
   `.inherit(...)` calls remain the existing ownership boundary for derived
-  selector surfaces and the single-string collapse fallback. Test-only
-  `throw new Error(...)` assertions are local invariant guards, not runtime
-  behavior.
+  selector surfaces. Test-only `throw new Error(...)` assertions are local
+  invariant guards, not runtime behavior.
 - Aggressive Cutting Self-Prosecution, scanner-first raw attribute selector
   atom proof: the raw selector classifier now admits a deliberately narrow
   attribute selector atom subset such as `[data-kind]` and
-  `[data-kind="primary"]`. Direct structural-fed render still writes the
-  original `rawSelector` string and does not allocate `AttributeSelector`,
-  `BasicSelector`, or selector-list/complex nodes. Cold semantic
-  materialization scans bracketed atoms with quote-aware loops so compound,
-  complex, and selector-list splitting can preserve the attribute text as a
-  string component instead of parsing attribute fields. Commas or spaces inside
-  quoted attribute values are not treated as selector boundaries. This is not a
-  general attribute grammar: structured
+  `[data-kind="primary"]`. The progressive selector constructor scans bracketed
+  atoms with quote-aware loops so compound, complex, and selector-list splitting
+  can preserve the attribute text as a string component instead of parsing
+  attribute fields. Commas or spaces inside quoted attribute values are not
+  treated as selector boundaries. This is not a general attribute grammar:
+  structured
   attribute equality, interpolation, comments, newlines, and richer selector
   pseudos remain outside this proof and must fall back or get their own
   materializer. Attribute visitor exposure is not promised and may explicitly
@@ -405,38 +418,34 @@ with `--no-verify` after the explicit gates pass.
 - Aggressive Cutting Self-Prosecution, scanner-first no-argument pseudo selector
   atom proof: the raw selector classifier now admits a deliberately narrow
   pseudo atom subset such as `:root`, `button:hover`, and `.a::before`.
-  Direct structural-fed render still writes the original `rawSelector` string
-  and does not allocate `PseudoSelector`, `BasicSelector`, or
-  selector-list/complex nodes. Cold semantic materialization splits pseudo
-  atoms as raw string components, not structured pseudo fields; the existing
+  Progressive selector construction splits pseudo atoms as raw string
+  components, not structured pseudo fields; the existing
   `&:focus` / `&::before` branch remains the special case that materializes an
   `Ampersand` plus `PseudoSelector` only when semantic registration demands
   parent substitution. Pseudos with arguments such as `:is(...)`, interpolation,
   comments, newlines, and richer selector grammar remain outside this proof.
   Pseudo names use the existing ident-like non-bare-hyphen subset, so `:-` and
-  `::-` do not enter the structural-fed path. Single raw pseudo and attribute
-  atoms stay `CompoundSelector` surfaces across eval/resolve instead of
-  collapsing into `BasicSelector`, because `BasicSelector` would treat `:` and
-  `[` as tag-like starts.
+  `::-` do not enter the structural-fed path. Single raw string atoms stay
+  `CompoundSelector` surfaces across eval/resolve instead of collapsing into
+  `BasicSelector`; this keeps class/id/type/universal, pseudo, and attribute
+  atoms string-backed until a real semantic consumer needs a richer selector
+  node.
   Pseudo leaf visitor exposure is not promised and may explicitly stay
   unsupported for this atom family unless plugin research or Jess semantics
   proves a node/field surface is worth preserving.
 - Review-flagged allocations:
-  `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
-  construction of one `Declaration` for scanner-first tests. Scanner-first flat
-  literal declaration cases keep the value as one raw string segment for direct
-  render/serialization; important declarations additionally store the raw flag
-  as `rawImportant`. Neither path tokenizes into arrays/nodes until a later
-  semantic materializer is requested. Focused tests add normal
+  `packages/core/src/tree/declaration.ts` lets ordinary `decl(...)` construct
+  scanner-first declarations from raw string or mixed string/node values.
+  Scanner-first flat literal declaration cases keep the value as one raw string
+  segment for direct render/serialization; important declarations additionally
+  store the raw flag as `rawImportant`. Neither path tokenizes into arrays/nodes
+  until a later semantic materializer is requested. Focused tests add normal
   `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
-  constructs one `BasicSelector` for simple raw selectors, or a `CompoundSelector`
-  plus `BasicSelector` parts for adjacent basic compound raw selectors, only
-  when a raw ruleset crosses into semantic registration/eval. The nested
-  ampersand-pseudo proof similarly creates the canonical `CompoundSelector`,
-  `Ampersand`, and `PseudoSelector` only at that cold semantic boundary; direct
-  raw render keeps `selector` undefined and uses `rawSelector`. The temporary
-  `parts` and `components` arrays exist only inside cold semantic
-  materialization boundaries and are not used to stringify.
+  stores simple selector atoms as strings and constructs thin
+  `CompoundSelector`, `ComplexSelector`, and `SelectorList` containers with raw
+  string leaves for scanner-native compound/list/complex selectors. The nested
+  ampersand-pseudo proof keeps `&:focus` as a string until selector semantics
+  demand the existing `Ampersand` plus `PseudoSelector` branch.
   `packages/core/src/tree/at-rule.ts`
   constructs `Any` header nodes only when a raw at-rule crosses into semantic
   registration/eval; direct raw render keeps `name` / `prelude` undefined and
@@ -452,35 +461,42 @@ with `--no-verify` after the explicit gates pass.
   of string/Node segments. The array is caller-owned input for the explicit
   proof path; raw core rulesets still use the existing `rules: Node[]` body
   surface and do not reintroduce a nested `Rules` wrapper.
-- New node/materialization: one explicit core `Declaration` via `rawdecl(...)`,
-  one raw-selector core `Ruleset` path, one raw-header core `AtRule` path, and
-  one raw-header core `AtRuleStatement` path for statement-form at-rules. No
+- New node/materialization: one explicit core `Declaration` via `decl(...)`
+  raw string input, one progressive core `Ruleset` selector path, one raw-header core
+  `AtRule` path, and one raw-header core `AtRuleStatement` path for
+  statement-form at-rules. No
   `Any`, `Reference`, selector, header, or value wrapper nodes are created for
   raw statement at-rule/block at-rule header, selector, name, or value payloads
   during direct render. If semantic registration/eval asks for canonical parts,
   `Declaration.materializeRawDeclarationParts(...)` creates the canonical
   `Any` name/value/important nodes at that boundary and hides raw segment
   children from `childKeys` serialization/traversal so the canonical value is
-  not also exposed through `rawValueSegments`. `Ruleset` creates a
-  `BasicSelector` only for the proven raw simple-selector subset at
-  registration/eval boundaries. `AtRule` creates canonical `Any` name/prelude
-  nodes only for the proven raw root `@media` subset at registration/eval
-  boundaries. `AtRuleStatement` direct render keeps `name` / `prelude`
+  not also exposed through `rawValueSegments`. `Ruleset` stores atom selectors
+  as strings or creates thin selector containers with raw string components for
+  the proven compound/list/complex subset. `valueOf()` on those structured
+  selector containers is a normalized selector representation; exact source
+  spacing belongs to source spans/trivia, not the selector value string.
+  `AtRule`
+  creates canonical `Any` name/prelude nodes only for the proven raw root
+  `@media` subset at registration/eval boundaries. `AtRuleStatement` direct
+  render keeps `name` / `prelude`
   undefined and writes `rawName` / `rawPrelude`; existing import-registration
   scanning reads `rawName` directly so `@charset` does not materialize just to
   decide it is not `@import`.
 - Render path: raw declarations stringify directly in
-  `writeRawDeclarationSyntax(...)` and `render(...)`; raw rulesets write
-  `rawSelector` directly in the ordinary `Ruleset` render/serialize path; raw
+  `writeRawDeclarationSyntax(...)` and `render(...)`; rulesets write their
+  string selector or selector container through the ordinary `Ruleset`
+  render/serialize path; raw
   at-rules write `rawName` / `rawPrelude` directly in the ordinary `AtRule`
   render/serialize path; raw at-rule statements write `rawName` / `rawPrelude`
   directly in the ordinary `AtRuleStatement` render/serialize path. They do not
   resolve into canonical header/selector/value nodes just to print.
-- Helper/API surface: public experimental `rawdecl(...)` plus
-  `RawDeclarationValue`, exported through the existing core declaration
-  entrypoint, `RawRulesetValue` through the existing `ruleset(...)` constructor
-  type, `RawAtRuleValue` through the existing `atrule(...)` constructor type,
-  and `RawAtRuleStatementValue` through `atrulestatement(...)`. This is
+- Helper/API surface: ordinary `decl(...)` accepts raw string or mixed
+  string/node declaration values through the existing core declaration
+  entrypoint. `RawRulesetValue` is available through the existing
+  `ruleset(...)` constructor type, `RawAtRuleValue` through the existing
+  `atrule(...)` constructor type, and `RawAtRuleStatementValue` through
+  `atrulestatement(...)`. This is
   deliberate API surface for scanner-first proof code and remains separate from
   ordinary canonical construction.
 - Metadata mutations: none added.
@@ -488,9 +504,10 @@ with `--no-verify` after the explicit gates pass.
   adopts the materialized name/value/important nodes when the raw declaration
   crosses into semantic registration/eval, preserving the normal parent/child
   invariant at the materialization boundary. `Ruleset.materializeRawSelectorForSemantics(...)`
-  adopts the created `BasicSelector` and moves it into the canonical `selector`
-  slot while clearing `rawSelector`, so subsequent traversal sees one selector
-  representation, not both. `AtRule.materializeRawHeaderForSemantics(...)`
+  adopts the created raw-component selector container when a string atom crosses
+  into a semantic boundary, so subsequent traversal sees one selector
+  representation, not both.
+  `AtRule.materializeRawHeaderForSemantics(...)`
   adopts created `Any` header nodes and moves them into canonical `name` /
   `prelude` slots while clearing `rawName` / `rawPrelude`, so subsequent
   traversal sees one header representation, not both. `AtRuleStatement` direct
@@ -501,11 +518,11 @@ with `--no-verify` after the explicit gates pass.
   and invariant guards for invalid raw selector input or impossible raw/canonical
   callable-copy state, not expected misses or branch control.
 - Allocation changes: adds raw fields on `Declaration` instances for the proof
-  path, one optional raw selector string on `Ruleset`, and raw header strings on
-  `AtRule` and `AtRuleStatement`; avoids statement/header/selector/name/value
-  child node allocation for direct render and defers canonical node allocation
-  until semantic registration/eval. No speed claim until the structural-fed path
-  is benchmarked under corpus gates.
+  path, string or thin-container selector storage on `Ruleset`, and raw header
+  strings on `AtRule` and `AtRuleStatement`; avoids statement/header/name/value
+  child node allocation for direct render and avoids `BasicSelector`,
+  `AttributeSelector`, and pseudo leaf allocation for proven selector atoms. No
+  speed claim until the structural-fed path is benchmarked under corpus gates.
 - Evidence: focused `progressive-nodes.test.ts` passed with raw declaration,
   raw ruleset, raw at-rule, and raw at-rule-statement
   serialize/render/materialization assertions; `pnpm --filter @jesscss/core
@@ -597,6 +614,38 @@ with `--no-verify` after the explicit gates pass.
   `toObject()` plain wrapper descent, array namespace `searchParents: false`,
   disabled reference-wrapper collapse/trivia behavior, repeated reference
   imports, parser visitor traversal counters, and plugin structural activation.
+
+- Latest pass: Less-compat raw primitive visitor boundary and scanner-first
+  corpus recovery.
+- Verdict: accepted as a correctness and prototype-boundary fix, not a speed
+  claim. Primitive raw selector/value segments are not Less visitor nodes, and
+  raw selector adapters no longer pass strings into `WeakSet`-backed adapter
+  caches. Less adapter nodes now follow the current `.rules: Node[]` and
+  `.value` shapes instead of removed nested `Rules.rules` and `List.items`
+  aliases.
+- New traversal: none added.
+- New node/materialization: raw Less selector/element compatibility objects are
+  created only at the Less adapter boundary for primitive selector strings; no
+  core selector/value nodes are materialized for the scanner-first raw path.
+- Render path: unchanged; focused scanner-first e2e continues to prove raw
+  declaration and selector render paths do not request islands or promoted
+  bytes.
+- Helper/API surface: `RawLessSelector`, `RawLessElement`, and
+  `RawLessCombinator` make the existing compatibility boundary explicit instead
+  of pretending every Less-compatible object wraps a Jess `Node`.
+- Metadata mutations: none.
+- Evidence: `pnpm --filter @jesscss/plugin-less-compat build`; `pnpm --filter
+  @jesscss/plugin-less-compat exec vitest --run
+  test/integration/plugin-manager.test.ts`; `pnpm --filter @jesscss/core test
+  -- --run src/tree/__tests__/progressive-nodes.test.ts
+  src/tree/util/__tests__/raw-selector.test.ts`; `pnpm --filter jess test --
+  --run test/scanner-first-e2e.test.ts`; and
+  `JESS_SCANNER_FIRST_CORPUS_DETAILS=1 pnpm --filter jess test -- --run
+  test/scanner-first-less-corpus.test.ts -t "matches current compiler output"`
+  pass. The focused corpus snapshot records 12 structural-fed prototype
+  records, 54 canonical fallbacks, zero requested islands, zero actual parses,
+  zero promoted bytes, and 71 progressive nodes across the included 64-file /
+  65-case upstream Less corpus.
 
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
@@ -2053,12 +2102,44 @@ with `--no-verify` after the explicit gates pass.
   full-baseline blocker is pre-existing `Call` serialization/render fallout
   that reproduces with the latest diff reversed on clean `53ffb2baf`. No
   lookup runtime change. No speed claim.
+- Architecture surface: this closeout is now amended by the scanner-first
+  branch audit of `Rules` cumulative lookup/index ownership. The review surface
+  is the architecture process plus `Rules` as a canonical child container that
+  has accumulated lookup, eval, render, registration, and merge responsibilities.
+- Separation/duplication: `BINDING-LOOKUP-REMAINING.md` item 87 records that
+  lookup utilities did not by themselves establish ownership separation.
+  Future work must distinguish state/cache ownership from helper location and
+  must address near-duplicate callable traversal methods before adding more
+  narrow lookup cases.
+- Cumulative node weight: `Rules` currently carries persistent maps/caches for
+  functions, variables, callables, direct declarations, direct declaration
+  matches, and per-name versions while `ScopeFrame` carries overlapping binding
+  and callable/declaration bucket state. This cumulative shape is not accepted
+  as complete architecture; it is reopened as a binding audit item.
 - New traversal: none.
 - Review-flagged allocations: none in this docs-only pass.
 - New node/materialization: none in this docs-only pass.
 - Render path: no render/stringification path changed.
 - Helper/API surface: none in this docs-only pass.
 - Metadata mutations: none in this docs-only pass.
+- Review-flagged diff tokens: docs and verifier edits add required
+  self-prosecution labels and tracker prose for the `Rules` cumulative
+  ownership audit. The broader scanner-first branch diff also includes
+  runtime danger categories that must not be hand-waved:
+  [loop/traversal] selector splitting/classification and progressive selector
+  iteration loops; [array helper] cold selector value mapping and source-slice
+  checks; [node construction] raw declaration construction and cold semantic
+  selector materialization/invariant test assertions; [inherit/adopt/frozen]
+  selector ownership transfer at semantic boundaries; [parent/source mutation]
+  tree-context reads for selector materialization; [generic defensive read]
+  the documented existing `Rules` render helper `Reflect.get(...)` smell;
+  [side map/set] selector duplicate tracking and the `Rules` audit map/set
+  evidence; [routine error control] invariant-only test/runtime guards; and
+  [materialized array/object] raw declaration input shapes, selector part
+  arrays, and helper arrays used by scanner-first structural proofs. These are
+  not accepted as final architecture by default; scanner-first proof code must
+  either remove them, keep them cold/public, or document the ownership boundary
+  before commit.
 - Allocation changes: none in this docs-only pass.
 - Evidence: `BINDING-LOOKUP-REMAINING.md` has no unchecked binding rows.
   Focused rerun of representative `call.test.ts` failures still shows the

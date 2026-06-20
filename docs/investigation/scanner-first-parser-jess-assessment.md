@@ -200,6 +200,131 @@ render, diagnostic, and JIT code need a predictable document-owned metadata
 surface, and weak lookups should only be introduced if measurement proves they
 solve a real lifetime or memory problem.
 
+Declarations should use the same cheap-storage instinct. A scanner-fed
+declaration should be able to enter core as ordinary `decl({ name: 'color',
+value: 'blue' })` when the name and value are raw scanner-native text. There is
+no inherent value in allocating a keyword/anonymous wrapper solely so a renderer
+can print `blue`, especially if the active visitor surface does not expose
+keyword leaves and no declaration visitor will inspect the canonical value node.
+The cheap declaration target is therefore:
+
+```ts
+decl({
+  name: 'color',
+  value: 'blue',
+  important: false
+});
+```
+
+and, for partially promoted values:
+
+```ts
+decl({
+  name: 'box-shadow',
+  value: ['0 0 2px ', lightenCall]
+});
+```
+
+The string form is not only test shorthand. It is an allowed runtime shape for
+the cheap path. Offsets, segment kinds, and trivia ownership can live in the
+document-owned packed side table or a measured per-node field layout. The
+node's plain declaration surface should remain ergonomic enough that callers do
+not need to know whether a declaration began life as scanner text, a
+parser-created node, or a mixed field.
+
+Raw strings are still most valuable as atom-like payloads. A string leaf such
+as `.a`, `>`, `screen`, `grid`, or `blue` can be cheap and honest. Selectors,
+media queries, and supports conditions are different: a full complex selector,
+a supports condition like `(display: grid)`, or a media query with
+parenthesized features should not be accepted as one opaque raw string merely
+because a regex can recognize its outer shape. Those parens and separators are
+grammar-significant, so if the scanner/sub-parser validates that they are
+balanced in a particular query/condition shape, the structural-fed path should
+either keep that thin validated shape or fall back until that representation
+exists.
+
+Declaration values have a different pressure. A value segment that contains
+parens, brackets, strings, or commas may still be a legitimate raw render-only
+segment when no current stage needs its internals and the segment's offsets and
+kind are tracked. That is a transport claim, not a semantic-value claim. As
+soon as a value is referenced, visited, normalized, compared structurally,
+evaluated as Less/Jess syntax, or used for a source-map granularity that needs
+internal positions, it must be sub-parsed or materialized into a shape that
+preserves the relevant structure.
+
+This does not rule out a fast broad-structure pass. A good implementation may
+first split the source into large balanced chunks, then sub-parse only the
+chunks whose shape matters, and still delay full AST materialization until a
+consumer needs it. The important rule is that once a pass validates meaningful
+substructure, the parser should keep the useful validated shape for later
+render/eval/visitor decisions instead of throwing that information away and
+storing the entire chunk as one fuzzy string.
+
+#### Declaration Getter Materialization Candidate
+
+One candidate simplification is to make declaration fields progressively
+enhanced through normal property access instead of routing every consumer
+through a separate materialization service call.
+
+Conceptually:
+
+```ts
+class Declaration {
+  #rawName?: string;
+  #rawValue?: string | Array<string | Node>;
+  #nameNode?: Any<'property'> | Interpolated<'property'>;
+  #valueNode?: Node;
+
+  get name(): string | Any<'property'> | Interpolated<'property'> {
+    return this.#nameNode ?? this.#rawName!;
+  }
+
+  get value(): string | Array<string | Node> | Node {
+    return this.#valueNode ?? this.#rawValue!;
+  }
+
+  /** Explicit semantic boundary for eval, mutation, or compatible visitors. */
+  materializeValue(): Node {
+    return this.#valueNode ??= parseOrWrapRawDeclarationValue(this.#rawValue);
+  }
+}
+```
+
+There are two variants worth testing:
+
+- **Read-only getter stays raw:** `decl.value` returns a string or mixed segment
+  array until a semantic method such as `materializeValue()`, eval, mutation, or
+  a compatible visitor asks for a node. This maximizes cheap reads and makes
+  direct render simple, but existing callers that assume `value.writeSyntax()`
+  must be audited.
+- **Getter materializes on node-shaped access:** `decl.value` itself promotes
+  raw storage to a canonical node the first time code inspects it. This can
+  radically simplify reasoning because ordinary property access becomes the JIT
+  boundary, but it can also hide work in innocent-looking reads and make visitor
+  planning less explicit. It needs counters and tests so a debug, serialization,
+  or visitor path does not accidentally promote the whole tree.
+
+The likely compromise is to expose raw-friendly public fields for the new Jess
+surface while keeping explicit semantic methods for old Less-compatible visitor
+adapters and eval paths. That lets code which only renders or compares raw text
+stay allocation-light, while code that genuinely needs canonical nodes can ask
+for them through a single well-named boundary.
+
+Guardrails for this experiment:
+
+- do not allocate `Any`/`Keyword`/`Anonymous` wrappers merely to store literal
+  declaration values;
+- do not create both raw and canonical value objects until the canonical value
+  is requested;
+- property-name indexing should use raw `name` strings directly when present;
+- visitor planning must decide whether `visitDeclaration` requires the
+  declaration shell only, canonical name/value nodes, or neither;
+- getter-triggered materialization must increment the same counters as explicit
+  materialization so tests can prove what was promoted;
+- source maps and diagnostics should use offset metadata first and only ask for
+  line/column or canonical value nodes when the requested mapping actually needs
+  that detail.
+
 ### 3. Shared scanner/token classification
 
 DRY should happen at a lower level than one mega-parser:
@@ -1597,6 +1722,10 @@ Goal: add core-blind planning machinery for demand-driven promotion requests.
   visitors/plugins.
 - [x] Implement cache keys including source version, range, language, island
   kind, parser config, and target shape.
+  - [x] Review fix: request/registry cache keys no longer use lossy
+    pipe-delimited decoding. Request views are derived from stored provider
+    keys plus stored island spans, and delimiter-looking language/config/target
+    fields round-trip in tests.
 - [x] Cache request/execution diagnostics separately from exceptional failures.
 - [x] Add counters for requests, actual parses, cache hits/misses, promoted
   bytes, and fallback full-tree materialization.
@@ -1619,6 +1748,9 @@ actually needs.
 - [x] Implement `SemanticIndexBuilder`.
 - [x] Build cheap structural indexes first and lazily fill deeper
   selector/value/reference indexes only when requested.
+  - [x] Review fix: lazy semantic indexes are cached per requested target shape
+    so `core-*`, adapter, and visitor-shaped requests cannot reuse the wrong
+    request ids.
 - [x] Index imports from structural at-rule shells.
 - [x] Index variable declarations from structural declaration shells.
 - [x] Index mixin signatures structurally and issue island parse requests
@@ -1709,6 +1841,9 @@ Pragmatic divergence notes:
 - [x] Add Less extend-candidate provider that preserves Less extend nodes by
   using the qualified-rule parser context.
 - [x] Add Less value/expression island provider in `@jesscss/less-parser`.
+  - [x] Review fix: Less structural `variable-reference` classification now
+    skips quoted/commented at-sign text and plain custom-property literal
+    values while still admitting real Less variable references.
 - [x] Add Less mixin/media-prelude island providers where covered by
   existing tests.
 - [x] Add JSDoc for CSS/Less provider registration and wrapper/materialization
@@ -1823,13 +1958,11 @@ progressive materializers are scanner-native.
     adjacent compound/list/complex selector e2e render. A follow-up within the
     same proof admits simple raw attribute selector atoms such as `[data-kind]`
     and `button[data-kind="primary"].active`, plus no-argument pseudo atoms
-    such as `:root`, `button:hover`, and `.a::before`; these remain string
-    components and do not allocate `AttributeSelector` or `PseudoSelector` nodes
-    on the direct render path. `Ruleset` visibility
-    clone checks skip raw string leaves because there is no selector node to
-      clone or flag. Ordered selector lookup, ampersand substitution, and
-      extend-match helpers now compare raw components through shared value text
-      rather than materializing leaves just to call `valueOf()`.
+    such as `:root`, `button:hover`, and `.a::before`. Single raw string atoms
+    stay `CompoundSelector` surfaces across semantic materialization and extend
+    processing instead of collapsing into `BasicSelector`. The extend processor
+    must preserve raw string compound components and only recurse into
+    already-materialized selector-node components.
     - Current limit: this is compound-only. `ComplexSelector` still owns
       combinator nodes, selector lists still own selector branch nodes, and
       visitor/source-map code is not taught to treat arbitrary strings as full
@@ -1840,6 +1973,53 @@ progressive materializers are scanner-native.
       support is not assumed; the outcome may be "no leaf visitor surface" if
       plugin research and Jess semantics do not justify paying for structured
       fields or compatibility adapters.
+  - [ ] Extend cleanup follow-up: make `walk-and-consume` the single extend
+    matching surface for covered Less semantics, and delete or redirect the old
+    location-search fallback wherever it is not absolutely necessary to get a
+    correct result.
+    - [x] Inventory production and test callers of `findExtendableLocations`,
+      `selectorCompare`, `tryExtendSelector`, `extendSelector`,
+      `applyExtensionAtLocation`, `normalizeSelectorForExtend`, and
+      `walkAndExtend`; classify each as scanner-first path, core public API
+      path, tests-only path, or transitional/deletion candidate. Current
+      result: `extendSelector` / `applyExtendsToSelector` remain production
+      surfaces, `walkAndExtend` is the desired matching implementation surface,
+      and the location-search helpers remain transitional debt until
+      ampersand/reference/chained extend coverage is moved.
+    - [x] Build a coverage matrix for exact extends, `all`, selector lists,
+      compound subsets, complex targets, `:is(...)`, visible/invisible
+      ampersand, conflict validation, chained extends, and import/reference
+      behavior. Mark which cases are already covered by `walkAndExtend` tests,
+      which only pass through the legacy location path, and which are missing.
+      Current result: simple/compound/selector-list/raw-string/single-component
+      complex cases are covered by walk tests; complex dispatch,
+      ampersand-boundary behavior, chained extends, and import/reference
+      activation still need bounded migration before deletion.
+    - [x] Run a deletion probe that disables the location-search fallback after
+      `walkAndExtend` declines a match; record the smallest failing tests and
+      the exact semantics those failures prove are still missing from the walk
+      path. Current result: the safe first slice is exact matching for raw
+      string compounds and single-component `ComplexSelector` list items; broad
+      fallback deletion is not yet proven.
+    - [x] Implement missing walk-path semantics in bounded slices, starting
+      with the smallest failure that affects scanner-first CSS/Less output
+      equality. Do not preserve a fallback merely because it exists today.
+      Current result: raw string compound matching, single-component complex
+      whole-item matching, import root selection, and reference-mode generated
+      `:is(...)` simplification are implemented and covered by focused tests.
+    - [x] Redirect one proven legacy matcher branch: `applyBatchedExtend` no
+      longer uses `findExtendableLocations` / `selectorCompare` for its
+      same-target whole-item batch check. It now asks the walk-and-consume
+      surface via `classifyExtendMatch`, using a non-self representative
+      extender so self-extenders in the batch do not poison classification.
+    - [ ] Add a walk-side "target exists here" classifier before replacing the
+      remaining `extend-roots.ts` `findExtendableLocations(...).hasMatches`
+      checks. `wouldExtendChange` and `classifyExtendMatch` intentionally
+      suppress self-extends, but root accessibility still needs to distinguish
+      "target exists locally" from "this extend would change output".
+    - [ ] Verify each deletion slice with focused core extend tests,
+      scanner-first e2e, and the Less corpus parity/benchmark gates before
+      marking this cleanup complete.
   - Visitor research follow-up: survey public Less plugins that register
     visitors to determine which selector/value internals are actually observed
     in practice. Use that evidence before preserving visitor materialization for
@@ -2118,11 +2298,11 @@ storage.
     nested declaration-block at-rules, `@font-face`/`@page` preludes, and
     missing `@counter-style` preludes still fall back.
   - [x] Fourth thin proof: scope-only rule headers (`&` and an empty header from
-    a bare block) map to real core `Rules` containers instead of raw-selector
+    a bare block) map to real core `Rules` containers instead of selector
     `Ruleset` nodes. The tests parse `.a { & { color: blue; } }` and
     `{ @brand: blue; .a { color: @brand; } }`, render/serialize the resulting
     scope containers, and assert zero selected island parser executions, no
-    `rawSelector: '&'` / `rawSelector: ''`, no eager `BasicSelector`, and no
+    `selector: '&'` / `selector: ''`, no eager `BasicSelector`, and no
     `Any` declaration value wrapper. This is a hidden structural-fed prototype
     proof; bare root scope remains rejected by the current canonical parser.
   - Current limit: invisible progressive bookkeeping nodes are proven for
@@ -2135,12 +2315,12 @@ storage.
     side-table representation before treating it as architecture.
 - [x] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
-  declaration `{ name: "color", value: ["blue"], important: false }`, render
+  declaration `decl({ name: "color", value: "blue", important: false })`, render
   from those string segments, maintain per-field/per-segment offsets separately,
   and assert no selector/value child nodes are created until a typed accessor or
   richer feature requests them.
-  - [x] Added the first raw-field core `Declaration` proof through explicit
-    `rawdecl(...)`: it creates a real `Declaration` instance with `rawName` and
+  - [x] Added the first raw-field core `Declaration` proof through ordinary
+    `decl(...)`: it creates a real `Declaration` instance with `rawName` and
     `rawValueSegments`, renders/serializes string segments, and leaves
     canonical `name` / `valueNode` undefined so no hidden name/value child nodes
     are allocated for the direct render proof path. If the declaration enters
@@ -2223,37 +2403,46 @@ storage.
     important variable declarations remain canonical fallbacks.
   - [x] Added the first raw-field core `Ruleset` proof: the normal core
     `Ruleset` constructor accepts a raw selector string for the scanner-native
-    simple selector subset, renders and serializes it as `rawSelector` without
-    a selector child node, and materializes a canonical `BasicSelector` only
-    when registration or eval requests selector semantics. The structural-fed
+    simple selector subset and stores atom selectors as strings without a
+    selector child node. If a semantic boundary needs selector structure, the
+    atom is promoted to a `CompoundSelector` with a raw string component rather
+    than a `BasicSelector`. The structural-fed
     Less prototype now emits those raw core `Ruleset` nodes for covered
-    ordinary rules, and e2e tests assert the raw selector/declaration shape
+    ordinary rules, and e2e tests assert the string selector/declaration shape
     before semantic materialization.
   - [x] Extended that raw-field `Ruleset` proof to adjacent basic compound
-    selectors such as `.a.b` and `button.primary`: direct render still uses the
-    raw selector string, while semantic registration/eval materializes a
-    canonical `CompoundSelector` containing `BasicSelector` parts only on demand.
+    selectors such as `.a.b` and `button.primary`: the constructor now creates
+    a thin `CompoundSelector` containing raw string components, without
+    `BasicSelector` leaves.
   - [x] Extended that raw-field `Ruleset` proof to comma-separated selector
     lists whose branches are already in the scanner-native simple/adjacent
-    compound selector subset, such as `.a, .b` and `.a, button.primary`: direct
-    render still uses the raw selector string, while semantic registration/eval
-    materializes one canonical `SelectorList` containing branch selector nodes
-    for the full raw list.
+    compound selector subset, such as `.a, .b` and `.a, button.primary`: the
+    constructor now creates a thin `SelectorList` containing branch selector
+    containers with raw string leaves. `valueOf()` returns normalized selector
+    text; exact source spacing belongs to spans/trivia.
   - [x] Extended that raw-field `Ruleset` proof to cheap complex
     selectors and selector-list branches whose parts are already in the
     scanner-native simple/adjacent compound selector subset and whose
     combinators are descendant, child, adjacent sibling, or general sibling,
     such as `.a .b`, `button > .icon.active`, `.a + .b`, `.a ~ .b`, and
-    `.a .b, .c`: direct render still uses the raw selector string, while
-    semantic registration/eval materializes canonical `ComplexSelector` /
-    `SelectorList` nodes only when selector semantics are demanded.
+    `.a .b, .c`: the constructor creates thin `ComplexSelector` /
+    `SelectorList` containers with `Combinator` nodes and raw string selector
+    components, avoiding richer selector leaf allocation.
   - [x] Extended the raw selector transport proof to the narrow nested
-    ampersand-pseudo branch `&:focus`. Direct render and serialization keep
-    `rawSelector: '&:focus'` with no eager `Ampersand` or `PseudoSelector`
-    child nodes; semantic registration materializes a canonical
+    ampersand-pseudo branch `&:focus`. Direct render and serialization keep the
+    selector as the string `&:focus` with no eager `Ampersand` or
+    `PseudoSelector` child nodes; semantic registration materializes a
+    canonical
     `CompoundSelector` containing `Ampersand` plus `PseudoSelector` only if
     selector semantics are requested. This is not a general pseudo-selector
     parser and does not claim nested selector collapse.
+  - [x] Extended the raw selector transport proof to nested leading-combinator
+    selectors such as `> #second .two` and `+ #third`. The structural-fed path
+    admits these only for nested rule bodies and constructs a relative
+    `ComplexSelector` with leading `Combinator` nodes plus raw string selector
+    components.
+    Root-level relative selectors remain outside the scanner-native admission
+    gate.
   - [x] Added the first structural-fed Less extend proof for simple exact
     selector-header extends such as `.button:extend(.base) { width: 1px; }`,
     then widened the same cheap token path to simple `all` selector-header
@@ -2318,6 +2507,18 @@ storage.
     namespaces, overload resolution, richer variable-bearing mixin bodies,
     non-media at-rules inside mixin bodies, and richer call syntax remain
     canonical fallback.
+  - [x] Extended no-argument mixin-call proof to the cheap namespaced
+    no-parens path `#theme > .mixin;`. The scanner-native helper normalizes the
+    call name to the same key-path shape as the Less parser
+    (`['#theme', '.mixin']`) while ignoring only `>` and descendant namespace
+    separators. It does not admit arguments, guards, interpolation, accessors,
+    `+`/`~` combinators, or arbitrary selector lists.
+  - [x] Corpus movement from the nested-relative-selector and namespaced-mixin
+    slices: the Less corpus parity audit moved from 11 to 13 structural-fed
+    cases out of 65, selector fallbacks dropped from 9 to 7, mixin-call
+    fallbacks dropped to 1, and the corpus still reports zero requested islands,
+    zero actual parser executions, and zero promoted bytes for the
+    structural-fed path.
   - [x] Extended the no-argument Less mixin proof to scanner-native `@media`
     blocks inside mixin definitions. The structural-fed path emits raw-field
     `AtRule` nodes for the `@media` body, raw-field declaration nodes inside
@@ -2333,32 +2534,20 @@ storage.
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both
     render and serialize from raw at-rule header fields with zero selected island
     parser executions.
-  - [x] Extended the structural-fed at-rule proof to root `@supports` blocks with
-    a single scanner-native declaration condition such as
-    `@supports (display: grid) { ... }`. The prelude is carried as one raw string
-    and renders/serializes without a canonical prelude node or legacy island
-    parser execution. Boolean supports expressions, Less variable/interpolation-
-    looking condition text, and richer condition values remain canonical
-    fallbacks.
-  - [x] Extended the structural-fed `@supports` proof to ruleset-local and
-    no-argument-mixin-body `@supports (property: value)` blocks whose bodies
-    contain already-supported declarations or ordinary nested rules. These
-    shapes reuse raw-field core `AtRule` storage, render equal CSS, serialize
-    `rawName` / `rawPrelude` without canonical header nodes, and assert zero
-    island parser executions, zero full-tree fallback, zero promoted bytes, no
-    eager `BasicSelector`, and no `Any` declaration value wrapper for the
-    covered fields. Nested richer supports expressions and unsupported child
-    bodies remain canonical fallbacks.
-  - [x] Extended nested at-rule proof to direct scanner-native `@media` /
-    `@supports` children inside already-supported at-rule bodies, covering
-    `@media` inside `@media`, `@supports` inside `@media`, and `@media` inside
-    `@supports` under an ordinary ruleset. The builder recursively emits raw
-    core `AtRule` nodes for the direct at-rule child, preserves raw preludes,
-    renders equal CSS, and asserts zero island parser executions, zero full-tree
-    fallback, zero promoted bytes, no eager selector node, and no `Any`
-    declaration value wrapper. At-rules nested inside ordinary rules that are
-    themselves inside at-rules remain fallback until that wider recursion policy
-    is proven.
+  - [x] Corrected the earlier raw-`@supports` proof: `@supports (display:
+    grid)` is no longer considered a scanner-native raw prelude because the
+    condition has meaningful parenthesized declaration-query structure. Root,
+    nested, and mixin-body `@supports` cases now render through canonical
+    fallback until a thin supports-condition structure exists.
+  - [x] Extended nested at-rule proof to direct scanner-native `@media`
+    children inside already-supported at-rule bodies, covering `@media` inside
+    `@media`. The builder recursively emits raw core `AtRule` nodes for the
+    direct at-rule child, preserves atom-like raw preludes such as `screen` and
+    `print`, renders equal CSS, and asserts zero island parser executions, zero
+    full-tree fallback, zero promoted bytes, no eager selector node, and no
+    `Any` declaration value wrapper. At-rules nested inside ordinary rules that
+    are themselves inside at-rules remain fallback until that wider recursion
+    policy is proven.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax and raw important-flag spelling, not exact source-token
     preservation for alternate assignment spacing or semicolon trivia.
@@ -2376,8 +2565,9 @@ storage.
     selectors, cheap complex selectors made from those parts with descendant,
     child, adjacent sibling, or general sibling combinators, and comma-separated
     lists whose branches stay inside those shapes, plus the narrow nested
-    ampersand-pseudo branch `&:focus` / `&::before`-style names. Pseudo
-    selectors with arguments, structured attribute selector internals,
+    ampersand-pseudo branch `&:focus` / `&::before`-style names and nested
+    leading-combinator selectors such as `> .child`. Pseudo selectors with
+    arguments, structured attribute selector internals,
     interpolation, richer nested selectors, and `:extend()` still need a real
     selector materializer or canonical fallback before they count as completed
     scanner-first selector support.
@@ -2402,15 +2592,11 @@ storage.
 - [x] Structural-fed prototype: support root `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback
   when the prelude is scanner-native, and support ruleset-local `@media` blocks
-  containing already-supported ordinary nested rules. Support root,
-  ruleset-local, and no-argument-mixin-body `@supports` blocks whose prelude is
-  a single scanner-native declaration condition and whose body contains
-  already-supported ordinary rules/declarations.
+  containing already-supported ordinary nested rules.
   - Current limit: raw `AtRule` semantic materialization is proven for the
-    scanner-native root `@media`, ruleset-local `@media`, root `@layer`, and
-    root/ruleset-local/mixin-body `@supports (property: value)` subsets only.
-    Direct `@media` / simple `@supports` children inside those at-rule bodies
-    are also proven when their own children stay in the supported subset.
+    scanner-native root `@media`, ruleset-local `@media`, mixin-body `@media`,
+    and root `@layer` subsets only. `@supports` stays canonical fallback until
+    a thin condition representation exists.
 - [x] Structural-fed prototype: support supported at-rules nested inside
   ordinary rules that are themselves inside supported at-rule bodies, while
   keeping raw at-rule headers unmaterialized during ruleset registration.
@@ -2421,12 +2607,12 @@ storage.
     declarations rather than eager selector/value wrappers. Core regression
     coverage also proves a raw-field `Ruleset` can prepare under a raw-field
     `AtRule` parent without materializing the at-rule header.
-  - Current limit: this proves recursion through supported `@media` /
-    `@supports` families only. Unsupported at-rule families, boolean supports
-    expressions, richer selectors/values, and declaration-block at-rules still
-    stay outside the scanner-fed subset.
+  - Current limit: this proves recursion through supported `@media` families
+    only. Unsupported at-rule families, supports expressions, richer
+    selectors/values, and declaration-block at-rules still stay outside the
+    scanner-fed subset.
 - [x] Structural-fed prototype: support simple Less variable declarations inside
-  supported `@media` / `@supports` bodies so direct declarations and ordinary
+  supported `@media` bodies so direct declarations and ordinary
   nested rules can read body-local scanner-native values without canonical
   fallback.
   - Proof target: render parity, `runtimeTreeSource: 'structural-fed'`, zero
@@ -2437,9 +2623,8 @@ storage.
   - Current limit: this is still a thin same-scope/simple-value proof. Less
     variables in root declaration-block at-rules such as `@font-face`, richer
     variable values, alias/lazy references, interpolation, arithmetic beyond the
-    already-proven one-step subset, reference/import semantics, boolean
-    supports expressions, nested richer `@supports`, and other at-rule families
-    remain unproven.
+    already-proven one-step subset, reference/import semantics, supports
+    expressions, and other at-rule families remain unproven.
 - [x] Structural-fed prototype: support ruleset-local no-argument Less mixin
   definitions and calls when the mixin body stays inside the existing
   scanner-fed declaration/nested-rule subset.
@@ -2565,10 +2750,11 @@ storage.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 11 structural-fed prototype
-    records, 55 canonical fallback records, 22 current expected-CSS failures, 19
-    structural expected-CSS failures, zero requested/materialized islands, zero
-    promoted bytes, and 49 progressive nodes from the upstream corpus. That is
+  - Current audit snapshot, 2026-06-20: 64 files / 65 cases, 12
+    structural-fed prototype records, 54 canonical fallback records, 20 current
+    expected-CSS failures, 17 structural expected-CSS failures, zero
+    requested/materialized islands, zero promoted bytes, zero actual parses,
+    and 71 progressive nodes from the upstream corpus. That is
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
@@ -2745,6 +2931,10 @@ visitor APIs.
   Less-adapter-shaped island parse requests.
 - [x] Ensure Less-compat visitors receive adapter-shaped nodes as traversal
   reaches them.
+  - [x] Primitive raw selector/value segments remain outside the Less visitor
+    surface. Less-compatible visitors return primitive raw segments unchanged,
+    `visitArray()` preserves those primitives, and raw selector adapters do not
+    feed strings into `WeakSet`-backed adapter state.
 - [x] Ensure structural-only consumers use `StructuralDocument`, not
   `Node.accept`.
   - [x] Shared `LanguageActivationRegistry.parseStructureForExtension(...)`
@@ -2775,6 +2965,9 @@ visitor APIs.
 - [x] Performance guard: visitor tests report method-table cache hits and
   traversal request-array allocation counts.
 - [x] Verification: existing plugin tests pass.
+- [x] Verification: `pnpm --filter @jesscss/plugin-less-compat exec vitest
+  --run test/integration/plugin-manager.test.ts`.
+- [x] Verification: `pnpm --filter @jesscss/plugin-less-compat build`.
 - [x] Verification: `pnpm --filter @jesscss/plugin-less test --
   test/structural-activation.test.ts`.
 - [x] Verification: `pnpm --filter @jesscss/plugin-less build`.

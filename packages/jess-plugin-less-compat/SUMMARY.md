@@ -50,7 +50,7 @@ The plugin integrates with Jess's plugin system via the `visitor` property, allo
 
 1. **Implement `createLessProxy`** in `src/transform/proxy.ts`
    - Create Proxy handler with `get` trap
-   - Map property names (e.g., `selectors` → `value.selector`)
+   - Map property names (e.g., `selectors` → `selector`)
    - Handle child node conversion
    - Cache results
 

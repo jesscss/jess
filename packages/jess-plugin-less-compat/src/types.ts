@@ -32,7 +32,7 @@ export interface LessAdapterNode<TJess extends Node = Node> extends LessAdapterB
 
 export interface LessRuleset extends LessAdapterNode<Ruleset> {
   type: 'Ruleset';
-  selectors: LessSelector[];
+  selectors: LessNode[];
   rules: LessNode[];
 }
 
@@ -42,17 +42,42 @@ export interface LessSelector extends LessAdapterNode<Node> {
   length: number;
 }
 
+export interface RawLessSelector {
+  type: 'Selector';
+  typeIndex: number | undefined;
+  elements: LessNode[];
+  length: number;
+  accept(visitor: unknown): unknown;
+}
+
 export interface LessElement extends LessAdapterNode<Node> {
   type: 'Element';
-  combinator: LessCombinator;
+  combinator: LessCombinator | RawLessCombinator;
   value: unknown;
   isVariable: boolean;
+}
+
+export interface RawLessElement {
+  type: 'Element';
+  typeIndex: number | undefined;
+  combinator: LessCombinator | RawLessCombinator;
+  value: unknown;
+  isVariable: boolean;
+  accept(visitor: unknown): unknown;
 }
 
 export interface LessCombinator extends LessAdapterNode<Node> {
   type: 'Combinator';
   value: string;
   emptyOrWhitespace: boolean;
+}
+
+export interface RawLessCombinator {
+  type: 'Combinator';
+  typeIndex: number | undefined;
+  value: string;
+  emptyOrWhitespace: boolean;
+  accept(visitor: unknown): unknown;
 }
 
 export interface LessDeclaration extends LessAdapterNode<Declaration> {
@@ -180,8 +205,11 @@ export type LessAssignment = LessDeclaration;
 export type LessNode =
   | LessRuleset
   | LessSelector
+  | RawLessSelector
   | LessElement
+  | RawLessElement
   | LessCombinator
+  | RawLessCombinator
   | LessDeclaration
   | LessVariable
   | LessProperty

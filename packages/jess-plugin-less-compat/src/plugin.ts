@@ -1141,6 +1141,9 @@ export class LessCompatPlugin extends AbstractPlugin {
         // Get underlying Jess node if this is a Less adapter
         // This allows us to check the processing WeakSet correctly
         const jessNode = node instanceof LessAdapterBase ? node.jessNode : node;
+        if (typeof jessNode !== 'object' || jessNode === null) {
+          return node;
+        }
 
         // CRITICAL: For AtRule nodes, we need to call atRule() FIRST to process @plugin directives
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),

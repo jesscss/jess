@@ -10,7 +10,7 @@ export const transformCallToLess = createFromAdapter<Call>({
       if (!args) {
         return [];
       }
-      return args.items.map((arg: any) =>
+      return args.value.map((arg: any) =>
         arg instanceof Node ? toLessNode(arg, { cache }) : arg
       );
     },
@@ -21,7 +21,7 @@ export const transformCallToLess = createFromAdapter<Call>({
   },
   accept: childrenAccept((c) => {
     const args = c.args;
-    const argsValue = args?.items;
+    const argsValue = args?.value;
     return argsValue?.length
       ? argsValue.filter((a): a is Node => a instanceof Node)
       : [];

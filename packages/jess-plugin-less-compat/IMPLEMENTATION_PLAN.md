@@ -100,7 +100,7 @@ export function toLessTree(jessRules: Rules): LessNode;
 
 **Key Features:**
 - Lazy conversion using proxies
-- Property name mapping (e.g., `value.selector` → `selectors`)
+- Property name mapping (e.g., `selector` → `selectors`)
 - Type mapping (e.g., `Reference` → `Variable`/`Property`/`VariableCall`)
 - Child node conversion on-demand
 - Caching to prevent duplicate conversions
@@ -162,7 +162,7 @@ export function getJessNodeFromProxy(proxy: any): Node | undefined;
 
 **Proxy Handler Implementation:**
 - Intercept property access (`get` trap)
-- Map property names (e.g., `selectors` → `value.selector`)
+- Map property names (e.g., `selectors` → `selector`)
 - Convert child nodes lazily
 - Handle method calls (`accept`, `genCSS`, `eval`, etc.)
 - Cache conversions
@@ -203,7 +203,7 @@ export function transformRulesetToLess(
   return createLessProxy(jessRuleset, {
     // Property mappings
     selectors: () => {
-      const selector = jessRuleset.value.selector;
+      const selector = jessRuleset.selector;
       if (selector instanceof Nil) {
         return [];
       }
@@ -213,7 +213,7 @@ export function transformRulesetToLess(
       return [toLessNode(selector, { cache })];
     },
     rules: () => {
-      return jessRuleset.value.rules.value.map(r => toLessNode(r, { cache }));
+      return jessRuleset.rules.map(r => toLessNode(r, { cache }));
     },
     // Method handlers
     accept: (visitor) => {
@@ -336,12 +336,13 @@ export default function lessCompatPlugin(
 
 ### Ruleset
 
-**Jess:** `{ value: { selector: Selector | Nil, rules: Rules, guard?: Condition } }`
+**Jess:** `Ruleset` with `selector: string | Selector | Nil` and inherited
+`rules: Node[]`
 **Less:** `{ selectors: Selector[], rules: Node[] }`
 
 **Transformation:**
-- `value.selector` (single) → `selectors` (array)
-- `value.rules.value` → `rules`
+- `selector` (single) → `selectors` (array)
+- `rules` → `rules`
 - Handle `Nil` selector → empty array
 - Handle `SelectorList` → array of selectors
 
@@ -369,13 +370,13 @@ export default function lessCompatPlugin(
 
 ### Mixin
 
-**Jess:** `Mixin` with `value.name`, `value.rules`, `value.params`, `value.guard`
+**Jess:** `Mixin` with `name`, inherited `rules: Node[]`, `params`, and `guard`
 **Less:** `MixinDefinition` with `name`, `params`, `rules`, `condition`
 
 **Transformation:**
 - Direct property mapping
-- Convert `value.params` → `params`
-- Convert `value.guard` → `condition`
+- Convert `params` → `params`
+- Convert `guard` → `condition`
 
 ### Declaration
 
@@ -451,13 +452,13 @@ export default function lessCompatPlugin(
 
 ### AtRule
 
-**Jess:** `{ value: { name, prelude, rules } }`
+**Jess:** `AtRule` with `name`, `prelude`, and inherited `rules: Node[]`
 **Less:** `{ name: string, value: Node, rules: Node[] }`
 
 **Transformation:**
-- Map `value.name` → `name`
-- Map `value.prelude` → `value`
-- Map `value.rules` → `rules`
+- Map `name` → `name`
+- Map `prelude` → `value`
+- Map `rules` → `rules`
 
 ### Import
 
@@ -474,7 +475,7 @@ export default function lessCompatPlugin(
 **Less:** `{ selector: Selector, option: string }`
 
 **Transformation:**
-- Map `value.selector` → `selector`
+- Map `selector` → `selector`
 - Map `value.flag` → `option`
 
 ### Condition

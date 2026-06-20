@@ -1,6 +1,7 @@
 import { Ruleset, Nil, Selector, SelectorList, Node } from '@jesscss/core';
 import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
+import { transformSelectorToLess } from './selector.js';
 
 export const transformRulesetToLess = createFromAdapter<Ruleset>({
   fields: {
@@ -9,14 +10,16 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
       if (selector instanceof Nil) {
         return [];
       }
-      if (selector instanceof SelectorList) {
-        return selector.value.map((s: Selector) => toLessNode(s, { cache }));
+      if (!selector) {
+        return [];
       }
-      return [toLessNode(selector, { cache })];
+      if (selector instanceof SelectorList) {
+        return selector.value.map((s: Selector) => transformSelectorToLess(s, cache));
+      }
+      return [transformSelectorToLess(selector, cache)];
     },
     rules: (rs, cache) => {
-      const rules = rs.rules;
-      return rules.rules.map((r: Node) => toLessNode(r, { cache }));
+      return rs.rules.map((r: Node) => toLessNode(r, { cache }));
     }
   },
   accept: (ruleset, visitor, cache) => {
@@ -37,7 +40,7 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
           }
         }
       } else {
-        const lessSelector = toLessNode(selector, { cache });
+        const lessSelector = transformSelectorToLess(selector, cache);
         if (lessSelector) {
           if (visitor.visitArray) {
             visitor.visitArray([lessSelector]);
@@ -49,8 +52,8 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
     }
 
     // Traverse rules
-    if (rules?.value?.length > 0) {
-      const lessRules = rules.rules.map((r: Node) => toLessNode(r, { cache }));
+    if (rules.length > 0) {
+      const lessRules = rules.map((r: Node) => toLessNode(r, { cache }));
       if (visitor.visitArray) {
         visitor.visitArray(lessRules);
       } else {
