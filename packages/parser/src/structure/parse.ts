@@ -400,6 +400,9 @@ function appendContainerIslands(
   owner: StructuralContainerNode,
   islands: RawIslandNode[]
 ): void {
+  const atRuleName = owner.kind === 'at-rule'
+    ? AT_RULE_HEADER_PATTERN.exec(source.slice(owner.headerStart, owner.headerEnd))?.[0]
+    : undefined;
   const span = owner.kind === 'at-rule'
     ? atRulePreludeSpan(source, owner.headerStart, owner.headerEnd)
     : sourceSpan(owner.headerStart, owner.headerEnd);
@@ -409,7 +412,11 @@ function appendContainerIslands(
   const islandKinds = profile.classifyIsland(
     source,
     span,
-    { parentKind: owner.kind === 'at-rule' ? 'at-rule' : 'document', statementKind: 'rule' }
+    {
+      parentKind: owner.kind === 'at-rule' ? 'at-rule' : 'document',
+      statementKind: 'rule',
+      atRuleName
+    }
   );
 
   for (const islandKind of islandKinds) {

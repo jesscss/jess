@@ -1,11 +1,92 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
+import { createRequire } from 'module';
 import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config.js';
 import type { StylesConfig } from 'styles-config';
 
 export interface TestCase {
   expectedFile: string;
   config: Partial<StylesConfig>;
+}
+
+export type NumericLike = {
+  value?: number | { number?: number };
+  valueOf?: () => unknown;
+};
+
+export type StringLike = {
+  value?: string | { value?: string };
+  valueOf?: () => unknown;
+};
+
+export const lessTestDataAdditionalSkips = [
+  'tests-unit/variables/variable-advanced.less',
+  'tests-unit/merge/merge.less',
+  'tests-unit/selectors/selectors.less',
+  'tests-unit/detached-rulesets/detached-rulesets.less',
+  'tests-unit/functions-each/functions-each.less',
+  'tests-unit/layer/layer.less',
+  'tests-unit/lazy-eval/lazy-eval.less',
+  'tests-unit/mixins/mixins.less',
+  'tests-unit/mixins-important/mixins-important.less',
+  'tests-unit/property-name-interp/property-name-interp.less',
+  'tests-unit/strings/strings.less',
+  'tests-unit/variables/variables.less',
+  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
+  'tests-unit/plugin/plugin.less',
+  'tests-unit/parse-interpolation/parse-interpolation.less',
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+  'tests-unit/permissive-parse/permissive-parse.less'
+];
+
+export const lessTestDataForcedIncludes = new Set<string>([]);
+
+export const lessHarnessFunctionsPlugin = {
+  install(less: {
+    functions: {
+      functionRegistry: {
+        addMultiple(functions: Record<string, (...args: unknown[]) => unknown>): void;
+      };
+    };
+  }) {
+    less.functions.functionRegistry.addMultiple({
+      add(a: NumericLike, b: NumericLike) {
+        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
+      },
+      increment(a: NumericLike) {
+        return readNumericFunctionArg(a) + 1;
+      },
+      _color(str: StringLike) {
+        if (readStringFunctionArg(str) === 'evil red') {
+          return '#660000';
+        }
+        return undefined;
+      }
+    });
+  }
+};
+
+export function readNumericFunctionArg(value: NumericLike): number {
+  if (typeof value?.value === 'number') {
+    return value.value;
+  }
+  if (typeof value?.value === 'object' && typeof value.value.number === 'number') {
+    return value.value.number;
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return Number(primitive);
+}
+
+export function readStringFunctionArg(value: StringLike): string {
+  if (typeof value?.value === 'string') {
+    return value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  if (typeof value?.value === 'object' && typeof value.value.value === 'string') {
+    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
 }
 
 /**
@@ -69,4 +150,66 @@ export function getTestCases(lessFilePath: string): TestCase[] {
   }
 
   return testCases;
+}
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Resolves the upstream Less.js test-data directory in normal installs,
+ * linked workspace installs, and isolated git worktrees.
+ */
+export function resolveLessTestDataRoot(): string {
+  const envRoot = existingDirectory(process.env.LESS_TEST_DATA_ROOT);
+  if (envRoot) {
+    return envRoot;
+  }
+  try {
+    return path.dirname(require.resolve('@less/test-data'));
+  } catch {
+    // Continue to workspace and checkout fallbacks below.
+  }
+  try {
+    const rootRequire = createRequire(path.join(process.cwd(), 'package.json'));
+    return path.dirname(rootRequire.resolve('@less/test-data'));
+  } catch {
+    // Continue to checkout fallbacks below.
+  }
+  const checkoutRoot = gitCommonRepoRoot();
+  const checkoutCandidates = [
+    path.resolve(process.cwd(), '../less.js/packages/test-data'),
+    checkoutRoot ? path.resolve(checkoutRoot, '../less.js/packages/test-data') : undefined
+  ];
+  for (const candidate of checkoutCandidates) {
+    const resolved = existingDirectory(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  throw new Error(
+    'Unable to resolve @less/test-data. Set LESS_TEST_DATA_ROOT to the Less.js packages/test-data directory.'
+  );
+}
+
+function existingDirectory(value: string | undefined): string | undefined {
+  if (!value) {
+    return;
+  }
+  const resolved = path.resolve(value);
+  try {
+    return fs.statSync(resolved).isDirectory() ? resolved : undefined;
+  } catch {
+    return;
+  }
+}
+
+function gitCommonRepoRoot(): string | undefined {
+  try {
+    const output = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    }).trim();
+    return path.dirname(output);
+  } catch {
+    return;
+  }
 }

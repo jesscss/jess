@@ -817,6 +817,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '@brand: blue ! important;\n.a { color: @brand; }\n',
         reason: 'important variable declarations are not in the first structural-fed subset'
+      },
+      {
+        source: '.wrapper { grid-template-areas:\n  "header header"\n  "content sidebar"; }\n',
+        reason: 'multiline declaration values are not in the first structural-fed subset'
       }
     ];
 

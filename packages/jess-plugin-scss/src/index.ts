@@ -21,6 +21,9 @@ import {
 import {
   IslandParsePlan,
   IslandParserRegistry,
+  countRequestedIslandKinds,
+  countRequestedOwnerKinds,
+  createStructuralProbeSnapshot,
   type LanguageActivation,
   type ParseStructureOptions,
   type StructuralDocument
@@ -49,10 +52,48 @@ export type ScssPluginOptions = {
    * This is a Jess output option, not a Sass option.
    */
   collapseNesting?: boolean;
+  /**
+   * Hidden scanner-first instrumentation gate. It records structural scan and
+   * selected island materialization metrics while canonical parsing remains
+   * responsible for the compiler tree.
+   */
+  scannerFirstProbe?: boolean | ScannerFirstProbeOptions;
+  /**
+   * Retains every scanner-first probe result on the plugin instance. Disabled
+   * by default so watch-mode experiments keep only the latest metrics.
+   */
+  retainScannerFirstProbeHistory?: boolean;
 };
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
-type PluginParseOptions = { compilerOptions?: Record<string, any> };
+type PluginParseOptions = { compilerOptions?: Record<string, unknown> };
+
+export type ScannerFirstProbeOptions = {
+  materializeIslandKinds?: readonly string[] | 'all';
+};
+
+export type ScannerFirstProbeResult = {
+  filePath: string;
+  sourceBytes: number;
+  structuralScanMs: number;
+  materializationMs: number;
+  totalProbeMs: number;
+  structuralDiagnostics: number;
+  islands: number;
+  requestedIslands: number;
+  executedIslands: number;
+  islandDiagnostics: number;
+  actualParses: number;
+  promotedBytes: number;
+  cacheHits: number;
+  cacheMisses: number;
+  fallbackFullTreeMaterializations: number;
+  requestsByIslandKind: Record<string, number>;
+  requestsByOwnerKind: Record<string, number>;
+  availableByIslandKind: Record<string, number>;
+  availableByOwnerKind: Record<string, number>;
+  structuralNodesByKind: Record<string, number>;
+};
 
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
@@ -60,6 +101,8 @@ export class ScssPlugin extends AbstractPlugin {
   parser: Parser;
   unitMode: UnitMode;
   equalityMode: EqualityMode;
+  scannerFirstProbes: ScannerFirstProbeResult[] = [];
+  lastScannerFirstProbe?: ScannerFirstProbeResult;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
@@ -85,7 +128,7 @@ export class ScssPlugin extends AbstractPlugin {
       name: this.name,
       profile: scssProfile,
       supportedExtensions: this.supportedExtensions,
-      configureIslandProviders: registry => {
+      configureIslandProviders: (registry) => {
         registerScssIslandProviders(registry, this.parser);
       }
     };
@@ -106,11 +149,81 @@ export class ScssPlugin extends AbstractPlugin {
    * Providers reuse this plugin's parser instance so JIT materialization
    * observes the same grammar surface as `safeParse`.
    */
-  islandParsePlan(filePath: string, source: string, registry = new IslandParserRegistry()): IslandParsePlan {
+  islandParsePlan(
+    filePath: string,
+    source: string,
+    registry: IslandParserRegistry = new IslandParserRegistry()
+  ): IslandParsePlan {
     return scssIslandParsePlan(filePath, source, registry, this.parser);
   }
 
+  /**
+   * Runs the scanner-first path as a structural sidecar before canonical SCSS
+   * parsing. The probe can optionally materialize selected islands, but it
+   * never replaces the compiler AST returned by `safeParse`.
+   */
+  runScannerFirstProbe(
+    filePath: string,
+    source: string,
+    options: ScannerFirstProbeOptions = {}
+  ): ScannerFirstProbeResult {
+    const startedAt = nowMs();
+    const structuralStartedAt = nowMs();
+    const plan = this.islandParsePlan(filePath, source);
+    const structuralEndedAt = nowMs();
+    let requestedIslands = 0;
+    let executedIslands = 0;
+    let islandDiagnostics = 0;
+    let materializationMs = 0;
+    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source.length, plan);
+
+    for (const island of plan.document.islands()) {
+      if (!shouldMaterializeIsland(island.islandKind, options)) {
+        continue;
+      }
+
+      const targetShape = scssTargetShapeForIsland(island.islandKind);
+      if (!targetShape) {
+        continue;
+      }
+
+      requestedIslands++;
+      const id = plan.requestIsland(island, targetShape);
+      const materializationStartedAt = nowMs();
+      const record = plan.execute(id);
+      materializationMs += nowMs() - materializationStartedAt;
+      executedIslands++;
+      islandDiagnostics += record.diagnostics.length;
+    }
+
+    const result: ScannerFirstProbeResult = {
+      ...structuralSnapshot,
+      structuralScanMs: structuralEndedAt - structuralStartedAt,
+      materializationMs,
+      totalProbeMs: nowMs() - startedAt,
+      requestedIslands,
+      executedIslands,
+      islandDiagnostics,
+      actualParses: plan.counters.actualParses,
+      promotedBytes: plan.counters.promotedBytes,
+      cacheHits: plan.counters.cacheHits,
+      cacheMisses: plan.counters.cacheMisses,
+      fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
+      requestsByIslandKind: countRequestedIslandKinds(plan),
+      requestsByOwnerKind: countRequestedOwnerKinds(plan)
+    };
+    this.lastScannerFirstProbe = result;
+    if (this.opts.retainScannerFirstProbeHistory) {
+      this.scannerFirstProbes.push(result);
+    }
+    return result;
+  }
+
   safeParse(filePath: string, source: string, parseOptions?: PluginParseOptions): ISafeParseResult {
+    const scannerFirstProbe = getScannerFirstProbeOptions(
+      this.opts.scannerFirstProbe,
+      parseOptions?.compilerOptions?.scannerFirstProbe
+    );
     const allowExtendSelectors = this.opts.allowExtendSelectors
       ?? parseOptions?.compilerOptions?.allowExtendSelectors
       ?? ['simple'];
@@ -134,6 +247,9 @@ export class ScssPlugin extends AbstractPlugin {
     let tree: Rules | undefined;
 
     try {
+      if (scannerFirstProbe) {
+        this.runScannerFirstProbe(filePath, source, scannerFirstProbe);
+      }
       const parseResult = this.parser.parse(source, 'stylesheet', { context });
       tree = parseResult.tree;
 
@@ -204,3 +320,54 @@ export class ScssPlugin extends AbstractPlugin {
 const scssPlugin = ((opts?: ScssPluginOptions) => new ScssPlugin(opts)) satisfies Plugin;
 
 export default scssPlugin;
+
+function scssTargetShapeForIsland(
+  islandKind: string
+): 'scss-condition' | 'scss-prelude' | 'scss-selector' | 'scss-value' | undefined {
+  switch (islandKind) {
+    case 'selector':
+      return 'scss-selector';
+    case 'at-rule-prelude':
+      return 'scss-prelude';
+    case 'control-condition':
+      return 'scss-condition';
+    case 'declaration-value':
+    case 'interpolation':
+    case 'variable-reference':
+      return 'scss-value';
+    default:
+      return undefined;
+  }
+}
+
+function getScannerFirstProbeOptions(
+  pluginOption: boolean | ScannerFirstProbeOptions | undefined,
+  parseOption: unknown
+): ScannerFirstProbeOptions | undefined {
+  const option = parseOption ?? pluginOption;
+  if (option === true) {
+    return {};
+  }
+  if (isScannerFirstProbeOptions(option)) {
+    return option;
+  }
+  return undefined;
+}
+
+function isScannerFirstProbeOptions(value: unknown): value is ScannerFirstProbeOptions {
+  return typeof value === 'object' && value !== null;
+}
+
+function shouldMaterializeIsland(
+  islandKind: string,
+  options: ScannerFirstProbeOptions
+): boolean {
+  if (options.materializeIslandKinds === 'all') {
+    return true;
+  }
+  return options.materializeIslandKinds?.includes(islandKind) ?? false;
+}
+
+function nowMs(): number {
+  return Number(process.hrtime.bigint()) / 1_000_000;
+}

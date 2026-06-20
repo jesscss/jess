@@ -33,12 +33,15 @@ import {
 import {
   IslandParsePlan,
   IslandParserRegistry,
+  countRequestedIslandKinds,
+  countRequestedOwnerKinds,
+  createStructuralProbeSnapshot,
+  structuralDiagnosticRanges,
   type LanguageActivation,
   type ParserConfigKey,
   type ParseStructureOptions,
   type RawIslandNode,
   type StructuralContainerNode,
-  type StructuralDocument,
   type StructuralStatementNode
 } from '@jesscss/parser';
 import path from 'node:path';
@@ -226,7 +229,7 @@ export class LessPlugin extends AbstractPlugin {
     let executedIslands = 0;
     let islandDiagnostics = 0;
     let materializationMs = 0;
-    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source, plan);
+    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source.length, plan);
 
     for (const island of plan.document.islands()) {
       if (!shouldMaterializeIsland(island.islandKind, options)) {
@@ -288,7 +291,7 @@ export class LessPlugin extends AbstractPlugin {
     const structuralStartedAt = nowMs();
     const plan = this.islandParsePlan(filePath, source);
     const structuralEndedAt = nowMs();
-    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source, plan);
+    const structuralSnapshot = createStructuralProbeSnapshot(filePath, source.length, plan);
     const structuralProbe = this.recordScannerFirstProbe({
       ...structuralSnapshot,
       structuralScanMs: structuralEndedAt - structuralStartedAt,
@@ -662,78 +665,8 @@ function lessTargetShapeForIsland(
   }
 }
 
-function incrementCounter(counter: Record<string, number>, key: string): void {
-  counter[key] = (counter[key] ?? 0) + 1;
-}
-
 function nowMs(): number {
   return Number(process.hrtime.bigint()) / 1_000_000;
-}
-
-function collectStructuralNodeKinds(
-  node: { kind: string; children?: () => Iterable<{ kind: string }> } | { kind: string; children?: Array<any> },
-  counter: Record<string, number>
-): void {
-  incrementCounter(counter, node.kind);
-  const children = typeof node.children === 'function'
-    ? [...node.children()]
-    : Array.isArray(node.children)
-      ? node.children
-      : [];
-  for (const child of children) {
-    collectStructuralNodeKinds(child, counter);
-  }
-}
-
-function createStructuralProbeSnapshot(
-  filePath: string,
-  source: string,
-  plan: IslandParsePlan
-): Pick<
-  ScannerFirstProbeResult,
-  | 'availableByIslandKind'
-  | 'availableByOwnerKind'
-  | 'filePath'
-  | 'islands'
-  | 'sourceBytes'
-  | 'structuralDiagnostics'
-  | 'structuralNodesByKind'
-> {
-  const availableByIslandKind: Record<string, number> = {};
-  const availableByOwnerKind: Record<string, number> = {};
-  const structuralNodesByKind: Record<string, number> = {};
-
-  collectStructuralNodeKinds(plan.document.root, structuralNodesByKind);
-  for (const island of plan.document.islands()) {
-    incrementCounter(availableByIslandKind, island.islandKind);
-    incrementCounter(availableByOwnerKind, island.owner.kind);
-  }
-
-  return {
-    filePath,
-    sourceBytes: source.length,
-    structuralDiagnostics: plan.document.diagnostics.length,
-    islands: plan.document.islands().length,
-    availableByIslandKind,
-    availableByOwnerKind,
-    structuralNodesByKind
-  };
-}
-
-function structuralDiagnosticRanges(document: StructuralDocument): ScannerFirstPrototypeResult['structuralDiagnosticRanges'] {
-  if (document.diagnostics.length === 0) {
-    return undefined;
-  }
-  return document.diagnostics.map((diagnostic) => {
-    const position = document.source.offsetToLineColumn(diagnostic.start);
-    return {
-      code: diagnostic.code,
-      start: diagnostic.start,
-      end: diagnostic.end,
-      line: position.line,
-      column: position.column
-    };
-  });
 }
 
 function getScannerFirstProbeOptions(
@@ -825,6 +758,9 @@ function validateStructuralFedRule(
     if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
       return 'declaration assignment is outside the first structural-fed subset';
     }
+    if (MULTILINE_VALUE_PATTERN.test(valueText)) {
+      return 'multiline declaration values are not in the first structural-fed subset';
+    }
     if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
       return 'important declarations are not in the first structural-fed subset';
     }
@@ -844,6 +780,9 @@ function validateStructuralFedVariableDeclaration(
   }
   if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
     return 'variable declaration assignment is outside the first structural-fed subset';
+  }
+  if (MULTILINE_VALUE_PATTERN.test(valueText)) {
+    return 'multiline variable declaration values are not in the first structural-fed subset';
   }
   if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
     return 'important variable declarations are not in the first structural-fed subset';
@@ -892,6 +831,9 @@ function validateStructuralFedAtRule(
       }
       if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
         return 'declaration assignment is outside the first structural-fed subset';
+      }
+      if (MULTILINE_VALUE_PATTERN.test(valueText)) {
+        return 'multiline declaration values are not in the first structural-fed subset';
       }
       if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
         return 'important declarations are not in the first structural-fed subset';
@@ -1085,34 +1027,6 @@ function locationFromRange(
   return [start, startPos.line, startPos.column, end, endPos.line, endPos.column];
 }
 
-function countRequestedIslandKinds(plan: IslandParsePlan): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (let id = 0; id < plan.counters.requestIds; id++) {
-    incrementCounter(counts, plan.requestView(id).islandKind);
-  }
-  return counts;
-}
-
-function countRequestedOwnerKinds(plan: IslandParsePlan): Record<string, number> {
-  const counts: Record<string, number> = {};
-  const requestOwners = new Map<string, string>();
-  for (const island of plan.document.islands()) {
-    requestOwners.set(islandKey(island.start, island.end, island.islandKind), island.owner.kind);
-  }
-  for (let id = 0; id < plan.counters.requestIds; id++) {
-    const request = plan.requestView(id);
-    const ownerKind = requestOwners.get(islandKey(request.start, request.end, request.islandKind));
-    if (ownerKind) {
-      incrementCounter(counts, ownerKind);
-    }
-  }
-  return counts;
-}
-
-function islandKey(start: number, end: number, islandKind: string): string {
-  return `${start}:${end}:${islandKind}`;
-}
-
 function isPlainStructuralFedDeclarationName(name: string): boolean {
   return PLAIN_DECLARATION_NAME_PATTERN.test(name) && !name.endsWith('_');
 }
@@ -1133,6 +1047,7 @@ function isSupportedStructuralFedAtRule(
 }
 
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
+const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const AT_RULE_NAME_PATTERN = /^@[-\w]+/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;

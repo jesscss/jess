@@ -19,6 +19,13 @@ export {
   stableConfigKey
 } from './keys.js';
 export {
+  countRequestedIslandKinds,
+  countRequestedOwnerKinds,
+  createStructuralProbeSnapshot,
+  structuralDiagnosticRanges,
+  type StructuralProbeSnapshot
+} from './probe-summary.js';
+export {
   type IslandExecutionContext,
   type IslandExecutionRecord,
   type IslandParseCounters,

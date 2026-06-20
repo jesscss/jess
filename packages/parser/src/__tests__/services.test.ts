@@ -4,10 +4,14 @@ import {
   IslandParserRegistry,
   LanguageActivationRegistry,
   SourceText,
+  countRequestedIslandKinds,
+  countRequestedOwnerKinds,
   createParserDiagnostic,
+  createStructuralProbeSnapshot,
   parseStructure,
   providerKey,
-  stableConfigKey
+  stableConfigKey,
+  structuralDiagnosticRanges
 } from '../index.js';
 import {
   VisitorMethodTableCache,
@@ -53,7 +57,7 @@ describe('IslandParsePlan', () => {
       providerKey('fixture-less', 'variable-reference', 'core-value', {
         mathMode: 'always'
       }),
-      context => {
+      (context) => {
         calls++;
         return {
           value: context.document.source.slice(context.island.start, context.island.end)
@@ -140,6 +144,45 @@ describe('IslandParsePlan', () => {
     expect(ids).toContain(plan.requestIsland(variableIsland, 'core-value'));
     expect(ids).toHaveLength(2);
     expect(plan.counters.actualParses).toBe(0);
+  });
+
+  test('summarizes structural probe availability and requests without executing providers', () => {
+    const document = parseStructure(
+      new SourceText('.foo { color: @brand; width: 1px; }', { filePath: 'fixture.less', version: 1 }),
+      fixtureLessProfile
+    );
+    const plan = new IslandParsePlan(document);
+
+    const snapshot = createStructuralProbeSnapshot('fixture.less', document.source.length, plan);
+    expect(snapshot).toMatchObject({
+      filePath: 'fixture.less',
+      sourceBytes: document.source.length,
+      structuralDiagnostics: 0,
+      islands: 4,
+      availableByOwnerKind: {
+        rule: 1,
+        declaration: 3
+      },
+      structuralNodesByKind: {
+        document: 1,
+        rule: 1,
+        declaration: 2
+      }
+    });
+    expect(snapshot.availableByIslandKind.selector).toBe(1);
+    expect(snapshot.availableByIslandKind['declaration-value']).toBe(2);
+    expect(snapshot.availableByIslandKind['variable-reference']).toBe(1);
+
+    const variableIsland = document.islands('variable-reference')[0]!;
+    plan.requestIsland(variableIsland, 'core-value');
+
+    const requestedIslandKinds = countRequestedIslandKinds(plan);
+    expect(requestedIslandKinds['variable-reference']).toBe(1);
+    expect(countRequestedOwnerKinds(plan)).toEqual({
+      declaration: 1
+    });
+    expect(plan.counters.actualParses).toBe(0);
+    expect(structuralDiagnosticRanges(document)).toBeUndefined();
   });
 
   test('visitor planning does not promote the whole tree', () => {

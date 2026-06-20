@@ -1674,7 +1674,13 @@ Goal: first prove scanner-first CSS/Less behavior as a sidecar e2e probe inside
 the real compiler/eval/render API, then graduate to a structural-fed
 compile/eval path before widening to SCSS/Jess parser packages.
 
-Do this before adding SCSS/Jess structural profiles or provider entrypoints.
+Do this before adding or widening SCSS/Jess structural work. CSS/Less is not
+complete merely because focused e2e fixtures pass: the structural-fed Less path
+must render the existing upstream Less test-data fixture set to its expected CSS
+with output equality, and the same corpus must have benchmark output for the
+current parser path versus structural-only, selected-materialization, and
+structural-fed modes. Until that corpus-plus-benchmark gate exists, SCSS/Jess
+work stays limited to already-landed provider entrypoint smoke coverage.
 The first milestone did not replace the default parser path: it ran structural
 scan and selected island materialization before canonical parse, then the
 existing parser still built the runtime AST used by eval/render. That sidecar
@@ -1758,6 +1764,22 @@ its claims.
   so the current parser, structural-only, selected materialization, and
   structural-fed paths can be compared without relying on a single tiny inline
   fixture.
+- [ ] Structural-fed Less corpus gate: render every included upstream
+  `@less/test-data` `.less` fixture used by `packages/jess/test/less/all-less.test.ts`
+  with `scannerFirstProbe.structuralFedPrototype: true`, compare to the expected
+  `.css`, and report structural-fed versus canonical fallback counts.
+  - [x] Added a corpus parity audit that runs the same included fixture set in
+    this isolated worktree and compares structural-fed output to the current
+    compiler output.
+  - [ ] Promote the parity audit to expected-CSS completion only after current
+    compiler expected-CSS failures are zero.
+  - Current audit snapshot: 64 files / 65 cases, 6 structural-fed, 59 canonical
+    fallback, 22 current expected-CSS failures, 22 structural expected-CSS
+    failures, 70 requested/materialized islands, 1,385 promoted bytes.
+- [ ] Less corpus benchmark gate: benchmark current parser, structural-only
+  sidecar, selected-materialization sidecar, and structural-fed prototype over
+  the included upstream Less fixture set before treating CSS/Less as ready for
+  SCSS/Jess widening.
 - [ ] CSS-owned compiler performance guard: add this only if a CSS compiler
   plugin/activation path exists; current compiler e2e timing coverage renders
   CSS-shaped fixtures through the Less-compatible compiler path.

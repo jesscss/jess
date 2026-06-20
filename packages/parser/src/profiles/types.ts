@@ -82,6 +82,7 @@ export type IslandKind =
 export type IslandClassificationContext = {
   parentKind?: 'document' | 'rule' | 'at-rule' | 'declaration';
   statementKind?: StatementStarterKind;
+  atRuleName?: string;
 };
 
 /**

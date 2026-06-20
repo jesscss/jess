@@ -2,57 +2,20 @@ import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync } from 'fs';
-import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
-import { getTestCases } from '../test-utils.js';
+import {
+  getTestCases,
+  lessHarnessFunctionsPlugin,
+  lessTestDataAdditionalSkips,
+  lessTestDataForcedIncludes,
+  resolveLessTestDataRoot
+} from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
-const readNumericFunctionArg = (value: any): number => {
-  if (typeof value?.value === 'number') {
-    return value.value;
-  }
-  if (typeof value?.value?.number === 'number') {
-    return value.value.number;
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return Number(primitive);
-};
-
-const readStringFunctionArg = (value: any): string => {
-  if (typeof value?.value === 'string') {
-    return value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  if (typeof value?.value?.value === 'string') {
-    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
-};
-
-const lessHarnessFunctionsPlugin = {
-  install(less: any) {
-    less.functions.functionRegistry.addMultiple({
-      add(a: any, b: any) {
-        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
-      },
-      increment(a: any) {
-        return readNumericFunctionArg(a) + 1;
-      },
-      _color(str: any) {
-        if (readStringFunctionArg(str) === 'evil red') {
-          return '#660000';
-        }
-        return undefined;
-      }
-    });
-  }
-};
-
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
@@ -66,31 +29,6 @@ const baseCompiler = new Compiler({
   }
 });
 
-// Files that should be tested in specialized test files
-const additionalSkips = [
-  'tests-unit/variables/variable-advanced.less', // infinite loop
-  'tests-unit/merge/merge.less', // infinite loop (EvalState migration)
-  'tests-unit/selectors/selectors.less', // infinite loop (EvalState migration)
-  'tests-unit/detached-rulesets/detached-rulesets.less', // async deadlock
-  'tests-unit/functions-each/functions-each.less', // async deadlock
-  'tests-unit/layer/layer.less', // async deadlock
-  'tests-unit/lazy-eval/lazy-eval.less', // async deadlock
-  'tests-unit/mixins/mixins.less', // async deadlock
-  'tests-unit/mixins-important/mixins-important.less', // async deadlock
-  'tests-unit/property-name-interp/property-name-interp.less', // async deadlock
-  'tests-unit/strings/strings.less', // async deadlock
-  'tests-unit/variables/variables.less', // async deadlock
-  'tests-unit/variables-in-at-rules/variables-in-at-rules.less', // async deadlock
-  'tests-unit/plugin/plugin.less', // Jess uses nested @media (no query merging), expected CSS has merged queries
-  'tests-unit/parse-interpolation/parse-interpolation.less', // formatting differences
-  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', // not yet supported
-  'tests-unit/permissive-parse/permissive-parse.less' // syntax error
-];
-
-// Allow specific fixtures even when they are listed in shared invalidLess.
-const forcedIncludes = new Set<string>([
-]);
-
 describe('Can render Less files to CSS', () => {
   // Run all unit fixtures under tests-unit.
   const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
@@ -100,8 +38,8 @@ describe('Can render Less files to CSS', () => {
 
   allFiles
     .map(value => path.relative(testData, value))
-    .filter(value => forcedIncludes.has(value) || !invalidLess.includes(value))
-    .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
+    .filter(value => lessTestDataForcedIncludes.has(value) || !invalidLess.includes(value))
+    .filter(value => !lessTestDataAdditionalSkips.includes(value)) // Skip files tested elsewhere
     .filter(value => !value.startsWith('tests-unit/plugin-')) // Keep only plugin/plugin.less, not plugin-* variants
     // .filter(value => value <= 'tests-unit/whitespace/whitespace.less')
     .sort()
@@ -121,7 +59,7 @@ describe('Can render Less files to CSS', () => {
             // Merge test case config with base compiler config
             // Default: collapseNesting: true (from baseCompiler)
             // Override: testCase.config.output (from styles.config.ts) takes precedence
-            const testCompileConfig = (testCase.config.compile || {}) as Record<string, any>;
+            const testCompileConfig = testCase.config.compile || {};
             const {
               plugins: testCasePlugins = [],
               ...restCompileConfig

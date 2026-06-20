@@ -82,7 +82,11 @@ function addScssIslandKinds(
   if (context?.statementKind === 'mixin-call' || text.startsWith('@include')) {
     pushIfMissing(kinds, 'mixin-call');
   }
-  if (SCSS_CONDITION_HEADER_PATTERN.test(text)) {
+  if (SCSS_CONDITION_HEADER_PATTERN.test(text) || isScssConditionAtRule(context?.atRuleName)) {
     pushIfMissing(kinds, 'control-condition');
   }
+}
+
+function isScssConditionAtRule(name: string | undefined): boolean {
+  return name === '@if' || name === '@while' || name === '@else';
 }
