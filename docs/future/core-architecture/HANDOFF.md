@@ -358,8 +358,11 @@ with `--no-verify` after the explicit gates pass.
   shared `valueText(...)` instead of materializing leaves only to call
   `valueOf()`. Visitor and source-map behavior must still be proven separately
   before treating raw strings as a general selector-node replacement, and
-  attribute selectors remain raw candidates only until equality or visitor
-  semantics require structured attribute fields.
+  attribute selectors remain raw candidates unless equality/matching semantics
+  require structured attribute fields. Visitor exposure is not an automatic
+  requirement: some selector atoms may intentionally have no Jess visitor
+  surface if plugin research and Jess semantics do not justify materializing
+  them.
   Danger-token prosecution: the touched `CompoundSelector` paths still allocate
   an owned component array when deriving evaluated component surfaces, because
   evaluated selector surfaces already need a placement-owned component list.
@@ -379,6 +382,26 @@ with `--no-verify` after the explicit gates pass.
   selector surfaces and the single-string collapse fallback. Test-only
   `throw new Error(...)` assertions are local invariant guards, not runtime
   behavior.
+- Aggressive Cutting Self-Prosecution, scanner-first raw attribute selector
+  atom proof: the raw selector classifier now admits a deliberately narrow
+  attribute selector atom subset such as `[data-kind]` and
+  `[data-kind="primary"]`. Direct structural-fed render still writes the
+  original `rawSelector` string and does not allocate `AttributeSelector`,
+  `BasicSelector`, or selector-list/complex nodes. Cold semantic
+  materialization scans bracketed atoms with quote-aware loops so compound,
+  complex, and selector-list splitting can preserve the attribute text as a
+  string component instead of parsing attribute fields. Commas or spaces inside
+  quoted attribute values are not treated as selector boundaries. This is not a
+  general attribute grammar: structured
+  attribute equality, interpolation, comments, newlines, and richer selector
+  pseudos remain outside this proof and must fall back or get their own
+  materializer. Attribute visitor exposure is not promised and may explicitly
+  stay unsupported for this atom family; plugin research and Jess semantics
+  must prove that a node/field surface is worth preserving before this path
+  pays for it. The new scanner loop replaces a
+  regex-only split because regex matching could not safely distinguish brackets
+  and quoted values without either rejecting useful cheap atoms or allocating a
+  richer parser surface.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

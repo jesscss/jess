@@ -114,24 +114,101 @@ function canMaterializeRawSimpleSelector(value: string): boolean {
   return isScannerNativeRawSimpleSelector(value);
 }
 
-const rawCompoundSelectorPartPattern = /(?:[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|\*)/gu;
+function canMaterializeRawBasicSelector(value: string): boolean {
+  return canMaterializeRawSimpleSelector(value) && !value.startsWith('[');
+}
+
+function readRawAttributeSelector(value: string, start: number): { text: string; end: number } | undefined {
+  if (value[start] !== '[') {
+    return undefined;
+  }
+  let quoteCode = 0;
+  for (let i = start + 1; i < value.length; i++) {
+    const char = value[i]!;
+    if (quoteCode !== 0) {
+      if (char === '\\') {
+        i++;
+        continue;
+      }
+      if (char.charCodeAt(0) === quoteCode) {
+        quoteCode = 0;
+      }
+      continue;
+    }
+    const charCode = char.charCodeAt(0);
+    if (charCode === 34 || charCode === 39) {
+      quoteCode = charCode;
+      continue;
+    }
+    if (char === ']') {
+      const text = value.slice(start, i + 1);
+      return isScannerNativeRawSimpleSelector(text) ? { text, end: i + 1 } : undefined;
+    }
+    if (char === '\r' || char === '\n') {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function isRawSelectorIdentifierStart(char: string | undefined): boolean {
+  return char !== undefined && /[-_a-zA-Z]/u.test(char);
+}
+
+function isRawSelectorIdentifierPart(char: string | undefined): boolean {
+  return char !== undefined && /[\w-]/u.test(char);
+}
+
+function readRawSelectorIdentifier(value: string, start: number): number {
+  if (!isRawSelectorIdentifierStart(value[start])) {
+    return start;
+  }
+  let end = start + 1;
+  while (isRawSelectorIdentifierPart(value[end])) {
+    end++;
+  }
+  return end;
+}
+
+function readRawCompoundSelectorPart(value: string, start: number): { text: string; end: number } | undefined {
+  const first = value[start];
+  if (first === '[') {
+    return readRawAttributeSelector(value, start);
+  }
+  if (first === '*') {
+    return { text: '*', end: start + 1 };
+  }
+  if (first === '.' || first === '#') {
+    const end = readRawSelectorIdentifier(value, start + 1);
+    return end > start + 1 ? { text: value.slice(start, end), end } : undefined;
+  }
+  const end = readRawSelectorIdentifier(value, start);
+  return end > start ? { text: value.slice(start, end), end } : undefined;
+}
 
 function splitRawCompoundSelector(value: string): string[] | undefined {
   const parts: string[] = [];
   let offset = 0;
-  for (const match of value.matchAll(rawCompoundSelectorPartPattern)) {
-    if (match.index !== offset) {
+  while (offset < value.length) {
+    const part = readRawCompoundSelectorPart(value, offset);
+    if (!part) {
       return undefined;
     }
-    const part = match[0];
-    if (part === '*' && parts.length > 0) {
+    const text = part.text;
+    if (text === '*' && parts.length > 0) {
       return undefined;
     }
-    if (!part.startsWith('.') && !part.startsWith('#') && part !== '*' && parts.length > 0) {
+    if (
+      !text.startsWith('.')
+      && !text.startsWith('#')
+      && !text.startsWith('[')
+      && text !== '*'
+      && parts.length > 0
+    ) {
       return undefined;
     }
-    parts.push(part);
-    offset += part.length;
+    parts.push(text);
+    offset = part.end;
   }
   return parts.length > 0 && offset === value.length ? parts : undefined;
 }
@@ -141,37 +218,86 @@ function readRawAmpersandPseudoSelector(value: string): string | undefined {
 }
 
 function splitRawSelectorList(value: string): string[] | undefined {
-  if (!value.includes(',')) {
-    return undefined;
-  }
-  const branches = value.split(',');
   const selectors: string[] = [];
-  for (const branch of branches) {
-    const selector = branch.trim();
-    if (
-      selector.length === 0
-      || (
-        !isMaterializableRawSelectorBranch(selector)
-        && splitRawComplexSelector(selector) === undefined
-      )
-    ) {
+  let branchStart = 0;
+  let quoteCode = 0;
+  let bracketDepth = 0;
+  let sawComma = false;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i]!;
+    if (quoteCode !== 0) {
+      if (char === '\\') {
+        i++;
+        continue;
+      }
+      if (char.charCodeAt(0) === quoteCode) {
+        quoteCode = 0;
+      }
+      continue;
+    }
+    const charCode = char.charCodeAt(0);
+    if (charCode === 34 || charCode === 39) {
+      quoteCode = charCode;
+      continue;
+    }
+    if (char === '[') {
+      bracketDepth++;
+      continue;
+    }
+    if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      continue;
+    }
+    if (char !== ',' || bracketDepth !== 0) {
+      continue;
+    }
+    sawComma = true;
+    const selector = value.slice(branchStart, i).trim();
+    if (!pushRawSelectorListBranch(selector, selectors)) {
       return undefined;
     }
-    selectors.push(selector);
+    branchStart = i + 1;
+  }
+  if (!sawComma || quoteCode !== 0 || bracketDepth !== 0) {
+    return undefined;
+  }
+  const finalSelector = value.slice(branchStart).trim();
+  if (!pushRawSelectorListBranch(finalSelector, selectors)) {
+    return undefined;
   }
   return selectors.length > 1 ? selectors : undefined;
 }
 
-function isMaterializableRawSelectorBranch(value: string): boolean {
-  return (
-    canMaterializeRawSimpleSelector(value)
-    || splitRawCompoundSelector(value) !== undefined
-  );
+function pushRawSelectorListBranch(selector: string, selectors: string[]): boolean {
+  if (
+    selector.length === 0
+    || (
+      !isMaterializableRawSelectorBranch(selector)
+      && splitRawComplexSelector(selector) === undefined
+    )
+  ) {
+    return false;
+  }
+  selectors.push(selector);
+  return true;
+}
+
+function isRawSelectorBranchBoundary(value: string, offset: number): boolean {
+  const char = value[offset];
+  return char === undefined || /[ \t>+~]/u.test(char);
 }
 
 function readRawSelectorBranch(value: string, start: number): { text: string; end: number } | undefined {
   let end = start;
-  while (end < value.length && !/[ \t>+~]/u.test(value[end]!)) {
+  while (end < value.length) {
+    const attr = readRawAttributeSelector(value, end);
+    if (attr) {
+      end = attr.end;
+      continue;
+    }
+    if (isRawSelectorBranchBoundary(value, end)) {
+      break;
+    }
     end++;
   }
   if (end === start) {
@@ -179,6 +305,13 @@ function readRawSelectorBranch(value: string, start: number): { text: string; en
   }
   const text = value.slice(start, end);
   return isMaterializableRawSelectorBranch(text) ? { text, end } : undefined;
+}
+
+function isMaterializableRawSelectorBranch(value: string): boolean {
+  return (
+    canMaterializeRawSimpleSelector(value)
+    || splitRawCompoundSelector(value) !== undefined
+  );
 }
 
 function splitRawComplexSelector(value: string): RawComplexSelectorPart[] | undefined {
@@ -397,7 +530,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
   }
 
   private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
-    if (canMaterializeRawSimpleSelector(rawSelector)) {
+    if (canMaterializeRawBasicSelector(rawSelector)) {
       return new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
     }
     const pseudoName = readRawAmpersandPseudoSelector(rawSelector);
@@ -408,7 +541,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       ], undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
     }
     const parts = splitRawCompoundSelector(rawSelector);
-    if (!parts || parts.length < 2) {
+    if (!parts || parts.length < 1) {
       throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
     }
     return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);

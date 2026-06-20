@@ -7,8 +7,12 @@
  * drift as the scanner-first subset widens.
  */
 
+const RAW_ATTRIBUTE_SELECTOR_SOURCE =
+  String.raw`\[-?[-_a-zA-Z][\w-]*(?:[ \t]*[~|^$*]?=[ \t]*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|-?[_a-zA-Z][\w-]*))?(?:[ \t]+[is])?[ \t]*\]`;
+const RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE =
+  String.raw`(?:[.#][-_a-zA-Z][\w-]*|${RAW_ATTRIBUTE_SELECTOR_SOURCE})`;
 const RAW_SELECTOR_BRANCH_SOURCE =
-  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:[.#][-_a-zA-Z][\w-]*)*|[.#][-_a-zA-Z][\w-]*(?:[.#][-_a-zA-Z][\w-]*)*)`;
+  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})*|(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})+)`;
 const RAW_COMPLEX_SELECTOR_SOURCE =
   String.raw`${RAW_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${RAW_SELECTOR_BRANCH_SOURCE})*`;
 
@@ -16,7 +20,8 @@ const RAW_SELECTOR_PATTERN =
   new RegExp(String.raw`^${RAW_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${RAW_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
 const RAW_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${RAW_SELECTOR_BRANCH_SOURCE}$`, 'u');
-const RAW_SIMPLE_SELECTOR_PATTERN = /^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*)$/u;
+const RAW_SIMPLE_SELECTOR_PATTERN =
+  new RegExp(String.raw`^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|${RAW_ATTRIBUTE_SELECTOR_SOURCE})$`, 'u');
 const RAW_EXTEND_TARGET_SELECTOR_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
 const RAW_EXTEND_TARGET_COMPLEX_SELECTOR_PATTERN =
   /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;

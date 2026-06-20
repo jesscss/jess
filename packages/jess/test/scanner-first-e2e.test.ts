@@ -1648,7 +1648,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
   });
 
   it('feeds adjacent compound selectors through structural parse', async () => {
-    const cases = ['.a.b', 'button.primary', '.-utility.active'];
+    const cases = [
+      '.a.b',
+      'button.primary',
+      '.-utility.active',
+      '[data-kind]',
+      'button[data-kind="primary"].active',
+      'button[data-label="hello, world"].active'
+    ];
 
     for (const selector of cases) {
       const source = `${selector} { color: blue; }\n`;
@@ -1676,16 +1683,21 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
       const parseResult = probePlugin.safeParse('/virtual/compound-selector.less', source);
       expect(parseResult.errors).toEqual([]);
-      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      const parsedRule = parseResult.tree!.rules[0];
+      if (!(parsedRule instanceof Ruleset)) {
+        throw new Error('Expected structural-fed selector proof to produce a raw Ruleset.');
+      }
+      expect(parsedRule.rawSelector).toBe(selector);
+      const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain(`rawSelector: '${selector}'`);
       expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('(AttributeSelector');
     }
   });
 
   it('feeds simple selector lists through structural parse', async () => {
-    const cases = ['.a, .b', '.a, button.primary'];
+    const cases = ['.a, .b', '.a, button.primary', '.a, button[data-kind]', '.a, button[data-label="hello, world"]'];
 
     for (const selector of cases) {
       const source = `${selector} { color: blue; }\n`;
@@ -1714,17 +1726,30 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
       const parseResult = probePlugin.safeParse('/virtual/selector-list.less', source);
       expect(parseResult.errors).toEqual([]);
-      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      const parsedRule = parseResult.tree!.rules[0];
+      if (!(parsedRule instanceof Ruleset)) {
+        throw new Error('Expected structural-fed selector-list proof to produce a raw Ruleset.');
+      }
+      expect(parsedRule.rawSelector).toBe(selector);
+      const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain(`rawSelector: '${selector}'`);
       expect(types).not.toContain('(SelectorList');
       expect(types).not.toContain('(BasicSelector');
       expect(types).not.toContain('(CompoundSelector');
+      expect(types).not.toContain('(AttributeSelector');
     }
   });
 
   it('feeds cheap complex selectors through structural parse', async () => {
-    const cases = ['.a .b', 'button > .icon.active', '.a + .b', '.a ~ .b', '.a > .b, .c + .d'];
+    const cases = [
+      '.a .b',
+      'button > .icon.active',
+      '.a[data-kind] > button.primary',
+      '.a[data-label="hello world"] > button.primary',
+      '.a + .b',
+      '.a ~ .b',
+      '.a > .b, .c[data-kind] + .d'
+    ];
 
     for (const selector of cases) {
       const source = `${selector} { color: blue; }\n`;
@@ -1753,14 +1778,19 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
       const parseResult = probePlugin.safeParse('/virtual/complex-selector.less', source);
       expect(parseResult.errors).toEqual([]);
-      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+      const parsedRule = parseResult.tree!.rules[0];
+      if (!(parsedRule instanceof Ruleset)) {
+        throw new Error('Expected structural-fed complex-selector proof to produce a raw Ruleset.');
+      }
+      expect(parsedRule.rawSelector).toBe(selector);
+      const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain(`rawSelector: '${selector}'`);
       expect(types).not.toContain('(SelectorList');
       expect(types).not.toContain('(ComplexSelector');
       expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(BasicSelector');
       expect(types).not.toContain('(Combinator');
+      expect(types).not.toContain('(AttributeSelector');
     }
   });
 

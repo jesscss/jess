@@ -15,13 +15,21 @@ describe('scanner-native raw selector classifier', () => {
       'div',
       '#id',
       '.class',
+      '[data-kind]',
+      '[data-kind="primary"]',
+      '[data-label="hello world"]',
+      '[data-label="hello, world"]',
       'button.primary',
+      'button[data-kind="primary"].active',
       '.a.b#c',
       '.a > .b',
+      '.a[data-kind] > button.primary',
+      '.a[data-label="hello world"] > button.primary',
       '.a + button.primary',
       '.a ~ #id',
       '.a .b',
-      '.a, button.primary'
+      '.a, button[data-kind]',
+      '.a, button[data-label="hello, world"]'
     ]) {
       expect(isScannerNativeRawSelector(selector), selector).toBe(true);
     }
@@ -31,7 +39,11 @@ describe('scanner-native raw selector classifier', () => {
     for (const selector of [
       ':hover',
       ':is(.a)',
-      '[data-kind]',
+      '[data kind]',
+      '[data=123]',
+      '[data=-1]',
+      'button[data=123]',
+      '[data-kind="unterminated]',
       '.a::before',
       '.a:hover',
       '@{selector}',

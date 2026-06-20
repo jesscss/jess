@@ -1808,16 +1808,22 @@ progressive materializers are scanner-native.
     `RelativeSelector { value: ['>', '.class', '+', 'div'] }`, while offsets
     live in the packed field/range metadata. Attribute selectors can likely
     remain raw string atoms too, unless equality/matching needs parsed attribute
-    fields or a visitor explicitly asks for attribute-selector internals. This
-    is not approved syntax widening yet; it is the next selector-shape
-    experiment to prove against extend behavior, visitor exposure, and
-    render/source-map needs.
+    fields. Visitor exposure is a separate compatibility decision, not an
+    automatic reason to create attribute nodes: plugin research may justify
+    exposing some selector internals, while other atoms may intentionally stay
+    non-visitable. This is not approved syntax widening yet; it is the next
+    selector-shape experiment to prove against extend behavior, selected
+    visitor/plugin contracts, and render/source-map needs.
   - [x] First selector-shape proof: `CompoundSelector` can carry scanner-native
     simple selector strings directly, and raw ruleset compound materialization
     now uses those strings instead of allocating `BasicSelector` leaves for the
     proven compound subset. The proof covers direct render, `valueOf()`,
     key-set computation, raw ruleset semantic materialization, and scanner-fed
-    adjacent compound/list/complex selector e2e render. `Ruleset` visibility
+    adjacent compound/list/complex selector e2e render. A follow-up within the
+    same proof admits simple raw attribute selector atoms such as `[data-kind]`
+    and `button[data-kind="primary"].active`; these remain string components
+    and do not allocate `AttributeSelector` nodes on the direct render path.
+    `Ruleset` visibility
     clone checks skip raw string leaves because there is no selector node to
       clone or flag. Ordered selector lookup, ampersand substitution, and
       extend-match helpers now compare raw components through shared value text
@@ -1825,14 +1831,17 @@ progressive materializers are scanner-native.
     - Current limit: this is compound-only. `ComplexSelector` still owns
       combinator nodes, selector lists still own selector branch nodes, and
       visitor/source-map code is not taught to treat arbitrary strings as full
-      selector nodes. Rich pseudos such as `:hover`, `:is(...)`,
-      structure-sensitive attribute selectors, interpolation, and
+      selector nodes. Rich pseudos such as `:hover`, `:is(...)`, attribute
+      selectors that require structured field equality, interpolation, and
       newline-containing selectors remain outside this proof until admitted by
-      separate tests.
+      separate tests. Attribute visitor support is not assumed; the outcome may
+      be "no attribute visitor surface" if plugin research and Jess semantics do
+      not justify paying for structured fields or compatibility adapters.
   - Visitor research follow-up: survey public Less plugins that register
     visitors to determine which selector/value internals are actually observed
     in practice. Use that evidence before preserving visitor materialization for
-    every legacy leaf node shape.
+    every legacy leaf node shape. Some legacy leaves may deliberately have no
+    Jess visitor surface if they are only raw atoms in the scanner-first model.
     - Initial survey result: public Less visitor plugins are rare, and the
       sampled packages showed declaration/value reliance rather than selector
       leaf reliance.
@@ -1867,8 +1876,10 @@ progressive materializers are scanner-native.
       can request declaration-value materialization. A generic `visit()` or
       unknown replacing visitor remains the broad compatibility case. Do not
       eagerly materialize selectors merely because a visitor exists; selector
-      materialization should be triggered by explicit selector visitor hooks or
-      traversal into ruleset selector fields.
+      materialization should be triggered by explicit supported selector visitor
+      hooks or traversal into ruleset selector fields. Unsupported leaf hooks
+      should be documented as intentionally unavailable rather than simulated by
+      allocating nodes the runtime otherwise does not need.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.
@@ -2357,14 +2368,15 @@ storage.
     consumer that needs value internals still needs an explicit JIT value
     materializer for the requested field/span.
   - Current limit: raw `Ruleset` semantic materialization only covers the
-    scanner-native simple selector subset (`*`, tag, `.class`, `#id`), adjacent
-    basic compound selectors, cheap complex selectors made from those parts with
-    descendant, child, adjacent sibling, or general sibling combinators, and
-    comma-separated lists whose branches stay inside those shapes, plus the
-    narrow nested ampersand-pseudo branch `&:focus` / `&::before`-style names.
-    Other pseudo selectors, attributes, interpolation, richer nested selectors,
-    and `:extend()` still need a real selector materializer or canonical
-    fallback before they count as completed scanner-first selector support.
+    scanner-native simple selector subset (`*`, tag, `.class`, `#id`, simple
+    raw attribute atoms), adjacent basic compound selectors, cheap complex
+    selectors made from those parts with descendant, child, adjacent sibling, or
+    general sibling combinators, and comma-separated lists whose branches stay
+    inside those shapes, plus the narrow nested ampersand-pseudo branch
+    `&:focus` / `&::before`-style names. Other pseudo selectors, structured
+    attribute selector internals, interpolation, richer nested selectors, and
+    `:extend()` still need a real selector materializer or canonical fallback
+    before they count as completed scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain Less variable declarations and reads so already-seen
   values and same-scope hoisted simple literal/raw values can run without
