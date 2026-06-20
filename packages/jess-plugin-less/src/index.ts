@@ -1,14 +1,13 @@
 import {
   type Plugin,
-  type PluginInterface,
   AbstractPlugin,
   TreeContext,
   JessError,
-  logger,
   JsFunction,
   Rules,
   Any,
   Declaration,
+  VarDeclaration,
   Ruleset,
   Selector,
   Node,
@@ -38,7 +37,8 @@ import {
   type ParseStructureOptions,
   type RawIslandNode,
   type StructuralContainerNode,
-  type StructuralDocument
+  type StructuralDocument,
+  type StructuralStatementNode
 } from '@jesscss/parser';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -164,7 +164,7 @@ export class LessPlugin extends AbstractPlugin {
       name: this.name,
       profile: lessProfile,
       supportedExtensions: this.supportedExtensions,
-      configureIslandProviders: registry => {
+      configureIslandProviders: (registry) => {
         registerLessIslandProviders(registry, {
           mathMode: this.mathMode,
           leakyRules: this.leakyRules
@@ -188,7 +188,11 @@ export class LessPlugin extends AbstractPlugin {
    * Providers reuse this plugin's parser instance and parser options so JIT
    * materialization observes the same option-sensitive shape as `safeParse`.
    */
-  islandParsePlan(filePath: string, source: string, registry = new IslandParserRegistry()): IslandParsePlan {
+  islandParsePlan(
+    filePath: string,
+    source: string,
+    registry: IslandParserRegistry = new IslandParserRegistry()
+  ): IslandParsePlan {
     return lessIslandParsePlan(filePath, source, {
       mathMode: this.mathMode,
       leakyRules: this.leakyRules
@@ -335,8 +339,20 @@ export class LessPlugin extends AbstractPlugin {
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
 
     for (const child of plan.document.root.children) {
-      if (child.kind !== 'rule') {
+      if (child.kind !== 'rule' && child.kind !== 'variable-declaration') {
         return fallback(`unsupported root node ${child.kind}`);
+      }
+      if (child.kind === 'variable-declaration') {
+        const eligibilityReason = validateStructuralFedVariableDeclaration(plan.document, child);
+        if (eligibilityReason) {
+          return fallback(eligibilityReason);
+        }
+        const result = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        continue;
       }
       const eligibilityReason = validateStructuralFedRule(plan.document, child);
       if (eligibilityReason) {
@@ -693,7 +709,7 @@ function structuralDiagnosticRanges(document: StructuralDocument): ScannerFirstP
   if (document.diagnostics.length === 0) {
     return undefined;
   }
-  return document.diagnostics.map(diagnostic => {
+  return document.diagnostics.map((diagnostic) => {
     const position = document.source.offsetToLineColumn(diagnostic.start);
     return {
       code: diagnostic.code,
@@ -752,7 +768,7 @@ function singleIsland(
 }
 
 type StructuralFedBuildResult =
-  | { node: Ruleset }
+  | { node: Node }
   | { reason: string };
 
 function validateStructuralFedRule(
@@ -764,6 +780,13 @@ function validateStructuralFedRule(
       const nestedReason = validateStructuralFedRule(document, child);
       if (nestedReason) {
         return nestedReason;
+      }
+      continue;
+    }
+    if (child.kind === 'variable-declaration') {
+      const reason = validateStructuralFedVariableDeclaration(document, child);
+      if (reason) {
+        return reason;
       }
       continue;
     }
@@ -783,6 +806,25 @@ function validateStructuralFedRule(
     if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
       return 'important declarations are not in the first structural-fed subset';
     }
+  }
+  return undefined;
+}
+
+function validateStructuralFedVariableDeclaration(
+  document: StructuralDocument,
+  child: StructuralStatementNode
+): string | undefined {
+  const name = document.source.slice(child.nameStart, child.nameEnd);
+  const valueText = document.source.slice(child.valueStart, child.valueEnd);
+  const assignmentText = document.source.slice(child.nameEnd, child.valueStart);
+  if (!PLAIN_LESS_VARIABLE_NAME_PATTERN.test(name)) {
+    return 'variable declaration name is outside the first structural-fed subset';
+  }
+  if (!PLAIN_ASSIGNMENT_PATTERN.test(assignmentText)) {
+    return 'variable declaration assignment is outside the first structural-fed subset';
+  }
+  if (IMPORTANT_FLAG_PATTERN.test(valueText)) {
+    return 'important variable declarations are not in the first structural-fed subset';
   }
   return undefined;
 }
@@ -818,6 +860,14 @@ function buildStructuralFedRuleset(
       rules.push(nested.node);
       continue;
     }
+    if (child.kind === 'variable-declaration') {
+      const variable = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+      if ('reason' in variable) {
+        return variable;
+      }
+      rules.push(variable.node);
+      continue;
+    }
     if (child.kind !== 'declaration') {
       return { reason: `unsupported rule child ${child.kind}` };
     }
@@ -848,6 +898,41 @@ function buildStructuralFedRuleset(
       selector: selectorRecord.value,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
+  };
+}
+
+function buildStructuralFedVariableDeclaration(
+  plan: IslandParsePlan,
+  child: StructuralStatementNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  configKey: ParserConfigKey,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const rawName = plan.document.source.slice(child.nameStart, child.nameEnd);
+  const valueIsland = singleIsland(ownerIslands, child, 'declaration-value');
+  if (!valueIsland) {
+    return { reason: 'variable declaration value island missing' };
+  }
+  const valueRecord = plan.execute<Node>(
+    plan.requestIsland(valueIsland, 'less-value', configKey)
+  );
+  if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
+    return { reason: 'variable declaration value island did not materialize cleanly' };
+  }
+  if (!(valueRecord.value instanceof Node)) {
+    return { reason: 'variable declaration value island returned a non-node value' };
+  }
+
+  return {
+    node: new VarDeclaration({
+      name: new Any(
+        rawName.slice(1),
+        { role: 'ident' },
+        locationFromRange(plan.document, child.nameStart, child.nameEnd),
+        context
+      ),
+      value: valueRecord.value
+    }, undefined, locationFromRange(plan.document, child.start, child.end), context)
   };
 }
 
@@ -897,3 +982,4 @@ function isPlainStructuralFedDeclarationName(name: string): boolean {
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
+const PLAIN_LESS_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;

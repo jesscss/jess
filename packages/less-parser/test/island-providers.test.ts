@@ -41,6 +41,29 @@ describe('Less island providers', () => {
     });
   });
 
+  test('classifies Less variable declaration values as declaration-value islands', () => {
+    const document = parseLessStructure('fixture.less', '@brand: red; .foo { color: @brand; }');
+    const registry = new IslandParserRegistry();
+    registerLessIslandProviders(registry);
+    const plan = new IslandParsePlan(document, registry);
+    const variableValueIsland = document.islands('declaration-value').find(
+      island => island.owner.kind === 'variable-declaration'
+    );
+
+    expect(variableValueIsland).toBeDefined();
+    expect(document.source.slice(variableValueIsland!.start, variableValueIsland!.end)).toBe('red');
+
+    const record = plan.execute(
+      plan.requestIsland(variableValueIsland!, 'less-value', lessParserConfigKey({}))
+    );
+
+    expect(serializeTypes(record.value)).toContainString('(Color');
+    expect(plan.counters).toMatchObject({
+      actualParses: 1,
+      fallbackFullTreeMaterializations: 0
+    });
+  });
+
   test('promotes Less mixin call islands without parsing sibling declarations', () => {
     const document = parseLessStructure('fixture.less', '.foo { .mixin(red); color: red; }');
     const registry = new IslandParserRegistry();
@@ -67,8 +90,8 @@ describe('Less island providers', () => {
     const mixinId = plan.requestIsland(mixinIsland, 'less-mixin', configKey);
     const referenceId = plan.requestIsland(referenceIsland, 'less-value', configKey);
     const selectedBytes =
-      mixinIsland.end - mixinIsland.start +
-      referenceIsland.end - referenceIsland.start;
+      mixinIsland.end - mixinIsland.start
+      + referenceIsland.end - referenceIsland.start;
 
     plan.execute(mixinId);
     plan.execute(referenceId);

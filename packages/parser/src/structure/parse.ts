@@ -1,4 +1,4 @@
-import type { IslandKind, LanguageProfile } from '../profiles/index.js';
+import type { LanguageProfile } from '../profiles/index.js';
 import {
   ScannerCursor,
   createParserDiagnostic,
@@ -18,7 +18,6 @@ import type {
   ParseStructureOptions,
   RawIslandNode,
   StructuralContainerNode,
-  StructuralNode,
   StructuralStatementNode
 } from './types.js';
 
@@ -210,11 +209,11 @@ function isComponentValueBlock(
   const nameEnd = trimEnd(cursor.source, nameStart, colonOffset);
   const name = cursor.source.slice(nameStart, nameEnd);
   return (
-    name.startsWith('--') ||
-    DECLARATION_NAME_PATTERN.test(name) ||
-    name.startsWith('$') ||
-    name.startsWith('@{') ||
-    name.startsWith('${')
+    name.startsWith('--')
+    || DECLARATION_NAME_PATTERN.test(name)
+    || name.startsWith('$')
+    || name.startsWith('@{')
+    || name.startsWith('${')
   );
 }
 
@@ -374,7 +373,12 @@ function appendIslands(
   const islandKinds = profile.classifyIsland(
     source,
     sourceSpan(owner.valueStart, owner.valueEnd),
-    { parentKind: owner.kind === 'declaration' ? 'declaration' : undefined }
+    {
+      parentKind: owner.kind === 'declaration' || owner.kind === 'variable-declaration'
+        ? 'declaration'
+        : undefined,
+      statementKind: owner.kind === 'variable-declaration' ? 'variable' : undefined
+    }
   );
 
   for (const islandKind of islandKinds) {

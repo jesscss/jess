@@ -1650,10 +1650,11 @@ proof is useful, but it was not proof that materialized islands feed evaluation
 or rendering.
 
 The current prototype adds a hidden structural-fed path for a bounded subset:
-ordinary rules whose bodies contain ordinary declarations and nested ordinary
-rules. It uses structural rule and declaration shells, materializes only
-selector and declaration-value islands through the Less providers, constructs
-canonical `@jesscss/core` `Rules`/`Ruleset`/`Declaration` nodes, and records
+ordinary rules whose bodies contain ordinary declarations, plain Less variable
+declarations, and nested ordinary rules. It uses structural rule, declaration,
+and variable-declaration shells, materializes only selector and value islands
+through the Less providers, constructs canonical `@jesscss/core`
+`Rules`/`Ruleset`/`Declaration`/`VarDeclaration` nodes, and records
 `canonical-fallback` for unsupported Less features instead of silently widening
 its claims.
 
@@ -1675,10 +1676,17 @@ its claims.
 - [x] Track materialization by island kind and by owning structural node kind so
   tests can assert both "this feature materialized" and "this feature did not
   materialize."
-- [ ] Audit single-payload AST fields reached by CSS/Less materialization
+- [x] Audit single-payload AST fields reached by CSS/Less materialization
   (`items`, `components`, `valueNode`, and similar names) and decide which can
   collapse to `.value` before scanner-first shapes are treated as replacement
   architecture.
+  - Current decision: `List`, `Sequence`, and selector collection nodes already
+    use `.value`/`childKeys = ['value']`; old `items`/`components` names are
+    not reintroduced. `Rules.rules` remains the semantic body contract for
+    rules-bearing containers. `Declaration.valueNode` is not collapsed in this
+    slice because `Declaration.value` is the full `{ name, value, important }`
+    payload; collapsing it would require a broader DeclarationValue redesign,
+    not a scanner-first provider change.
 - [x] Prototype a `Rules` wrapper reduction design: determine whether nested
   `Ruleset`/`AtRule`/`Mixin` can inherit rules-container behavior so their
   `.rules` field is a `Node[]` body array instead of a nested `Rules` node,
@@ -1702,6 +1710,8 @@ its claims.
   cache hits/misses, and output equality.
 - [x] Structural-fed prototype: use structural results and materialized islands
   in a real compile/eval path for a bounded CSS/Less subset.
+- [x] Structural-fed prototype: support plain Less variable declarations in
+  root and nested ordinary rules without canonical fallback.
 - [x] Prototype performance guard: report structural-fed runtime source,
   promoted bytes, selected island count, fallback full-tree count,
   cache hits/misses, and output equality for the bounded subset.
