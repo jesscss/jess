@@ -1683,8 +1683,8 @@ or rendering.
 
 The current prototype adds a hidden structural-fed path for a bounded subset:
 ordinary rules whose bodies contain ordinary declarations, plain Less variable
-declarations, nested ordinary rules, and root `@media` block at-rules with
-supported body shapes. It uses structural rule, at-rule, declaration, and
+declarations, nested ordinary rules, and `@media` block at-rules with supported
+body shapes. It uses structural rule, at-rule, declaration, and
 variable-declaration shells, materializes only selector, at-rule prelude, and
 value islands through the Less providers, constructs canonical `@jesscss/core`
 `Rules`/`Ruleset`/`AtRule`/`Declaration`/`VarDeclaration` nodes, and records
@@ -1745,7 +1745,7 @@ its claims.
   in a real compile/eval path for a bounded CSS/Less subset.
 - [x] Structural-fed prototype: support plain Less variable declarations in
   root and nested ordinary rules without canonical fallback.
-- [x] Structural-fed prototype: support root `@media` block at-rules containing
+- [x] Structural-fed prototype: support `@media` block at-rules containing
   already supported ordinary rule/declaration bodies without canonical fallback.
 - [x] Prototype performance guard: report structural-fed runtime source,
   promoted bytes, selected island count, fallback full-tree count,

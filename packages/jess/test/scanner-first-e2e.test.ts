@@ -660,6 +660,39 @@ describe('scanner-first CSS/Less e2e probe', () => {
     ]));
   });
 
+  it('feeds nested media declarations inside an ordinary ruleset through structural parse', async () => {
+    const source = '.a { @media screen { color: blue; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 3,
+      requestedIslands: 3
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
+      ['selector', 1],
+      ['at-rule-prelude', 1],
+      ['declaration-value', 1]
+    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
+      ['rule', 1],
+      ['at-rule', 1],
+      ['declaration', 1]
+    ]));
+  });
+
   it('falls back canonically for unproven block at-rule families', async () => {
     const source = '@supports (display: grid) { .a { color: blue; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
