@@ -1175,11 +1175,9 @@ function isSupportedStructuralFedAtRule(
 
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
-const AT_RULE_NAME_PATTERN = /^@[-\w]+/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
 const PLAIN_LESS_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_LITERAL_VALUE_PATTERN =
   /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
 const SIMPLE_SELECTOR_PATTERN = /^(?:[.#]?-?[a-zA-Z_][\w-]*|\*)$/u;
-const WHITESPACE_PATTERN = /\s/u;
