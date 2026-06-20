@@ -1943,11 +1943,11 @@ storage.
     semantics are not frozen into scanner-native strings. This proves zero
     `VarDeclaration`/`Reference`/value wrapper nodes for the narrow path without
     claiming Less lazy/hoisted variable semantics.
-  - [x] Structural-fed prototype now uses those progressive nodes for ordinary
-    rule/root `@media`/simple variable success cases, and now uses raw-field
-    core `Declaration` nodes for covered declaration success cases. The
-    prototype still records `progressiveNodes` as the cheap structural-fed node
-    count so tests and corpus logs prove the cheap path was actually used.
+  - [x] Structural-fed prototype now uses raw-field core `Ruleset` and
+    `Declaration` nodes for covered ordinary rule/declaration success cases,
+    while root `@media` still uses the temporary progressive at-rule wrapper.
+    The prototype still records `progressiveNodes` as the cheap structural-fed
+    node count so tests and corpus logs prove the cheap path was actually used.
   - Current limit: invisible progressive bookkeeping nodes are proven for
     normal render output. Full-render/debug surfaces may intentionally force
     invisible nodes, so any broader replacement must specify whether those
@@ -1956,7 +1956,7 @@ storage.
     structural scope. That is acceptable for the narrow proof, but widening the
     variable path must benchmark this against a cheaper scope stack or packed
     side-table representation before treating it as architecture.
-- [ ] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
+- [x] Add a first raw-field core-node prototype for `Ruleset` and `Declaration`:
   parse `.a { color: blue; }` into normal core nodes with a selector string and
   declaration `{ name: "color", value: ["blue"], important: false }`, render
   from those string segments, maintain per-field/per-segment offsets separately,
@@ -1971,10 +1971,18 @@ storage.
     demand; that is the progressive-enhancement boundary, not the cheap render
     path.
   - [x] Connected that proof to the structural-fed Less prototype for covered
-    declarations: `.a { color: blue; }` now parses into a progressive ruleset
-    shell containing a real core `Declaration` with raw `name` / `value`
+    declarations: `.a { color: blue; }` now parses into a raw-field core
+    `Ruleset` containing a real core `Declaration` with raw `name` / `value`
     payloads before semantic materialization. The render/e2e tests still prove
     output equality with zero legacy island parser executions.
+  - [x] Added the first raw-field core `Ruleset` proof: the normal core
+    `Ruleset` constructor accepts a raw selector string for the scanner-native
+    simple selector subset, renders and serializes it as `rawSelector` without
+    a selector child node, and materializes a canonical `BasicSelector` only
+    when registration or eval requests selector semantics. The structural-fed
+    Less prototype now emits those raw core `Ruleset` nodes for covered
+    ordinary rules, and e2e tests assert the raw selector/declaration shape
+    before semantic materialization.
   - Current limit: this proves wrapper avoidance and direct render for normalized
     declaration syntax, not exact source-token preservation for alternate
     assignment spacing, semicolon trivia, or important-flag spelling.
@@ -1982,10 +1990,11 @@ storage.
     segment as the canonical value and turns mixed string/`Node` segments into a
     reachable sequence container. Rich mixed segment semantics still need a
     broader segment-to-node policy before they can be used as a broad eval path.
-  - Current limit: raw `Ruleset` is not yet proven. The current `Ruleset`
-    registration path immediately evaluates selector nodes, so accepting a raw
-    selector string requires a selector materialization/accessor boundary rather
-    than simply widening the constructor type.
+  - Current limit: raw `Ruleset` semantic materialization only covers the
+    scanner-native simple selector subset (`*`, tag, `.class`, `#id`). Compound,
+    complex, list, interpolated, nested, and `:extend()` selectors still need a
+    real selector materializer or canonical fallback before they count as
+    completed scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain already-seen Less variable declarations and reads
   so they can run without canonical fallback.

@@ -5,6 +5,7 @@ import { ProgressiveDeclaration } from './progressive-declaration.js';
 import { indent } from './util/serialize-helper.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
+import { isProgressiveCoreBlockChild, writeIndentedCoreBlockChild } from './util/progressive-block-render.js';
 
 export type ProgressiveRulesetValue = {
   selector: string;
@@ -90,6 +91,10 @@ export class ProgressiveRuleset extends Node<ProgressiveRulesetValue> {
       }
       if (isProgressiveBlockNode(rule)) {
         rule.writeSyntax(options);
+        continue;
+      }
+      if (isProgressiveCoreBlockChild(rule)) {
+        writeIndentedCoreBlockChild(rule, options);
         continue;
       }
       writer.add(childIndent, rule);

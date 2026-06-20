@@ -1,7 +1,6 @@
 import { attachSelectorBitLibrary, Selector } from '../selector.js';
 import { Ampersand } from '../ampersand.js';
 import type { AmpersandValue } from '../ampersand.js';
-import type { Ruleset } from '../ruleset.js';
 import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { SelectorList } from '../selector-list.js';
@@ -16,8 +15,8 @@ import type { BitSetLibrary } from './bitset.js';
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
 
-/** Parent ruleset (live container) or a snapshot { value: SelectorContainer } when no ruleset is available. */
-export type ParentSource = Ruleset | { value: SelectorContainer };
+/** Parent selector snapshot used by implicit ampersand selectors. */
+export type ParentSource = { value: SelectorContainer };
 
 export function copySelectorForPlacement(
   selector: Selector,

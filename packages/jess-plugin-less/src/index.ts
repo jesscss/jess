@@ -5,9 +5,9 @@ import {
   JessError,
   JsFunction,
   Rules,
+  Ruleset,
   ProgressiveAtRule,
   Declaration,
-  ProgressiveRuleset,
   ProgressiveVariableDeclaration,
   Node,
   getErrorFromParser,
@@ -872,7 +872,7 @@ function buildStructuralFedRuleset(
   }
 
   return {
-    node: new ProgressiveRuleset({
+    node: new Ruleset({
       selector: selectorToken.text,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),

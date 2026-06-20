@@ -13,6 +13,7 @@ import { CompoundSelector } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
+import { BasicSelector } from './selector-basic.js';
 import {
   type PrintOptions,
   type FinalPrintOptions,
@@ -53,6 +54,16 @@ export type RulesetValue = {
   selectorBeforeExtend?: Selector | Nil;
 };
 
+export type RawRulesetValue = {
+  selector: string;
+  /**
+   * It's important that any Node that defines a Rules
+   * sets it to the `rules` property. This allows us to
+   * generalize nodes for the `frames` property in Context.
+   */
+  rules: Node[];
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -87,6 +98,12 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
     || value instanceof Node;
 }
 
+function canMaterializeRawSimpleSelector(value: string): boolean {
+  return value === '*'
+    || /^[-_a-zA-Z][\w-]*$/u.test(value)
+    || /^[.#][-_a-zA-Z][\w-]*$/u.test(value);
+}
+
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
@@ -105,13 +122,14 @@ type RulesetOptions = NodeOptions & {
  *   color: black;
  * }
  */
-export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
-  static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
+export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOptions> {
+  static override childKeys = ['selector', 'rawSelector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
-  selector: RulesetValue['selector'];
+  selector: RulesetValue['selector'] | undefined;
+  rawSelector: string | undefined;
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
@@ -120,8 +138,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
-  constructor(value: RulesetValue, options?: RulesetOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+  constructor(
+    value: RulesetValue | RawRulesetValue,
+    options?: RulesetOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    if (options?.hasDefault === undefined && 'guard' in value && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
     if (!Array.isArray(value.rules)) {
@@ -134,9 +157,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       treeContext,
       value.rules
     );
-    this.selector = value.selector;
-    this.guard = value.guard;
-    this.selectorBeforeExtend = value.selectorBeforeExtend;
+    if (typeof value.selector === 'string') {
+      if (!canMaterializeRawSimpleSelector(value.selector)) {
+        throw new TypeError('Raw ruleset selector is outside the scanner-native simple selector subset.');
+      }
+      this.selector = undefined;
+      this.rawSelector = value.selector;
+      this.guard = undefined;
+      this.selectorBeforeExtend = undefined;
+    } else {
+      this.selector = value.selector;
+      this.rawSelector = undefined;
+      this.guard = value.guard;
+      this.selectorBeforeExtend = value.selectorBeforeExtend;
+    }
   }
 
   private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {
@@ -202,6 +236,23 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.attachSelectorBitsToValue(value[key], selectorBits);
       }
     }
+  }
+
+  private materializeRawSelectorForSemantics(): RulesetValue['selector'] {
+    if (this.selector !== undefined) {
+      return this.selector;
+    }
+    const rawSelector = this.rawSelector;
+    if (rawSelector === undefined) {
+      throw new TypeError('Ruleset requires a selector before semantic materialization.');
+    }
+    const selector = new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+      .inherit(this);
+    this.adopt(selector);
+    this.selector = selector;
+    this.rawSelector = undefined;
+    this.value.selector = selector;
+    return selector;
   }
 
   private deriveRuleset(
@@ -569,6 +620,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return this._valueOf;
     }
     const selector = this.selector;
+    if (selector === undefined) {
+      this._valueOf = this.rawSelector ?? '';
+      return this._valueOf;
+    }
     if (selector instanceof Nil) {
       this._valueOf = '';
       return this._valueOf;
@@ -658,7 +713,16 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (this.evaluated || this.registrationPrepared || this.guard) {
       return false;
     }
+    if (this.rawSelector !== undefined) {
+      return !this.guard
+        && !this.registrationPrepared
+        && this.hasFlag(F_STATIC)
+        && canRenderStaticRulesDirectly(this);
+    }
     const { selector } = this;
+    if (selector === undefined) {
+      return false;
+    }
     if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !this.hasFlag(F_STATIC)) {
       return false;
     }
@@ -1221,11 +1285,23 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private writeHeaderSelector(options: FinalPrintOptions, withoutComments: boolean): boolean {
+    if (this.rawSelector !== undefined) {
+      if (
+        options.collapseNesting
+        || options.referenceMode === true
+        || withoutComments
+      ) {
+        return false;
+      }
+      options.writer.add(this.rawSelector);
+      return this.rawSelector.length > 0;
+    }
+
     const { selector } = this;
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
     // but keep it safe for TypeScript and invariants.
-    if (selector instanceof Nil) {
+    if (selector === undefined || selector instanceof Nil) {
       return false;
     }
 
@@ -1333,9 +1409,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     context: Context,
     options: { ownRules?: boolean } = {}
   ): MaybePromise<Ruleset> {
-    this.attachSelectorBits(this.selector, context.selectorBits);
+    const sourceSelector = this.materializeRawSelectorForSemantics();
+    this.attachSelectorBits(sourceSelector, context.selectorBits);
     const sourceParts: RulesetValue = {
-      selector: this.selector,
+      selector: sourceSelector,
       rules: this.rules,
       ...(this.guard !== undefined && { guard: this.guard }),
       ...(this.selectorBeforeExtend !== undefined && {
@@ -1345,7 +1422,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const node = this.deriveRuleset(sourceParts, sourceParts, options);
     node._selectorCacheOwner = this;
     node.registrationPrepared = true;
-    const { selector } = node;
+    const selector = node.materializeRawSelectorForSemantics();
     const { selectorBits } = context;
     this._prepareRulesVisibility(node, context);
     this._storeOwnSelector(node, selector, selectorBits);
@@ -1432,6 +1509,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // are registered in source order before we process extends.
     // Push this ruleset to the frame so nested rulesets get the correct parent selector
     // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Ruleset intentionally checks Rules' private prep marker; public registrationPrepared is already true for derived ruleset prep surfaces.
     if (!(node as unknown as { _registrationPrepared?: boolean })._registrationPrepared) {
       const rulesetNode: Ruleset = node;
       const rulesetFrameCount = context.rulesetFrames.length;
@@ -1471,10 +1549,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
   getImplicitSelector(parentSelector: Selector, collapseNesting = false) {
-    if (this.selector instanceof Nil) {
-      return this.selector;
+    const selector = this.materializeRawSelectorForSemantics();
+    if (selector instanceof Nil) {
+      return selector;
     }
-    return getImplicitSelectorUtil(this.selector, parentSelector, collapseNesting);
+    return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
   }
 
   override evalNode(context: Context): MaybePromise<Ruleset | Rules | Nil> {
@@ -1535,7 +1614,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       if (guardResult instanceof Nil) {
         return finishEvaluatedRules(guardResult);
       }
-      let { selector } = this;
+      let selector = this.materializeRawSelectorForSemantics();
 
       if (selector instanceof Nil) {
         // If selector evaluates to Nil, return the rules body directly instead of the ruleset.

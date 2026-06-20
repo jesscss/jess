@@ -13,7 +13,8 @@ import {
   progressiveruleset,
   progressivevardecl,
   rawdecl,
-  rules
+  rules,
+  ruleset
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -329,6 +330,63 @@ describe('progressive scanner-first proof nodes', () => {
 
     expect(root.toTrimmedString()).toBe('color: blue;');
     expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+  });
+
+  test('renders raw-field core rulesets without selector child nodes', () => {
+    const node = ruleset({
+      selector: '.a',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('.a');
+    expect(serializeTypes(node)).toBeString(`
+      (Ruleset
+        rawSelector: '.a'
+        rules:
+          [
+            (Declaration
+              rawName: 'color'
+              rawValueSegments:
+                ['blue']
+            )
+          ]
+      )
+    `);
+  });
+
+  test('materializes raw-field core ruleset selectors only when semantic registration asks', () => {
+    const context = new Context();
+    const node = ruleset({
+      selector: '.a',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('.a');
+    void node.prepareRegistration(context);
+    expect(node.rawSelector).toBeUndefined();
+    expect(node.selector).toBeDefined();
+    expect(serializeTypes(node)).toContain('(BasicSelector \'.a\')');
+    expect(serializeTypes(node)).not.toContain('rawSelector');
+  });
+
+  test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
+    expect(() => ruleset({
+      selector: '.a .b',
+      rules: []
+    })).toThrow('Raw ruleset selector is outside the scanner-native simple selector subset.');
   });
 
   test('materializes raw-field core declarations only when semantic registration asks', () => {

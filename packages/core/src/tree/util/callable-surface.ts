@@ -5,7 +5,6 @@ import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
 import { canReuseLeaf, reuseLeaf } from './cloning.js';
-import { Ruleset } from '../ruleset.js';
 
 export function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -125,16 +124,24 @@ function copyCallableDirectFieldNode(node: Node): Node | undefined {
     );
   }
   if (isNode(node, N.Ruleset)) {
+    const selector = node.rawSelector !== undefined
+      ? node.rawSelector
+      : node.selector !== undefined
+        ? copyCallableRulesNode(node.selector)
+        : undefined;
+    if (selector === undefined) {
+      throw new TypeError('Ruleset requires a selector before callable surface copying.');
+    }
     return constructCallableRulesContainer(
       node,
       {
-        selector: copyCallableRulesNode(node.selector) as Ruleset['selector'],
-        rules: copyCallableRulesValue(node.rules) as Ruleset['rules'],
+        selector,
+        rules: copyCallableRulesValue(node.rules),
         ...(node.guard !== undefined && {
-          guard: copyCallableRulesNode(node.guard) as Ruleset['guard']
+          guard: copyCallableRulesNode(node.guard)
         }),
         ...(node.selectorBeforeExtend !== undefined && {
-          selectorBeforeExtend: copyCallableRulesNode(node.selectorBeforeExtend) as Ruleset['selectorBeforeExtend']
+          selectorBeforeExtend: copyCallableRulesNode(node.selectorBeforeExtend)
         })
       }
     );

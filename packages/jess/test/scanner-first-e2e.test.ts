@@ -519,7 +519,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstProbe?.requestedIslands).toBe(0);
   });
 
-  it('keeps structural-fed declarations as raw-field core declarations before semantic materialization', () => {
+  it('keeps structural-fed rulesets and declarations as raw-field core nodes before semantic materialization', () => {
     const probePlugin = lessPlugin({
       scannerFirstProbe: {
         structuralFedPrototype: true
@@ -543,10 +543,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(firstRule).toBeDefined();
 
     const types = serializeRuntimeTypes(firstRule);
-    expect(types).toContain('(ProgressiveRuleset');
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
     expect(types).toContain('(Declaration');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawValueSegments:\n          [\'blue\']');
+    expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('(ProgressiveDeclaration');
     expect(types).not.toContain('name: (Any \'color\')');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
