@@ -2518,10 +2518,26 @@ storage.
     equal CSS, and asserts zero island parser executions / zero full-tree
     fallback. The registration path now reads raw declaration names for static
     invalidation keys and only materializes declaration name/value nodes when
-    registration or eval demands semantic fields. Parameters, guards,
+    registration or eval demands semantic fields. Richer parameters, guards,
     namespaces, overload resolution, richer variable-bearing mixin bodies,
     non-media at-rules inside mixin bodies, and richer call syntax remain
     canonical fallback.
+  - [x] Added the first structural-fed Less mixin parameter proof for simple
+    positional parameters and literal call arguments. The prototype admits
+    both root-level and ruleset-local shapes such as `.paint(@color) { color:
+    @color; } .a { .paint(blue); }` and `.a { .paint(@color) { color:
+    @color; } .paint(blue); }`, stores the definition params as the existing
+    core `List(Any('color', { role: 'property' }))` surface, stores the call
+    args as the existing core `List(Any('blue', { role: 'keyword' }))`
+    surface, and creates a use-site `Reference` only when a declaration
+    actually reads `@color`. The proof renders equal CSS with zero full-tree
+    fallback, zero selected island parser executions, zero promoted bytes, and
+    serialized `Mixin`/`Call` params/args instead of a legacy island parse.
+    - Current limit: this covers only simple positional params with simple
+      literal args. Defaults, guards, rest params, named args, variable args,
+      duplicate params, interpolated/dynamic names, accessor calls, detached
+      rulesets, argument expressions, comments in parameter lists, and richer
+      call syntax remain canonical fallback.
   - [x] Extended no-argument mixin-call proof to the cheap namespaced
     no-parens path `#theme > .mixin;`. The scanner-native helper normalizes the
     call name to the same key-path shape as the Less parser
@@ -2529,11 +2545,14 @@ storage.
     separators. It does not admit arguments, guards, interpolation, accessors,
     `+`/`~` combinators, or arbitrary selector lists.
   - [x] Corpus movement from the nested-relative-selector, namespaced-mixin,
-    and corrected-`@supports` slices: the Less corpus parity audit now reports
+    corrected-`@supports`, and simple mixin-parameter slices: the Less corpus
+    parity audit now reports
     13 structural-fed cases out of 65, selector fallbacks dropped from 9 to 7,
-    mixin-call fallbacks dropped to 1, and the corpus still reports zero
-    requested islands, zero actual parser executions, and zero promoted bytes
-    for the structural-fed path.
+    mixin definition signature fallbacks dropped to 6, mixin-call signature
+    fallbacks rose to 2 because one corpus case now passes definition-signature
+    admission and stops at richer call syntax, and the corpus still reports
+    zero requested islands, zero actual parser executions, and zero promoted
+    bytes for the structural-fed path.
   - [x] Extended the no-argument Less mixin proof to scanner-native `@media`
     blocks inside mixin definitions. The structural-fed path emits raw-field
     `AtRule` nodes for the `@media` body, raw-field declaration nodes inside
@@ -2653,10 +2672,11 @@ storage.
     record zero full-tree fallback, zero actual parses, zero requested islands,
     zero promoted bytes, and serialize the local `Mixin`/`Call` plus raw
     selector/declaration fields rather than eager selector/value wrappers.
-  - Current limit: this does not cover mixin parameters, guards, `!important`
-    mixin calls, dynamic/interpolated mixin names, mixin definitions inside
-    mixin bodies, or richer body syntax outside the already-proven scanner-fed
-    subset.
+  - Current limit: ruleset-local mixin definitions now cover only the same
+    simple positional-parameter/literal-argument subset as root-level mixins.
+    Guards, `!important` mixin calls, dynamic/interpolated mixin names, mixin
+    definitions inside mixin bodies, and richer body syntax outside the
+    already-proven scanner-fed subset remain unproven.
 - [x] Structural-fed prototype: support root-level no-argument Less mixin calls
   when the called mixin itself stays inside the existing scanner-fed subset.
   - Proof target: `.m() { .a { color: blue; } } .m();` renders equal CSS
@@ -2779,8 +2799,8 @@ storage.
     expected for the current conservative subset: most included fixtures contain
     richer selectors/values, mixins, imports, diagnostics, or block comments
     paired with other unsupported constructs that still fall back canonically.
-    The current mixin-related fallback surface is seven richer mixin definition
-    signatures and one richer mixin call signature; the earlier generic
+    The current mixin-related fallback surface is six richer mixin definition
+    signatures and two richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
     gone.
@@ -2810,11 +2830,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.70ms median over 20 samples, with 10,259 structural records, 5,738
+    2.68ms median over 20 samples, with 10,259 structural records, 5,738
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    16.24ms total, producing 5,301 structural records, 3,070 raw islands, and 5
+    6.27ms total, producing 5,301 structural records, 3,070 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2838,16 +2858,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 275.27ms, structural sidecar full render
-    276.74ms across 306 probe records, selected-materialization sidecar full
-    render 295.92ms across 306 probe records with 5,223
+    current parser/eval/render 247.68ms, structural sidecar full render
+    259.61ms across 306 probe records, selected-materialization sidecar full
+    render 286.69ms across 306 probe records with 5,223
     requested/materialized islands and 147,090 promoted bytes, and
-    structural-fed prototype 282.20ms across 198 prototype records with 39
+    structural-fed prototype 253.03ms across 198 prototype records with 39
     structural-fed records, 159 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 225 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 6.53x, structural sidecar 6.56x, selected
-    materialization 7.02x, and structural-fed 6.69x. These medians are gate
+    median were current 5.87x, structural sidecar 6.16x, selected
+    materialization 6.80x, and structural-fed 6.00x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

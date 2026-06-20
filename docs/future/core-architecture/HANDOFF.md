@@ -103,6 +103,58 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first simple Less mixin parameter/argument proof.
+- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
+  claim. The Less structural-fed path now admits `.m(@name) { ... }` style
+  definitions and `.m(literal)` calls only when every parameter is a simple
+  Less variable name and every call argument is a simple literal token.
+- Architecture surface: Less plugin structural-fed admission/building only.
+  It does not change core node APIs, package exports, SCSS/Jess parsing,
+  language-service behavior, or the default parser path.
+- Separation/duplication: the scanner-native helpers live beside the existing
+  no-arg mixin helpers and still construct the existing core `Mixin`, `Call`,
+  `List`, `Any`, and `Reference` surfaces. Richer Less `mixinName`,
+  `mixinArgs`, guard, default, rest, named-arg, accessor, and interpolated
+  productions remain explicit canonical fallback rather than duplicated
+  partial grammar.
+- Cumulative node weight: this slice adds parameter `Any` nodes, call-argument
+  literal nodes, and use-site `Reference` nodes only for the covered shape.
+  It adds no `Rules` maps, lookup caches, side tables, or wrapper containers.
+- New traversal: one short comma split over the already-isolated mixin
+  parameter text and one short comma split over the already-isolated call
+  argument text. These scans are required to avoid accepting raw strings that
+  contain parameter/argument structure; they do not walk the tree.
+- New node/materialization: the builder creates the existing `List`/`Any`
+  parameter surface and existing `List`/literal call-argument surface needed by
+  core mixin binding, plus a use-site variable `Reference` when a declaration
+  reads a simple parameter. These are semantic binding surfaces, not
+  render-only wrappers.
+- Render path: the focused proof renders equal CSS through structural-fed with
+  zero full-tree fallback, zero selected island requests, zero actual parser
+  executions, and zero promoted bytes. Declaration render still uses the
+  ordinary core call/eval binding path once the parameter reference is reached.
+- Helper/API surface: three plugin-local helpers recognize simple mixin
+  definitions, simple mixin calls, and use-site parameter references. No public
+  parser/core API is introduced.
+- Metadata mutations: none added beyond normal node construction/adoption.
+  Existing unrelated `AUDIT:` markers remain outside this slice.
+- Review-flagged diff tokens: new `new List`, `new Any`, and `new Reference`
+  calls are the semantic parameter, argument, and parameter-reference nodes
+  described above. New arrays/maps are bounded local construction surfaces for
+  parameter and argument lists, not retained side caches.
+- Evidence: focused scanner-first e2e covers
+  root-level and ruleset-local simple positional parameterized mixins,
+  including `.paint(@color) { color: @color; } .a { .paint(blue); }`, with
+  `runtimeTreeSource: structural-fed`, zero fallback/materialization counters,
+  serialized `Mixin` params, `Call` args, and value `Reference`. Full
+  scanner-first e2e passes. The Less corpus gate still reports 13
+  structural-fed cases out of 65, 53 canonical fallbacks, zero requested
+  islands, zero actual parser executions, zero promoted bytes, and 75
+  progressive nodes; the mixin fallback distribution moved from seven
+  definition/one call to six definition/two call fallbacks because one corpus
+  case now passes definition-signature admission and stops at richer call
+  syntax.
+
 - Latest pass: scanner-first thin `@supports` declaration-condition prelude.
 - Verdict: accepted as a structural-fed correctness proof, not a speed claim.
   The Less structural-fed path now admits `@supports (property: literal)` only

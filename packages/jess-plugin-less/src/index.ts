@@ -1069,7 +1069,7 @@ function validateStructuralFedRule(
       continue;
     }
     if (child.kind === 'mixin-call') {
-      if (!scannerNativeNoArgMixinReferenceKey(structuralFieldText(document, child, 'name', 'mixin-name'))) {
+      if (!scannerNativeMixinCall(document, child)) {
         return 'mixin call signature is outside the scanner-native structural-fed subset';
       }
       continue;
@@ -1225,15 +1225,17 @@ function validateStructuralFedMixinDefinition(
   document: StructuralDocument,
   mixinDefinition: StructuralContainerNode,
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
-  mathMode: MathMode = 'parens-division'
+  mathMode: MathMode = 'parens-division',
+  signature = scannerNativeMixinDefinitionSignature(document, mixinDefinition)
 ): string | undefined {
-  const mixinName = scannerNativeNoArgMixinName(
-    structuralFieldText(document, mixinDefinition, 'selector', 'selector')
-  );
-  if (!mixinName) {
+  if (!signature) {
     return 'mixin definition signature is outside the scanner-native structural-fed subset';
   }
-  const { variables: localVariables } = collectStructuralFedScopeVariables(document, mixinDefinition.children, variables);
+  const inheritedVariables = new Map(variables);
+  for (const [name, token] of signature.paramVariables) {
+    inheritedVariables.set(name, token);
+  }
+  const { variables: localVariables } = collectStructuralFedScopeVariables(document, mixinDefinition.children, inheritedVariables);
   for (const child of mixinDefinition.children) {
     if (child.kind === 'rule') {
       const reason = validateStructuralFedRule(document, child, localVariables, true, true, mathMode);
@@ -1374,20 +1376,22 @@ function buildStructuralFedMixinDefinition(
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult {
-  const mixinName = scannerNativeNoArgMixinName(
-    structuralFieldText(plan.document, mixinDefinition, 'selector', 'selector')
-  );
-  if (!mixinName) {
+  const signature = scannerNativeMixinDefinitionSignature(plan.document, mixinDefinition);
+  if (!signature) {
     return { reason: 'mixin definition signature is outside the scanner-native structural-fed subset' };
   }
-  const reason = validateStructuralFedMixinDefinition(plan.document, mixinDefinition, variables, mathMode);
+  const reason = validateStructuralFedMixinDefinition(plan.document, mixinDefinition, variables, mathMode, signature);
   if (reason) {
     return { reason };
   }
 
   const rules: Node[] = [];
-  const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, mixinDefinition.children, variables);
-  let progressiveNodes = 1;
+  const inheritedVariables = new Map(variables);
+  for (const [name, token] of signature.paramVariables) {
+    inheritedVariables.set(name, token);
+  }
+  const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, mixinDefinition.children, inheritedVariables);
+  let progressiveNodes = 1 + signature.paramVariables.size;
   let triviaCursor = mixinDefinition.bodyStart;
   for (const child of mixinDefinition.children) {
     const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
@@ -1427,7 +1431,8 @@ function buildStructuralFedMixinDefinition(
 
   return {
     node: new Mixin({
-      name: new Any(mixinName, { role: 'name' }),
+      name: new Any(signature.name, { role: 'name' }),
+      params: scannerNativeMixinParamsList(plan.document, signature, context),
       rules
     }, undefined, locationFromRange(plan.document, mixinDefinition.start, mixinDefinition.end), context),
     progressiveNodes
@@ -1650,22 +1655,21 @@ function buildStructuralFedMixinCall(
   child: StructuralStatementNode,
   context: TreeContext
 ): StructuralFedBuildResult {
-  const mixinKey = scannerNativeNoArgMixinReferenceKey(
-    structuralFieldText(plan.document, child, 'name', 'mixin-name')
-  );
-  if (!mixinKey) {
+  const call = scannerNativeMixinCall(plan.document, child, context);
+  if (!call) {
     return { reason: 'mixin call signature is outside the scanner-native structural-fed subset' };
   }
   return {
     node: new Call({
       name: new Reference(
-        { key: mixinKey },
+        { key: call.key },
         { type: 'mixin-ruleset', role: 'name' },
         undefined,
         context
-      )
+      ),
+      args: call.args
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1
+    progressiveNodes: 1 + (call.args?.value.length ?? 0)
   };
 }
 
@@ -1968,7 +1972,8 @@ type ScannerNativeValueToken = {
     | 'custom-property-raw'
     | 'raw-value'
     | 'raw-at-rule-prelude'
-    | 'supports-declaration-condition';
+    | 'supports-declaration-condition'
+    | 'variable-reference';
   start: number;
   end: number;
   text: string;
@@ -2223,13 +2228,22 @@ function readScannerNativeDeclarationValueToken(
       return undefined;
     }
     const variable = variables.get(valueText);
-    return variable
-      ? {
-          ...variable,
-          start: range.start,
-          end: range.end
-        }
-      : undefined;
+    if (!variable) {
+      return undefined;
+    }
+    if (variable.kind === 'variable-reference') {
+      return {
+        ...variable,
+        start: range.start,
+        end: range.end,
+        node: scannerNativeVariableReferenceNode(valueText, plan.document, range.start, range.end, context)
+      };
+    }
+    return {
+      ...variable,
+      start: range.start,
+      end: range.end
+    };
   }
   const functionToken = scannerNativeFunctionValueToken(
     plan.document,
@@ -2776,6 +2790,10 @@ const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
 const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)(?:\([ \t]*\))?$/u;
+const SCANNER_NATIVE_MIXIN_DEFINITION_SIGNATURE_PATTERN =
+  /^(?<name>[.#][-_a-zA-Z][\w-]*)\([ \t]*(?<params>(?:@[a-zA-Z_][\w-]*[ \t]*(?:,[ \t]*@[a-zA-Z_][\w-]*[ \t]*)*)?)\)$/u;
+const SCANNER_NATIVE_MIXIN_CALL_PATTERN =
+  /^(?<name>[.#][-_a-zA-Z][\w-]*)\((?<args>[^(){};\r\n]*)\)$/u;
 const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
   'darken',
   'lighten',
@@ -2964,6 +2982,190 @@ function isScannerNativeCssImportPrelude(preludeText: string): boolean {
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {
   return SIMPLE_VARIABLE_REFERENCE_PATTERN.test(valueText);
+}
+
+type ScannerNativeMixinDefinitionSignature = {
+  name: string;
+  params: Array<{
+    text: string;
+    start: number;
+    end: number;
+  }>;
+  paramVariables: Map<string, ScannerNativeValueToken>;
+};
+
+function scannerNativeMixinDefinitionSignature(
+  document: StructuralDocument,
+  mixinDefinition: StructuralContainerNode
+): ScannerNativeMixinDefinitionSignature | undefined {
+  const range = structuralFieldRange(document, mixinDefinition, 'selector', 'selector');
+  if (!range) {
+    return undefined;
+  }
+  const text = document.source.text.slice(range.start, range.end);
+  const match = SCANNER_NATIVE_MIXIN_DEFINITION_SIGNATURE_PATTERN.exec(text);
+  const name = match?.groups?.name;
+  if (!name) {
+    return undefined;
+  }
+  const rawParams = match.groups?.params ?? '';
+  const paramVariables = new Map<string, ScannerNativeValueToken>();
+  if (rawParams.trim() === '') {
+    return { name, params: [], paramVariables };
+  }
+  const params: ScannerNativeMixinDefinitionSignature['params'] = [];
+  const paramsStart = range.start + text.indexOf('(') + 1;
+  let segmentStart = 0;
+  for (let i = 0; i <= rawParams.length; i++) {
+    if (i !== rawParams.length && rawParams.charCodeAt(i) !== 44) {
+      continue;
+    }
+    const segment = rawParams.slice(segmentStart, i);
+    const leading = /^[ \t]*/u.exec(segment)?.[0].length ?? 0;
+    const trailing = /[ \t]*$/u.exec(segment)?.[0].length ?? 0;
+    const paramText = segment.slice(leading, segment.length - trailing);
+    if (!SIMPLE_VARIABLE_NAME_PATTERN.test(paramText)) {
+      return undefined;
+    }
+    if (paramVariables.has(paramText)) {
+      return undefined;
+    }
+    const absoluteStart = paramsStart + segmentStart + leading;
+    paramVariables.set(paramText, {
+      kind: 'variable-reference',
+      start: absoluteStart,
+      end: absoluteStart + paramText.length,
+      text: paramText
+    });
+    params.push({
+      text: paramText,
+      start: absoluteStart,
+      end: absoluteStart + paramText.length
+    });
+    segmentStart = i + 1;
+  }
+  if (paramVariables.size === 0) {
+    return undefined;
+  }
+  return {
+    name,
+    params,
+    paramVariables
+  };
+}
+
+function scannerNativeMixinParamsList(
+  document: StructuralDocument,
+  signature: ScannerNativeMixinDefinitionSignature,
+  context: TreeContext
+): List<Node> | undefined {
+  if (signature.params.length === 0) {
+    return undefined;
+  }
+  const params = signature.params.map(param => new Any(
+    param.text.slice(1),
+    { role: 'property' },
+    locationFromRange(document, param.start, param.end),
+    context
+  ));
+  const start = signature.params[0]!.start;
+  const end = signature.params[signature.params.length - 1]!.end;
+  return new List(
+    params,
+    { sep: ',' },
+    locationFromRange(document, start, end),
+    context
+  );
+}
+
+type ScannerNativeMixinCall = {
+  key: string | string[];
+  args?: List<Node>;
+};
+
+function scannerNativeMixinCall(
+  document: StructuralDocument,
+  child: StructuralStatementNode,
+  context?: TreeContext
+): ScannerNativeMixinCall | undefined {
+  const nameText = structuralFieldText(document, child, 'name', 'mixin-name');
+  const noArgKey = scannerNativeNoArgMixinReferenceKey(nameText);
+  if (noArgKey) {
+    return { key: noArgKey };
+  }
+  const range = structuralFieldRange(document, child, 'name', 'mixin-name');
+  if (!range || !nameText) {
+    return undefined;
+  }
+  const match = SCANNER_NATIVE_MIXIN_CALL_PATTERN.exec(nameText);
+  const key = match?.groups?.name;
+  const argsText = match?.groups?.args;
+  if (!key || argsText === undefined || argsText.trim() === '') {
+    return undefined;
+  }
+  const argsStart = range.start + nameText.indexOf('(') + 1;
+  const args = splitScannerNativeFunctionArgs(argsText, argsStart);
+  if (args.length === 0) {
+    return undefined;
+  }
+  const nodes: Node[] = [];
+  for (const arg of args) {
+    if (!SIMPLE_LITERAL_VALUE_PATTERN.test(arg.text)) {
+      return undefined;
+    }
+    const node = scannerNativeMixinCallArgNode(document, arg, context);
+    if (!node && context) {
+      return undefined;
+    }
+    if (node) {
+      nodes.push(node);
+    }
+  }
+  return {
+    key,
+    args: context
+      ? new List(
+        nodes,
+        { sep: ',' },
+        locationFromRange(document, argsStart, argsStart + argsText.length),
+        context
+      )
+      : undefined
+  };
+}
+
+function scannerNativeMixinCallArgNode(
+  document: StructuralDocument,
+  arg: { text: string; start: number; end: number },
+  context?: TreeContext
+): Node | undefined {
+  if (!context) {
+    return undefined;
+  }
+  const literalMatch = SIMPLE_LITERAL_VALUE_PATTERN.exec(arg.text);
+  if (!literalMatch) {
+    return undefined;
+  }
+  return scannerNativeLiteralNodeFromToken(
+    scannerNativeLiteralValueTokenFromMatch(arg.text, arg.start, arg.end, literalMatch),
+    document,
+    context
+  );
+}
+
+function scannerNativeVariableReferenceNode(
+  name: string,
+  document: StructuralDocument,
+  start: number,
+  end: number,
+  context: TreeContext
+): Reference {
+  return new Reference(
+    { key: name.slice(1) },
+    { type: 'variable', role: 'value' },
+    locationFromRange(document, start, end),
+    context
+  );
 }
 
 function scannerNativeNoArgMixinName(valueText: string | undefined): string | undefined {

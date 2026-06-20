@@ -3861,6 +3861,98 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
+  it('feeds simple positional Less mixin parameters and literal args through structural parse', async () => {
+    const cases = [
+      {
+        source: '.paint(@color) { color: @color; }\n.a { .paint(blue); }\n',
+        progressiveNodes: 6,
+        expectedRender: ['color: blue'],
+        serializedFragments: [
+          'Any [role=name] \'.paint\'',
+          'Any [role=property] \'color\'',
+          'key: \'color\'',
+          '(Any [role=keyword] \'blue\'',
+          'rawName: \'color\''
+        ]
+      },
+      {
+        source: '.paint(@color, @width) { color: @color; width: @width; }\n.a { .paint(blue, 1px); }\n',
+        progressiveNodes: 9,
+        expectedRender: ['color: blue', 'width: 1px'],
+        serializedFragments: [
+          'Any [role=name] \'.paint\'',
+          'Any [role=property] \'color\'',
+          'Any [role=property] \'width\'',
+          'key: \'color\'',
+          'key: \'width\'',
+          '(Any [role=keyword] \'blue\'',
+          '(Dimension',
+          'number: 1',
+          'unit: \'px\'',
+          'rawName: \'width\''
+        ]
+      },
+      {
+        source: '.a { .paint(@color) { color: @color; } .paint(blue); }\n',
+        progressiveNodes: 6,
+        expectedRender: ['.a {', 'color: blue'],
+        serializedFragments: [
+          'selector: \'.a\'',
+          'Any [role=name] \'.paint\'',
+          'Any [role=property] \'color\'',
+          'key: \'color\'',
+          '(Any [role=keyword] \'blue\'',
+          'rawName: \'color\''
+        ]
+      }
+    ];
+
+    for (const { source, progressiveNodes, expectedRender, serializedFragments } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      for (const fragment of expectedRender) {
+        expect(rendered).toContain(fragment);
+      }
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        progressiveNodes,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parsePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const parseResult = parsePlugin.safeParse('/virtual/param-mixin.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      expect(types).toContain('(Mixin');
+      expect(types).toContain('(List');
+      expect(types).toContain('(Reference [role=value]');
+      expect(types).toContain('(Call');
+      for (const fragment of serializedFragments) {
+        expect(types).toContain(fragment);
+      }
+      expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('valueNode: (Any \'blue\')');
+    }
+  });
+
   it('feeds deprecated no-parens Less mixin calls through structural parse', async () => {
     const source = '.rounded() { color: blue; }\n.a { .rounded; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
