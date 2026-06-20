@@ -50,7 +50,11 @@ import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
-import { CompoundSelector } from '../selector-compound.js';
+import {
+  CompoundSelector,
+  isRawCompoundSelectorComponent,
+  type CompoundSelectorComponent
+} from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
@@ -60,6 +64,7 @@ import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
+import { valueText } from './value-text.js';
 
 const { isArray } = Array;
 
@@ -107,7 +112,7 @@ function hasSelectorIdentityFlag(value: unknown): value is { isTag?: boolean; is
  */
 interface FindSpec {
   /** Simples at each position (AND within a position) */
-  positions: Selector[][];
+  positions: CompoundSelectorComponent[][];
   /** Combinators between positions (length = positions.length - 1) */
   combinators: string[];
   /** Original find selector (for valueOf comparisons) */
@@ -116,7 +121,7 @@ interface FindSpec {
 
 function decomposeFind(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
-    const positions: Selector[][] = [];
+    const positions: CompoundSelectorComponent[][] = [];
     const combinators: string[] = [];
     for (const comp of find.value) {
       if (comp instanceof Combinator) {
@@ -183,10 +188,10 @@ function areCompoundsEquivalent(a: CompoundSelector, b: CompoundSelector): boole
   }
   const used = new Uint8Array(b.value.length);
   for (const aComp of a.value) {
-    const aVal = aComp.valueOf();
+    const aVal = valueText(aComp);
     let found = false;
     for (let j = 0; j < b.value.length; j++) {
-      if (!used[j] && b.value[j]!.valueOf() === aVal) {
+      if (!used[j] && valueText(b.value[j]!) === aVal) {
         used[j] = 1;
         found = true;
         break;
@@ -268,13 +273,13 @@ function tailOf(sel: Selector): Selector {
  *   .y  vs  :is(.x > .y)  → true (.y is the tail of .x > .y)
  *   .x  vs  :is(.x > .y)  → false (.x is in the ancestral prefix)
  */
-function positionSimpleMatches(find: Selector, target: Selector): boolean {
-  if (find.valueOf() === target.valueOf()) {
+function positionSimpleMatches(find: CompoundSelectorComponent, target: CompoundSelectorComponent): boolean {
+  if (valueText(find) === valueText(target)) {
     return true;
   }
 
   // find is :is() → OR: try each alternative's tail
-  if (isNode(find, N.PseudoSelector) && find.name === ':is' && find.arg) {
+  if (!isRawCompoundSelectorComponent(find) && isNode(find, N.PseudoSelector) && find.name === ':is' && find.arg) {
     const arg = selectorArgOf(find);
     if (!arg) {
       return false;
@@ -288,7 +293,7 @@ function positionSimpleMatches(find: Selector, target: Selector): boolean {
   }
 
   // target is :is() → OR: try each alternative's tail
-  if (isNode(target, N.PseudoSelector) && target.name === ':is' && target.arg) {
+  if (!isRawCompoundSelectorComponent(target) && isNode(target, N.PseudoSelector) && target.name === ':is' && target.arg) {
     const arg = selectorArgOf(target);
     if (!arg) {
       return false;
@@ -308,7 +313,7 @@ function positionSimpleMatches(find: Selector, target: Selector): boolean {
  * Does `targetComp` match `findComp` at this position?
  * Handles :is() as OR alternatives (tail-aware) and compound equivalence.
  */
-function positionComponentMatches(findComp: Selector, targetComp: Selector): boolean {
+function positionComponentMatches(findComp: CompoundSelectorComponent, targetComp: CompoundSelectorComponent): boolean {
   if (findComp instanceof CompoundSelector && targetComp instanceof CompoundSelector) {
     return areCompoundsEquivalent(findComp, targetComp);
   }
@@ -385,8 +390,8 @@ function findSubsequence(
  * Returns matched indices or null if not all consumed.
  */
 function consumeSimples(
-  targetComps: SimpleSelector[],
-  findSimples: Selector[]
+  targetComps: CompoundSelectorComponent[],
+  findSimples: CompoundSelectorComponent[]
 ): number[] | null {
   const matchIndices: number[] = [];
   let findIdx = 0;
@@ -457,7 +462,7 @@ function containsAmpersand(sel: Selector): boolean {
     return sel.value.some(child => containsAmpersand(child));
   }
   if (sel instanceof CompoundSelector) {
-    return sel.value.some(child => containsAmpersand(child));
+    return sel.value.some(child => !isRawCompoundSelectorComponent(child) && containsAmpersand(child));
   }
   if (sel instanceof ComplexSelector) {
     return sel.value.some(child => isSelectorNode(child) && containsAmpersand(child));
@@ -634,6 +639,9 @@ function walkComplexSelector(
 
   for (let i = 0; i < components.length; i++) {
     const comp = components[i]!;
+    if (isRawCompoundSelectorComponent(comp)) {
+      continue;
+    }
     if (isNode(comp, N.Combinator)) {
       continue;
     }
@@ -726,7 +734,7 @@ function consumeSimplesFromCompound(
   }
 
   const matchedSet = new Set(matchIndices);
-  const remainders: SimpleSelector[] = [];
+  const remainders: CompoundSelectorComponent[] = [];
   for (let i = 0; i < targetComps.length; i++) {
     if (!matchedSet.has(i)) {
       remainders.push(targetComps[i]!);

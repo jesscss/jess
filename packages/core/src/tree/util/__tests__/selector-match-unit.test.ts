@@ -63,6 +63,11 @@ describe('componentsMatch', () => {
     expect(componentsMatch(a, b)).toBe(true);
   });
 
+  it('matches string-backed compound components against simple selectors', () => {
+    expect(componentsMatch(compound(['.x', '.y']), el('.x'))).toBe(true);
+    expect(componentsMatch(el('.y'), compound(['.x', '.y']))).toBe(true);
+  });
+
   it('rejects compound vs simple when compound does not contain simple', () => {
     const a = compound([el('.x'), el('.y')]);
     const b = el('.z');
@@ -92,6 +97,12 @@ describe('compoundComponentMatches', () => {
 
   it('rejects different simple selectors', () => {
     expect(compoundComponentMatches(el('.a'), el('.b'))).toBe(false);
+  });
+
+  it('matches string-backed simple selector components without materializing leaves', () => {
+    expect(compoundComponentMatches('.a', el('.a'))).toBe(true);
+    expect(compoundComponentMatches(el('.a'), '.a')).toBe(true);
+    expect(compoundComponentMatches('.a', '.b')).toBe(false);
   });
 
   it('matches when find is :is() containing target', () => {
@@ -187,14 +198,14 @@ describe('areSelectorArgumentsEquivalent', () => {
   });
 
   it('matches selector lists in any order', () => {
-    const a = sellist([el('.x'), el('.y')]) as unknown as Selector;
-    const b = sellist([el('.y'), el('.x')]) as unknown as Selector;
+    const a: Selector = sellist([el('.x'), el('.y')]);
+    const b: Selector = sellist([el('.y'), el('.x')]);
     expect(areSelectorArgumentsEquivalent(a, b)).toBe(true);
   });
 
   it('rejects selector lists of different length', () => {
-    const a = sellist([el('.x'), el('.y')]) as unknown as Selector;
-    const b = sellist([el('.x')]) as unknown as Selector;
+    const a: Selector = sellist([el('.x'), el('.y')]);
+    const b: Selector = sellist([el('.x')]);
     expect(areSelectorArgumentsEquivalent(a, b)).toBe(false);
   });
 
@@ -219,6 +230,13 @@ describe('areCompoundSelectorsEquivalent', () => {
     const a = compound([el('.a'), el('.b')]);
     const b = compound([el('.b'), el('.a')]);
     expect(areCompoundSelectorsEquivalent(a, b)).toBe(true);
+  });
+
+  it('matches string-backed compounds against node-backed compounds', () => {
+    expect(areCompoundSelectorsEquivalent(
+      compound(['.a', '.b']),
+      compound([el('.b'), el('.a')])
+    )).toBe(true);
   });
 
   it('rejects compounds of different length', () => {
@@ -410,7 +428,7 @@ describe('selectorMatchesExtendTarget', () => {
   });
 
   it('matches when target is inside a SelectorList (non-partial)', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target: Selector = sellist([el('.a'), el('.b')]);
     expect(selectorMatchesExtendTarget(target, el('.a'), false)).toBe(true);
   });
 
@@ -421,7 +439,7 @@ describe('selectorMatchesExtendTarget', () => {
   });
 
   it('rejects when find is not in target (non-partial)', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target: Selector = sellist([el('.a'), el('.b')]);
     expect(selectorMatchesExtendTarget(target, el('.c'), false)).toBe(false);
   });
 });
@@ -462,22 +480,22 @@ describe('selectorCompare edge cases', () => {
   });
 
   it('reports match for SelectorList containing the find', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target: Selector = sellist([el('.a'), el('.b')]);
     const result = selectorCompare(target, el('.a'));
     // selectorCompare uses findExtendableLocations which detects presence
     expect(result.hasWholeMatch || result.hasPartialMatch).toBe(true);
   });
 
   it('uses Set-based O(N) comparison for two SelectorLists', () => {
-    const a = sellist([el('.x'), el('.y'), el('.z')]) as unknown as Selector;
-    const b = sellist([el('.z'), el('.x'), el('.y')]) as unknown as Selector;
+    const a: Selector = sellist([el('.x'), el('.y'), el('.z')]);
+    const b: Selector = sellist([el('.z'), el('.x'), el('.y')]);
     const result = selectorCompare(a, b);
     expect(result.isEquivalent).toBe(true);
   });
 
   it('rejects SelectorLists with different items', () => {
-    const a = sellist([el('.x'), el('.y')]) as unknown as Selector;
-    const b = sellist([el('.x'), el('.z')]) as unknown as Selector;
+    const a: Selector = sellist([el('.x'), el('.y')]);
+    const b: Selector = sellist([el('.x'), el('.z')]);
     const result = selectorCompare(a, b);
     expect(result.isEquivalent).toBe(false);
   });
@@ -488,13 +506,13 @@ describe('selectorCompare edge cases', () => {
 // ─────────────────────────────────────────────────
 describe('findExtendableLocations unit tests', () => {
   it('finds simple selector in SelectorList', () => {
-    const target = sellist([el('.a'), el('.b'), el('.c')]) as unknown as Selector;
+    const target: Selector = sellist([el('.a'), el('.b'), el('.c')]);
     const result = findExtendableLocations(target, el('.b'));
     expect(result.hasMatches).toBe(true);
   });
 
   it('returns no match when target does not contain find', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target: Selector = sellist([el('.a'), el('.b')]);
     const result = findExtendableLocations(target, el('.z'));
     expect(result.hasMatches).toBe(false);
   });

@@ -1806,13 +1806,69 @@ progressive materializers are scanner-native.
     combinator locations are needed, a companion relative-selector view could
     start with the combinator, for example
     `RelativeSelector { value: ['>', '.class', '+', 'div'] }`, while offsets
-    live in the packed field/range metadata. This is not approved syntax
-    widening yet; it is the next selector-shape experiment to prove against
-    extend behavior, visitor exposure, and render/source-map needs.
+    live in the packed field/range metadata. Attribute selectors can likely
+    remain raw string atoms too, unless equality/matching needs parsed attribute
+    fields or a visitor explicitly asks for attribute-selector internals. This
+    is not approved syntax widening yet; it is the next selector-shape
+    experiment to prove against extend behavior, visitor exposure, and
+    render/source-map needs.
+  - [x] First selector-shape proof: `CompoundSelector` can carry scanner-native
+    simple selector strings directly, and raw ruleset compound materialization
+    now uses those strings instead of allocating `BasicSelector` leaves for the
+    proven compound subset. The proof covers direct render, `valueOf()`,
+    key-set computation, raw ruleset semantic materialization, and scanner-fed
+    adjacent compound/list/complex selector e2e render. `Ruleset` visibility
+    clone checks skip raw string leaves because there is no selector node to
+      clone or flag. Ordered selector lookup, ampersand substitution, and
+      extend-match helpers now compare raw components through shared value text
+      rather than materializing leaves just to call `valueOf()`.
+    - Current limit: this is compound-only. `ComplexSelector` still owns
+      combinator nodes, selector lists still own selector branch nodes, and
+      visitor/source-map code is not taught to treat arbitrary strings as full
+      selector nodes. Rich pseudos such as `:hover`, `:is(...)`,
+      structure-sensitive attribute selectors, interpolation, and
+      newline-containing selectors remain outside this proof until admitted by
+      separate tests.
   - Visitor research follow-up: survey public Less plugins that register
     visitors to determine which selector/value internals are actually observed
     in practice. Use that evidence before preserving visitor materialization for
     every legacy leaf node shape.
+    - Initial survey result: public Less visitor plugins are rare, and the
+      sampled packages showed declaration/value reliance rather than selector
+      leaf reliance.
+      - `less-plugin-rtl` registers a replacing visitor and touches
+        declaration-level and value-level shapes: `Declaration.name`,
+        `Declaration.variable`, `Declaration.value`, `Declaration.important`,
+        `Declaration.merge`, `Declaration.index`, `Declaration.currentFileInfo`,
+        `Declaration.inline`, plus `Anonymous.value`, `Keyword.value`, and
+        `Expression.value`. It mutates/replaces declarations and walks values
+        for left/right keyword reversal and four-part shorthand reordering. No
+        selector leaf dependence was found in the sampled source.
+      - `less-plugin-inline-urls` registers a pre-eval replacing visitor and
+        touches `Rule` enter/exit state, `Url.value.value`, `Url.index`,
+        `Url.currentFileInfo`, and creates `Call("data-uri", [...])`, with a
+        wrapper path that calls `subNode.eval(context)`. Its dependence is
+        narrow URL/value materialization, not selector materialization.
+      - `less-plugin-dls` registers a visitor wrapper but the published visitor
+        utility calls `root.variables()` and stores variable names; no typed
+        `visit*` hooks over selector/value leaves were found in that visitor.
+        The package appears more function/render-extension oriented via a
+        `less.tree.Call.prototype.genCSS` patch.
+      - Sampled popular plugins without Less AST visitor usage included
+        `less-plugin-clean-css`, `less-plugin-autoprefix`,
+        `less-plugin-npm-import`, `less-plugin-glob`,
+        `less-plugin-css-modules`, `less-plugin-remove-antd-global-styles`, and
+        `less-plugin-rewrite-import`; they are mostly postprocessors,
+        preprocessors, or file managers.
+    - Visitor policy implication: typed visitor hooks should request only the
+      shapes they can observe. `visitDeclaration` can materialize declaration
+      name/value only when traversal enters those fields; `visitUrl` can request
+      URL/value islands; `visitKeyword`, `visitAnonymous`, and `visitExpression`
+      can request declaration-value materialization. A generic `visit()` or
+      unknown replacing visitor remains the broad compatibility case. Do not
+      eagerly materialize selectors merely because a visitor exists; selector
+      materialization should be triggered by explicit selector visitor hooks or
+      traversal into ruleset selector fields.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.

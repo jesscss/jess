@@ -429,8 +429,11 @@ describe('progressive scanner-first proof nodes', () => {
     expect(classCompound.selector).toBeDefined();
     const classTypes = serializeTypes(classCompound);
     expect(classTypes).toContain('(CompoundSelector');
-    expect(classTypes).toContain('(BasicSelector \'.a\')');
-    expect(classTypes).toContain('(BasicSelector \'.b\')');
+    if (!classCompound.selector || !isNode(classCompound.selector, N.CompoundSelector)) {
+      throw new Error('Expected class compound raw selector to materialize as a CompoundSelector.');
+    }
+    expect(classCompound.selector.value).toEqual(['.a', '.b']);
+    expect(classTypes).not.toContain('(BasicSelector');
     expect(classTypes).not.toContain('rawSelector');
 
     expect(elementCompound.toTrimmedString()).toBe('button.primary {\n  color: blue;\n}\n');
@@ -439,8 +442,11 @@ describe('progressive scanner-first proof nodes', () => {
     void elementCompound.prepareRegistration(context);
     const elementTypes = serializeTypes(elementCompound);
     expect(elementTypes).toContain('(CompoundSelector');
-    expect(elementTypes).toContain('(BasicSelector \'button\')');
-    expect(elementTypes).toContain('(BasicSelector \'.primary\')');
+    if (!elementCompound.selector || !isNode(elementCompound.selector, N.CompoundSelector)) {
+      throw new Error('Expected element compound raw selector to materialize as a CompoundSelector.');
+    }
+    expect(elementCompound.selector.value).toEqual(['button', '.primary']);
+    expect(elementTypes).not.toContain('(BasicSelector');
   });
 
   test('materializes raw-field selector lists only when semantic registration asks', () => {
@@ -472,14 +478,12 @@ describe('progressive scanner-first proof nodes', () => {
     if (!isNode(selector.value[1], N.CompoundSelector)) {
       throw new Error('Expected second selector list branch to materialize as a CompoundSelector.');
     }
-    expect(selector.value[1].value[0]!.parent).toBe(selector.value[1]);
-    expect(selector.value[1].value[1]!.parent).toBe(selector.value[1]);
+    expect(selector.value[1].value).toEqual(['button', '.primary']);
     const types = serializeTypes(node);
     expect(types).toContain('(SelectorList');
     expect(types).toContain('(BasicSelector \'.a\')');
     expect(types).toContain('(CompoundSelector');
-    expect(types).toContain('(BasicSelector \'button\')');
-    expect(types).toContain('(BasicSelector \'.primary\')');
+    expect(types).toContain('[\'button\', \'.primary\']');
     expect(types).not.toContain('rawSelector');
   });
 
@@ -514,8 +518,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).toContain('(Combinator \'>\')');
     expect(types).toContain('(BasicSelector \'.a\')');
     expect(types).toContain('(CompoundSelector');
-    expect(types).toContain('(BasicSelector \'button\')');
-    expect(types).toContain('(BasicSelector \'.primary\')');
+    expect(types).toContain('[\'button\', \'.primary\']');
     expect(types).not.toContain('rawSelector');
   });
 

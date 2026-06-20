@@ -346,6 +346,39 @@ with `--no-verify` after the explicit gates pass.
   syntax, does not introduce string-backed selector semantics beyond the
   existing raw-field render path, and does not settle visitor exposure for
   selector leaf nodes.
+- Aggressive Cutting Self-Prosecution, compound selector string-component
+  proof: `CompoundSelector` now accepts scanner-native simple selector strings
+  and raw ruleset compound materialization passes split strings through instead
+  of allocating `BasicSelector` leaves. This is deliberately compound-only:
+  complex selectors still use existing branch/combinator structures, selector
+  lists still own selector branches, and unsupported selector syntax does not
+  enter the structural-fed subset. Visibility-clone recursion skips string
+  leaves because no selector node exists to flag or clone. Ordered lookup keys,
+  ampersand substitution, and extend matching now compare raw components through
+  shared `valueText(...)` instead of materializing leaves only to call
+  `valueOf()`. Visitor and source-map behavior must still be proven separately
+  before treating raw strings as a general selector-node replacement, and
+  attribute selectors remain raw candidates only until equality or visitor
+  semantics require structured attribute fields.
+  Danger-token prosecution: the touched `CompoundSelector` paths still allocate
+  an owned component array when deriving evaluated component surfaces, because
+  evaluated selector surfaces already need a placement-owned component list.
+  This pass does not add another wrapper hierarchy; it removes `BasicSelector`
+  leaf construction for scanner-native compound raw selector branches. The only
+  new `BasicSelector` construction is the exceptional single-string collapse
+  fallback, where a one-part compound cannot remain a compound surface.
+  `valueText(...)` is a small shared primitive for string-or-node comparison; it
+  avoids parser-node allocation and avoids unsafe casts. The touched
+  selector-match helper keeps one existing `ComplexSelector` remainder
+  construction for non-raw complex remainder shapes; this is not part of the hot
+  raw compound render path. The new `filter(...)` use is a typed narrowing pass
+  over an existing compound component array during extend matching, not a new
+  materialization policy. The new `TypeError` is an invariant failure for
+  invalid internal raw component input, not routine control flow. The
+  `.inherit(...)` calls remain the existing ownership boundary for derived
+  selector surfaces and the single-string collapse fallback. Test-only
+  `throw new Error(...)` assertions are local invariant guards, not runtime
+  behavior.
 - Review-flagged allocations:
   `packages/core/src/tree/declaration.ts` adds explicit `rawdecl(...)`
   construction of one `Declaration` for scanner-first tests. Scanner-first flat

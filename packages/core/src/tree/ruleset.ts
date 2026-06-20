@@ -9,7 +9,11 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
-import { CompoundSelector } from './selector-compound.js';
+import {
+  CompoundSelector,
+  isRawCompoundSelectorComponent,
+  type CompoundSelectorComponent
+} from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -407,13 +411,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     if (!parts || parts.length < 2) {
       throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
     }
-    const components: BasicSelector[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
-      const component = new BasicSelector(part, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
-      components.push(component);
-    }
-    return CompoundSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
+    return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
   private materializeRawComplexSelector(rawSelector: string): ComplexSelector {
@@ -633,7 +631,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       const suffix = components.slice(1);
       // Simple / Compound parent — splice directly into the compound.
       if (!isNode(parent, N.ComplexSelector) && !isNode(parent, N.SelectorList)) {
-        const parentComponents: SimpleSelector[] = isNode(parent, N.CompoundSelector)
+        const parentComponents: CompoundSelectorComponent[] = isNode(parent, N.CompoundSelector)
           ? parent.value
           : [Ruleset._toSimpleSelector(parent)];
         const merged = [...parentComponents, ...suffix];
@@ -655,7 +653,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
         }
         if (lastIdx !== -1 && suffix.length > 0) {
           const lastPart = parentParts[lastIdx]!;
-          const existing: SimpleSelector[] = isNode(lastPart, N.CompoundSelector)
+          const existing: CompoundSelectorComponent[] = isNode(lastPart, N.CompoundSelector)
             ? lastPart.value
             : [Ruleset._toSimpleSelector(lastPart)];
           const merged = [...existing, ...suffix];
@@ -670,7 +668,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
 
     // General path: walk components, substituting each `&` in place.
     // Simple/Compound parents splice; Complex/List parents wrap in `:is()`.
-    const newComponents: SimpleSelector[] = [];
+    const newComponents: CompoundSelectorComponent[] = [];
     for (const comp of components) {
       if (isNode(comp, N.Ampersand)) {
         if (isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
@@ -680,7 +678,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
         } else {
           newComponents.push(Ruleset._toSimpleSelector(parent));
         }
-      } else if (comp.hasFlag(F_AMPERSAND)) {
+      } else if (!isRawCompoundSelectorComponent(comp) && comp.hasFlag(F_AMPERSAND)) {
         // `&` is nested deeper (e.g. inside a pseudo arg).
         const sub = Ruleset._substituteAmpersand(comp, parent);
         if (isNode(sub, N.CompoundSelector)) {
@@ -1091,12 +1089,18 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
     if (isNode(sel, N.ComplexSelector)) {
       for (const c of sel.value) {
+        if (typeof c === 'string') {
+          continue;
+        }
         Ruleset.ensureSelectorVisible(c);
       }
       return;
     }
     if (isNode(sel, N.CompoundSelector)) {
       for (const c of sel.value) {
+        if (typeof c === 'string') {
+          continue;
+        }
         Ruleset.ensureSelectorVisible(c);
       }
     }
@@ -1119,6 +1123,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
     if (isNode(sel, N.ComplexSelector)) {
       for (let i = 0; i < sel.value.length; i++) {
+        if (typeof sel.value[i] === 'string') {
+          continue;
+        }
         if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
           return true;
         }
@@ -1129,6 +1136,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       return false;
     }
     for (let i = 0; i < sel.value.length; i++) {
+      if (typeof sel.value[i] === 'string') {
+        continue;
+      }
       if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
         return true;
       }

@@ -1,10 +1,11 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, Ruleset, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { getOrderedSelectorKeys } from '../util/lookup-utils.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -110,6 +111,40 @@ describe('Compound Selector', () => {
 
       expect(compound([first, second]).toString({ trivia, writer })).toBe('.sel/*comment*/.a');
       expect(writer.captures).toBe(0);
+    });
+
+    test('renders scanner-native string components without selector leaf nodes', () => {
+      const writer = new CountingWriter();
+      const node = compound(['button', '.primary', '#cta']);
+
+      expect(node.toTrimmedString({ writer })).toBe('button.primary#cta');
+      expect(node.valueOf()).toBe('button.primary#cta');
+      expect(writer.captures).toBe(0);
+    });
+
+    test('computes key sets for scanner-native string components', async () => {
+      const node = compound(['button', '.primary', '#cta']);
+
+      await node.eval(context);
+
+      expect(node.keySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
+      expect(node.visibleKeySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
+      expect(node.requiredKeySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
+    });
+
+    test('exposes scanner-native string components to ordered selector lookup keys', () => {
+      expect(getOrderedSelectorKeys(compound(['button', '.primary', ':hover', '#cta']))).toEqual([
+        'button',
+        '.primary',
+        '#cta'
+      ]);
+    });
+
+    test('composes mixed scanner-native string components with ampersand components', () => {
+      const child = compound(['.raw', amp()]);
+      const parent = compound(['.parent']);
+
+      expect(Ruleset.composeSelector(child, parent).valueOf()).toBe('.raw.parent');
     });
   });
 

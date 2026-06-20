@@ -216,6 +216,16 @@ describe('walkAndExtend compound find (Phase 2)', () => {
     expect(val).toContain('.c');
   });
 
+  it('partial: string-backed compound subset behaves like node-backed components', () => {
+    const target = compound(['.a', '.b', '.c']);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), true);
+    const val = result.valueOf();
+    expect(val).toContain(':is');
+    expect(val).toContain('.q');
+    expect(val).toContain('.c');
+  });
+
   it('partial: non-contiguous subset → still matches', () => {
     const target = compound([el('.a'), el('.c'), el('.b')]);
     const find = compound([el('.a'), el('.b')]);
