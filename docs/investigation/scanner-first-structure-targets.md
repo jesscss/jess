@@ -473,7 +473,16 @@ the call.
 JIT triggers: parameters, guards, variadics, namespace access, overload
 resolution, or visitor access to typed mixin nodes.
 
-Current status: canonical fallback.
+Current status: first thin structural-fed proof complete for exact no-argument
+definitions and calls such as `.rounded() { color: blue; } .a { .rounded(); }`.
+The prototype builds the current core `Mixin` and `Call` surfaces from scanner
+text, keeps the mixin body declaration as a raw-field `Declaration`, renders
+equal CSS, and asserts zero island parser executions / zero full-tree fallback.
+Registration can use raw declaration names for invalidation keys; semantic
+declaration materialization remains lazy until registration/eval needs the
+actual core name/value nodes. Parameters, guards, namespaces, overload
+resolution, variable-bearing mixin bodies, at-rules inside mixin bodies, and
+richer call syntax still fall back canonically.
 
 ### LESS-007 Extend
 

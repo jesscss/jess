@@ -9,6 +9,10 @@ import {
   AtRule,
   AtRuleStatement,
   Declaration,
+  Mixin,
+  Call,
+  Reference,
+  Any,
   ProgressiveVariableDeclaration,
   Node,
   getErrorFromParser,
@@ -387,6 +391,7 @@ export class LessPlugin extends AbstractPlugin {
         && child.kind !== 'at-rule'
         && child.kind !== 'at-rule-statement'
         && child.kind !== 'import'
+        && child.kind !== 'mixin-definition'
         && child.kind !== 'variable-declaration'
       ) {
         return fallback(`unsupported root node ${child.kind}`);
@@ -421,6 +426,15 @@ export class LessPlugin extends AbstractPlugin {
         variables.set(result.name, result.valueToken);
         rules.push(result.node);
         progressiveNodes += result.progressiveNodes;
+        continue;
+      }
+      if (child.kind === 'mixin-definition') {
+        const result = buildStructuralFedMixinDefinition(plan, child, ownerIslands, context, variables, this.mathMode);
+        if ('reason' in result) {
+          return fallback(result.reason);
+        }
+        rules.push(result.node);
+        progressiveNodes += result.progressiveNodes ?? 0;
         continue;
       }
       if (child.kind === 'at-rule') {
@@ -917,6 +931,12 @@ function validateStructuralFedRule(
       }
       continue;
     }
+    if (child.kind === 'mixin-call') {
+      if (!scannerNativeNoArgMixinName(structuralFieldText(document, child, 'name', 'mixin-name'))) {
+        return 'mixin call signature is outside the scanner-native structural-fed subset';
+      }
+      continue;
+    }
     if (child.kind !== 'declaration') {
       return `unsupported rule child ${child.kind}`;
     }
@@ -982,6 +1002,40 @@ function validateStructuralFedAtRule(
   return undefined;
 }
 
+function validateStructuralFedMixinDefinition(
+  document: StructuralDocument,
+  mixinDefinition: StructuralContainerNode,
+  variables: ReadonlyMap<string, ScannerNativeValueToken>,
+  mathMode: MathMode = 'parens-division'
+): string | undefined {
+  const mixinName = scannerNativeNoArgMixinName(
+    structuralFieldText(document, mixinDefinition, 'selector', 'selector')
+  );
+  if (!mixinName) {
+    return 'mixin definition signature is outside the scanner-native structural-fed subset';
+  }
+  for (const child of mixinDefinition.children) {
+    if (child.kind === 'rule') {
+      const reason = validateStructuralFedRule(document, child, variables, false, true, mathMode);
+      if (reason) {
+        return reason;
+      }
+      continue;
+    }
+    if (child.kind === 'at-rule') {
+      return 'at-rules inside mixin definitions are outside the scanner-native structural-fed subset';
+    }
+    if (child.kind !== 'declaration') {
+      return `unsupported mixin-definition child ${child.kind}`;
+    }
+    const reason = validateStructuralFedDeclaration(document, child, variables, false, mathMode);
+    if (reason) {
+      return reason;
+    }
+  }
+  return undefined;
+}
+
 function buildStructuralFedRuleset(
   plan: IslandParsePlan,
   rule: StructuralContainerNode,
@@ -1042,6 +1096,55 @@ function buildStructuralFedRuleset(
       selector: selectorToken!.text,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),
+    progressiveNodes
+  };
+}
+
+function buildStructuralFedMixinDefinition(
+  plan: IslandParsePlan,
+  mixinDefinition: StructuralContainerNode,
+  ownerIslands: Map<object, RawIslandNode[]>,
+  context: TreeContext,
+  variables: ReadonlyMap<string, ScannerNativeValueToken>,
+  mathMode: MathMode = 'parens-division'
+): StructuralFedBuildResult {
+  const mixinName = scannerNativeNoArgMixinName(
+    structuralFieldText(plan.document, mixinDefinition, 'selector', 'selector')
+  );
+  if (!mixinName) {
+    return { reason: 'mixin definition signature is outside the scanner-native structural-fed subset' };
+  }
+  const reason = validateStructuralFedMixinDefinition(plan.document, mixinDefinition, variables, mathMode);
+  if (reason) {
+    return { reason };
+  }
+
+  const rules: Node[] = [];
+  let progressiveNodes = 1;
+  for (const child of mixinDefinition.children) {
+    const builtChild = buildStructuralFedRuleChild(
+      plan,
+      child,
+      ownerIslands,
+      context,
+      'mixin-definition',
+      variables,
+      false,
+      true,
+      mathMode
+    );
+    if ('reason' in builtChild) {
+      return builtChild;
+    }
+    rules.push(builtChild.node);
+    progressiveNodes += builtChild.progressiveNodes ?? 0;
+  }
+
+  return {
+    node: new Mixin({
+      name: new Any(mixinName, { role: 'name' }),
+      rules
+    }, undefined, locationFromRange(plan.document, mixinDefinition.start, mixinDefinition.end), context),
     progressiveNodes
   };
 }
@@ -1145,7 +1248,7 @@ function buildStructuralFedRuleChild(
   child: StructuralContainerNode['children'][number],
   ownerIslands: Map<object, RawIslandNode[]>,
   context: TreeContext,
-  parentKind: 'at-rule' | 'rule',
+  parentKind: 'at-rule' | 'mixin-definition' | 'rule',
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   allowLessVariables = true,
   allowAtRules = true,
@@ -1172,7 +1275,34 @@ function buildStructuralFedRuleChild(
   if (child.kind === 'declaration') {
     return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables, mathMode);
   }
+  if (child.kind === 'mixin-call') {
+    return buildStructuralFedMixinCall(plan, child, context);
+  }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
+}
+
+function buildStructuralFedMixinCall(
+  plan: IslandParsePlan,
+  child: StructuralStatementNode,
+  context: TreeContext
+): StructuralFedBuildResult {
+  const mixinName = scannerNativeNoArgMixinName(
+    structuralFieldText(plan.document, child, 'name', 'mixin-name')
+  );
+  if (!mixinName) {
+    return { reason: 'mixin call signature is outside the scanner-native structural-fed subset' };
+  }
+  return {
+    node: new Call({
+      name: new Reference(
+        { key: mixinName },
+        { type: 'mixin-ruleset', role: 'name' },
+        undefined,
+        context
+      )
+    }, undefined, locationFromRange(plan.document, child.start, child.end), context),
+    progressiveNodes: 1
+  };
 }
 
 function buildStructuralFedAtRuleStatement(
@@ -1753,6 +1883,7 @@ const CUSTOM_PROPERTY_NAME_PATTERN = /^--[-_a-zA-Z][\w-]*$/u;
 const CUSTOM_PROPERTY_LESS_VARIABLE_LIKE_PATTERN = /(?:[@$][-_a-zA-Z][\w-]*|[@$]\{[-_a-zA-Z][\w-]*\})/u;
 const SIMPLE_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
 const SIMPLE_VARIABLE_REFERENCE_PATTERN = SIMPLE_VARIABLE_NAME_PATTERN;
+const SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN = /^([.#][-_a-zA-Z][\w-]*)\([ \t]*\)$/u;
 const SCANNER_NATIVE_NUMBER_WITH_UNIT_PATTERN =
   /^(?<value>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+)))(?<unit>%|[a-zA-Z]+)?$/u;
 const SCANNER_NATIVE_BINARY_ARITHMETIC_PATTERN =
@@ -1858,6 +1989,10 @@ function isScannerNativeCssImportPrelude(preludeText: string): boolean {
 
 function looksLikeSimpleVariableReference(valueText: string): boolean {
   return SIMPLE_VARIABLE_REFERENCE_PATTERN.test(valueText);
+}
+
+function scannerNativeNoArgMixinName(valueText: string | undefined): string | undefined {
+  return valueText ? SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN.exec(valueText)?.[1] : undefined;
 }
 
 function readConfiguredSearchPaths(options: LessPluginOptions): string[] {

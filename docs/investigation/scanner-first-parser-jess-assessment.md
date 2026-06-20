@@ -1769,12 +1769,17 @@ root `@media` block in that literal subset, so covered selector/declaration/
 prelude strings render without `Any` value wrappers, selector AST nodes, or
 canonical at-rule prelude nodes. It still returns a root `Rules` tree because
 `safeParse` is a core-tree boundary. It records zero requested islands / zero
-actual parser execution for that path. Nested block at-rules, other block
+actual parser execution for that path. The prototype also covers exact
+no-argument Less mixin definitions and calls: scanner text builds the current
+core `Mixin`/`Call` surfaces, mixin body declarations stay raw-field nodes, and
+registration uses raw declaration names for invalidation keys before semantic
+name/value materialization is demanded. Nested block at-rules, other block
 at-rule families, Less variable references outside the proven already-seen
-subset, arithmetic, functions, mixin calls, extends, imports, reference import
-boundaries, complex/interpolated selectors, and trivia-preservation cases
-currently fall back canonically until their progressive materializers are
-scanner-native.
+subset, arithmetic, functions beyond exact no-argument mixin calls, extends,
+import variants beyond exact quoted Less imports, reference import boundaries,
+complex/interpolated selectors, parameters, guards, namespaces, and
+trivia-preservation cases currently fall back canonically until their
+progressive materializers are scanner-native.
 
 The target runtime shape should be even cheaper than the temporary core bridge,
 and it should avoid a second long-lived structural-node hierarchy where possible.
@@ -2116,6 +2121,16 @@ storage.
     Import options, reference/multiple/once/de-dupe behavior, missing files,
     import cycles, package-resolution edge cases, raw URL imports, media
     wrapping, and unsupported imported syntax remain canonical fallbacks.
+  - [x] Added the first structural-fed Less mixin proof for exact no-argument
+    definitions and calls. The prototype indexes `.rounded()` from scanner text,
+    emits the current core `Mixin` plus `Call`/`Reference` surfaces, keeps the
+    mixin body declaration as a raw-field core `Declaration`, renders equal CSS,
+    and asserts zero island parser executions / zero full-tree fallback. The
+    registration path now reads raw declaration names for static invalidation
+    keys and only materializes declaration name/value nodes when registration or
+    eval demands semantic fields. Parameters, guards, namespaces, overload
+    resolution, variable-bearing mixin bodies, at-rules inside mixin bodies, and
+    richer call syntax remain canonical fallback.
   - [x] Extended the structural-fed at-rule proof to root `@layer` blocks whose
     body contains already-supported ordinary rules. Named layers with a
     scanner-native identifier prelude and anonymous `@layer { ... }` blocks both

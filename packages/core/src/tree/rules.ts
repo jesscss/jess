@@ -180,6 +180,16 @@ function atRuleStatementNameText(node: AtRuleStatement): string {
   return String(node.rawName ?? node.name?.valueOf?.() ?? node.name ?? '').trim();
 }
 
+function declarationNameText(node: Declaration | VarDeclaration): string | undefined {
+  if (node.rawName !== undefined) {
+    return node.rawName;
+  }
+  if (node.name === undefined) {
+    return undefined;
+  }
+  return String(node.name.valueOf());
+}
+
 function isImportAtRule(node: Node): node is AtRuleStatement {
   return isNode(node, N.AtRuleStatement)
     && atRuleStatementNameText(node) === '@import';
@@ -4672,7 +4682,11 @@ export class Rules<
         if (!this._hasStaticName(node)) {
           return false;
         }
-        keys.add(String(node.name.valueOf()));
+        const key = declarationNameText(node);
+        if (key === undefined) {
+          return false;
+        }
+        keys.add(key);
         continue;
       }
       const child = childRulesOf(node);
@@ -4721,7 +4735,10 @@ export class Rules<
    */
   private _hasStaticName(node: Node): boolean {
     if (isNode(node, N.VarDeclaration)) {
-      const name = node.name;
+      const name = node.rawName ?? node.name;
+      if (name === undefined) {
+        return false;
+      }
       return this._isStatic(name);
     }
     if (isNode(node, N.Mixin)) {
@@ -4729,7 +4746,10 @@ export class Rules<
       return this._isStatic(name);
     }
     if (isNode(node, N.Declaration)) {
-      const name = node.name;
+      const name = node.rawName ?? node.name;
+      if (name === undefined) {
+        return false;
+      }
       return this._isStatic(name);
     }
     if (isNode(node, N.Func)) {
