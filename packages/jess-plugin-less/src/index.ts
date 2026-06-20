@@ -998,6 +998,13 @@ function validateStructuralFedRule(
       }
       continue;
     }
+    if (child.kind === 'mixin-definition') {
+      const mixinReason = validateStructuralFedMixinDefinition(document, child, localVariables, mathMode);
+      if (mixinReason) {
+        return mixinReason;
+      }
+      continue;
+    }
     if (child.kind !== 'declaration') {
       return `unsupported rule child ${child.kind}`;
     }
@@ -1485,6 +1492,12 @@ function buildStructuralFedRuleChild(
   }
   if (child.kind === 'mixin-call') {
     return buildStructuralFedMixinCall(plan, child, context);
+  }
+  if (child.kind === 'mixin-definition') {
+    if (parentKind !== 'rule') {
+      return { reason: `unsupported ${parentKind} child ${child.kind}` };
+    }
+    return buildStructuralFedMixinDefinition(plan, child, ownerIslands, context, variables, mathMode);
   }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
 }

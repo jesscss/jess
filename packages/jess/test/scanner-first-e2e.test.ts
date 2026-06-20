@@ -3238,6 +3238,62 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds ruleset-local no-arg Less mixin definitions through structural parse', async () => {
+    const cases = [
+      {
+        source: '.a { .m() { color: blue; } .m(); }\n',
+        expectedFragments: ['.a {', 'color: blue'],
+        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', 'rawName: \'color\'']
+      },
+      {
+        source: '.a { .m() { .b { color: blue; } } .m(); }\n',
+        expectedFragments: ['.b {', 'color: blue'],
+        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', 'rawSelector: \'.b\'', 'rawName: \'color\'']
+      }
+    ];
+
+    for (const { source, expectedFragments, serializedFragments } of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      for (const fragment of expectedFragments) {
+        expect(rendered).toContain(fragment);
+      }
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'structural-fed',
+        fallbackFullTreeMaterializations: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+      const parsePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const parseResult = parsePlugin.safeParse('/virtual/ruleset-local-mixin.less', source);
+      expect(parseResult.errors).toEqual([]);
+      const types = serializeRuntimeTypes(parseResult.tree!);
+      for (const fragment of serializedFragments) {
+        expect(types).toContain(fragment);
+      }
+      expect(types).toContain('(Call');
+      expect(types).not.toContain('(BasicSelector');
+      expect(types).not.toContain('valueNode: (Any \'blue\')');
+    }
+  });
+
   it('feeds @media inside Less mixin definitions through structural parse', async () => {
     const source = '.m() { @media screen { color: blue; } }\n.a { .m(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
