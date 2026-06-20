@@ -3786,6 +3786,43 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
+  it('feeds simple Less mixin calls inside supported at-rules through structural parse', async () => {
+    const source = '.paint() { color: blue; }\n@media screen { .paint(); }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media screen');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/at-rule-mixin-call.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Mixin');
+    expect(types).toContain('name: \'@media\'');
+    expect(types).toContain('prelude: \'screen\'');
+    expect(types).toContain('(Call');
+    expect(types).toContain('key: \'.paint\'');
+    expect(types).not.toContain('(BasicSelector');
+  });
+
   it('feeds Less variable declarations inside supported at-rules through structural parse', async () => {
     const cases = [
       {

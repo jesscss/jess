@@ -1199,6 +1199,15 @@ function validateStructuralFedAtRule(
       }
       continue;
     }
+    if (child.kind === 'mixin-call') {
+      if (rootDeclarationBlockPrelude !== undefined) {
+        return `unsupported at-rule child ${child.kind}`;
+      }
+      if (!scannerNativeMixinCall(document, child)) {
+        return 'mixin call signature is outside the scanner-native structural-fed subset';
+      }
+      continue;
+    }
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
       return `unsupported at-rule child ${child.kind}`;
     }
@@ -1591,6 +1600,18 @@ function buildStructuralFedAtRule(
         mathMode,
         false
       );
+      if ('reason' in builtChild) {
+        return builtChild;
+      }
+      rules.push(builtChild.node);
+      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      continue;
+    }
+    if (child.kind === 'mixin-call') {
+      if (rootDeclarationBlockPrelude !== undefined) {
+        return { reason: `unsupported at-rule child ${child.kind}` };
+      }
+      const builtChild = buildStructuralFedMixinCall(plan, child, context);
       if ('reason' in builtChild) {
         return builtChild;
       }

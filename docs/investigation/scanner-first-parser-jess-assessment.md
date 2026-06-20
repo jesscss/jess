@@ -2899,8 +2899,9 @@ storage.
     `tests-unit/at-rules-bubbling/at-rules-bubbling.less`. The
     `tests-unit/starting-style/starting-style.less` file now passes
     `@starting-style` at-rule-family admission, the corpus-observed
-    `scaleX(...)` transform values, and Less merge declaration names
-    (`padding+_`), then stops later at an at-rule child mixin call.
+    `scaleX(...)` transform values, Less merge declaration names
+    (`padding+_`), and direct supported-at-rule mixin-call child admission,
+    then stops later at the richer `each(...)` mixin-call signature.
     Declaration-value fallbacks are seven, and declaration-name fallbacks are
     currently gone from the included-corpus first-fallback surface. Legacy
     star-property names such as `*zoom`, statement-form `&:extend(...)`, and
@@ -2908,10 +2909,11 @@ storage.
     now flow through structural-fed nodes; richer extend selectors now progress
     farther before stopping at selector or at-rule prelude limits.
     The current mixin-related fallback surface is six richer mixin definition
-    signatures and two richer mixin call signatures; the earlier generic
+    signatures and three richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
-    gone.
+    gone, and the earlier generic `unsupported at-rule child mixin-call` reason
+    is now classified as a mixin-call signature boundary.
     The unknown block at-rule proof is root-only and does not change the current
     corpus counts; nested unknown block at-rules and known semantic families
     still fall back until those shapes are separately proven.
