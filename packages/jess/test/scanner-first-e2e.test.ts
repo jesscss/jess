@@ -359,11 +359,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(structuralFedPlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       requestsByIslandKind: counter([
-        ['selector', 2],
-        ['declaration-value', 2]
       ]),
-      requestedIslands: 4,
-      actualParses: 4,
+      requestedIslands: 0,
+      actualParses: 0,
       fallbackFullTreeMaterializations: 0
     });
 
@@ -406,7 +404,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('feeds a bounded plain rule through structural parse and materialized islands', async () => {
+  it('feeds a bounded plain rule through structural parse and scanner-native materialization', async () => {
     const source = '.a {\n  color: blue;\n  width: 1px;\n}\n.b { margin: 0; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -423,22 +421,16 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'structural-fed',
       structuralDiagnostics: 0,
       fallbackFullTreeMaterializations: 0,
-      actualParses: 5,
-      requestedIslands: 5,
-      executedIslands: 5
+      actualParses: 0,
+      requestedIslands: 0,
+      executedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 2],
-      ['declaration-value', 3]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({
-      rule: 2,
-      declaration: 3
-    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
     expect(probePlugin.lastScannerFirstProbe?.requestedIslands).toBe(0);
   });
 
-  it('feeds nested ordinary rules through structural parse and canonical rendering', async () => {
+  it('feeds nested ordinary rules through structural parse and scanner-native materialization', async () => {
     const source = '.a {\n  color: blue;\n  .b { width: 1px; }\n}\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -455,20 +447,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 4,
-      requestedIslands: 4
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 2],
-      ['declaration-value', 2]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({
-      rule: 2,
-      declaration: 2
-    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds Less variable declarations through structural parse and materialized value islands', async () => {
+  it('falls back when Less variable references need scanner-native reference materialization', async () => {
     const source = '@brand: blue;\n.a { color: @brand; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -483,20 +469,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      actualParses: 3,
-      requestedIslands: 3
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['declaration-value', 2],
-      ['selector', 1]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['variable-declaration', 1],
-      ['rule', 1],
-      ['declaration', 1]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('feeds reordered declarations in one ruleset through structural parse', async () => {
@@ -517,20 +497,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 3,
-      requestedIslands: 3
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 1],
-      ['declaration-value', 2]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 1],
-      ['declaration', 2]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds a ruleset-local Less variable and sibling declaration through structural parse', async () => {
+  it('falls back for ruleset-local Less variable references until reference materialization is scanner-native', async () => {
     const source = '.a { @brand: blue; color: @brand; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -545,23 +519,17 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      actualParses: 3,
-      requestedIslands: 3
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 1],
-      ['declaration-value', 2]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 1],
-      ['variable-declaration', 1],
-      ['declaration', 1]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds nested Less variable declarations through structural parse', async () => {
+  it('falls back for nested Less variable references until reference materialization is scanner-native', async () => {
     const source = '.a { @brand: blue; color: @brand; .b { border-color: @brand; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -577,23 +545,17 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('color: blue');
     expect(rendered).toContain('border-color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      actualParses: 5,
-      requestedIslands: 5
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 2],
-      ['declaration-value', 3]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 2],
-      ['variable-declaration', 1],
-      ['declaration', 2]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
-  it('feeds a hoisted nested Less variable declaration through structural parse', async () => {
+  it('falls back for hoisted Less variable references until reference materialization is scanner-native', async () => {
     const source = '.a { color: @brand; .b { border-color: @brand; } @brand: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -609,20 +571,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('color: blue');
     expect(rendered).toContain('border-color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      actualParses: 5,
-      requestedIslands: 5
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 2],
-      ['declaration-value', 3]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 2],
-      ['declaration', 2],
-      ['variable-declaration', 1]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('feeds reordered declarations and nested ordinary rules through structural parse', async () => {
@@ -644,17 +600,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 5,
-      requestedIslands: 5
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 2],
-      ['declaration-value', 3]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 2],
-      ['declaration', 3]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('feeds multi-level nested ordinary rules through structural parse', async () => {
@@ -676,17 +626,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 6,
-      requestedIslands: 6
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 3],
-      ['declaration-value', 3]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 3],
-      ['declaration', 3]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('feeds a block at-rule containing an ordinary ruleset through structural parse', async () => {
@@ -707,19 +651,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 3,
-      requestedIslands: 3
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['at-rule-prelude', 1],
-      ['selector', 1],
-      ['declaration-value', 1]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['at-rule', 1],
-      ['rule', 1],
-      ['declaration', 1]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('feeds nested media declarations inside an ordinary ruleset through structural parse', async () => {
@@ -740,19 +676,11 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      actualParses: 3,
-      requestedIslands: 3
+      actualParses: 0,
+      requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual(counter([
-      ['selector', 1],
-      ['at-rule-prelude', 1],
-      ['declaration-value', 1]
-    ]));
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual(counter([
-      ['rule', 1],
-      ['at-rule', 1],
-      ['declaration', 1]
-    ]));
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
   it('falls back canonically for unproven block at-rule families', async () => {

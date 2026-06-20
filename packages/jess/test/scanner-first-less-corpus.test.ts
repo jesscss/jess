@@ -14,6 +14,7 @@ import {
 } from './test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { parseLessStructure } from '../../less-parser/src/index.js';
 
 type CorpusCase = {
   file: string;
@@ -37,11 +38,12 @@ type CorpusMetrics = {
   durationMs: number;
 };
 
-type BenchmarkMode = 'current' | 'structural-only' | 'selected-materialization' | 'structural-fed';
+type BenchmarkMode = 'current' | 'structural-sidecar' | 'selected-materialization' | 'structural-fed';
 
 type BenchmarkModeMetrics = {
   renders: number;
   durationMs: number;
+  sampleDurationsMs: number[];
   probeRecords: number;
   prototypeRecords: number;
   structuralFed: number;
@@ -54,14 +56,81 @@ type BenchmarkModeMetrics = {
 
 const benchmarkModes: BenchmarkMode[] = [
   'current',
-  'structural-only',
+  'structural-sidecar',
   'selected-materialization',
   'structural-fed'
 ];
+const benchmarkWarmupRuns = 1;
+const benchmarkSampleRuns = 3;
+const structuralBenchmarkWarmupRuns = 5;
+const structuralBenchmarkSampleRuns = 20;
+const less45BenchmarkLessMedianRenderMs = 42.16;
 const testData = resolveLessTestDataRoot();
 const corpusCases = collectCorpusCases();
+const lessBenchmarkPath = path.resolve(testData, '../less/benchmark/benchmark.less');
 
 describe('scanner-first structural-fed Less corpus parity audit', () => {
+  it('keeps raw outer-structure parsing separate from full compiler sidecar timing', () => {
+    const benchmarkSource = readFileSync(lessBenchmarkPath, 'utf8');
+    const samples: number[] = [];
+    let benchmarkDocument = parseLessStructure(lessBenchmarkPath, benchmarkSource);
+
+    for (let run = 0; run < structuralBenchmarkWarmupRuns + structuralBenchmarkSampleRuns; run++) {
+      const startedAt = nowMs();
+      benchmarkDocument = parseLessStructure(lessBenchmarkPath, benchmarkSource);
+      const durationMs = nowMs() - startedAt;
+      if (run >= structuralBenchmarkWarmupRuns) {
+        samples.push(durationMs);
+      }
+    }
+
+    const corpusStartedAt = nowMs();
+    let corpusSourceBytes = 0;
+    let corpusStructuralRecords = 0;
+    let corpusRawIslands = 0;
+    let corpusDiagnostics = 0;
+    for (const corpusCase of corpusCases) {
+      const source = readFileSync(corpusCase.lessPath, 'utf8');
+      const document = parseLessStructure(corpusCase.lessPath, source);
+      const stats = document.stats();
+      corpusSourceBytes += stats.sourceBytes;
+      corpusStructuralRecords += stats.structuralRecords;
+      corpusRawIslands += stats.rawIslands;
+      corpusDiagnostics += stats.diagnostics;
+    }
+
+    const sortedSamples = [...samples].sort((a, b) => a - b);
+    const benchmarkStats = benchmarkDocument.stats();
+    const summary = {
+      benchmarkFile: path.relative(path.resolve(testData, '..'), lessBenchmarkPath),
+      benchmarkSourceBytes: benchmarkSource.length,
+      warmupRuns: structuralBenchmarkWarmupRuns,
+      sampleRuns: structuralBenchmarkSampleRuns,
+      minMs: sortedSamples[0] ?? 0,
+      medianMs: median(sortedSamples),
+      maxMs: sortedSamples.at(-1) ?? 0,
+      less45BenchmarkLessMedianRenderMs,
+      structuralRecords: benchmarkStats.structuralRecords,
+      rawIslands: benchmarkStats.rawIslands,
+      triviaRanges: benchmarkStats.triviaRanges,
+      diagnostics: benchmarkStats.diagnostics,
+      corpusFiles: new Set(corpusCases.map(testCase => testCase.file)).size,
+      corpusCases: corpusCases.length,
+      corpusDurationMs: nowMs() - corpusStartedAt,
+      corpusSourceBytes,
+      corpusStructuralRecords,
+      corpusRawIslands,
+      corpusDiagnostics
+    };
+
+    expect(benchmarkStats.diagnostics).toBe(0);
+    expect(benchmarkStats.structuralRecords).toBeGreaterThan(0);
+    expect(benchmarkStats.rawIslands).toBeGreaterThan(0);
+    expect(corpusStructuralRecords).toBeGreaterThan(0);
+    expect(corpusRawIslands).toBeGreaterThan(0);
+    console.info(`[scanner-first-less-raw-structure] ${JSON.stringify(summary)}`);
+  });
+
   it('matches current compiler output across the included upstream Less fixture corpus', async () => {
     const metrics: CorpusMetrics = {
       files: new Set(corpusCases.map(testCase => testCase.file)).size,
@@ -132,47 +201,72 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
     );
     const startedAt = nowMs();
 
-    for (const corpusCase of corpusCases) {
-      const renderedModes = new Map<BenchmarkMode, Awaited<ReturnType<typeof renderBenchmarkMode>>>();
+    for (let run = 0; run < benchmarkWarmupRuns + benchmarkSampleRuns; run++) {
+      const recordRun = run >= benchmarkWarmupRuns;
+      const runDurations = new Map<BenchmarkMode, number>(
+        benchmarkModes.map(mode => [mode, 0])
+      );
 
-      for (const mode of benchmarkModes) {
-        renderedModes.set(mode, await renderBenchmarkMode(corpusCase, mode));
+      for (const corpusCase of corpusCases) {
+        const renderedModes = new Map<BenchmarkMode, Awaited<ReturnType<typeof renderBenchmarkMode>>>();
+
+        for (const mode of benchmarkModes) {
+          const rendered = await renderBenchmarkMode(corpusCase, mode);
+          renderedModes.set(mode, rendered);
+          runDurations.set(mode, runDurations.get(mode)! + rendered.durationMs);
+        }
+
+        const current = renderedModes.get('current')!;
+        for (const mode of benchmarkModes) {
+          const rendered = renderedModes.get(mode)!;
+          if (mode !== 'current') {
+            expect(rendered.css, `${corpusLabel(corpusCase)} ${mode} benchmark parity`)
+              .toBe(current.css);
+          }
+          if (recordRun) {
+            recordBenchmarkMode(metrics.get(mode)!, rendered);
+          }
+        }
       }
 
-      const current = renderedModes.get('current')!;
-      for (const mode of benchmarkModes) {
-        const rendered = renderedModes.get(mode)!;
-        if (mode !== 'current') {
-          expect(rendered.css, `${corpusLabel(corpusCase)} ${mode} benchmark parity`)
-            .toBe(current.css);
+      if (recordRun) {
+        for (const mode of benchmarkModes) {
+          metrics.get(mode)!.sampleDurationsMs.push(runDurations.get(mode)!);
         }
-        recordBenchmarkMode(metrics.get(mode)!, rendered);
       }
     }
 
     const summary = {
       files: new Set(corpusCases.map(testCase => testCase.file)).size,
       cases: corpusCases.length,
+      warmupRuns: benchmarkWarmupRuns,
+      sampleRuns: benchmarkSampleRuns,
       totalDurationMs: nowMs() - startedAt,
-      modes: Object.fromEntries(metrics)
+      modes: Object.fromEntries(
+        [...metrics].map(([mode, modeMetrics]) => [mode, summarizeBenchmarkMode(modeMetrics)])
+      )
     };
     for (const mode of benchmarkModes) {
       const modeMetrics = metrics.get(mode)!;
-      expect(modeMetrics.renders).toBe(corpusCases.length);
+      expect(modeMetrics.renders).toBe(corpusCases.length * benchmarkSampleRuns);
       expect(Number.isFinite(modeMetrics.durationMs)).toBe(true);
+      expect(modeMetrics.sampleDurationsMs).toHaveLength(benchmarkSampleRuns);
     }
-    const structuralOnlyMetrics = metrics.get('structural-only')!;
+    const structuralSidecarMetrics = metrics.get('structural-sidecar')!;
     const selectedMaterializationMetrics = metrics.get('selected-materialization')!;
     const structuralFedMetrics = metrics.get('structural-fed')!;
 
-    expect(structuralOnlyMetrics.probeRecords).toBeGreaterThanOrEqual(corpusCases.length);
-    expect(structuralOnlyMetrics.actualParses).toBe(0);
-    expect(structuralOnlyMetrics.fallbackFullTreeMaterializations).toBe(0);
-    expect(selectedMaterializationMetrics.probeRecords).toBeGreaterThanOrEqual(corpusCases.length);
+    expect(structuralSidecarMetrics.probeRecords).toBeGreaterThanOrEqual(corpusCases.length * benchmarkSampleRuns);
+    expect(structuralSidecarMetrics.actualParses).toBe(0);
+    expect(structuralSidecarMetrics.fallbackFullTreeMaterializations).toBe(0);
+    expect(selectedMaterializationMetrics.probeRecords).toBeGreaterThanOrEqual(corpusCases.length * benchmarkSampleRuns);
     expect(selectedMaterializationMetrics.actualParses).toBeGreaterThan(0);
-    expect(structuralFedMetrics.prototypeRecords).toBeGreaterThanOrEqual(corpusCases.length);
+    expect(structuralFedMetrics.prototypeRecords).toBeGreaterThanOrEqual(corpusCases.length * benchmarkSampleRuns);
     expect(structuralFedMetrics.structuralFed + structuralFedMetrics.canonicalFallback)
       .toBe(structuralFedMetrics.prototypeRecords);
+    expectBenchmarkOverheadWithinSmokeLimit('structural-sidecar', metrics, 5);
+    expectBenchmarkOverheadWithinSmokeLimit('selected-materialization', metrics, 10);
+    expectBenchmarkOverheadWithinSmokeLimit('structural-fed', metrics, 5);
     console.info(`[scanner-first-less-corpus-benchmark-smoke] ${JSON.stringify(summary)}`);
   }, 180_000);
 });
@@ -201,7 +295,7 @@ async function renderBenchmarkMode(
 
 function createBenchmarkPlugin(mode: BenchmarkMode): ReturnType<typeof lessPlugin> {
   switch (mode) {
-    case 'structural-only':
+    case 'structural-sidecar':
       return lessPlugin({ scannerFirstProbe: true });
     case 'selected-materialization':
       return lessPlugin({
@@ -224,6 +318,7 @@ function createBenchmarkModeMetrics(): BenchmarkModeMetrics {
   return {
     renders: 0,
     durationMs: 0,
+    sampleDurationsMs: [],
     probeRecords: 0,
     prototypeRecords: 0,
     structuralFed: 0,
@@ -265,6 +360,43 @@ function recordBenchmarkMode(
       metrics.canonicalFallback++;
     }
   }
+}
+
+function summarizeBenchmarkMode(metrics: BenchmarkModeMetrics): BenchmarkModeMetrics & {
+  minSampleDurationMs: number;
+  medianSampleDurationMs: number;
+  maxSampleDurationMs: number;
+} {
+  const sortedSamples = [...metrics.sampleDurationsMs].sort((a, b) => a - b);
+  return {
+    ...metrics,
+    minSampleDurationMs: sortedSamples[0] ?? 0,
+    medianSampleDurationMs: median(sortedSamples),
+    maxSampleDurationMs: sortedSamples.at(-1) ?? 0
+  };
+}
+
+function expectBenchmarkOverheadWithinSmokeLimit(
+  mode: Exclude<BenchmarkMode, 'current'>,
+  metrics: Map<BenchmarkMode, BenchmarkModeMetrics>,
+  maxRatio: number
+): void {
+  const currentMedian = median(metrics.get('current')!.sampleDurationsMs);
+  const modeMedian = median(metrics.get(mode)!.sampleDurationsMs);
+  expect(
+    modeMedian,
+    `${mode} median corpus render time should stay within ${maxRatio}x current parser smoke threshold`
+  ).toBeLessThanOrEqual(currentMedian * maxRatio);
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const middle = Math.floor(values.length / 2);
+  return values.length % 2 === 0
+    ? (values[middle - 1]! + values[middle]!) / 2
+    : values[middle]!;
 }
 
 function collectCorpusCases(): CorpusCase[] {

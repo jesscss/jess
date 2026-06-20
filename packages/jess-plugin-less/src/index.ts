@@ -10,7 +10,9 @@ import {
   VarDeclaration,
   Ruleset,
   AtRule,
-  Selector,
+  BasicSelector,
+  ComplexSelector,
+  SelectorList,
   Node,
   getErrorFromParser,
   toDiagnostic,
@@ -38,7 +40,6 @@ import {
   createStructuralProbeSnapshot,
   structuralDiagnosticRanges,
   type LanguageActivation,
-  type ParserConfigKey,
   type ParseStructureOptions,
   type RawIslandNode,
   type StructuralContainerNode,
@@ -277,13 +278,14 @@ export class LessPlugin extends AbstractPlugin {
    * Attempts the first structural-fed compiler tree for a tiny CSS/Less subset.
    *
    * This is intentionally hidden and conservative. It supports ordinary rules
-   * whose bodies contain ordinary declarations, nested ordinary rules, plain
-   * Less variables, plus @media block at-rules with the same supported body
-   * shapes.
-   * Selectors, values, and at-rule preludes still materialize through Less
-   * island providers. Anything outside that shape records a canonical fallback
-   * instead of pretending the structural path owns more Less semantics than it
-   * actually proves.
+   * whose bodies contain ordinary declarations, nested ordinary rules, simple
+   * literal Less variable declarations, plus @media block at-rules with the
+   * same supported body shapes.
+   * The supported subset stores scanner-native token spans for simple
+   * selectors, simple literal values, and simple @media preludes. This
+   * prototype then adapts those token spans into current core nodes only at
+   * the compiler boundary. Anything outside that shape records a canonical
+   * fallback instead of proving the new path with legacy parser islands.
    */
   runScannerFirstPrototype(
     filePath: string,
@@ -310,10 +312,6 @@ export class LessPlugin extends AbstractPlugin {
       fallbackFullTreeMaterializations: 0,
       requestsByIslandKind: {},
       requestsByOwnerKind: {}
-    });
-    const configKey = lessParserConfigKey({
-      mathMode: this.mathMode,
-      leakyRules: this.leakyRules
     });
     const fallback = (reason: string): { result: ScannerFirstPrototypeResult } => {
       plan.counters.fallbackFullTreeMaterializations++;
@@ -356,7 +354,7 @@ export class LessPlugin extends AbstractPlugin {
         if (eligibilityReason) {
           return fallback(eligibilityReason);
         }
-        const result = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+        const result = buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
         if ('reason' in result) {
           return fallback(result.reason);
         }
@@ -368,7 +366,7 @@ export class LessPlugin extends AbstractPlugin {
         if (eligibilityReason) {
           return fallback(eligibilityReason);
         }
-        const result = buildStructuralFedAtRule(plan, child, ownerIslands, configKey, context);
+        const result = buildStructuralFedAtRule(plan, child, ownerIslands, context);
         if ('reason' in result) {
           return fallback(result.reason);
         }
@@ -379,7 +377,7 @@ export class LessPlugin extends AbstractPlugin {
       if (eligibilityReason) {
         return fallback(eligibilityReason);
       }
-      const result = buildStructuralFedRuleset(plan, child, ownerIslands, configKey, context);
+      const result = buildStructuralFedRuleset(plan, child, ownerIslands, context);
       if ('reason' in result) {
         return fallback(result.reason);
       }
@@ -714,8 +712,17 @@ function singleIsland(
   owner: object,
   islandKind: string
 ): RawIslandNode | undefined {
-  const matches = (byOwner.get(owner) ?? []).filter(island => island.islandKind === islandKind);
-  return matches.length === 1 ? matches[0] : undefined;
+  let match: RawIslandNode | undefined;
+  for (const island of byOwner.get(owner) ?? []) {
+    if (island.islandKind !== islandKind) {
+      continue;
+    }
+    if (match) {
+      return undefined;
+    }
+    match = island;
+  }
+  return match;
 }
 
 type StructuralFedBuildResult =
@@ -852,26 +859,20 @@ function buildStructuralFedRuleset(
   plan: IslandParsePlan,
   rule: StructuralContainerNode,
   ownerIslands: Map<object, RawIslandNode[]>,
-  configKey: ParserConfigKey,
   context: TreeContext
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   if (!selectorIsland) {
     return { reason: 'rule selector island missing' };
   }
-  const selectorRecord = plan.execute<Selector>(
-    plan.requestIsland(selectorIsland, 'less-selector', configKey)
-  );
-  if (selectorRecord.fallbackFullTree || selectorRecord.diagnostics.length > 0) {
-    return { reason: 'selector island did not materialize cleanly' };
-  }
-  if (!(selectorRecord.value instanceof Selector)) {
-    return { reason: 'selector island returned a non-selector value' };
+  const selectorToken = readScannerNativeSimpleSelectorToken(plan, selectorIsland);
+  if (!selectorToken) {
+    return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
 
   const rules: Node[] = [];
   for (const child of rule.children) {
-    const builtChild = buildStructuralFedRuleChild(plan, child, ownerIslands, configKey, context, 'rule');
+    const builtChild = buildStructuralFedRuleChild(plan, child, ownerIslands, context, 'rule');
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -880,7 +881,7 @@ function buildStructuralFedRuleset(
 
   return {
     node: new Ruleset({
-      selector: detachMaterializedIsland(selectorRecord.value),
+      selector: coreSelectorFromToken(plan, selectorToken, context),
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context)
   };
@@ -890,7 +891,6 @@ function buildStructuralFedAtRule(
   plan: IslandParsePlan,
   atRule: StructuralContainerNode,
   ownerIslands: Map<object, RawIslandNode[]>,
-  configKey: ParserConfigKey,
   context: TreeContext
 ): StructuralFedBuildResult {
   const nameText = structuralAtRuleName(plan.document, atRule);
@@ -899,19 +899,16 @@ function buildStructuralFedAtRule(
   }
 
   const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
-  const preludeRecord = preludeIsland
-    ? plan.execute<Node>(plan.requestIsland(preludeIsland, 'less-media-prelude', configKey))
+  const preludeToken = preludeIsland
+    ? readScannerNativeValueToken(plan, preludeIsland)
     : undefined;
-  if (preludeRecord && (preludeRecord.fallbackFullTree || preludeRecord.diagnostics.length > 0)) {
-    return { reason: 'at-rule prelude island did not materialize cleanly' };
-  }
-  if (preludeRecord && !(preludeRecord.value instanceof Node)) {
-    return { reason: 'at-rule prelude island returned a non-node value' };
+  if (preludeIsland && !preludeToken) {
+    return { reason: 'at-rule prelude is outside the scanner-native structural-fed subset' };
   }
 
   const rules: Node[] = [];
   for (const child of atRule.children) {
-    const builtChild = buildStructuralFedRuleChild(plan, child, ownerIslands, configKey, context, 'at-rule');
+    const builtChild = buildStructuralFedRuleChild(plan, child, ownerIslands, context, 'at-rule');
     if ('reason' in builtChild) {
       return builtChild;
     }
@@ -926,7 +923,7 @@ function buildStructuralFedAtRule(
         locationFromRange(plan.document, atRule.headerStart, atRule.headerStart + nameText.length),
         context
       ),
-      prelude: preludeRecord ? detachMaterializedIsland(preludeRecord.value) : undefined,
+      prelude: preludeToken ? coreAnyFromToken(plan, preludeToken, context) : undefined,
       rules
     }, { nestable: true }, locationFromRange(plan.document, atRule.start, atRule.end), context)
   };
@@ -936,21 +933,20 @@ function buildStructuralFedRuleChild(
   plan: IslandParsePlan,
   child: StructuralContainerNode['children'][number],
   ownerIslands: Map<object, RawIslandNode[]>,
-  configKey: ParserConfigKey,
   context: TreeContext,
   parentKind: 'at-rule' | 'rule'
 ): StructuralFedBuildResult {
   if (child.kind === 'rule') {
-    return buildStructuralFedRuleset(plan, child, ownerIslands, configKey, context);
+    return buildStructuralFedRuleset(plan, child, ownerIslands, context);
   }
   if (child.kind === 'at-rule') {
-    return buildStructuralFedAtRule(plan, child, ownerIslands, configKey, context);
+    return buildStructuralFedAtRule(plan, child, ownerIslands, context);
   }
   if (child.kind === 'variable-declaration') {
-    return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, configKey, context);
+    return buildStructuralFedVariableDeclaration(plan, child, ownerIslands, context);
   }
   if (child.kind === 'declaration') {
-    return buildStructuralFedDeclaration(plan, child, ownerIslands, configKey, context);
+    return buildStructuralFedDeclaration(plan, child, ownerIslands, context);
   }
   return { reason: `unsupported ${parentKind} child ${child.kind}` };
 }
@@ -959,7 +955,6 @@ function buildStructuralFedDeclaration(
   plan: IslandParsePlan,
   child: StructuralStatementNode,
   ownerIslands: Map<object, RawIslandNode[]>,
-  configKey: ParserConfigKey,
   context: TreeContext
 ): StructuralFedBuildResult {
   const name = plan.document.source.slice(child.nameStart, child.nameEnd);
@@ -967,19 +962,14 @@ function buildStructuralFedDeclaration(
   if (!valueIsland) {
     return { reason: 'declaration value island missing' };
   }
-  const valueRecord = plan.execute<Node>(
-    plan.requestIsland(valueIsland, 'less-value', configKey)
-  );
-  if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
-    return { reason: 'declaration value island did not materialize cleanly' };
-  }
-  if (!(valueRecord.value instanceof Node)) {
-    return { reason: 'declaration value island returned a non-node value' };
+  const valueToken = readScannerNativeValueToken(plan, valueIsland);
+  if (!valueToken) {
+    return { reason: 'declaration value is outside the scanner-native structural-fed subset' };
   }
   return {
     node: new Declaration({
       name: new Any(name, { role: 'property' }, locationFromRange(plan.document, child.nameStart, child.nameEnd), context),
-      value: detachMaterializedIsland(valueRecord.value)
+      value: coreAnyFromToken(plan, valueToken, context)
     }, { assign: ':' }, locationFromRange(plan.document, child.start, child.end), context)
   };
 }
@@ -988,7 +978,6 @@ function buildStructuralFedVariableDeclaration(
   plan: IslandParsePlan,
   child: StructuralStatementNode,
   ownerIslands: Map<object, RawIslandNode[]>,
-  configKey: ParserConfigKey,
   context: TreeContext
 ): StructuralFedBuildResult {
   const rawName = plan.document.source.slice(child.nameStart, child.nameEnd);
@@ -996,14 +985,9 @@ function buildStructuralFedVariableDeclaration(
   if (!valueIsland) {
     return { reason: 'variable declaration value island missing' };
   }
-  const valueRecord = plan.execute<Node>(
-    plan.requestIsland(valueIsland, 'less-value', configKey)
-  );
-  if (valueRecord.fallbackFullTree || valueRecord.diagnostics.length > 0) {
-    return { reason: 'variable declaration value island did not materialize cleanly' };
-  }
-  if (!(valueRecord.value instanceof Node)) {
-    return { reason: 'variable declaration value island returned a non-node value' };
+  const valueToken = readScannerNativeValueToken(plan, valueIsland);
+  if (!valueToken) {
+    return { reason: 'variable declaration value is outside the scanner-native structural-fed subset' };
   }
 
   return {
@@ -1014,13 +998,102 @@ function buildStructuralFedVariableDeclaration(
         locationFromRange(plan.document, child.nameStart, child.nameEnd),
         context
       ),
-      value: detachMaterializedIsland(valueRecord.value)
+      value: coreAnyFromToken(plan, valueToken, context)
     }, undefined, locationFromRange(plan.document, child.start, child.end), context)
   };
 }
 
-function detachMaterializedIsland<T extends Node>(node: T): T {
-  return node.detachTrivia(true);
+type ScannerNativeSelectorToken = {
+  kind: 'basic-selector';
+  start: number;
+  end: number;
+  text: string;
+};
+
+type ScannerNativeValueToken = {
+  kind: 'hex-color' | 'dimension-or-number' | 'identifier';
+  start: number;
+  end: number;
+  text: string;
+};
+
+function readScannerNativeSimpleSelectorToken(
+  plan: IslandParsePlan,
+  island: RawIslandNode
+): ScannerNativeSelectorToken | undefined {
+  const range = trimmedRange(plan.document.source.text, island.start, island.end);
+  const selectorText = plan.document.source.text.slice(range.start, range.end);
+  if (!SIMPLE_SELECTOR_PATTERN.test(selectorText)) {
+    return undefined;
+  }
+  return {
+    kind: 'basic-selector',
+    start: range.start,
+    end: range.end,
+    text: selectorText
+  };
+}
+
+function coreSelectorFromToken(
+  plan: IslandParsePlan,
+  token: ScannerNativeSelectorToken,
+  context: TreeContext
+): SelectorList {
+  const location = locationFromRange(plan.document, token.start, token.end);
+  return new SelectorList([
+    new ComplexSelector([
+      new BasicSelector(token.text, undefined, location, context)
+    ], undefined, location, context)
+  ], undefined, location, context);
+}
+
+function readScannerNativeValueToken(
+  plan: IslandParsePlan,
+  island: RawIslandNode
+): ScannerNativeValueToken | undefined {
+  const range = trimmedRange(plan.document.source.text, island.start, island.end);
+  const valueText = plan.document.source.text.slice(range.start, range.end);
+  const match = SIMPLE_LITERAL_VALUE_PATTERN.exec(valueText);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    kind: scannerNativeValueKind(match),
+    start: range.start,
+    end: range.end,
+    text: valueText
+  };
+}
+
+function coreAnyFromToken(
+  plan: IslandParsePlan,
+  token: ScannerNativeValueToken,
+  context: TreeContext,
+  role: 'any' | 'property' | 'ident' = token.kind === 'identifier' ? 'ident' : 'any'
+): Any {
+  return new Any(token.text, { role }, locationFromRange(plan.document, token.start, token.end), context);
+}
+
+function scannerNativeValueKind(match: RegExpExecArray): ScannerNativeValueToken['kind'] {
+  if (match.groups?.hex) {
+    return 'hex-color';
+  }
+  if (match.groups?.number) {
+    return 'dimension-or-number';
+  }
+  return 'identifier';
+}
+
+function trimmedRange(source: string, start: number, end: number): { start: number; end: number } {
+  let nextStart = start;
+  let nextEnd = end;
+  while (nextStart < nextEnd && WHITESPACE_PATTERN.test(source[nextStart]!)) {
+    nextStart++;
+  }
+  while (nextEnd > nextStart && WHITESPACE_PATTERN.test(source[nextEnd - 1]!)) {
+    nextEnd--;
+  }
+  return { start: nextStart, end: nextEnd };
 }
 
 function locationFromRange(
@@ -1059,3 +1132,7 @@ const AT_RULE_NAME_PATTERN = /^@[-\w]+/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
 const PLAIN_DECLARATION_NAME_PATTERN = /^-?[a-zA-Z_][\w-]*$/u;
 const PLAIN_LESS_VARIABLE_NAME_PATTERN = /^@[a-zA-Z_][\w-]*$/u;
+const SIMPLE_LITERAL_VALUE_PATTERN =
+  /^(?:(?<hex>#(?:[0-9a-fA-F]{3,8}))|(?<number>[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?)|(?<ident>[a-zA-Z_][\w-]*))$/u;
+const SIMPLE_SELECTOR_PATTERN = /^(?:[.#]?-?[a-zA-Z_][\w-]*|\*)$/u;
+const WHITESPACE_PATTERN = /\s/u;

@@ -1589,6 +1589,15 @@ actually needs.
 
 Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
 
+Correction after implementation review: the current CSS/Less provider
+entrypoints are legacy-parser adapters. They slice structural islands and call
+existing parser productions such as `selectorList`, `valueList`, and
+`mediaQuery`. That is useful as a comparison harness and AST-contract probe,
+but it is not the scanner-first parser replacement. Completion requires
+scanner-native materializers for the covered CSS/Less constructs; Chevrotain-
+backed provider execution may remain only as an explicit transitional fallback
+or comparison mode.
+
 - [x] Map each CSS/Less provider against the current token definitions,
   productions, and parser tests before implementing it. CSS work should use
   `cssTokens.ts` plus CSS productions as compatibility guide rails; Less work
@@ -1610,20 +1619,20 @@ Goal: expose narrow parser-package entrypoints for canonical compiler nodes.
   be documented as an intentional structural-stage cost/coverage tradeoff, not
   accidental grammar drift.
 
-Current CSS/Less provider map:
+Current legacy-adapter provider map:
 
-| Package | Structural island | Provider target | Existing parser production used for materialization | Guide rails | Scanner-first fidelity tier |
+| Package | Structural island | Provider target | Existing parser production used by the transitional adapter | Guide rails | Replacement requirement |
 | --- | --- | --- | --- | --- | --- |
-| `@jesscss/css-parser` | `selector` | `css-selector` | `selectorList` | `cssTokens.ts`; `productions/selectors.ts`; selector parser tests | Cheap common-case structural recognition for rule headers; exact selector shape is deferred to island parsing. |
-| `@jesscss/css-parser` | `declaration-value` | `css-value` | `valueList` | `cssTokens.ts`; `productions/values.ts`; declaration/value/custom-property tests | Exact structural boundary with deferred island parsing; custom-property brace/string/comment boundaries are guarded by scanner tests. |
-| `@jesscss/css-parser` | `at-rule-prelude` | `css-prelude` | `valueList` | `cssTokens.ts`; `productions/atRules.ts`; `productions/misc.ts`; at-rule/container/media tests | Exact prelude range from at-rule name boundary; deferred parser-owned prelude shape. |
-| `@jesscss/less-parser` | `selector` | `less-selector` | `selectorList` | `lessTokens.ts`; Less selector overrides in `productions/selectors.ts`; Less selector/extend tests | Cheap common-case structural recognition, with Less selector semantics deferred to island parsing. |
-| `@jesscss/less-parser` | `extend-candidate` | `less-selector` | `qualifiedRule` wrapped as `${source} {}` | `lessTokens.ts`; Less `:extend()` and qualified-rule productions/tests | Deferred island parsing with required wrapper context so `Extend` nodes match current parser behavior. |
-| `@jesscss/less-parser` | `declaration-value` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; Less declaration/value/function/custom-property tests | Exact structural boundary with deferred value parsing; high-cost value grammar remains parser-owned. |
-| `@jesscss/less-parser` | `variable-reference` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; variable/reference/accessor tests | Cheap lexical recognition of reference-like spans; exact reference/accessor shape is deferred. |
-| `@jesscss/less-parser` | `mixin-definition` | `less-mixin` | `selectorList` | `lessTokens.ts`; `productions/guards.ts`; `mixinName`/mixin definition tests | Cheap common-case recognition for `.name(`/`#name(`; canonical parser remains authority for parameter/body semantics. |
-| `@jesscss/less-parser` | `mixin-call` | `less-mixin` | `valueReference` | `lessTokens.ts`; `productions/values.ts`; `productions/guards.ts`; mixin call/reference tests | Deferred island parsing from a structural statement boundary; unsupported/broad call forms fall back through canonical parse paths. |
-| `@jesscss/less-parser` | `at-rule-prelude` | `less-media-prelude` | `mediaQuery` | `lessTokens.ts`; `productions/root.ts` Less media overrides; at-rule/media/deprecation tests | Exact prelude range from at-rule name boundary; Less-specific bare variable/index behavior remains parser-owned. |
+| `@jesscss/css-parser` | `selector` | `css-selector` | `selectorList` | `cssTokens.ts`; `productions/selectors.ts`; selector parser tests | Replace with scanner-native selector materialization for covered simple/compound/list selectors before CSS completion. |
+| `@jesscss/css-parser` | `declaration-value` | `css-value` | `valueList` | `cssTokens.ts`; `productions/values.ts`; declaration/value/custom-property tests | Replace with scanner-native value materialization for covered literal/value-list forms; keep exact scanner boundaries for strings, comments, `url()`, and custom properties. |
+| `@jesscss/css-parser` | `at-rule-prelude` | `css-prelude` | `valueList` | `cssTokens.ts`; `productions/atRules.ts`; `productions/misc.ts`; at-rule/container/media tests | Replace covered media/supports/container preludes with scanner-native materializers; fallback for unsupported preludes must be explicit. |
+| `@jesscss/less-parser` | `selector` | `less-selector` | `selectorList` | `lessTokens.ts`; Less selector overrides in `productions/selectors.ts`; Less selector/extend tests | Replace with scanner-native Less selector materialization for covered selector forms. |
+| `@jesscss/less-parser` | `extend-candidate` | `less-selector` | `qualifiedRule` wrapped as `${source} {}` | `lessTokens.ts`; Less `:extend()` and qualified-rule productions/tests | Replace with scanner-native `:extend()` materialization or keep canonical fallback; wrapper-based adapter is not replacement proof. |
+| `@jesscss/less-parser` | `declaration-value` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; Less declaration/value/function/custom-property tests | Replace with scanner-native literal, reference, arithmetic, function, list, and custom-property value materializers in slices. |
+| `@jesscss/less-parser` | `variable-reference` | `less-value` | `valueList` | `lessTokens.ts`; `productions/values.ts`; variable/reference/accessor tests | Replace with scanner-native reference/accessor materialization before Less variable paths count as structural-fed. |
+| `@jesscss/less-parser` | `mixin-definition` | `less-mixin` | `selectorList` | `lessTokens.ts`; `productions/guards.ts`; `mixinName`/mixin definition tests | Replace with scanner-native mixin signature/guard materialization or explicit canonical fallback. |
+| `@jesscss/less-parser` | `mixin-call` | `less-mixin` | `valueReference` | `lessTokens.ts`; `productions/values.ts`; `productions/guards.ts`; mixin call/reference tests | Replace with scanner-native call materialization before mixin e2e paths count as scanner-first. |
+| `@jesscss/less-parser` | `at-rule-prelude` | `less-media-prelude` | `mediaQuery` | `lessTokens.ts`; `productions/root.ts` Less media overrides; at-rule/media/deprecation tests | Replace covered media/prelude forms with scanner-native materializers; unsupported forms fall back explicitly. |
 
 Pragmatic divergence notes:
 
@@ -1641,6 +1650,9 @@ Pragmatic divergence notes:
 - Less profile hints such as `@` reference detection are deliberately broad.
   They are request-planning hints, not proof that every span is a variable AST;
   exact shape comes only from the provider or canonical fallback.
+- The rows above describe adapter coverage, not completion. A checked adapter
+  entrypoint means there is a way to compare a selected island against the old
+  AST contract; it does not mean the new parser can materialize that construct.
 - [x] Add CSS selector island provider in `@jesscss/css-parser`.
 - [x] Add CSS value/prelude island providers in `@jesscss/css-parser`.
 - [x] Add Less selector island provider in `@jesscss/less-parser`.
@@ -1667,6 +1679,10 @@ Pragmatic divergence notes:
 - [x] Verification: explicit finite CSS parser unit subset passes.
 - [x] Verification: existing Less parser tests pass.
 - [x] Verification: `pnpm run verify:package-exports`.
+- [ ] Replace legacy-parser-backed CSS/Less island adapters with
+  scanner-native materializers for the covered completion slice. Adapter calls
+  to existing parser productions must be counted as comparison/fallback work,
+  not as scanner-first parser replacement work.
 
 ### Slice 8: CSS And Less E2E Compiler/Eval Prototype
 
@@ -1678,7 +1694,7 @@ Do this before adding or widening SCSS/Jess structural work. CSS/Less is not
 complete merely because focused e2e fixtures pass: the structural-fed Less path
 must render the existing upstream Less test-data fixture set to its expected CSS
 with output equality, and the same corpus must have benchmark output for the
-current parser path versus structural-only, selected-materialization, and
+current parser path versus structural-sidecar, selected-materialization, and
 structural-fed modes. Until that corpus-plus-benchmark gate exists, SCSS/Jess
 work stays limited to already-landed provider entrypoint smoke coverage.
 The first milestone did not replace the default parser path: it ran structural
@@ -1687,15 +1703,45 @@ existing parser still built the runtime AST used by eval/render. That sidecar
 proof is useful, but it was not proof that materialized islands feed evaluation
 or rendering.
 
-The current prototype adds a hidden structural-fed path for a bounded subset:
-ordinary rules whose bodies contain ordinary declarations, plain Less variable
-declarations, nested ordinary rules, and `@media` block at-rules with supported
-body shapes. It uses structural rule, at-rule, declaration, and
-variable-declaration shells, materializes only selector, at-rule prelude, and
-value islands through the Less providers, constructs canonical `@jesscss/core`
-`Rules`/`Ruleset`/`AtRule`/`Declaration`/`VarDeclaration` nodes, and records
-`canonical-fallback` for unsupported Less features instead of silently widening
-its claims.
+The current prototype adds a hidden structural-fed path for a deliberately tiny
+complete path: ordinary rules whose bodies contain ordinary declarations,
+nested ordinary rules, and `@media` block at-rules where selectors, preludes,
+and values are all simple scanner-native tokens. The scanner/materializer layer
+stores token text, kind, and source spans; it does not treat current core AST
+nodes as the parser's internal representation. The current compiler prototype
+adapts those token records into canonical `@jesscss/core`
+`Rules`/`Ruleset`/`AtRule`/`Declaration` nodes only at the temporary
+compiler-boundary bridge because `safeParse` still returns a core tree. It
+records zero requested islands / zero actual parser execution for that path.
+Less variable references, arithmetic, functions, mixin calls, extends, and
+broader selectors currently fall back canonically until their materializers are
+scanner-native.
+
+The target runtime shape should be even cheaper than the temporary core bridge:
+
+```ts
+Ruleset {
+  selector: ".a",
+  selectorSpan: [0, 2],
+  rules: [
+    Declaration {
+      name: "foo",
+      nameSpan: [7, 10],
+      value: "bar",
+      valueSpan: [12, 15]
+    }
+  ]
+}
+```
+
+That structure should render and evaluate directly while the fields remain
+semantically plain. A field should JIT-parse only when demanded by a feature
+that needs richer meaning: variable/reference resolution, arithmetic, function
+calls, selector nesting/ampersand resolution, `:extend()`, interpolation,
+plugin/visitor access to typed selector/value nodes, detailed diagnostics, or
+source-map detail beyond the stored span. Put differently: scanner-first does
+not mean "create cheaper core AST nodes sooner"; it means "keep strings/spans
+until a specific compile stage proves it needs a parsed shape."
 
 - [x] Identify the narrowest hidden option or test-only entrypoint that can run
   CSS/Less structural parse before compile/eval/render without changing default
@@ -1732,8 +1778,8 @@ its claims.
   while preserving scope frames, lookup, extend, import/reference boundaries,
   render ordering, and parent/source ownership.
 - [x] Ensure the e2e proof records whether each materialized subtree came from
-  selected-island parsing, fallback full-tree parsing, or the existing parser
-  path.
+  scanner-native materialization, selected-island adapter parsing, fallback
+  full-tree parsing, or the existing parser path.
 - [x] Ensure failures report source offsets and human diagnostics through the
   same diagnostic path expected by compiler users.
   - [x] Prototype records offset-first structural diagnostic ranges before
@@ -1747,21 +1793,37 @@ its claims.
 - [x] Performance guard: report structural scan and selected materialization
   timings, promoted bytes, selected island count, fallback full-tree count,
   cache hits/misses, and output equality.
-- [x] Structural-fed prototype: use structural results and materialized islands
-  in a real compile/eval path for a bounded CSS/Less subset.
-- [x] Structural-fed prototype: support plain Less variable declarations in
-  root and nested ordinary rules without canonical fallback.
+- [x] Structural-fed prototype: use structural results and scanner-native
+  materialization in a real compile/eval/render path for a tiny CSS/Less
+  subset.
+- [x] Structural-fed prototype: support simple selector, simple literal
+  declaration value, and simple `@media` prelude token detection with zero
+  legacy island parser executions.
+- [x] Keep scanner-native token detection separate from the temporary core AST
+  adapter boundary: tokenization/materialization records text, kind, and spans;
+  core `Any`/selector nodes are created only when adapting into the current
+  compiler tree.
+- [ ] Replace the temporary core-node bridge with structural runtime nodes that
+  carry strings/spans for simple selectors, declaration names, declaration
+  values, and at-rule preludes, then JIT-parse individual fields only when
+  eval/render/visitor/plugin behavior requires richer semantics.
+- [ ] Structural-fed prototype: add scanner-native Less variable-reference
+  materialization so plain Less variable declarations and reads can run without
+  canonical fallback.
 - [x] Structural-fed prototype: support `@media` block at-rules containing
-  already supported ordinary rule/declaration bodies without canonical fallback.
+  already supported ordinary rule/declaration bodies without canonical fallback
+  when the prelude is scanner-native.
+- [ ] Structural-fed prototype: replace selected-materialization adapter proof
+  with scanner-native materialization for each completed CSS/Less construct.
 - [x] Prototype performance guard: report structural-fed runtime source,
   promoted bytes, selected island count, fallback full-tree count,
   cache hits/misses, and output equality for the bounded subset.
 - [x] Focused performance smoke guard: report parse/eval/render phase timings
-  across current parser, structural-only sidecar, selected materialization
+  across current parser, structural-sidecar sidecar, selected materialization
   sidecar, and structural-fed prototype paths while preserving output equality.
 - [x] Broader Less compiler performance guard: report full parse/eval/render
   phase timings across representative checked-in CSS-shaped and Less fixtures
-  so the current parser, structural-only, selected materialization, and
+  so the current parser, structural-sidecar, selected materialization, and
   structural-fed paths can be compared without relying on a single tiny inline
   fixture.
 - [ ] Structural-fed Less corpus gate: render every included upstream
@@ -1773,43 +1835,69 @@ its claims.
     compiler output.
   - [ ] Promote the parity audit to expected-CSS completion only after current
     compiler expected-CSS failures are zero.
-  - Current audit snapshot: 64 files / 65 cases, 15 structural-fed, 87 canonical
+  - Current audit snapshot: 64 files / 65 cases, 10 structural-fed, 92 canonical
     fallback, 22 current expected-CSS failures, 22 structural expected-CSS
-    failures, 97 requested/materialized islands, 1,604 promoted bytes. Counts
-    include imported/sub-rendered Less prototype records, so structural-fed plus
-    fallback records can exceed the top-level case count.
-- [ ] Less corpus benchmark gate: benchmark current parser, structural-only
-  sidecar, selected-materialization sidecar, and structural-fed prototype over
+    failures, zero requested/materialized islands, and zero promoted bytes.
+    Counts include imported/sub-rendered Less prototype records, so
+    structural-fed plus fallback records can exceed the top-level case count.
+- [ ] Less corpus benchmark gate: benchmark raw structural parsing, current
+  parser/eval/render, structural sidecar full-render probe, selected
+  materialization sidecar full-render probe, and structural-fed prototype over
   the included upstream Less fixture set before treating CSS/Less as ready for
   SCSS/Jess widening.
+  - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
+    directly instead of running the compiler. On the upstream Less
+    `benchmark/benchmark.less` fixture, the raw structural scan measured
+    1.49ms median over 20 samples, with 10,291 structural records, 5,770
+    raw islands, and zero diagnostics. This is the scanner-first outer-structure
+    cost; it is not the same as the full compiler sidecar timings below. The
+    same test structurally parsed the 64-file / 65-case included Less corpus in
+    10.44ms total, producing 5,333 structural records, 3,102 raw islands, and 5
+    structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
     instrumentation across entry files and imported/sub-rendered Less files.
-  - [ ] Promote the smoke audit to a defensible regression gate with repeated
-    samples, warmup or order control, setup/render separation where feasible,
-    and explicit overhead thresholds before treating the performance gate as
-    complete.
-  - Current smoke snapshot over the same 64 files / 65 cases, including
-    imported/sub-rendered Less probe records: current parser 236.71ms,
-    structural-only sidecar 234.27ms across 102 probe records,
-    selected-materialization sidecar 262.34ms across 102 probe records with
-    1,797 requested/materialized islands and 50,108 promoted bytes, and
-    structural-fed prototype 240.63ms across 102 prototype records with 15
-    structural-fed cases, 87 canonical fallbacks, 97 requested/materialized
-    islands, and 1,604 promoted bytes. These wall-clock numbers are single-run
-    orientation data, not a performance regression threshold.
+  - [x] Promoted the smoke audit to a conservative intra-Jess regression guard
+    with repeated samples, warmup or order control, setup/render separation
+    where feasible, and explicit broad overhead thresholds. The thresholds
+    catch catastrophic regressions against Jess current; they do not prove the
+    parser/eval path is competitive.
+  - [ ] Add a Less 4.x reference comparison gate before this benchmark gate can
+    be considered complete. The nearby Less benchmark history reports Less
+    4.5.0 `benchmark.less` median render at 42.16ms, while the Jess current
+    one-off smoke in this worktree was 450.40ms on the same benchmark input.
+    That roughly 10.7x gap is a red flag for the whole Jess parser/eval/render
+    path and must not be normalized by comparing scanner-first only against
+    Jess current.
+  - Current repeated-sample snapshot over the same 64 files / 65 cases:
+    1 warmup run plus 3 recorded samples. Median corpus render times were
+    current parser/eval/render 210.18ms, structural sidecar full render
+    211.44ms across 306 probe records, selected-materialization sidecar full
+    render 236.80ms across 306 probe records with 5,391
+    requested/materialized islands and 150,324 promoted bytes, and
+    structural-fed prototype 196.51ms across 306 prototype records with 30
+    structural-fed records, 276 canonical fallbacks, zero
+    requested/materialized islands, and zero promoted bytes. These medians are gate evidence for
+    parity/instrumentation and broad overhead bounds, not a speed claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an
     additional smoke input. The selected-materialization sidecar originally
     changed output by leaking sidecar parse trivia/source-root state into the
     canonical render path; island materialization now reuses the plugin-owned
-    Less parser but passes a fresh throwaway `TreeContext` per island parse;
-    structural-fed insertion detaches materialized island trivia before adopting
-    nodes into the canonical output tree. Latest one-off smoke: current
-    450.40ms, structural-only 357.69ms, selected-materialization 407.06ms with
-    5,900 island parses / 81,083 promoted bytes, and structural-fed 313.51ms
-    with three canonical fallbacks
-    for comment-preservation. All four modes produced equal CSS. These are
+    Less parser but passes a fresh throwaway `TreeContext` per island parse.
+    The current structural-fed path for this file records zero island
+    executions and falls back for comment-preservation cases instead of
+    adopting legacy island nodes. Latest one-off full-render smoke:
+    current 450.40ms, structural sidecar 357.69ms, selected-materialization
+    407.06ms with 5,900 island parses / 81,083 promoted bytes, and
+    structural-fed 313.51ms with three canonical fallbacks for
+    comment-preservation. All four modes produced equal CSS. These are
     orientation numbers only, not regression thresholds.
+  - Current phase-profile diagnosis for the same Less benchmark input:
+    structural parsing itself is cheap, but full Jess render is dominated by
+    canonical runtime work. One profiled current render spent about 101ms in
+    `getTree`, 301ms in `eval`, and 79ms in `render`; the structural sidecar
+    and selected-materialization modes still run that canonical path unless the
+    structural-fed prototype can handle the file without fallback.
 - [ ] CSS-owned compiler performance guard: add this only if a CSS compiler
   plugin/activation path exists; current compiler e2e timing coverage renders
   CSS-shaped fixtures through the Less-compatible compiler path.
