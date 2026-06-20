@@ -14,6 +14,7 @@ import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { BasicSelector } from './selector-basic.js';
+import { Ampersand } from './ampersand.js';
 import {
   type PrintOptions,
   type FinalPrintOptions,
@@ -128,6 +129,11 @@ function splitRawCompoundSelector(value: string): string[] | undefined {
   return parts.length > 0 && offset === value.length ? parts : undefined;
 }
 
+function readRawAmpersandPseudoSelector(value: string): string | undefined {
+  const match = /^&(?<pseudo>:{1,2}[-_a-zA-Z][\w-]*)$/u.exec(value);
+  return match?.groups?.pseudo;
+}
+
 function splitRawSelectorList(value: string): string[] | undefined {
   if (!value.includes(',')) {
     return undefined;
@@ -151,7 +157,10 @@ function splitRawSelectorList(value: string): string[] | undefined {
 }
 
 function isMaterializableRawSelectorBranch(value: string): boolean {
-  return canMaterializeRawSimpleSelector(value) || splitRawCompoundSelector(value) !== undefined;
+  return (
+    canMaterializeRawSimpleSelector(value)
+    || splitRawCompoundSelector(value) !== undefined
+  );
 }
 
 function readRawSelectorBranch(value: string, start: number): { text: string; end: number } | undefined {
@@ -210,6 +219,7 @@ function canMaterializeRawSelector(value: string): boolean {
   return (
     canMaterializeRawSimpleSelector(value)
     || splitRawCompoundSelector(value) !== undefined
+    || readRawAmpersandPseudoSelector(value) !== undefined
     || splitRawComplexSelector(value) !== undefined
     || splitRawSelectorList(value) !== undefined
   );
@@ -384,6 +394,13 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
   private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
     if (canMaterializeRawSimpleSelector(rawSelector)) {
       return new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
+    }
+    const pseudoName = readRawAmpersandPseudoSelector(rawSelector);
+    if (pseudoName) {
+      return CompoundSelector.create([
+        new Ampersand(undefined, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext),
+        new PseudoSelector({ name: pseudoName }, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
+      ], undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
     }
     const parts = splitRawCompoundSelector(rawSelector);
     if (!parts || parts.length < 2) {

@@ -1943,15 +1943,16 @@ storage.
   values, plus one-step same-unit `+`/`-` arithmetic over scanner-native
   numbers/dimensions, plus scope-only `& { ... }` and bare `{ ... }` blocks that
   map to raw `Rules` containers, plus exact quoted Less imports whose imported
-  file also stays in the scanner-native subset, with zero legacy island parser
-  executions.
+  file also stays in the scanner-native subset, plus the narrow nested
+  `&:pseudo` selector branch, with zero legacy island parser executions.
   Dynamic/lazy variable references that need richer Less lookup semantics,
   mixed-unit arithmetic/calc behavior, Less import options, reference/multiple/
   once/de-dupe behavior, unresolved imports, raw HTTP `url(...)` imports,
   block at-rule families outside the root `@media` / `@layer` / `@supports` /
   declaration-block `@font-face` / `@page` / `@counter-style` subset,
-  pseudo/attribute/interpolated selectors, and richer nested at-rule bodies
-  remain canonical fallbacks until their progressive materializers are proven.
+  pseudo selectors outside the proven nested `&:pseudo` branch,
+  attribute/interpolated selectors, and richer nested at-rule bodies remain
+  canonical fallbacks until their progressive materializers are proven.
 - [x] Keep scanner-native token detection separate from the temporary core AST
   adapter boundary: tokenization/materialization records text, kind, and spans;
   successful structural-fed rules/declarations render without eager selector or
@@ -2142,6 +2143,13 @@ storage.
     `.a .b, .c`: direct render still uses the raw selector string, while
     semantic registration/eval materializes canonical `ComplexSelector` /
     `SelectorList` nodes only when selector semantics are demanded.
+  - [x] Extended the raw selector transport proof to the narrow nested
+    ampersand-pseudo branch `&:focus`. Direct render and serialization keep
+    `rawSelector: '&:focus'` with no eager `Ampersand` or `PseudoSelector`
+    child nodes; semantic registration materializes a canonical
+    `CompoundSelector` containing `Ampersand` plus `PseudoSelector` only if
+    selector semantics are requested. This is not a general pseudo-selector
+    parser and does not claim nested selector collapse.
   - [x] Added the first structural-fed Less extend proof for simple exact
     selector-header extends such as `.button:extend(.base) { width: 1px; }`,
     then widened the same cheap token path to simple `all` selector-header
@@ -2262,10 +2270,11 @@ storage.
     scanner-native simple selector subset (`*`, tag, `.class`, `#id`), adjacent
     basic compound selectors, cheap complex selectors made from those parts with
     descendant, child, adjacent sibling, or general sibling combinators, and
-    comma-separated lists whose branches stay inside those shapes. Pseudo
-    selectors, attributes, interpolation, nested selectors, and `:extend()` still
-    need a real selector materializer or canonical fallback before they count as
-    completed scanner-first selector support.
+    comma-separated lists whose branches stay inside those shapes, plus the
+    narrow nested ampersand-pseudo branch `&:focus` / `&::before`-style names.
+    Other pseudo selectors, attributes, interpolation, richer nested selectors,
+    and `:extend()` still need a real selector materializer or canonical
+    fallback before they count as completed scanner-first selector support.
 - [x] Structural-fed prototype: add scanner-native Less variable-reference
   materialization for plain Less variable declarations and reads so already-seen
   values and same-scope hoisted simple literal/raw values can run without

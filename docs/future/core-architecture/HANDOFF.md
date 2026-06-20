@@ -306,6 +306,19 @@ with `--no-verify` after the explicit gates pass.
   add another render traversal. `AtRuleStatement` raw-name import detection is
   a direct string read during existing registration scanning; it does not
   materialize statement header nodes and adds no new traversal.
+- Aggressive Cutting Self-Prosecution, scanner-first nested ampersand pseudo
+  selector proof: widening the raw selector subset to `&:focus` / `&::before`
+  style branches adds one anchored branch recognizer and one cold semantic
+  materialization case. Direct render/serialization still writes the raw selector
+  string and does not allocate `Ampersand`, `PseudoSelector`, or selector
+  wrapper nodes. If registration/eval asks for selector semantics, the raw
+  branch materializes to the existing canonical `CompoundSelector` shape with
+  one `new Ampersand(...)` and one `new PseudoSelector(...)`. Those node
+  constructions are intentionally behind `materializeRawSelectorForSemantics()`,
+  not on the direct render/stringify path, and replace a full selector parse for
+  this proven branch. This does not claim general pseudo-selector support,
+  selector-function argument parsing, attribute selectors, or Less
+  nested-selector collapse.
 - Aggressive Cutting Self-Prosecution, scanner-first important spelling proof:
   Widening the important splitter to accept spaced/case-variant flags is not a
   new parser and does not add a traversal. The structural-fed declaration path
@@ -325,10 +338,13 @@ with `--no-verify` after the explicit gates pass.
   `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
   constructs one `BasicSelector` for simple raw selectors, or a `CompoundSelector`
   plus `BasicSelector` parts for adjacent basic compound raw selectors, only
-  when a raw ruleset crosses into semantic registration/eval; direct raw render
-  keeps `selector` undefined and uses `rawSelector`. The temporary `parts` and
-  `components` arrays exist only inside that cold semantic materialization
-  boundary and are not used to stringify. `packages/core/src/tree/at-rule.ts`
+  when a raw ruleset crosses into semantic registration/eval. The nested
+  ampersand-pseudo proof similarly creates the canonical `CompoundSelector`,
+  `Ampersand`, and `PseudoSelector` only at that cold semantic boundary; direct
+  raw render keeps `selector` undefined and uses `rawSelector`. The temporary
+  `parts` and `components` arrays exist only inside cold semantic
+  materialization boundaries and are not used to stringify.
+  `packages/core/src/tree/at-rule.ts`
   constructs `Any` header nodes only when a raw at-rule crosses into semantic
   registration/eval; direct raw render keeps `name` / `prelude` undefined and
   uses `rawName` / `rawPrelude`.

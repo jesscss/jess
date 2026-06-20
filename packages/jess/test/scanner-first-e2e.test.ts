@@ -2291,6 +2291,43 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
   });
 
+  it('feeds nested ampersand pseudo selectors through structural parse', async () => {
+    const source = '.a { &:focus { color: blue; } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('&:focus');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-ampersand-pseudo.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('rawSelector: \'&:focus\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(Ampersand');
+    expect(types).not.toContain('(PseudoSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
   it('skips structural-fed prototype work for import-scoped parse options', () => {
     const source = '.a { color: blue; }\n';
     const cases = [
@@ -4084,6 +4121,18 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '.base { color: blue; }\n.button:hover:extend(.base) { width: 1px; }\n',
+        reason: 'selector is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '&:focus { color: blue; }\n',
+        reason: 'selector is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '&:focus, .b { color: blue; }\n',
+        reason: 'selector is outside the scanner-native structural-fed subset'
+      },
+      {
+        source: '.a &:focus { color: blue; }\n',
         reason: 'selector is outside the scanner-native structural-fed subset'
       },
       {

@@ -1267,7 +1267,8 @@ function buildStructuralFedRuleset(
   variables: ReadonlyMap<string, ScannerNativeValueToken>,
   allowLessVariables = true,
   allowAtRules = true,
-  mathMode: MathMode = 'parens-division'
+  mathMode: MathMode = 'parens-division',
+  allowNestedAmpersandPseudoSelector = false
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   const selectorText = structuralFieldText(plan.document, rule, 'selector', 'selector');
@@ -1280,7 +1281,7 @@ function buildStructuralFedRuleset(
         end: extendSelector.selectorEnd,
         text: extendSelector.selectorText
       }
-    : readScannerNativeSelectorToken(plan, rule, selectorIsland);
+    : readScannerNativeSelectorToken(plan, rule, selectorIsland, allowNestedAmpersandPseudoSelector);
   if (!selectorToken && !scopeOnly) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
@@ -1531,7 +1532,8 @@ function buildStructuralFedAtRule(
         localVariables,
         name !== '@layer',
         structuralFedAtRuleChildRulesAllowAtRules(parentKind, name),
-        mathMode
+        mathMode,
+        false
       );
       if ('reason' in builtChild) {
         return builtChild;
@@ -1579,7 +1581,17 @@ function buildStructuralFedRuleChild(
   mathMode: MathMode = 'parens-division'
 ): StructuralFedBuildResult | StructuralFedVariableBuildResult {
   if (child.kind === 'rule') {
-    return buildStructuralFedRuleset(plan, child, ownerIslands, context, variables, allowLessVariables, allowAtRules, mathMode);
+    return buildStructuralFedRuleset(
+      plan,
+      child,
+      ownerIslands,
+      context,
+      variables,
+      allowLessVariables,
+      allowAtRules,
+      mathMode,
+      parentKind === 'rule'
+    );
   }
   if (child.kind === 'at-rule') {
     if (!allowAtRules) {
@@ -1951,14 +1963,21 @@ type ScannerNativeValueToken = {
 function readScannerNativeSelectorToken(
   plan: IslandParsePlan,
   owner: StructuralContainerNode,
-  island?: RawIslandNode
+  island?: RawIslandNode,
+  allowNestedAmpersandPseudoSelector = false
 ): ScannerNativeSelectorToken | undefined {
   const range = structuralFieldRange(plan.document, owner, 'selector', 'selector');
   if (!range || (island && (range.start !== island.start || range.end !== island.end))) {
     return undefined;
   }
   const selectorText = plan.document.source.text.slice(range.start, range.end);
-  if (!SCANNER_NATIVE_SELECTOR_PATTERN.test(selectorText)) {
+  if (
+    !SCANNER_NATIVE_SELECTOR_PATTERN.test(selectorText)
+    && (
+      !allowNestedAmpersandPseudoSelector
+      || !SCANNER_NATIVE_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN.test(selectorText)
+    )
+  ) {
     return undefined;
   }
   return {
@@ -2750,6 +2769,7 @@ const SCANNER_NATIVE_SELECTOR_BRANCH_PATTERN =
 const SCANNER_NATIVE_EXTEND_TARGET_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
 const SCANNER_NATIVE_COMPLEX_SELECTOR_PATTERN =
   /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;
+const SCANNER_NATIVE_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = /^&:{1,2}[-_a-zA-Z][\w-]*$/u;
 const SCANNER_NATIVE_EXTEND_TARGET_TOKEN_PATTERN =
   /(?<combinator>[ \t]*[>+~][ \t]*)|(?<space>[ \t]+)|(?<selector>[.#][-_a-zA-Z][\w-]*)/gu;
 const SCANNER_NATIVE_EXTEND_SELECTOR_PATTERN =

@@ -550,9 +550,52 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
+  test('materializes raw-field ampersand pseudo selectors only when semantic registration asks', () => {
+    const context = new Context();
+    const node = ruleset({
+      selector: '&:focus',
+      rules: [
+        rawdecl({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBe('&:focus {\n  color: blue;\n}\n');
+    expect(node.selector).toBeUndefined();
+    expect(node.rawSelector).toBe('&:focus');
+    expect(serializeTypes(node)).toContain('rawSelector: \'&:focus\'');
+    void node.prepareRegistration(context);
+    expect(node.rawSelector).toBeUndefined();
+    const selector = node.selector;
+    expect(selector).toBeDefined();
+    expect(isNode(selector, N.CompoundSelector)).toBe(true);
+    if (!selector || !isNode(selector, N.CompoundSelector)) {
+      return;
+    }
+    expect(selector.parent).toBe(node);
+    expect(selector.value[0]!.parent).toBe(selector);
+    expect(selector.value[1]!.parent).toBe(selector);
+    const types = serializeTypes(node);
+    expect(types).toContain('(CompoundSelector');
+    expect(types).toContain('(Ampersand');
+    expect(types).toContain('(PseudoSelector');
+    expect(types).toContain('name: \':focus\'');
+    expect(types).not.toContain('rawSelector');
+  });
+
   test('rejects raw-field core ruleset selectors outside the proven cheap subset', () => {
     expect(() => ruleset({
       selector: '.a:hover',
+      rules: []
+    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
+    expect(() => ruleset({
+      selector: '&:focus, .b',
+      rules: []
+    })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
+    expect(() => ruleset({
+      selector: '.a &:focus',
       rules: []
     })).toThrow('Raw ruleset selector is outside the scanner-native selector subset.');
   });
