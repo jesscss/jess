@@ -2378,9 +2378,11 @@ storage.
   - Proof target: `grid-column: container-left / span 1`,
     `grid-template-columns: [col1-start] 9fr [col1-end] 10px [col2-start] 3fr
     [col2-end]`, and `grid-template-rows: repeat(14, [gutter] 10px [row]
-    60px)` render from structural-fed raw `Declaration` nodes, record zero
-    full-tree fallback, zero actual parses, zero requested islands, and zero
-    promoted bytes, and serialize without `valueNode` materialization.
+    60px)` render from structural-fed raw `Declaration` nodes. A separate
+    existing-path proof covers single-line quoted `grid-template-areas: "head
+    head" "nav main"`. Both record zero full-tree fallback, zero actual parses,
+    zero requested islands, and zero promoted bytes, and serialize without
+    `valueNode` materialization.
   - Current limit: this is property-sensitive to `grid*` declarations and
     rejects Less variable-like tokens, comments, braces, semicolons,
     unbalanced `[]`/`()`, unproven functions other than `repeat(...)`, and

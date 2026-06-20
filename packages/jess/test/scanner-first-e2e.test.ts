@@ -1180,6 +1180,40 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
   });
 
+  it('feeds single-line CSS grid template areas through structural parse without value materialization', async () => {
+    const source = '.wrapper { display: grid; grid-template-areas: "head head" "nav main"; }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('grid-template-areas: "head head" "nav main"');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 3,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/css-grid-template-areas.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('rawName: \'grid-template-areas\'');
+    expect(types).toContain('[\'"head head" "nav main"\']');
+    expect(types).toContain('rawValueSegments:');
+    expect(types).not.toContain('valueNode: (');
+  });
+
   it('feeds simple Less function values through progressive declaration segments', async () => {
     const cases = [
       {
