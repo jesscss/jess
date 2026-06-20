@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../src/index.js';
 import {
@@ -67,6 +67,26 @@ const benchmarkModes: BenchmarkMode[] = [
   'selected-materialization',
   'structural-fed'
 ];
+const allLessStructuralDiagnosticAllowlist = Object.fromEntries([
+  ['packages/jess/test/fixtures/invalid.less', ['unclosed-block']],
+  ['less-test-data/tests-config/static-urls/urls.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-config/url-args/urls.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-error/parse/at-rules-unmatching-block.less', ['unterminated-delimited-block']],
+  ['less-test-data/tests-error/parse/custom-property-unmatched-block-1.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-error/parse/custom-property-unmatched-block-2.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-error/parse/custom-property-unmatched-block-3.less', ['unterminated-string', 'unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-error/parse/parse-error-curly-bracket.less', ['unexpected-block-close']],
+  ['less-test-data/tests-error/parse/parse-error-media-no-block-3.less', ['unclosed-block']],
+  ['less-test-data/tests-error/parse/parse-error-missing-bracket.less', ['unclosed-block']],
+  ['less-test-data/tests-error/parse/parse-error-missing-parens.less', ['unterminated-delimited-block']],
+  ['less-test-data/tests-unit/at-rules/at-rules.less', ['unterminated-delimited-block']],
+  ['less-test-data/tests-unit/css-3/css-3.less', ['unterminated-delimited-block']],
+  ['less-test-data/tests-unit/import/import-remote.less', ['unterminated-delimited-block']],
+  ['less-test-data/tests-unit/import/import/invalid-css.less', ['unterminated-string']],
+  ['less-test-data/tests-unit/merge/merge.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-unit/strings/strings.less', ['unterminated-delimited-block', 'unclosed-block']],
+  ['less-test-data/tests-unit/urls/urls.less', ['unterminated-delimited-block', 'unclosed-block']]
+] satisfies Array<[string, string[]]>);
 const benchmarkWarmupRuns = 1;
 const benchmarkSampleRuns = 3;
 const structuralBenchmarkWarmupRuns = 5;
@@ -150,6 +170,45 @@ describe('scanner-first structural-fed Less corpus parity audit', () => {
     expect(corpusStructuralRecords).toBeGreaterThan(0);
     expect(corpusRawIslands).toBeGreaterThan(0);
     console.info(`[scanner-first-less-raw-structure] ${JSON.stringify(summary)}`);
+  });
+
+  it('structurally parses every visible Less file without throwing', () => {
+    const allLessFiles = collectAllLessStructuralFiles();
+    const diagnosticsByFile: Record<string, string[]> = {};
+    let sourceBytes = 0;
+    let structuralRecords = 0;
+    let rawIslands = 0;
+    let triviaRanges = 0;
+
+    for (const file of allLessFiles) {
+      const source = readFileSync(file.path, 'utf8');
+      const document = parseLessStructure(file.path, source);
+      const stats = document.stats();
+      sourceBytes += stats.sourceBytes;
+      structuralRecords += stats.structuralRecords;
+      rawIslands += stats.rawIslands;
+      triviaRanges += stats.triviaRanges;
+      if (document.diagnostics.length > 0) {
+        diagnosticsByFile[file.key] = document.diagnostics.map(diagnostic => diagnostic.code);
+      }
+    }
+
+    const summary = {
+      files: allLessFiles.length,
+      sourceBytes,
+      structuralRecords,
+      rawIslands,
+      triviaRanges,
+      filesWithDiagnostics: Object.keys(diagnosticsByFile).length,
+      diagnostics: Object.values(diagnosticsByFile).reduce((sum, entries) => sum + entries.length, 0),
+      diagnosticsByFile
+    };
+
+    expect(allLessFiles.length).toBe(320);
+    expect(structuralRecords).toBeGreaterThan(0);
+    expect(rawIslands).toBeGreaterThan(0);
+    expect(diagnosticsByFile).toEqual(allLessStructuralDiagnosticAllowlist);
+    console.info(`[scanner-first-less-all-structure] ${JSON.stringify(summary)}`);
   });
 
   it('matches current compiler output across the included upstream Less fixture corpus', async () => {
@@ -476,6 +535,44 @@ function collectCorpusCases(): CorpusCase[] {
     });
   }
   return cases;
+}
+
+function collectAllLessStructuralFiles(): Array<{
+  key: string;
+  path: string;
+}> {
+  const repoRoot = findRepoRoot();
+  const repoFiles = glob.sync(path.join(repoRoot, '**/*.less'), {
+    ignore: [
+      path.join(repoRoot, 'node_modules/**'),
+      path.join(repoRoot, 'packages/**/node_modules/**'),
+      path.join(repoRoot, '.git/**')
+    ]
+  }).map(file => ({
+    key: path.relative(repoRoot, file),
+    path: file
+  }));
+  const lessTestDataFiles = glob.sync(path.join(testData, '**/*.less'))
+    .map(file => ({
+      key: path.join('less-test-data', path.relative(testData, file)),
+      path: file
+    }));
+
+  return [...repoFiles, ...lessTestDataFiles]
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function findRepoRoot(start = process.cwd()): string {
+  let current = start;
+
+  while (current !== path.dirname(current)) {
+    if (existsSync(path.join(current, 'pnpm-workspace.yaml'))) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+
+  throw new Error(`Could not find Jess repo root from ${start}.`);
 }
 
 function createCorpusCompiler(

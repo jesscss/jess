@@ -2907,6 +2907,17 @@ storage.
   so the current parser, structural-sidecar, selected materialization, and
   structural-fed paths can be compared without relying on a single tiny inline
   fixture.
+- [x] Parser-only Less corpus gate: structurally parse every visible `.less`
+  file before treating eval/render or late/JIT materialization as the next
+  stage. Current evidence, 2026-06-20: 320 files across the Jess repo and
+  upstream Less test-data parse without throwing; the structural pass records
+  24,253 structural records, 13,765 raw islands, and 22,578 trivia ranges. It
+  still reports 27 diagnostics across 18 allowlisted files, including
+  intentional parse-error fixtures and ordinary Less fixtures that expose
+  remaining scanner gaps around URL/string/delimited-boundary handling. The
+  parser-replacement lane should drive that allowlist down or reclassify
+  entries with explicit recovery semantics before widening eval/render
+  materialization.
 - [ ] Structural-fed Less corpus gate: render every included upstream
   `@less/test-data` `.less` fixture used by `packages/jess/test/less/all-less.test.ts`
   with `scannerFirstProbe.structuralFedPrototype: true`, compare to the expected
