@@ -132,6 +132,12 @@ export type RawDeclarationValue = {
   important?: boolean | string;
 };
 
+type RawDeclarationInput = {
+  name: string;
+  value: string | Array<string | Node>;
+  important?: boolean | string;
+};
+
 type DeclarationEvalState = {
   output: Node;
   name?: DeclarationValue['name'];
@@ -1709,12 +1715,23 @@ function isDeclarationValue(
   return typeof value.name !== 'string';
 }
 
+function normalizeRawDeclarationInput(value: RawDeclarationInput): RawDeclarationValue {
+  return {
+    name: value.name,
+    value: typeof value.value === 'string' ? [value.value] : value.value,
+    important: value.important
+  };
+}
+
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue | RawDeclarationInput | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
   location?: LocationInfo
 ) => {
   if (!isDeclarationValue(value)) {
+    if (typeof value.value === 'string' || Array.isArray(value.value)) {
+      return new Declaration(normalizeRawDeclarationInput(value), options, location);
+    }
     return new Declaration({
       name: any(value.name, { role: 'property' }),
       value: value.value,
@@ -1723,18 +1740,3 @@ export const decl = (
   }
   return new Declaration(value, options, location);
 };
-
-/**
- * Creates a raw-field declaration prototype node.
- *
- * This is an experimental scanner-first construction path: the declaration is
- * still a core `Declaration`, but its name and value payload remain string/Node
- * segments until a later materialization stage asks for canonical name/value
- * nodes. It is intentionally explicit so existing parser-created declarations
- * keep their canonical node shape.
- */
-export const rawdecl = (
-  value: RawDeclarationValue,
-  options?: DeclarationOptions,
-  location?: LocationInfo
-) => new Declaration(value, options, location);

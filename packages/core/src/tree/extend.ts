@@ -150,11 +150,7 @@ export class Extend extends Node<ExtendValue> {
     // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
     // Don't convert non-ampersand selectors to ampersand - they should be used as-is
     // Get current extend root from registry stack
-    let extendRoot = context.extendRoots.getCurrentExtendRoot();
-    const placementRoot = currentFrame?.parent;
-    if (placementRoot?.type === 'Rules') {
-      extendRoot = placementRoot as Rules;
-    }
+    const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
       return undefined;
     }

@@ -1284,7 +1284,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && importOptions!.reference !== true
             && !importOptions!.multiple
           );
-          const shouldReRegisterLocalRootRulesets = isImportProtected || isImplicitReferenceModeForRegistration;
+          const isReferenceModeForRegistration = (
+            importOptions!._dedupe === true
+            || importOptions!.reference === true
+          );
+          const shouldReRegisterLocalRootRulesets = (
+            isImportProtected
+            || isReferenceModeForRegistration
+            || isImplicitReferenceModeForRegistration
+          );
           context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
             isProtected: isImportProtected,
             namespace: node.options.namespace

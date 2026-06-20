@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   isScannerNativeRawComplexExtendTargetSelector,
   isScannerNativeRawExtendTargetSelector,
+  isScannerNativeRawRelativeSelector,
   isScannerNativeRawSelector,
   isScannerNativeRawSelectorBranch,
   isScannerNativeRawSimpleSelector,
@@ -68,6 +69,21 @@ describe('scanner-native raw selector classifier', () => {
     expect(isScannerNativeRawSelector('&::before', true)).toBe(true);
     expect(readScannerNativeNestedAmpersandPseudoSelector('&:focus')).toBe(':focus');
     expect(readScannerNativeNestedAmpersandPseudoSelector('&::before')).toBe('::before');
+  });
+
+  test('requires explicit admission for nested relative selectors', () => {
+    for (const selector of [
+      '> #second .two',
+      '+ #third',
+      '~ button.primary',
+      '> [data-kind] + .next'
+    ]) {
+      expect(isScannerNativeRawSelector(selector), selector).toBe(false);
+      expect(isScannerNativeRawSelector(selector, false, true), selector).toBe(true);
+      expect(isScannerNativeRawRelativeSelector(selector), selector).toBe(true);
+    }
+    expect(isScannerNativeRawRelativeSelector('#id > .child')).toBe(false);
+    expect(isScannerNativeRawRelativeSelector('> :is(.child)')).toBe(false);
   });
 
   test('keeps extend targets stricter than ordinary selector branches', () => {

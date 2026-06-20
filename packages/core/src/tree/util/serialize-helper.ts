@@ -16,7 +16,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
-import type { Selector } from '../selector.js';
+import { Selector } from '../selector.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
@@ -168,7 +168,7 @@ function containsNodeType(value: unknown, type: string): boolean {
 }
 
 function rulesetSelectorForHeaderChecks(ruleset: Ruleset): Selector | Nil | undefined {
-  if (ruleset.rawSelector !== undefined) {
+  if (typeof ruleset.selector === 'string') {
     return undefined;
   }
   return ruleset.selector;
@@ -406,13 +406,12 @@ function getHoistedParent(
     }
     frame = currentFrame;
     const currentSelector = currentFrame.selector;
-    if (!currentSelector || currentSelector instanceof Nil) {
+    if (!(currentSelector instanceof Selector) || currentSelector instanceof Nil) {
       continue;
     }
-    const nextSelector = currentSelector as Selector;
     parentSelector = parentSelector
-      ? Ruleset.composeSelector(nextSelector, parentSelector)
-      : nextSelector;
+      ? Ruleset.composeSelector(currentSelector, parentSelector)
+      : currentSelector;
   }
   if (!frame) {
     return undefined;

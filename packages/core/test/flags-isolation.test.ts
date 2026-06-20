@@ -1,5 +1,43 @@
 import { expectFlags, DEFAULT_VARIABLE } from './helpers.js';
-import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, paren, negative, atrule, interpolated, interpolatedSelector, type Ruleset, type Declaration } from '../src/index.js';
+import {
+  N,
+  any,
+  atrule,
+  call,
+  decl,
+  el,
+  interpolated,
+  interpolatedSelector,
+  isNode,
+  list,
+  negative,
+  num,
+  op,
+  paren,
+  ref,
+  rules,
+  ruleset,
+  sel,
+  sellist,
+  type Declaration,
+  type Ruleset
+} from '../src/index.js';
+
+function expectRulesetNode(node: unknown): Ruleset {
+  expect(isNode(node, N.Ruleset)).toBe(true);
+  if (!isNode(node, N.Ruleset)) {
+    throw new Error('Expected Ruleset node.');
+  }
+  return node;
+}
+
+function expectDeclarationNode(node: unknown): Declaration {
+  expect(isNode(node, N.Declaration)).toBe(true);
+  if (!isNode(node, N.Declaration)) {
+    throw new Error('Expected Declaration node.');
+  }
+  return node;
+}
 
 describe('Flag isolation', () => {
   describe('MayAsync isolation (siblings do not bleed)', () => {
@@ -7,15 +45,15 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+          rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
         }),
         ruleset({
           selector: sellist([sel([el('.b')])]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
-      const r1 = tree.value[0]! as Ruleset;
-      const r2 = tree.value[1]! as Ruleset;
+      const r1 = expectRulesetNode(tree.value[0]);
+      const r2 = expectRulesetNode(tree.value[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -25,12 +63,12 @@ describe('Flag isolation', () => {
         atrule({
           name: any('media'),
           prelude: any('(min-width: 10px)'),
-          rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+          rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
         }),
         atrule({
           name: any('media'),
           prelude: any('(min-width: 10px)'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
       const a1 = tree.value[0]!;
@@ -43,16 +81,16 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'p1', value: paren(ref('@v', { type: 'variable' })) }),
             decl({ name: 'p2', value: paren(any('1')) })
-          ])
+          ]
         })
       ]);
-      const rs = tree.value[0]! as Ruleset;
+      const rs = expectRulesetNode(tree.value[0]);
       const inner = rs.value.rules;
-      const d1 = inner.value[0]! as Declaration;
-      const d2 = inner.value[1]! as Declaration;
+      const d1 = expectDeclarationNode(inner[0]);
+      const d2 = expectDeclarationNode(inner[1]);
       expectFlags(d1, false, true); // mayAsync
       expectFlags(d2, true, false); // static
     });
@@ -61,16 +99,16 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'b1', value: list([ref('@v', { type: 'variable' })]) }),
             decl({ name: 'b2', value: list([any('1')]) })
-          ])
+          ]
         })
       ]);
-      const rs = tree.value[0]! as Ruleset;
+      const rs = expectRulesetNode(tree.value[0]);
       const inner = rs.value.rules;
-      const d1 = inner.value[0]! as Declaration;
-      const d2 = inner.value[1]! as Declaration;
+      const d1 = expectDeclarationNode(inner[0]);
+      const d2 = expectDeclarationNode(inner[1]);
       expectFlags(d1, false, true); // mayAsync
       expectFlags(d2, true, false); // static
     });
@@ -79,16 +117,16 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'o1', value: op([num(1), '+', ref('@v', { type: 'variable' })]) }),
             decl({ name: 'o2', value: op([num(1), '+', num(2)]) })
-          ])
+          ]
         })
       ]);
-      const rs = tree.value[0]! as Ruleset;
+      const rs = expectRulesetNode(tree.value[0]);
       const inner = rs.value.rules;
-      const d1 = inner.value[0]! as Declaration;
-      const d2 = inner.value[1]! as Declaration;
+      const d1 = expectDeclarationNode(inner[0]);
+      const d2 = expectDeclarationNode(inner[1]);
       expectFlags(d1, false, true); // mayAsync
       expectFlags(d2, false, false); // non-static but not mayAsync
     });
@@ -97,16 +135,16 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'n1', value: negative(ref('@v', { type: 'variable' })) }),
             decl({ name: 'n2', value: negative(any('1')) })
-          ])
+          ]
         })
       ]);
-      const rs = tree.value[0]! as Ruleset;
+      const rs = expectRulesetNode(tree.value[0]);
       const inner = rs.value.rules;
-      const d1 = inner.value[0]! as Declaration;
-      const d2 = inner.value[1]! as Declaration;
+      const d1 = expectDeclarationNode(inner[0]);
+      const d2 = expectDeclarationNode(inner[1]);
       expectFlags(d1, false, true); // mayAsync
       expectFlags(d2, false, false); // non-static but not mayAsync
     });
@@ -115,16 +153,16 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'c1', value: call({ name: 'rgb', args: list([ref('@v', { type: 'variable' }), any('1'), any('1')]) }) }),
             decl({ name: 'c2', value: call({ name: 'rgb', args: list([any('1'), any('1'), any('1')]) }) })
-          ])
+          ]
         })
       ]);
-      const rs = tree.value[0]! as Ruleset;
+      const rs = expectRulesetNode(tree.value[0]);
       const inner = rs.value.rules;
-      const d1 = inner.value[0]! as Declaration;
-      const d2 = inner.value[1]! as Declaration;
+      const d1 = expectDeclarationNode(inner[0]);
+      const d2 = expectDeclarationNode(inner[1]);
       expectFlags(d1, false, true); // mayAsync
       expectFlags(d2, false, true); // mayAsync (function calls are always mayAsync)
     });
@@ -133,15 +171,15 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a:has('), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })), el(')')])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         }),
         ruleset({
           selector: sellist([sel([el('.b:has(.c')])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = tree.value[0]! as Ruleset;
-      const r2 = tree.value[1]! as Ruleset;
+      const r1 = expectRulesetNode(tree.value[0]);
+      const r2 = expectRulesetNode(tree.value[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -150,15 +188,15 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.foo'), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] }))])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         }),
         ruleset({
           selector: sellist([sel([el('.bar.baz')])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = tree.value[0]! as Ruleset;
-      const r2 = tree.value[1]! as Ruleset;
+      const r1 = expectRulesetNode(tree.value[0]);
+      const r2 = expectRulesetNode(tree.value[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -167,15 +205,15 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.x '), interpolatedSelector(interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })), el(' .y')])]),
-          rules: rules([decl({ name: 'z', value: any('1') })])
+          rules: [decl({ name: 'z', value: any('1') })]
         }),
         ruleset({
           selector: sellist([sel([el('.x .c .y')])]),
-          rules: rules([decl({ name: 'z', value: any('1') })])
+          rules: [decl({ name: 'z', value: any('1') })]
         })
       ]);
-      const r1 = tree.value[0]! as Ruleset;
-      const r2 = tree.value[1]! as Ruleset;
+      const r1 = expectRulesetNode(tree.value[0]);
+      const r2 = expectRulesetNode(tree.value[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -184,15 +222,15 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a, '), interpolatedSelector(interpolated({ source: '.{}', replacements: [DEFAULT_VARIABLE] }))])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         }),
         ruleset({
           selector: sellist([sel([el('.a, .c')])]),
-          rules: rules([decl({ name: 'y', value: any('1') })])
+          rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = tree.value[0]! as Ruleset;
-      const r2 = tree.value[1]! as Ruleset;
+      const r1 = expectRulesetNode(tree.value[0]);
+      const r2 = expectRulesetNode(tree.value[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -203,22 +241,22 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.container')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.static-rule')])]),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              rules: [decl({ name: 'color', value: any('red') })]
             }),
             ruleset({
               selector: sellist([sel([el('.dynamic-rule')])]),
-              rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+              rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
             })
-          ])
+          ]
         })
       ]);
 
-      const container = tree.value[0]! as Ruleset;
-      const staticRule = container.value.rules.value[0]! as Ruleset;
-      const dynamicRule = container.value.rules.value[1]! as Ruleset;
+      const container = expectRulesetNode(tree.value[0]);
+      const staticRule = expectRulesetNode(container.value.rules[0]);
+      const dynamicRule = expectRulesetNode(container.value.rules[1]);
 
       // Container should have mayAsync (from dynamic child)
       expectFlags(container, false, true);
@@ -234,18 +272,18 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.container')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             decl({ name: 'background', value: DEFAULT_VARIABLE }),
             decl({ name: 'border', value: any('1px solid black') })
-          ])
+          ]
         })
       ]);
 
-      const container = tree.value[0]! as Ruleset;
-      const staticDecl1 = container.value.rules.value[0]! as Declaration;
-      const dynamicDecl = container.value.rules.value[1]! as Declaration;
-      const staticDecl2 = container.value.rules.value[2]! as Declaration;
+      const container = expectRulesetNode(tree.value[0]);
+      const staticDecl1 = expectDeclarationNode(container.value.rules[0]);
+      const dynamicDecl = expectDeclarationNode(container.value.rules[1]);
+      const staticDecl2 = expectDeclarationNode(container.value.rules[2]);
 
       // Container should have mayAsync (from dynamic child)
       expectFlags(container, false, true);
@@ -264,28 +302,28 @@ describe('Flag isolation', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'background', value: DEFAULT_VARIABLE }),
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'border', value: any('1px solid') }),
                     decl({ name: 'width', value: op([num(10), '+', num(5)]) })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
-      const level1 = tree.value[0]! as Ruleset;
-      const level2 = level1.value.rules.value[1]! as Ruleset;
-      const level3 = level2.value.rules.value[1]! as Ruleset;
+      const level1 = expectRulesetNode(tree.value[0]);
+      const level2 = expectRulesetNode(level1.value.rules[1]);
+      const level3 = expectRulesetNode(level2.value.rules[1]);
 
       // Level 1 should have mayAsync (from nested dynamic content)
       expectFlags(level1, false, true);

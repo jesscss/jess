@@ -980,7 +980,7 @@ function collectStructuralFedDeprecationWarnings(
   for (const node of nodes) {
     if (node.kind === 'mixin-call') {
       const name = structuralFieldText(document, node, 'name', 'mixin-name');
-      if (name !== undefined && !name.includes('(') && scannerNativeNoArgMixinName(name)) {
+      if (name !== undefined && !name.includes('(') && scannerNativeNoArgMixinReferenceKey(name)) {
         const offset = Math.max(node.start, node.end - 1);
         const position = document.source.offsetToLineColumn(offset);
         warnings.push({
@@ -1067,7 +1067,7 @@ function validateStructuralFedRule(
       continue;
     }
     if (child.kind === 'mixin-call') {
-      if (!scannerNativeNoArgMixinName(structuralFieldText(document, child, 'name', 'mixin-name'))) {
+      if (!scannerNativeNoArgMixinReferenceKey(structuralFieldText(document, child, 'name', 'mixin-name'))) {
         return 'mixin call signature is outside the scanner-native structural-fed subset';
       }
       continue;
@@ -1274,7 +1274,8 @@ function buildStructuralFedRuleset(
   allowLessVariables = true,
   allowAtRules = true,
   mathMode: MathMode = 'parens-division',
-  allowNestedAmpersandPseudoSelector = false
+  allowNestedAmpersandPseudoSelector = false,
+  allowNestedRelativeSelector = false
 ): StructuralFedBuildResult {
   const selectorIsland = singleIsland(ownerIslands, rule, 'selector');
   const selectorText = structuralFieldText(plan.document, rule, 'selector', 'selector');
@@ -1287,7 +1288,13 @@ function buildStructuralFedRuleset(
         end: extendSelector.selectorEnd,
         text: extendSelector.selectorText
       }
-    : readScannerNativeSelectorToken(plan, rule, selectorIsland, allowNestedAmpersandPseudoSelector);
+    : readScannerNativeSelectorToken(
+        plan,
+        rule,
+        selectorIsland,
+        allowNestedAmpersandPseudoSelector,
+        allowNestedRelativeSelector
+      );
   if (!selectorToken && !scopeOnly) {
     return { reason: 'selector is outside the scanner-native structural-fed subset' };
   }
@@ -1596,6 +1603,7 @@ function buildStructuralFedRuleChild(
       allowLessVariables,
       allowAtRules,
       mathMode,
+      parentKind === 'rule',
       parentKind === 'rule'
     );
   }
@@ -1640,16 +1648,16 @@ function buildStructuralFedMixinCall(
   child: StructuralStatementNode,
   context: TreeContext
 ): StructuralFedBuildResult {
-  const mixinName = scannerNativeNoArgMixinName(
+  const mixinKey = scannerNativeNoArgMixinReferenceKey(
     structuralFieldText(plan.document, child, 'name', 'mixin-name')
   );
-  if (!mixinName) {
+  if (!mixinKey) {
     return { reason: 'mixin call signature is outside the scanner-native structural-fed subset' };
   }
   return {
     node: new Call({
       name: new Reference(
-        { key: mixinName },
+        { key: mixinKey },
         { type: 'mixin-ruleset', role: 'name' },
         undefined,
         context
@@ -1970,14 +1978,15 @@ function readScannerNativeSelectorToken(
   plan: IslandParsePlan,
   owner: StructuralContainerNode,
   island?: RawIslandNode,
-  allowNestedAmpersandPseudoSelector = false
+  allowNestedAmpersandPseudoSelector = false,
+  allowRelativeSelector = false
 ): ScannerNativeSelectorToken | undefined {
   const range = structuralFieldRange(plan.document, owner, 'selector', 'selector');
   if (!range || (island && (range.start !== island.start || range.end !== island.end))) {
     return undefined;
   }
   const selectorText = plan.document.source.text.slice(range.start, range.end);
-  if (!isScannerNativeRawSelector(selectorText, allowNestedAmpersandPseudoSelector)) {
+  if (!isScannerNativeRawSelector(selectorText, allowNestedAmpersandPseudoSelector, allowRelativeSelector)) {
     return undefined;
   }
   return {
@@ -2733,8 +2742,6 @@ const RAW_SIMPLE_URL_PATTERN = /^url\([-./_~%#?=&+{},a-zA-Z0-9]+\)$/u;
 const RAW_QUOTED_URL_PATTERN = /^url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\)$/u;
 const RAW_FONT_LIST_PATTERN =
   /^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)(?:[ \t]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*)|[ \t]*,[ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[-_a-zA-Z][\w-]*))*$/u;
-const RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN =
-  /^\([ \t]*-?[-_a-zA-Z][\w-]*[ \t]*:[ \t]*(?:#(?:[0-9a-fA-F]{3,8})|[-+]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:%|[a-zA-Z]+)?|[-_a-zA-Z][\w-]*)[ \t]*\)$/u;
 const RAW_NAMESPACE_PRELUDE_PATTERN =
   /^(?:(?:[-_a-zA-Z][\w-]*|\*)[ \t]+)?(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|url\([ \t]*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')[ \t]*\))$/u;
 const KNOWN_SEMANTIC_AT_RULE_STATEMENT_NAMES = new Set([
@@ -2783,7 +2790,7 @@ function isScannerNativeAtRulePrelude(atRuleName: string | undefined, preludeTex
     return false;
   }
   if (atRuleName === '@supports') {
-    return RAW_SUPPORTS_DECLARATION_CONDITION_PATTERN.test(preludeText);
+    return false;
   }
   return SIMPLE_LITERAL_VALUE_PATTERN.test(preludeText);
 }
@@ -2885,6 +2892,26 @@ function looksLikeSimpleVariableReference(valueText: string): boolean {
 
 function scannerNativeNoArgMixinName(valueText: string | undefined): string | undefined {
   return valueText ? SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN.exec(valueText)?.[1] : undefined;
+}
+
+function scannerNativeNoArgMixinReferenceKey(valueText: string | undefined): string | string[] | undefined {
+  const simple = scannerNativeNoArgMixinName(valueText);
+  if (simple) {
+    return simple;
+  }
+  if (!valueText || valueText.includes('(')) {
+    return undefined;
+  }
+  const parts = valueText.split(/[ \t]*(?:>|[ \t]+)[ \t]*/u).filter(Boolean);
+  if (parts.length < 2) {
+    return undefined;
+  }
+  for (const part of parts) {
+    if (!SCANNER_NATIVE_NO_ARG_MIXIN_PATTERN.test(part)) {
+      return undefined;
+    }
+  }
+  return parts;
 }
 
 function readConfiguredSearchPaths(options: LessPluginOptions): string[] {

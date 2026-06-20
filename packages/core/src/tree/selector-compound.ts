@@ -13,8 +13,6 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
-import { BasicSelector } from './selector-basic.js';
-import { isScannerNativeRawSimpleSelector } from './util/raw-selector.js';
 import { valueText } from './util/value-text.js';
 
 /**
@@ -30,22 +28,6 @@ export type CompoundSelectorComponent = SimpleSelector | string;
 
 export function isRawCompoundSelectorComponent(part: unknown): part is string {
   return typeof part === 'string';
-}
-
-function materializeRawComponent(part: string, source: CompoundSelector): BasicSelector {
-  if (!isScannerNativeRawSimpleSelector(part)) {
-    throw new TypeError('Raw compound selector component is outside the scanner-native selector subset.');
-  }
-  return new BasicSelector(
-    part,
-    undefined,
-    source.location.length ? source.location : undefined,
-    source.sourceRoot?._treeContext
-  ).inherit(source);
-}
-
-function shouldKeepRawComponentCompoundSurface(part: string): boolean {
-  return part.startsWith(':') || part.startsWith('[');
 }
 
 function emitCompoundPart(
@@ -137,12 +119,9 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   private collapsedSelector(item: CompoundSelectorComponent, sourceValue: readonly CompoundSelectorComponent[]): Selector {
     if (isRawCompoundSelectorComponent(item)) {
-      if (shouldKeepRawComponentCompoundSurface(item)) {
-        return sourceValue.length === 1 && sourceValue[0] === item
-          ? this
-          : this.createEvaluatedComponentSurface([item], sourceValue);
-      }
-      return materializeRawComponent(item, this);
+      return sourceValue.length === 1 && sourceValue[0] === item
+        ? this
+        : this.createEvaluatedComponentSurface([item], sourceValue);
     }
     const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {

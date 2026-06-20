@@ -4,6 +4,7 @@ import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import type { Rules } from '../rules.js';
 import { type MixinEntry, getMixinEntryRules } from './callable-entry.js';
+import { getRootSourceRules } from './callable-surface.js';
 
 export type CallableEvalCandidatePreparation = {
   evalCandidates: MixinEntry[];
@@ -34,21 +35,7 @@ function hasFailedGuardAncestor(node: Node): boolean {
   return false;
 }
 
-function getRootSourceRules(rules: Rules): Rules {
-  let current = rules;
-  const seen = new Set<Rules>();
-  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-    const next = current.sourceNode;
-    if (next === current || seen.has(next)) {
-      break;
-    }
-    seen.add(current);
-    current = next;
-  }
-  return current;
-}
-
-function getCallableCandidateIdentity(candidate: MixinEntry): object {
+function getCallableCandidateIdentity(candidate: MixinEntry): unknown {
   if (isNode(candidate, N.Ruleset)) {
     return getRootSourceRules(getMixinEntryRules(candidate));
   }
@@ -144,7 +131,7 @@ export function prepareCallableEvalCandidates({
   caller
 }: CallableEvalCandidatePreparationOptions): CallableEvalCandidatePreparation {
   const callerKey = getCallKey(caller);
-  const seenCandidateIdentities = new WeakSet<object>();
+  const seenCandidateIdentities = new Set<unknown>();
   const evalCandidates: MixinEntry[] = [];
   let hasDefault = false;
 

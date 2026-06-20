@@ -17,7 +17,6 @@ import {
 import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
-import { BasicSelector } from './selector-basic.js';
 import { Ampersand } from './ampersand.js';
 import {
   type PrintOptions,
@@ -42,12 +41,13 @@ import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 import {
   isScannerNativeRawSelector,
+  isScannerNativeRawRelativeSelector,
   isScannerNativeRawSimpleSelector,
   readScannerNativeNestedAmpersandPseudoSelector
 } from './util/raw-selector.js';
 
 export type RulesetValue = {
-  selector: Selector | Nil;
+  selector: string | Selector | Nil;
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -106,16 +106,11 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
       !!value
       && typeof value === 'object'
       && (value as { isSelector?: unknown }).isSelector === true
-    )
-    || value instanceof Node;
+    );
 }
 
 function canMaterializeRawSimpleSelector(value: string): boolean {
   return isScannerNativeRawSimpleSelector(value);
-}
-
-function canMaterializeRawBasicSelector(value: string): boolean {
-  return canMaterializeRawSimpleSelector(value) && !value.startsWith('[') && !value.startsWith(':');
 }
 
 function readRawAttributeSelector(value: string, start: number): { text: string; end: number } | undefined {
@@ -373,13 +368,99 @@ function splitRawComplexSelector(value: string): RawComplexSelectorPart[] | unde
   return selectorCount > 1 ? parts : undefined;
 }
 
-function canMaterializeRawSelector(value: string): boolean {
-  return (
-    isScannerNativeRawSelector(value, true)
-    || splitRawCompoundSelector(value) !== undefined
-    || splitRawComplexSelector(value) !== undefined
-    || splitRawSelectorList(value) !== undefined
-  );
+function splitRawRelativeSelector(value: string): RawComplexSelectorPart[] | undefined {
+  if (!isScannerNativeRawRelativeSelector(value) || /[\r\n]/u.test(value)) {
+    return undefined;
+  }
+  let offset = 0;
+  while (/[ \t]/u.test(value[offset] ?? '')) {
+    offset++;
+  }
+  const combinator = value[offset];
+  if (combinator !== '>' && combinator !== '+' && combinator !== '~') {
+    return undefined;
+  }
+  const tail = value.slice(offset + 1).trimStart();
+  const tailParts = splitRawComplexSelector(tail);
+  const firstBranch = tailParts ?? (isMaterializableRawSelectorBranch(tail) ? [tail] : undefined);
+  return firstBranch ? [combinator, ...firstBranch] : undefined;
+}
+
+function markProgressiveSelector<T extends Selector>(selector: T): T {
+  selector.addFlag(F_STATIC);
+  return selector;
+}
+
+function createRawSelectorBranchNode(
+  value: string,
+  location: LocationInfo | undefined,
+  treeContext: Context['treeContext'] | undefined
+): SimpleSelector | CompoundSelector | undefined {
+  const pseudoName = readRawAmpersandPseudoSelector(value);
+  if (pseudoName) {
+    return markProgressiveSelector(CompoundSelector.create([
+      new Ampersand(undefined, undefined, location, treeContext),
+      new PseudoSelector({ name: pseudoName }, undefined, location, treeContext)
+    ], undefined, location, treeContext));
+  }
+  const parts = splitRawCompoundSelector(value);
+  return parts
+    ? markProgressiveSelector(CompoundSelector.create(parts, undefined, location, treeContext))
+    : undefined;
+}
+
+function createRawSelectorNode(
+  value: string,
+  location: LocationInfo | undefined,
+  treeContext: Context['treeContext'] | undefined
+): Selector | undefined {
+  const selectorList = splitRawSelectorList(value);
+  if (selectorList) {
+    const branches: Selector[] = [];
+    for (const branch of selectorList) {
+      const surface = createRawSelectorNode(branch, location, treeContext)
+        ?? createRawSelectorBranchNode(branch, location, treeContext);
+      if (!surface) {
+        return undefined;
+      }
+      branches.push(surface);
+    }
+    return markProgressiveSelector(SelectorList.create(branches, undefined, location, treeContext));
+  }
+  const relativeParts = splitRawRelativeSelector(value);
+  if (relativeParts) {
+    return createRawComplexSelectorSurface(relativeParts, location, treeContext);
+  }
+  const complexParts = splitRawComplexSelector(value);
+  if (complexParts) {
+    return createRawComplexSelectorSurface(complexParts, location, treeContext);
+  }
+  const compoundParts = splitRawCompoundSelector(value);
+  if (compoundParts && compoundParts.length > 1) {
+    return markProgressiveSelector(CompoundSelector.create(compoundParts, undefined, location, treeContext));
+  }
+  return undefined;
+}
+
+function createRawComplexSelectorSurface(
+  parts: RawComplexSelectorPart[],
+  location: LocationInfo | undefined,
+  treeContext: Context['treeContext'] | undefined
+): ComplexSelector | undefined {
+  const components: ComplexSelectorComponent[] = [];
+  for (const part of parts) {
+    if (part === ' ' || part === '>' || part === '+' || part === '~') {
+      components.push(Combinator.create(part));
+      continue;
+    }
+    const branch = createRawSelectorNode(part, location, treeContext);
+    const component = branch ?? createRawSelectorBranchNode(part, location, treeContext);
+    if (!component) {
+      return undefined;
+    }
+    components.push(component as ComplexSelectorComponent);
+  }
+  return markProgressiveSelector(ComplexSelector.create(components, undefined, location, treeContext));
 }
 
 type RulesetOptions = NodeOptions & {
@@ -401,13 +482,12 @@ type RulesetOptions = NodeOptions & {
  * }
  */
 export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOptions> {
-  static override childKeys = ['selector', 'rawSelector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
+  static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
   selector: RulesetValue['selector'] | undefined;
-  rawSelector: string | undefined;
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
@@ -436,16 +516,27 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       value.rules
     );
     if (typeof value.selector === 'string') {
-      if (!canMaterializeRawSelector(value.selector)) {
+      const selectorNode = createRawSelectorNode(
+        value.selector,
+        this.location.length ? this.location : undefined,
+        this.sourceRoot?._treeContext
+      );
+      if (
+        !selectorNode
+        && !splitRawSelectorList(value.selector)
+        && !isScannerNativeRawSelector(value.selector, true)
+      ) {
         throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
       }
-      this.selector = undefined;
-      this.rawSelector = value.selector;
+      this.selector = selectorNode ? selectorNode.inherit(this) : value.selector;
+      if (this.selector instanceof Node) {
+        this.adopt(this.selector);
+      }
       this.guard = undefined;
       this.selectorBeforeExtend = undefined;
+      this.value.selector = this.selector;
     } else {
       this.selector = value.selector;
-      this.rawSelector = undefined;
       this.guard = value.guard;
       this.selectorBeforeExtend = value.selectorBeforeExtend;
     }
@@ -516,42 +607,26 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
   }
 
-  private materializeRawSelectorForSemantics(): RulesetValue['selector'] {
-    if (this.selector !== undefined) {
-      return this.selector;
+  private materializeRawSelectorForSemantics(): Selector | Nil {
+    const selector = this.selector;
+    if (selector instanceof Selector || selector instanceof Nil) {
+      return selector;
     }
-    const rawSelector = this.rawSelector;
-    if (rawSelector === undefined) {
-      throw new TypeError('Ruleset requires a selector before semantic materialization.');
+    if (typeof selector === 'string') {
+      const materialized = createRawSelectorNode(
+        selector,
+        this.location.length ? this.location : undefined,
+        this.sourceRoot?._treeContext
+      ) ?? this.materializeRawSelectorBranch(selector);
+      this.adopt(materialized);
+      this.selector = materialized;
+      this.value.selector = materialized;
+      return materialized;
     }
-    let selector: Selector;
-    const selectorList = splitRawSelectorList(rawSelector);
-    if (selectorList) {
-      selector = SelectorList.create(
-        selectorList.map(part => this.materializeRawSelectorListBranch(part))
-      ).inherit(this);
-    } else if (splitRawComplexSelector(rawSelector)) {
-      selector = this.materializeRawComplexSelector(rawSelector).inherit(this);
-    } else {
-      selector = this.materializeRawSelectorBranch(rawSelector);
-    }
-    this.adopt(selector);
-    this.selector = selector;
-    this.rawSelector = undefined;
-    this.value.selector = selector;
-    return selector;
-  }
-
-  private materializeRawSelectorListBranch(rawSelector: string): Selector {
-    return splitRawComplexSelector(rawSelector)
-      ? this.materializeRawComplexSelector(rawSelector)
-      : this.materializeRawSelectorBranch(rawSelector);
+    throw new TypeError('Ruleset requires a selector before semantic materialization.');
   }
 
   private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
-    if (canMaterializeRawBasicSelector(rawSelector)) {
-      return new BasicSelector(rawSelector, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
-    }
     const pseudoName = readRawAmpersandPseudoSelector(rawSelector);
     if (pseudoName) {
       return CompoundSelector.create([
@@ -564,22 +639,6 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
     }
     return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
-  }
-
-  private materializeRawComplexSelector(rawSelector: string): ComplexSelector {
-    const parts = splitRawComplexSelector(rawSelector);
-    if (!parts) {
-      throw new TypeError('Raw ruleset selector is outside the scanner-native selector subset.');
-    }
-    const components: ComplexSelectorComponent[] = [];
-    for (const part of parts) {
-      if (part === ' ' || part === '>' || part === '+' || part === '~') {
-        components.push(Combinator.create(part));
-      } else {
-        components.push(this.materializeRawSelectorBranch(part));
-      }
-    }
-    return ComplexSelector.create(components, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
   private deriveRuleset(
@@ -948,7 +1007,11 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
     const selector = this.selector;
     if (selector === undefined) {
-      this._valueOf = this.rawSelector ?? '';
+      this._valueOf = '';
+      return this._valueOf;
+    }
+    if (typeof selector === 'string') {
+      this._valueOf = selector;
       return this._valueOf;
     }
     if (selector instanceof Nil) {
@@ -1043,13 +1106,13 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     if (this.evaluated || this.registrationPrepared || this.guard) {
       return false;
     }
-    if (this.rawSelector !== undefined) {
+    const { selector } = this;
+    if (typeof selector === 'string') {
       return !this.guard
         && !this.registrationPrepared
         && this.hasFlag(F_STATIC)
         && canRenderStaticRulesDirectly(this);
     }
-    const { selector } = this;
     if (selector === undefined) {
       return false;
     }
@@ -1323,7 +1386,10 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     return false;
   }
 
-  static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
+  static hasExtendedTopLevelSelector(sel: string | Selector | Nil): boolean {
+    if (typeof sel === 'string') {
+      return false;
+    }
     if (!sel || sel instanceof Nil) {
       return false;
     }
@@ -1335,12 +1401,33 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       }
       return false;
     }
+    if (isNode(sel, N.PseudoSelector) && sel.generated === true && sel.name === ':is' && sel.arg instanceof Selector) {
+      return Ruleset.hasExtendedTopLevelSelector(sel.arg);
+    }
+    if (isNode(sel, N.CompoundSelector) || isNode(sel, N.ComplexSelector)) {
+      for (const component of sel.value) {
+        if (
+          !isRawCompoundSelectorComponent(component)
+          && component instanceof Selector
+          && Ruleset.hasExtendedTopLevelSelector(component)
+        ) {
+          return true;
+        }
+      }
+    }
     return sel.hasFlag(F_EXTENDED);
   }
 
   private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
     if (!isNode(sel, N.SelectorList)) {
-      return (sel.hasFlag(F_EXTENDED) || sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
+      const simplified = Ruleset.simplifyGeneratedIsSelector(sel);
+      return (
+        sel.hasFlag(F_EXTENDED)
+        || sel.hasFlag(F_EXTEND_TARGET)
+        || Ruleset.hasExtendedTopLevelSelector(sel)
+      )
+        ? (simplified ?? Ruleset.unwrapGeneratedReferenceIs(sel))
+        : new Nil();
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
@@ -1353,7 +1440,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
           continue;
         }
         seen.add(key);
-        kept.push(copySelectorForRulesetMetadata(item));
+        kept.push(copySelectorForRulesetMetadata(
+          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedReferenceIs(item)
+        ));
       }
     }
     if (!sawAddedSelector) {
@@ -1366,7 +1455,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
           continue;
         }
         seen.add(key);
-        kept.push(copySelectorForRulesetMetadata(item));
+        kept.push(copySelectorForRulesetMetadata(
+          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedReferenceIs(item)
+        ));
       }
     }
     if (kept.length === 0) {
@@ -1376,6 +1467,68 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       return kept[0]!;
     }
     return SelectorList.create(kept).inherit(sel);
+  }
+
+  private static unwrapGeneratedReferenceIs(sel: Selector, includeUntouchedSiblings = false): Selector {
+    if (sel instanceof SelectorList) {
+      const kept: Selector[] = [];
+      const seen = new Set<string>();
+      for (const item of sel.value) {
+        const keepItem = includeUntouchedSiblings
+          ? !item.hasFlag(F_EXTEND_TARGET)
+          : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
+        if (!keepItem) {
+          continue;
+        }
+        const unwrapped = Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings);
+        const key = unwrapped.valueOf();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        kept.push(unwrapped);
+      }
+      if (kept.length === 1) {
+        return kept[0]!;
+      }
+      if (kept.length > 1) {
+        return SelectorList.create(kept).inherit(sel);
+      }
+      return sel;
+    }
+    if (!isNode(sel, N.PseudoSelector) || sel.generated !== true || sel.name !== ':is') {
+      return sel;
+    }
+    const { arg } = sel;
+    if (arg instanceof SelectorList) {
+      const kept: Selector[] = [];
+      const seen = new Set<string>();
+      for (const item of arg.value) {
+        const keepItem = includeUntouchedSiblings
+          ? !item.hasFlag(F_EXTEND_TARGET)
+          : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
+        if (!keepItem) {
+          continue;
+        }
+        const unwrapped = Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings);
+        const key = unwrapped.valueOf();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        kept.push(unwrapped);
+      }
+      if (kept.length === 1) {
+        return kept[0]!;
+      }
+      if (kept.length > 1) {
+        return SelectorList.create(kept).inherit(arg);
+      }
+      if (arg.value.length === 1) {
+        return arg.value[0]!;
+      }
+    }
+    return arg instanceof Selector ? arg : sel;
   }
 
   /**
@@ -1427,7 +1580,10 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
         continue;
       }
       seen.add(key);
-      kept.push(item);
+      kept.push(
+        Ruleset.simplifyGeneratedIsSelector(item)
+        ?? Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings)
+      );
     }
     if (kept.length === 0 || kept.length === parent.value.length) {
       return undefined;
@@ -1475,12 +1631,13 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     for (const part of complex.value) {
       if (isNode(part, N.PseudoSelector)) {
         const { arg } = part;
-        if (!(part.generated === true && part.name === ':is' && isNode(arg, N.SelectorList))) {
+        if (!(part.generated === true && part.name === ':is' && arg instanceof Selector)) {
           slots.push([{ parts: [part], hasAdded: false }]);
           continue;
         }
         const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
-        for (const item of arg.value) {
+        const items = isNode(arg, N.SelectorList) ? arg.value : [arg];
+        for (const item of items) {
           if (item.hasFlag(F_EXTEND_TARGET)) {
             continue;
           }
@@ -1543,6 +1700,76 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       return expanded[0]!;
     }
     return SelectorList.create(expanded).inherit(selector);
+  }
+
+  static simplifyGeneratedIsSelector(selector: Selector): Selector | undefined {
+    if (isNode(selector, N.PseudoSelector) && selector.generated === true && selector.name === ':is') {
+      return selector.arg instanceof Selector
+        ? Ruleset.unwrapGeneratedReferenceIs(selector.arg)
+        : undefined;
+    }
+    if (isNode(selector, N.SelectorList)) {
+      let changed = false;
+      const items = selector.value.map((item) => {
+        const next = Ruleset.simplifyGeneratedIsSelector(item) ?? item;
+        changed ||= next !== item;
+        return next;
+      });
+      return changed ? SelectorList.create(items).inherit(selector) : undefined;
+    }
+    if (isNode(selector, N.CompoundSelector)) {
+      let changed = false;
+      const components: CompoundSelectorComponent[] = [];
+      for (const component of selector.value) {
+        if (
+          !isRawCompoundSelectorComponent(component)
+          && isNode(component, N.PseudoSelector)
+          && component.generated === true
+          && component.name === ':is'
+          && component.arg instanceof Selector
+        ) {
+          const unwrapped = Ruleset.unwrapGeneratedReferenceIs(component.arg);
+          if (isNode(unwrapped, N.CompoundSelector)) {
+            components.push(...unwrapped.value);
+          } else {
+            components.push(Ruleset._toSimpleSelector(unwrapped));
+          }
+          changed = true;
+          continue;
+        }
+        components.push(component);
+      }
+      if (!changed) {
+        return undefined;
+      }
+      return components.length === 1
+        ? components[0]!
+        : CompoundSelector.create(components).inherit(selector);
+    }
+    if (isNode(selector, N.ComplexSelector)) {
+      let changed = false;
+      const parts: ComplexSelectorComponent[] = [];
+      for (const part of selector.value) {
+        if (
+          isNode(part, N.PseudoSelector)
+          && part.generated === true
+          && part.name === ':is'
+          && part.arg instanceof Selector
+        ) {
+          const unwrapped = Ruleset.unwrapGeneratedReferenceIs(part.arg);
+          if (isNode(unwrapped, N.ComplexSelector)) {
+            parts.push(...unwrapped.value);
+          } else {
+            parts.push(Ruleset._toComplexComponent(unwrapped));
+          }
+          changed = true;
+          continue;
+        }
+        parts.push(part);
+      }
+      return changed ? ComplexSelector.create(parts).inherit(selector) : undefined;
+    }
+    return undefined;
   }
 
   composeHeaderSelector(
@@ -1618,6 +1845,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
         : composeInput;
       if (options.referenceMode === true && options.referenceRenderEnabled === true) {
         cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
+        cached = Ruleset.simplifyGeneratedIsSelector(cached) ?? cached;
       }
       if (composeParent) {
         setCachedComposedSelector(options, this, cached);
@@ -1627,7 +1855,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
   }
 
   private writeHeaderSelector(options: FinalPrintOptions, withoutComments: boolean): boolean {
-    if (this.rawSelector !== undefined) {
+    const { selector } = this;
+
+    if (typeof selector === 'string') {
       if (
         options.collapseNesting
         || options.referenceMode === true
@@ -1635,11 +1865,9 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       ) {
         return false;
       }
-      options.writer.add(this.rawSelector);
-      return this.rawSelector.length > 0;
+      options.writer.add(selector);
+      return selector.length > 0;
     }
-
-    const { selector } = this;
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
     // but keep it safe for TypeScript and invariants.
@@ -1648,16 +1876,30 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
     }
 
     let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
+    const canReferenceFilter = !(renderSelector instanceof Nil)
+      && (
+        Ruleset.hasExtendedTopLevelSelector(renderSelector)
+        || renderSelector.hasFlag(F_EXTEND_TARGET)
+      );
+    const simplifiedGeneratedIs = canReferenceFilter && !options.collapseNesting
+      ? Ruleset.simplifyGeneratedIsSelector(renderSelector)
+      : undefined;
     const referenceFilteredLocal = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
-      && !(renderSelector instanceof Nil)
-      && Ruleset.hasExtendedTopLevelSelector(renderSelector)
+      && canReferenceFilter
     )
-      ? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector)
+      ? (simplifiedGeneratedIs ?? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector))
       : undefined;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
       renderSelector = this.composeHeaderSelector(options, renderSelector, referenceFilteredLocal);
+      if (
+        options.referenceMode === true
+        && options.referenceRenderEnabled === true
+        && Ruleset.hasExtendedTopLevelSelector(renderSelector)
+      ) {
+        renderSelector = Ruleset.simplifyGeneratedIsSelector(renderSelector) ?? renderSelector;
+      }
     }
     // Header filter: in reference mode, top-level selector output should
     // reflect the selectors that were actually unlocked. When an extend adds
@@ -1669,7 +1911,7 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
           ? renderSelector
           : renderSelector instanceof Nil
             ? renderSelector
-            : Ruleset.filterExtendedTopLevelSelectorItems(renderSelector)
+            : referenceFilteredLocal
       );
       if (renderSelector instanceof Nil) {
         return false;

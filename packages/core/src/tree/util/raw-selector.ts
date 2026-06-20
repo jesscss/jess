@@ -16,9 +16,12 @@ const RAW_SELECTOR_BRANCH_SOURCE =
   String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})*|(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})+)`;
 const RAW_COMPLEX_SELECTOR_SOURCE =
   String.raw`${RAW_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${RAW_SELECTOR_BRANCH_SOURCE})*`;
+const RAW_RELATIVE_SELECTOR_SOURCE =
+  String.raw`[ \t]*[>+~][ \t]*${RAW_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${RAW_SELECTOR_BRANCH_SOURCE})*`;
 
 const RAW_SELECTOR_PATTERN =
   new RegExp(String.raw`^${RAW_COMPLEX_SELECTOR_SOURCE}(?:[ \t]*,[ \t]*${RAW_COMPLEX_SELECTOR_SOURCE})*$`, 'u');
+const RAW_RELATIVE_SELECTOR_PATTERN = new RegExp(String.raw`^${RAW_RELATIVE_SELECTOR_SOURCE}$`, 'u');
 const RAW_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${RAW_SELECTOR_BRANCH_SOURCE}$`, 'u');
 const RAW_SIMPLE_SELECTOR_PATTERN =
@@ -35,15 +38,25 @@ const RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = /^&:{1,2}[-_a-zA-Z][\w-]*$/
  */
 export function isScannerNativeRawSelector(
   value: string,
-  allowNestedAmpersandPseudoSelector = false
+  allowNestedAmpersandPseudoSelector = false,
+  allowRelativeSelector = false
 ): boolean {
   return (
     RAW_SELECTOR_PATTERN.test(value)
+    || (
+      allowRelativeSelector
+      && RAW_RELATIVE_SELECTOR_PATTERN.test(value)
+    )
     || (
       allowNestedAmpersandPseudoSelector
       && RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN.test(value)
     )
   );
+}
+
+/** @internal Scanner-first admission helper, not a supported public authoring API. */
+export function isScannerNativeRawRelativeSelector(value: string): boolean {
+  return RAW_RELATIVE_SELECTOR_PATTERN.test(value);
 }
 
 /** @internal Scanner-first admission helper, not a supported public authoring API. */

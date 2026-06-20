@@ -10,11 +10,11 @@ import {
   any,
   atrule,
   atrulestatement,
+  decl,
   progressiveatrule,
   progressivedecl,
   progressiveruleset,
   progressivevardecl,
-  rawdecl,
   rules,
   ruleset
 } from '../index.js';
@@ -232,7 +232,7 @@ describe('progressive scanner-first proof nodes', () => {
   });
 
   test('renders raw-field core declarations without name or value child nodes', () => {
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'color',
       value: ['blue']
     });
@@ -255,7 +255,7 @@ describe('progressive scanner-first proof nodes', () => {
   test('writes raw-field core declaration render output without allocating value wrappers', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'width',
       value: ['calc(', '100%', ' - ', '1px', ')'],
       important: true
@@ -266,7 +266,7 @@ describe('progressive scanner-first proof nodes', () => {
   });
 
   test('writes multiline raw-field core declaration values on continuation lines', () => {
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'grid-template-areas',
       value: ['"header header header"\n    "content . sidebar"\n    "footer footer footer"']
     });
@@ -281,7 +281,7 @@ describe('progressive scanner-first proof nodes', () => {
 
   test('parents explicit raw-field declaration node segments without value wrapper allocation', () => {
     const segment = any('100%');
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'width',
       value: ['calc(', segment, ' - 1px)']
     });
@@ -301,7 +301,7 @@ describe('progressive scanner-first proof nodes', () => {
   test('materializes explicit raw-field declaration node segments when semantic registration asks', () => {
     const context = new Context();
     const segment = any('100%');
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'width',
       value: [segment]
     });
@@ -316,7 +316,7 @@ describe('progressive scanner-first proof nodes', () => {
   test('materializes mixed raw-field segments into a reachable value container', () => {
     const context = new Context();
     const segment = any('100%');
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'width',
       value: ['calc(', segment, ' - 1px)']
     });
@@ -330,11 +330,11 @@ describe('progressive scanner-first proof nodes', () => {
   });
 
   test('renders raw-field core declarations through existing rule containers', () => {
-    const rootDeclaration = rawdecl({
+    const rootDeclaration = decl({
       name: 'color',
       value: ['blue']
     });
-    const progressiveDeclaration = rawdecl({
+    const progressiveDeclaration = decl({
       name: 'color',
       value: ['blue']
     });
@@ -348,11 +348,11 @@ describe('progressive scanner-first proof nodes', () => {
     expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
   });
 
-  test('renders raw-field core rulesets without selector child nodes', () => {
+  test('renders string-selector core rulesets without selector child nodes', () => {
     const node = ruleset({
       selector: '.a',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -360,11 +360,10 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a');
+    expect(node.selector).toBe('.a');
     expect(serializeTypes(node)).toBeString(`
       (Ruleset
-        rawSelector: '.a'
+        selector: '.a'
         rules:
           [
             (Declaration
@@ -377,33 +376,42 @@ describe('progressive scanner-first proof nodes', () => {
     `);
   });
 
-  test('materializes raw-field core ruleset selectors only when semantic registration asks', () => {
+  test('materializes string core ruleset selectors only when semantic registration asks', () => {
     const context = new Context();
     const node = ruleset({
       selector: '.a',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
       ]
     });
 
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a');
+    expect(node.selector).toBe('.a');
     void node.prepareRegistration(context);
-    expect(node.rawSelector).toBeUndefined();
     expect(node.selector).toBeDefined();
-    expect(serializeTypes(node)).toContain('(BasicSelector \'.a\')');
-    expect(serializeTypes(node)).not.toContain('rawSelector');
+    const selector = node.selector;
+    expect(isNode(selector, N.CompoundSelector)).toBe(true);
+    if (!selector || !isNode(selector, N.CompoundSelector)) {
+      throw new Error('Expected raw string selector to remain a CompoundSelector.');
+    }
+    expect(selector.eval(context)).toBe(selector);
+    expect(selector.resolve(context)).toBe(selector);
+    expect(selector.value).toEqual(['.a']);
+    const types = serializeTypes(node);
+    expect(types).toContain('(CompoundSelector');
+    expect(types).toContain('[\'.a\']');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field compound ruleset selectors only when semantic registration asks', () => {
+  test('stores cheap compound ruleset selectors as selector containers with string leaves', () => {
     const context = new Context();
     const classCompound = ruleset({
       selector: '.a.b',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -413,7 +421,7 @@ describe('progressive scanner-first proof nodes', () => {
     const elementCompound = ruleset({
       selector: 'button.primary',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -421,11 +429,9 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(classCompound.toTrimmedString()).toBe('.a.b {\n  color: blue;\n}\n');
-    expect(classCompound.selector).toBeUndefined();
-    expect(classCompound.rawSelector).toBe('.a.b');
-    expect(serializeTypes(classCompound)).toContain('rawSelector: \'.a.b\'');
+    expect(classCompound.selector).toBeDefined();
+    expect(serializeTypes(classCompound)).toContain('(CompoundSelector');
     void classCompound.prepareRegistration(context);
-    expect(classCompound.rawSelector).toBeUndefined();
     expect(classCompound.selector).toBeDefined();
     const classTypes = serializeTypes(classCompound);
     expect(classTypes).toContain('(CompoundSelector');
@@ -437,8 +443,7 @@ describe('progressive scanner-first proof nodes', () => {
     expect(classTypes).not.toContain('rawSelector');
 
     expect(elementCompound.toTrimmedString()).toBe('button.primary {\n  color: blue;\n}\n');
-    expect(elementCompound.selector).toBeUndefined();
-    expect(elementCompound.rawSelector).toBe('button.primary');
+    expect(elementCompound.selector).toBeDefined();
     void elementCompound.prepareRegistration(context);
     const elementTypes = serializeTypes(elementCompound);
     expect(elementTypes).toContain('(CompoundSelector');
@@ -449,24 +454,22 @@ describe('progressive scanner-first proof nodes', () => {
     expect(elementTypes).not.toContain('(BasicSelector');
   });
 
-  test('materializes raw-field selector lists only when semantic registration asks', () => {
+  test('stores selector lists as selector containers with string leaves', () => {
     const context = new Context();
     const node = ruleset({
       selector: ' .a, button.primary ',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
       ]
     });
 
-    expect(node.toTrimmedString()).toBe(' .a, button.primary  {\n  color: blue;\n}\n');
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe(' .a, button.primary ');
-    expect(serializeTypes(node)).toContain('rawSelector: \' .a, button.primary \'');
+    expect(node.toTrimmedString()).toBe('.a,\nbutton.primary {\n  color: blue;\n}\n');
+    expect(node.selector).toBeDefined();
+    expect(serializeTypes(node)).toContain('(SelectorList');
     void node.prepareRegistration(context);
-    expect(node.rawSelector).toBeUndefined();
     expect(node.selector).toBeDefined();
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
@@ -481,18 +484,19 @@ describe('progressive scanner-first proof nodes', () => {
     expect(selector.value[1].value).toEqual(['button', '.primary']);
     const types = serializeTypes(node);
     expect(types).toContain('(SelectorList');
-    expect(types).toContain('(BasicSelector \'.a\')');
+    expect(types).toContain('[\'.a\']');
     expect(types).toContain('(CompoundSelector');
     expect(types).toContain('[\'button\', \'.primary\']');
+    expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field complex selectors only when semantic registration asks', () => {
+  test('stores cheap complex selectors as selector containers with string leaves', () => {
     const context = new Context();
     const node = ruleset({
       selector: '.a > button.primary',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -500,11 +504,9 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('.a > button.primary {\n  color: blue;\n}\n');
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a > button.primary');
-    expect(serializeTypes(node)).toContain('rawSelector: \'.a > button.primary\'');
+    expect(node.selector).toBeDefined();
+    expect(serializeTypes(node)).toContain('(ComplexSelector');
     void node.prepareRegistration(context);
-    expect(node.rawSelector).toBeUndefined();
     const selector = node.selector;
     if (!selector || !isNode(selector, N.ComplexSelector)) {
       throw new Error('Expected raw complex selector materialization to create a ComplexSelector.');
@@ -516,27 +518,27 @@ describe('progressive scanner-first proof nodes', () => {
     const types = serializeTypes(node);
     expect(types).toContain('(ComplexSelector');
     expect(types).toContain('(Combinator \'>\')');
-    expect(types).toContain('(BasicSelector \'.a\')');
+    expect(types).toContain('[\'.a\']');
     expect(types).toContain('(CompoundSelector');
     expect(types).toContain('[\'button\', \'.primary\']');
+    expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field selector lists with complex branches only when semantic registration asks', () => {
+  test('stores selector lists with complex branches as selector containers with string leaves', () => {
     const context = new Context();
     const node = ruleset({
       selector: '.a > .b, .c + .d',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a > .b, .c + .d {\n  color: blue;\n}\n');
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('.a > .b, .c + .d');
+    expect(node.toTrimmedString()).toBe('.a > .b,\n.c + .d {\n  color: blue;\n}\n');
+    expect(node.selector).toBeDefined();
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
@@ -553,12 +555,12 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field ampersand pseudo selectors only when semantic registration asks', () => {
+  test('materializes string ampersand pseudo selectors only when semantic registration asks', () => {
     const context = new Context();
     const node = ruleset({
       selector: '&:focus',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -566,11 +568,9 @@ describe('progressive scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('&:focus {\n  color: blue;\n}\n');
-    expect(node.selector).toBeUndefined();
-    expect(node.rawSelector).toBe('&:focus');
-    expect(serializeTypes(node)).toContain('rawSelector: \'&:focus\'');
+    expect(node.selector).toBe('&:focus');
+    expect(serializeTypes(node)).toContain('selector: \'&:focus\'');
     void node.prepareRegistration(context);
-    expect(node.rawSelector).toBeUndefined();
     const selector = node.selector;
     expect(selector).toBeDefined();
     expect(isNode(selector, N.CompoundSelector)).toBe(true);
@@ -588,13 +588,13 @@ describe('progressive scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('materializes raw-field pseudo selector atoms as string components only when semantic registration asks', () => {
+  test('materializes string pseudo selector atoms as string components only when semantic registration asks', () => {
     const context = new Context();
     for (const rawSelector of [':root', '.a:hover', '[data-kind]']) {
       const node = ruleset({
         selector: rawSelector,
         rules: [
-          rawdecl({
+          decl({
             name: 'color',
             value: ['blue']
           })
@@ -602,11 +602,14 @@ describe('progressive scanner-first proof nodes', () => {
       });
 
       expect(node.toTrimmedString()).toBe(`${rawSelector} {\n  color: blue;\n}\n`);
-      expect(node.selector).toBeUndefined();
-      expect(node.rawSelector).toBe(rawSelector);
-      expect(serializeTypes(node)).toContain(`rawSelector: '${rawSelector}'`);
+      if (rawSelector === '.a:hover') {
+        expect(isNode(node.selector, N.CompoundSelector)).toBe(true);
+        expect(serializeTypes(node)).toContain('[\'.a\', \':hover\']');
+      } else {
+        expect(node.selector).toBe(rawSelector);
+        expect(serializeTypes(node)).toContain(`selector: '${rawSelector}'`);
+      }
       void node.prepareRegistration(context);
-      expect(node.rawSelector).toBeUndefined();
       const selector = node.selector;
       expect(selector).toBeDefined();
       expect(isNode(selector, N.CompoundSelector)).toBe(true);
@@ -652,7 +655,7 @@ describe('progressive scanner-first proof nodes', () => {
         ruleset({
           selector: '.a',
           rules: [
-            rawdecl({
+            decl({
               name: 'color',
               value: ['blue']
             })
@@ -673,7 +676,7 @@ describe('progressive scanner-first proof nodes', () => {
         rules:
           [
             (Ruleset
-              rawSelector: '.a'
+              selector: '.a'
               rules:
                 [
                   (Declaration
@@ -693,7 +696,7 @@ describe('progressive scanner-first proof nodes', () => {
     const child = ruleset({
       selector: '.a',
       rules: [
-        rawdecl({
+        decl({
           name: 'color',
           value: ['blue']
         })
@@ -782,7 +785,7 @@ describe('progressive scanner-first proof nodes', () => {
 
   test('materializes raw-field core declarations only when semantic registration asks', () => {
     const context = new Context();
-    const declaration = rawdecl({
+    const declaration = decl({
       name: 'color',
       value: ['blue']
     });

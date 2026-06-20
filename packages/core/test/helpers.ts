@@ -1,11 +1,29 @@
 import {
   F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
-  type Node, type Rules, Any,
+  type Node, type Rules, Any, Node as NodeClass, Rules as RulesNode,
   // Simplified API
   decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
   // Additional types for test helpers
   StyleImport, Quoted
 } from '../src/index.js';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function readNodeAt(value: unknown, index: number): Node | undefined {
+  if (Array.isArray(value)) {
+    const node = value[index];
+    return node instanceof NodeClass ? node : undefined;
+  }
+  if (value instanceof RulesNode) {
+    return value.rules[index];
+  }
+  if (isRecord(value) && 'rules' in value) {
+    return readNodeAt(value.rules, index);
+  }
+  return undefined;
+}
 
 // Default node instances
 const DEFAULT_COLOR = any('red');
@@ -31,7 +49,7 @@ export function createStaticRuleset(selector = DEFAULT_SELECTOR, declarations: N
   return rules([
     ruleset({
       selector: sellist([sel([selector])]),
-      rules: rules(declarations)
+      rules: declarations
     })
   ]);
 }
@@ -215,7 +233,7 @@ export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DE
   return rules([
     mixin({
       name: any('mixin'),
-      rules: rules([bodyDecl])
+      rules: [bodyDecl]
     })
   ]);
 }
@@ -284,7 +302,12 @@ export function createMultipleRules(ruleNodes: Node[] = []) {
     ];
   }
 
-  return rules(ruleNodes.flatMap(rule => (rule as any).value));
+  return rules(ruleNodes.flatMap((rule) => {
+    if (rule instanceof RulesNode) {
+      return rule.rules;
+    }
+    return [];
+  }));
 }
 
 // Flag assertion helpers
@@ -384,7 +407,7 @@ export const testPatterns = {
                 rules: rules([
                   ruleset({
                     selector: sellist([sel([el('.inner')])]),
-                    rules: rules([innerContent])
+                    rules: [innerContent]
                   })
                 ])
               })
@@ -421,20 +444,11 @@ export const testPatterns = {
 export const getNestedNode = (tree: Node, path: number[]): Node => {
   let current = tree;
   for (const index of path) {
-    // Handle different node types
-    if (current && typeof current === 'object' && 'value' in current) {
-      const value = (current as any).value;
-      if (Array.isArray(value)) {
-        current = value[index]!;
-      } else if (value && typeof value === 'object' && 'rules' in value) {
-        // For ruleset nodes, access the rules
-        current = value.rules.value[index]!;
-      } else {
-        current = value[index]!;
-      }
-    } else {
+    const next = readNodeAt(current instanceof RulesNode ? current : current.value, index);
+    if (!next) {
       throw new Error(`Cannot access index ${index} on node: ${current}`);
     }
+    current = next;
   }
   return current;
 };

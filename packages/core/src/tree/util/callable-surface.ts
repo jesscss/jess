@@ -124,11 +124,13 @@ function copyCallableDirectFieldNode(node: Node): Node | undefined {
     );
   }
   if (isNode(node, N.Ruleset)) {
-    const selector = node.rawSelector !== undefined
-      ? node.rawSelector
-      : node.selector !== undefined
-        ? copyCallableRulesNode(node.selector)
-        : undefined;
+    const selector = node.selector !== undefined
+      ? (
+          node.selector instanceof Node
+            ? copyCallableRulesNode(node.selector)
+            : node.selector
+        )
+      : undefined;
     if (selector === undefined) {
       throw new TypeError('Ruleset requires a selector before callable surface copying.');
     }

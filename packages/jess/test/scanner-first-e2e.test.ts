@@ -27,6 +27,51 @@ import {
 
 const tempDirs: string[] = [];
 
+function canonicalSelectorText(text: string): string {
+  let out = '';
+  let quoteCode = 0;
+  let bracketDepth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    const code = char.charCodeAt(0);
+    if (quoteCode !== 0) {
+      out += char;
+      if (char === '\\') {
+        index++;
+        out += text[index] ?? '';
+      } else if (code === quoteCode) {
+        quoteCode = 0;
+      }
+      continue;
+    }
+    if (code === 34 || code === 39) {
+      quoteCode = code;
+      out += char;
+      continue;
+    }
+    if (char === '[') {
+      bracketDepth++;
+      out += char;
+      continue;
+    }
+    if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      out += char;
+      continue;
+    }
+    if (bracketDepth === 0 && (char === ',' || char === '>' || char === '+' || char === '~')) {
+      out = out.replace(/[ \t]+$/u, '');
+      out += char;
+      while (text[index + 1] === ' ' || text[index + 1] === '\t') {
+        index++;
+      }
+      continue;
+    }
+    out += char;
+  }
+  return out;
+}
+
 const cssStructureProfile = createLanguageProfile({
   name: 'css',
   variablePrefixes: [],
@@ -599,7 +644,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     const types = serializeRuntimeTypes(firstRule);
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('(Declaration');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawValueSegments:\n          [\'blue\']');
@@ -616,7 +661,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: blue; }\n',
         renderedSnippets: ['.a', 'color: blue'],
         rawTypeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '[\'blue\']'
@@ -638,7 +683,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { width: 1px; color: blue; }\n',
         renderedSnippets: ['width: 1px', 'color: blue'],
         rawTypeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'width\'',
           'rawValueSegments:',
           '[\'1px\']',
@@ -664,8 +709,8 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: blue; .b { width: 1px; } }\n',
         renderedSnippets: ['.a', '.b', 'color: blue', 'width: 1px'],
         rawTypeSnippets: [
-          'rawSelector: \'.a\'',
-          'rawSelector: \'.b\'',
+          'selector: \'.a\'',
+          'selector: \'.b\'',
           'rawName: \'color\'',
           'rawName: \'width\''
         ],
@@ -689,7 +734,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { --raw: { token: "}"; }; color: blue; }\n',
         renderedSnippets: ['--raw: { token: "}"; }', 'color: blue'],
         rawTypeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'--raw\'',
           'rawValueSegments:',
           '[\'{ token: "}"; }\']',
@@ -716,7 +761,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         rawTypeSnippets: [
           'rawName: \'@media\'',
           'rawPrelude: \'screen\'',
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '[\'blue\']'
@@ -827,12 +872,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('(Rules');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawValueSegments:');
     expect(types).toContain('[\'blue\']');
-    expect(types).not.toContain('rawSelector: \'&\'');
+    expect(types).not.toContain('selector: \'&\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
@@ -861,9 +906,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('(Rules');
     expect(types).toContain('(ProgressiveVariableDeclaration');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('rawName: \'color\'');
-    expect(types).not.toContain('rawSelector: \'\'');
+    expect(types).not.toContain('selector: \'\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
@@ -954,7 +999,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(parseResult.errors).toEqual([]);
       const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('selector: \'.a\'');
       expect(types).toContain(`rawName: '${property}'`);
       expect(types).toContain(`['${value}']`);
       expect(types).not.toContain('valueNode: (Sequence');
@@ -1271,7 +1316,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: lighten(#000, 10%); }\n',
         renderedSnippet: 'color: #1a1a1a',
         typeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '(Call',
@@ -1292,7 +1337,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: rgb(10, 20, 30); }\n',
         renderedSnippet: 'color: rgb(10, 20, 30)',
         typeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '(Call',
@@ -1311,7 +1356,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: darken(#fff, 10%); }\n',
         renderedSnippet: 'color: #e6e6e6',
         typeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '(Call',
@@ -1332,7 +1377,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { color: rgba(10, 20, 30, 50%); }\n',
         renderedSnippet: 'color: rgba(10, 20, 30, 50%)',
         typeSnippets: [
-          'rawSelector: \'.a\'',
+          'selector: \'.a\'',
           'rawName: \'color\'',
           'rawValueSegments:',
           '(Call',
@@ -1416,7 +1461,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const parseResult = probePlugin.safeParse('/virtual/mixed-function-value.less', source);
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('rawName: \'box-shadow\'');
     expect(types).toContain('rawValueSegments:');
     expect(types).toContain('\'0 0 2px \'');
@@ -1592,7 +1637,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(parseResult.errors).toEqual([]);
       const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('selector: \'.a\'');
       expect(types).toContain(`rawName: '${property}'`);
       expect(types).toContain(`['${value}']`);
       expect(types).toContain('rawImportant: \'!important\'');
@@ -1638,7 +1683,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(parseResult.errors).toEqual([]);
       const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
       expect(types).toContain('(Ruleset');
-      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('selector: \'.a\'');
       expect(types).toContain('rawName: \'color\'');
       expect(types).toContain('[\'blue\']');
       expect(types).toContain(`rawImportant: '${sourceImportant}'`);
@@ -1690,10 +1735,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
       if (!(parsedRule instanceof Ruleset)) {
         throw new Error('Expected structural-fed selector proof to produce a raw Ruleset.');
       }
-      expect(parsedRule.rawSelector).toBe(selector);
+      expect(parsedRule.valueOf()).toBe(canonicalSelectorText(selector));
       const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(BasicSelector');
       expect(types).not.toContain('(PseudoSelector');
       expect(types).not.toContain('(AttributeSelector');
@@ -1734,12 +1778,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       if (!(parsedRule instanceof Ruleset)) {
         throw new Error('Expected structural-fed selector-list proof to produce a raw Ruleset.');
       }
-      expect(parsedRule.rawSelector).toBe(selector);
+      expect(parsedRule.valueOf()).toBe(canonicalSelectorText(selector));
       const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).not.toContain('(SelectorList');
       expect(types).not.toContain('(BasicSelector');
-      expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(PseudoSelector');
       expect(types).not.toContain('(AttributeSelector');
     }
@@ -1788,14 +1830,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       if (!(parsedRule instanceof Ruleset)) {
         throw new Error('Expected structural-fed complex-selector proof to produce a raw Ruleset.');
       }
-      expect(parsedRule.rawSelector).toBe(selector);
+      expect(parsedRule.valueOf()).toBe(canonicalSelectorText(selector));
       const types = serializeRuntimeTypes(parsedRule);
       expect(types).toContain('(Ruleset');
-      expect(types).not.toContain('(SelectorList');
-      expect(types).not.toContain('(ComplexSelector');
-      expect(types).not.toContain('(CompoundSelector');
       expect(types).not.toContain('(BasicSelector');
-      expect(types).not.toContain('(Combinator');
       expect(types).not.toContain('(AttributeSelector');
     }
   });
@@ -1830,15 +1868,15 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const parseResult = probePlugin.safeParse('/virtual/simple-extend.less', source);
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!);
-    expect(types).toContain('rawSelector: \'.base\'');
-    expect(types).toContain('rawSelector: \'.button\'');
+    expect(types).toContain('selector: \'.base\'');
+    expect(types).toContain('selector: \'.button\'');
     expect(types).toContain('(Extend');
     expect(types).toContain('(BasicSelector \'.base\')');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawName: \'width\'');
     expect(types).toContain('[\'blue\']');
     expect(types).toContain('[\'1px\']');
-    expect(types).not.toContain('rawSelector: \'.button:extend(.base)\'');
+    expect(types).not.toContain('selector: \'.button:extend(.base)\'');
     expect(types).not.toContain('valueNode:');
   });
 
@@ -1881,15 +1919,15 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
     expect(extendNode.flag).toBe(ExtendFlag.All);
     const types = serializeRuntimeTypes(parseResult.tree!);
-    expect(types).toContain('rawSelector: \'.base\'');
-    expect(types).toContain('rawSelector: \'.button\'');
+    expect(types).toContain('selector: \'.base\'');
+    expect(types).toContain('selector: \'.button\'');
     expect(types).toContain('(Extend');
     expect(types).toContain('(BasicSelector \'.base\')');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawName: \'width\'');
     expect(types).toContain('[\'blue\']');
     expect(types).toContain('[\'1px\']');
-    expect(types).not.toContain('rawSelector: \'.button:extend(.base all)\'');
+    expect(types).not.toContain('selector: \'.button:extend(.base all)\'');
     expect(types).not.toContain('valueNode:');
   });
 
@@ -1932,8 +1970,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
     expect(extendNode.target.type).toBe('ComplexSelector');
     const types = serializeRuntimeTypes(parseResult.tree!);
-    expect(types).toContain('rawSelector: \'.base .child\'');
-    expect(types).toContain('rawSelector: \'.button\'');
+    expect(types).toContain('(ComplexSelector');
+    expect(types).toContain('[\'.base\']');
+    expect(types).toContain('[\'.child\']');
+    expect(types).toContain('selector: \'.button\'');
     expect(types).toContain('(Extend');
     expect(types).toContain('(ComplexSelector');
     expect(types).toContain('(BasicSelector \'.base\')');
@@ -1941,7 +1981,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('(BasicSelector \'.child\')');
     expect(types).toContain('rawName: \'color\'');
     expect(types).toContain('rawName: \'width\'');
-    expect(types).not.toContain('rawSelector: \'.button:extend(.base .child)\'');
+    expect(types).not.toContain('selector: \'.button:extend(.base .child)\'');
     expect(types).not.toContain('valueNode:');
   });
 
@@ -2399,12 +2439,72 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
-    expect(types).toContain('rawSelector: \'&:focus\'');
+    expect(types).toContain('selector: \'.a\'');
+    expect(types).toContain('selector: \'&:focus\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('(Ampersand');
     expect(types).not.toContain('(PseudoSelector');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('feeds nested leading-combinator selectors through structural parse', async () => {
+    const source = [
+      '#first {',
+      '  > #second .two {',
+      '    width: 50px;',
+      '    + #third {',
+      '      color: purple;',
+      '    }',
+      '  }',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('> #second .two');
+    expect(rendered).toContain('+ #third');
+    expect(probePlugin.lastScannerFirstPrototype?.fallbackReason).toBeUndefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parseResult = probePlugin.safeParse('/virtual/nested-leading-combinator.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const rootRule = parseResult.tree!.rules[0];
+    if (!(rootRule instanceof Ruleset)) {
+      throw new Error('Expected structural-fed root selector proof to produce a raw Ruleset.');
+    }
+    const childRule = rootRule.rules[0];
+    if (!(childRule instanceof Ruleset)) {
+      throw new Error('Expected structural-fed leading-combinator proof to produce a raw Ruleset.');
+    }
+    expect(childRule.valueOf()).toBe(canonicalSelectorText('> #second .two'));
+    const nestedRule = childRule.rules[1];
+    if (!(nestedRule instanceof Ruleset)) {
+      throw new Error('Expected structural-fed nested leading-combinator proof to produce a raw Ruleset.');
+    }
+    expect(nestedRule.valueOf()).toBe(canonicalSelectorText('+ #third'));
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Combinator \'>\')');
+    expect(types).toContain('(Combinator \'+\')');
+    expect(types).toContain('[\'#second\']');
+    expect(types).toContain('[\'.two\']');
+    expect(types).toContain('[\'#third\']');
   });
 
   it('skips structural-fed prototype work for import-scoped parse options', () => {
@@ -2589,7 +2689,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('(AtRuleStatement');
     expect(types).toContain('rawName: \'@apply\'');
     expect(types).toContain('rawPrelude: \'h-64 w-64\'');
-    expect(types).toContain('rawSelector: \'.box\'');
+    expect(types).toContain('selector: \'.box\'');
     expect(types).not.toContain('prelude: (Any');
     expect(types).not.toContain('(BasicSelector');
   });
@@ -2741,8 +2841,8 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('(ProgressiveVariableDeclaration');
-    expect(types).toContain('rawSelector: \'.utility\'');
-    expect(types).toContain('rawSelector: \'.card\'');
+    expect(types).toContain('selector: \'.utility\'');
+    expect(types).toContain('selector: \'.card\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('rawName: \'@import\'');
     expect(types).not.toContain('(BasicSelector');
@@ -2893,7 +2993,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('rawName: \'@media\'');
     expect(types).toContain('rawPrelude: \'screen\'');
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@media\')');
     expect(types).not.toContain('prelude: (Any \'screen\')');
@@ -2932,7 +3032,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('rawName: \'@unknown-block\'');
     expect(types).toContain('rawPrelude: \'card\'');
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@unknown-block\')');
@@ -3012,14 +3112,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
         expect(types).not.toContain('rawPrelude');
         expect(types).not.toContain('prelude: (');
       }
-      expect(types).toContain('rawSelector: \'.a\'');
+      expect(types).toContain('selector: \'.a\'');
       expect(types).toContain('rawName: \'color\'');
       expect(types).not.toContain('(ProgressiveAtRule');
       expect(types).not.toContain('name: (Any \'@layer\')');
     }
   });
 
-  it('feeds root @supports blocks with ordinary rules through structural parse', async () => {
+  it('falls back for root @supports blocks until condition structure is represented', async () => {
     const source = '@supports (display: grid) { .a { display: grid; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3035,26 +3135,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
-
-    const parseResult = probePlugin.safeParse('/virtual/root-supports.less', source);
-    expect(parseResult.errors).toEqual([]);
-    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
-    expect(types).toContain('(AtRule');
-    expect(types).toContain('rawName: \'@supports\'');
-    expect(types).toContain('rawPrelude: \'(display: grid)\'');
-    expect(types).toContain('rawSelector: \'.a\'');
-    expect(types).toContain('rawName: \'display\'');
-    expect(types).not.toContain('(ProgressiveAtRule');
-    expect(types).not.toContain('name: (Any \'@supports\')');
-    expect(types).not.toContain('prelude: (Any \'(display: grid)\')');
   });
 
   it('falls back for root @layer shapes outside the structural-fed subset', async () => {
@@ -3131,7 +3218,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('feeds nested @supports blocks with ordinary declarations through structural parse', async () => {
+  it('falls back for nested @supports declaration blocks until condition structure is represented', async () => {
     const source = '.a { @supports (display: grid) { display: grid; } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3147,37 +3234,17 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
-
-    const parsePlugin = lessPlugin({
-      scannerFirstProbe: {
-        structuralFedPrototype: true
-      }
-    });
-    const parseResult = parsePlugin.safeParse('/virtual/nested-supports.less', source);
-    expect(parseResult.errors).toEqual([]);
-    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
-    expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
-    expect(types).toContain('(AtRule');
-    expect(types).toContain('rawName: \'@supports\'');
-    expect(types).toContain('rawPrelude: \'(display: grid)\'');
-    expect(types).toContain('rawName: \'display\'');
-    expect(types).not.toContain('(BasicSelector');
-    expect(types).not.toContain('name: (Any \'@supports\')');
-    expect(types).not.toContain('prelude: (Any \'(display: grid)\')');
-    expect(types).not.toContain('valueNode: (Any \'grid\')');
   });
 
-  it('feeds nested @supports blocks with ordinary nested rules through structural parse', async () => {
+  it('falls back for nested @supports rule blocks until condition structure is represented', async () => {
     const source = '.a { @supports (display: grid) { .b { display: grid; } } }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -3194,35 +3261,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('.b');
     expect(rendered).toContain('display: grid');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
-
-    const parsePlugin = lessPlugin({
-      scannerFirstProbe: {
-        structuralFedPrototype: true
-      }
-    });
-    const parseResult = parsePlugin.safeParse('/virtual/nested-supports-rule.less', source);
-    expect(parseResult.errors).toEqual([]);
-    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
-    expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
-    expect(types).toContain('(AtRule');
-    expect(types).toContain('rawName: \'@supports\'');
-    expect(types).toContain('rawPrelude: \'(display: grid)\'');
-    expect(types).toContain('rawSelector: \'.b\'');
-    expect(types).toContain('rawName: \'display\'');
-    expect(types).not.toContain('(BasicSelector');
-    expect(types).not.toContain('name: (Any \'@supports\')');
-    expect(types).not.toContain('prelude: (Any \'(display: grid)\')');
-    expect(types).not.toContain('valueNode: (Any \'grid\')');
   });
 
   it('feeds nested @media blocks with ordinary declarations through structural parse', async () => {
@@ -3255,7 +3301,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('(AtRule');
     expect(types).toContain('rawName: \'@media\'');
     expect(types).toContain('rawPrelude: \'screen\'');
@@ -3295,40 +3341,73 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('(AtRule');
     expect(types).toContain('rawName: \'@media\'');
     expect(types).toContain('rawPrelude: \'screen\'');
-    expect(types).toContain('rawSelector: \'.b\'');
+    expect(types).toContain('selector: \'.b\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@media\')');
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
 
-  it('feeds direct nested @media and @supports at-rules through structural parse', async () => {
+  it('feeds direct nested @media at-rules through structural parse', async () => {
+    const source = '.a { @media screen { @media print { color: blue; } } }\n';
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('@media print');
+    expect(rendered).toContain('color: blue');
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      progressiveNodes: 4,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/direct-nested-media.less', source);
+    expect(parseResult.errors).toEqual([]);
+    const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
+    expect(types).toContain('(Ruleset');
+    expect(types).toContain('selector: \'.a\'');
+    expect(types).toContain('rawName: \'@media\'');
+    expect(types).toContain('rawPrelude: \'print\'');
+    expect(types).toContain('rawName: \'color\'');
+    expect(types).not.toContain('(BasicSelector');
+    expect(types).not.toContain('valueNode: (Any \'blue\')');
+  });
+
+  it('falls back for direct nested @supports at-rules until condition structure is represented', async () => {
     const cases = [
       {
-        source: '.a { @media screen { @media print { color: blue; } } }\n',
-        expectedName: '@media',
-        expectedPrelude: 'print',
-        expectedRender: '@media print'
-      },
-      {
         source: '.a { @media screen { @supports (display: grid) { color: blue; } } }\n',
-        expectedName: '@supports',
-        expectedPrelude: '(display: grid)',
         expectedRender: '@supports (display: grid)'
       },
       {
         source: '.a { @supports (display: grid) { @media screen { color: blue; } } }\n',
-        expectedName: '@media',
-        expectedPrelude: 'screen',
         expectedRender: '@media screen'
       }
     ];
 
-    for (const { source, expectedName, expectedPrelude, expectedRender } of cases) {
+    for (const { source, expectedRender } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -3343,32 +3422,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(rendered).toContain(expectedRender);
       expect(rendered).toContain('color: blue');
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-        runtimeTreeSource: 'structural-fed',
-        fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 4,
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
       });
-      expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
-      expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
-
-      const parsePlugin = lessPlugin({
-        scannerFirstProbe: {
-          structuralFedPrototype: true
-        }
-      });
-      const parseResult = parsePlugin.safeParse('/virtual/direct-nested-at-rule.less', source);
-      expect(parseResult.errors).toEqual([]);
-      const types = serializeRuntimeTypes(parseResult.tree!.rules[0]);
-      expect(types).toContain('(Ruleset');
-      expect(types).toContain('rawSelector: \'.a\'');
-      expect(types).toContain('rawName: \'@media\'');
-      expect(types).toContain(`rawName: '${expectedName}'`);
-      expect(types).toContain(`rawPrelude: '${expectedPrelude}'`);
-      expect(types).toContain('rawName: \'color\'');
-      expect(types).not.toContain('(BasicSelector');
-      expect(types).not.toContain('valueNode: (Any \'blue\')');
     }
   });
 
@@ -3388,11 +3449,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { @media screen { @brand: blue; .b { color: @brand; } } }\n',
         expectedAtRule: '@media screen',
         expectedSelector: '.b'
-      },
-      {
-        source: '.a { @supports (display: grid) { @brand: blue; color: @brand; } }\n',
-        expectedAtRule: '@supports (display: grid)',
-        expectedSelector: '.a'
       }
     ];
 
@@ -3477,7 +3533,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('rawName: \'@media\'');
     expect(types).toContain('rawPrelude: \'screen\'');
     expect(types).toContain('rawPrelude: \'print\'');
-    expect(types).toContain('rawSelector: \'.c\'');
+    expect(types).toContain('selector: \'.c\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
@@ -3524,7 +3580,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('rawName: \'font-weight\'');
     expect(types).toContain('rawName: \'font-style\'');
     expect(types).toContain('(Ruleset');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).not.toContain('prelude: (Any');
     expect(types).not.toContain('value: (Any');
   });
@@ -3806,6 +3862,59 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
+  it('feeds namespaced no-parens Less mixin calls through structural parse', async () => {
+    const source = [
+      '#theme {',
+      '  > .mixin {',
+      '    background-color: grey;',
+      '  }',
+      '}',
+      '#container {',
+      '  color: black;',
+      '  #theme > .mixin;',
+      '}',
+      ''
+    ].join('\n');
+    const baseline = await new Compiler().renderString(source, { language: 'less' });
+    const probePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const rendered = await new Compiler({
+      compile: { plugins: [probePlugin] }
+    }).renderString(source, { language: 'less' });
+
+    expect(rendered).toBe(baseline);
+    expect(rendered).toContain('background-color: grey');
+    expect(probePlugin.lastScannerFirstPrototype?.fallbackReason).toBeUndefined();
+    expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+      runtimeTreeSource: 'structural-fed',
+      fallbackFullTreeMaterializations: 0,
+      actualParses: 0,
+      requestedIslands: 0,
+      promotedBytes: 0
+    });
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
+    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
+
+    const parsePlugin = lessPlugin({
+      scannerFirstProbe: {
+        structuralFedPrototype: true
+      }
+    });
+    const parseResult = parsePlugin.safeParse('/virtual/namespaced-mixin-no-parens.less', source);
+    expect(parseResult.errors).toEqual([]);
+    expect(parseResult.warnings.some(warning => warning.code === 'parse/deprecated')).toBe(true);
+    const types = serializeRuntimeTypes(parseResult.tree!);
+    expect(types).toContain('(Call');
+    expect(types).toContain('[\'#theme\', \'.mixin\']');
+    expect(types).toContain('(ComplexSelector');
+    expect(types).toContain('(Combinator \'>\')');
+    expect(types).toContain('[\'.mixin\']');
+    expect(types).not.toContain('valueNode: (Any \'grey\')');
+  });
+
   it('feeds root no-arg Less mixin calls through structural parse', async () => {
     const source = '.m() { .a { color: blue; } }\n.m();\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
@@ -3841,7 +3950,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('(Mixin');
     expect(types).toContain('(Call');
-    expect(types).toContain('rawSelector: \'.a\'');
+    expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('rawName: \'color\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('valueNode: (Any \'blue\')');
@@ -3859,7 +3968,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.m() { .b { color: blue; } }\n.a { .m(); }\n',
         progressiveNodes: 5,
         expectedFragments: ['.b', 'color: blue'],
-        serializedFragments: ['rawSelector: \'.b\'', 'rawName: \'color\'']
+        serializedFragments: ['selector: \'.b\'', 'rawName: \'color\'']
       }
     ];
 
@@ -3913,12 +4022,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.a { .m() { color: blue; } .m(); }\n',
         expectedFragments: ['.a {', 'color: blue'],
-        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', 'rawName: \'color\'']
+        serializedFragments: ['selector: \'.a\'', '(Mixin', 'rawName: \'color\'']
       },
       {
         source: '.a { .m() { .b { color: blue; } } .m(); }\n',
         expectedFragments: ['.b {', 'color: blue'],
-        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', 'rawSelector: \'.b\'', 'rawName: \'color\'']
+        serializedFragments: ['selector: \'.a\'', '(Mixin', 'selector: \'.b\'', 'rawName: \'color\'']
       }
     ];
 
@@ -3974,12 +4083,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.m() { @brand: blue; .b { color: @brand; } }\n.a { .m(); }\n',
         expectedFragments: ['.b {', 'color: blue'],
-        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'rawSelector: \'.b\'', 'rawName: \'color\'']
+        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'selector: \'.b\'', 'rawName: \'color\'']
       },
       {
         source: '.a { .m() { @brand: blue; color: @brand; } .m(); }\n',
         expectedFragments: ['.a {', 'color: blue'],
-        serializedFragments: ['rawSelector: \'.a\'', '(Mixin', '(ProgressiveVariableDeclaration', 'rawName: \'color\'']
+        serializedFragments: ['selector: \'.a\'', '(Mixin', '(ProgressiveVariableDeclaration', 'rawName: \'color\'']
       }
     ];
 
@@ -4092,7 +4201,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
-  it('feeds @supports inside Less mixin definitions through structural parse', async () => {
+  it('falls back for @supports inside Less mixin definitions until condition structure is represented', async () => {
     const source = '.m() { @supports (display: grid) { color: blue; } }\n.a { .m(); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -4108,32 +4217,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toContain('@supports (display: grid)');
     expect(rendered).toContain('color: blue');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
-      runtimeTreeSource: 'structural-fed',
-      fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      runtimeTreeSource: 'canonical-fallback',
+      fallbackReason: 'at-rule prelude is outside the scanner-native structural-fed subset',
+      fallbackFullTreeMaterializations: 1,
+      progressiveNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
     });
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByIslandKind).toEqual({});
-    expect(probePlugin.lastScannerFirstPrototype?.requestsByOwnerKind).toEqual({});
-
-    const parsePlugin = lessPlugin({
-      scannerFirstProbe: {
-        structuralFedPrototype: true
-      }
-    });
-    const parseResult = parsePlugin.safeParse('/virtual/mixin-supports.less', source);
-    expect(parseResult.errors).toEqual([]);
-    const types = serializeRuntimeTypes(parseResult.tree!);
-    expect(types).toContain('(Mixin');
-    expect(types).toContain('(AtRule');
-    expect(types).toContain('rawName: \'@supports\'');
-    expect(types).toContain('rawPrelude: \'(display: grid)\'');
-    expect(types).toContain('(Call');
-    expect(types).toContain('rawName: \'color\'');
-    expect(types).not.toContain('(BasicSelector');
-    expect(types).not.toContain('valueNode: (Any \'blue\')');
   });
 
   it('falls back canonically for declaration syntax the structural-fed subset cannot preserve', async () => {
