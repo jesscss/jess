@@ -11,6 +11,7 @@ export interface Comment extends Node<string, CommentOptions> {
   eval(context: Context): Comment;
 }
 
+// AUDIT: Probably don't need this unless a parent is visited.
 /**
  * A comment node
  */

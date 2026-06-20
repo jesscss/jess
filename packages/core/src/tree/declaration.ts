@@ -32,6 +32,8 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
+// AUDIT: This file is also huge. I bet at least 50% could be cut. Not just moved but cut, but maybe I'm wrong. Still, worth investigating.
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }

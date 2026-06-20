@@ -43,6 +43,7 @@ export class Url extends Node<Node> {
     if (options.context) {
       const valueMark = w.mark();
       value.toString(options);
+      // AUDIT: seems smelly. Why do we need to replace something in the URL?
       w.replaceSince(
         valueMark,
         value => value
@@ -72,6 +73,7 @@ export class Url extends Node<Node> {
     return String(value.valueOf());
   }
 
+  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
   override toTrimmedString(options?: PrintOptions) {
     return this.renderUrlSyntax(this.node, options);
   }

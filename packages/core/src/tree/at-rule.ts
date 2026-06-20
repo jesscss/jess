@@ -112,6 +112,7 @@ type AtRuleBodyRegistrationState = {
   parentExtendRoot?: Rules;
 };
 
+// AUDIT: Another huge pile of suspicious functions
 function atRuleScalarTokenText(node: Node): string | undefined {
   return (
     node.constructor === Any
@@ -293,6 +294,7 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
   return cursor;
 }
 
+// AUDIT: Jesuuuuuus christ what are all these new functions and why are they in this node file
 function clearRulesetFramesForAtRuleBody(
   context: Context,
   shouldClearRulesetFrames: boolean
@@ -587,6 +589,7 @@ export type AtRuleOptions = NodeOptions;
  * A block-bearing at-rule like @media, @supports, or @font-face.
  */
 export class AtRule extends Rules<AtRuleValue | RawAtRuleValue, AtRuleOptions> {
+  // AUDIT: No. "raw" is wrong
   static override childKeys = ['name', 'rawName', 'prelude', 'rawPrelude', 'rules'] as const;
   override allowRoot = true;
 

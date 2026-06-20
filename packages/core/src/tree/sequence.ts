@@ -408,6 +408,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
   }
 
+  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderSequenceSyntax(this.value, options);
   }

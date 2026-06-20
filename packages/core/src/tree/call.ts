@@ -157,6 +157,9 @@ type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 type CallRenderArgOptions = { evaluateCalcArgs: boolean };
 
+
+// AUDIT: Oh my fucking god this file is so big. What the fuck.
+
 function renderDetachedCallNodeText(node: Node, printOptions: FinalPrintOptions): string {
   const writer = new OutputWriter(printOptions.compress);
   node.writeSyntax({

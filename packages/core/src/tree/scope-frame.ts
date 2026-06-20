@@ -21,6 +21,9 @@ import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
 
+
+// AUDIT: if this does NOT inherit from Node it does not belong in the tree folder. It is a utility, so should be in a util sub-folder
+
 /**
  * One live binding slot.  Value is updated in place for loop counters and
  * mixin params — no copy, no fork.

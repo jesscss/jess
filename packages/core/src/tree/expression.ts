@@ -90,6 +90,7 @@ export class Expression extends Node<Node> {
     w.add(')');
   }
 
+  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const mark = options.writer.mark();

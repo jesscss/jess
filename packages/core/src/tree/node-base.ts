@@ -1135,6 +1135,7 @@ export abstract class Node<
     return this.eval(context);
   }
 
+  // AUDIT: a lot has changed since I made .inherit. It's possible this is not a good idea anymore or could be much thinner (or used less often.)
   /**
    * This is used when a Node will replace another node.
    */

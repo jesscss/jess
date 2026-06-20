@@ -8,6 +8,8 @@ import {
 import type { Plugin } from 'enhanced-resolve';
 import type { PluginInterface } from './plugin.js';
 
+// AUDIT: Support Webpack? Seems almost dead by now
+
 const { isArray } = Array;
 
 export type WebpackResolverCtor<Opts = unknown> = new (opts?: Opts) => Plugin;

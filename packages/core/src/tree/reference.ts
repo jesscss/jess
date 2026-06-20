@@ -3548,6 +3548,7 @@ function evaluateReferenceNode(args: {
   );
 }
 
+// AUDIT: We have got to drastically trim this file.
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).

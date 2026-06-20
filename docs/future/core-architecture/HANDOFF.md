@@ -103,6 +103,50 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first CSS transform function declaration proof.
+- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
+  claim. The Less structural-fed path now admits `scaleX(<number>)` only
+  through the existing progressive function segment path used by already-proven
+  simple function values.
+- Architecture surface: Less plugin structural-fed admission/building and
+  scanner-first e2e proof only. It does not change core node APIs, package
+  exports, SCSS/Jess parsing, language-service behavior, or the default parser
+  path.
+- Separation/duplication: this reuses the existing `Call`/`Reference`/argument
+  node construction path for scanner-native function values, with a small
+  function policy table to keep `scaleX` constrained to one numeric argument.
+  It does not add a second declaration-value parser, a raw parenthesized value
+  escape hatch, or new visitor/materialization policy.
+- Cumulative node weight: the accepted value creates only the existing
+  function `Call`, name `Reference`, argument `List`, and numeric argument node
+  required to preserve a recognized function shape. It adds no maps, side
+  tables, wrapper containers, selected island requests, retained caches, or
+  full-tree fallback surfaces.
+- New traversal: none. The existing bounded function-argument split runs over
+  the already-isolated declaration value string.
+- New node/materialization: no new node classes. The proof intentionally keeps
+  the declaration as raw-name plus progressive value segments rather than
+  materializing `Any` property names or legacy declaration value wrappers.
+- Render path: focused e2e proof renders equal CSS through structural-fed with
+  zero full-tree fallback, zero selected island requests, zero actual parser
+  executions, and zero promoted bytes.
+- Helper/API surface: no public API. The plugin-local scanner-native function
+  policy table admits the corpus-observed `scaleX` function while keeping its
+  argument boundary narrower than the existing Less/color function entries.
+- Metadata mutations: none added beyond normal node construction/adoption.
+  Existing unrelated `AUDIT:` markers remain outside this slice.
+- Review-flagged diff tokens: new `new Call`, `new Reference`, `new List`, and
+  numeric node construction are all existing progressive function-value nodes
+  reached through the already-proven helper path. The new policy table is
+  static metadata for the existing scanner-native function helper, not a
+  retained per-document cache. No new side maps, selected island request,
+  full-tree fallback, parser entrypoint, or retained cache is introduced.
+- Evidence: focused scanner-first e2e covers `.a { transform: scaleX(1); }`
+  alongside the existing `rgb`, `rgba`, `lighten`, and `darken` progressive
+  function proofs, plus boundary fallbacks for `scaleX` values with multiple
+  arguments, dimensions, colors, Less variables, nested functions, strings, and
+  comments.
+
 - Latest pass: scanner-first no-prelude CSS `@starting-style` block proof.
 - Verdict: accepted as a narrow structural-fed correctness proof, not a speed
   claim. The Less structural-fed path now admits `@starting-style { ... }`

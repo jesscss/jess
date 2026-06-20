@@ -27,6 +27,7 @@ export type AnyOptions<T extends string> = NodeOptions & {
   role?: T;
 };
 
+// AUDIT: Do we still need this? Now that we're storing strings?
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {

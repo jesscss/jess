@@ -2425,10 +2425,7 @@ function isScannerNativeFunctionCallValue(valueText: string): boolean {
     return false;
   }
   const args = splitScannerNativeFunctionArgs(parts.argsText, parts.argsStart);
-  return args.length > 0
-    && args.every(arg =>
-      scannerNativeFunctionArgKind(arg.text) !== undefined
-    );
+  return scannerNativeFunctionArgsSupported(parts.name, args);
 }
 
 function isScannerNativeMixedFunctionValue(valueText: string): boolean {
@@ -2511,7 +2508,7 @@ function scannerNativeFunctionValueToken(
     return undefined;
   }
   const args = splitScannerNativeFunctionArgs(parts.argsText, range.start + parts.argsStart);
-  if (args.length === 0) {
+  if (!scannerNativeFunctionArgsSupported(parts.name, args)) {
     return undefined;
   }
   const argNodes: Node[] = [];
@@ -2605,7 +2602,7 @@ function scannerNativeFunctionParts(valueText: string): {
   }
   const name = match.groups.name;
   const argsText = match.groups.args;
-  if (!name || argsText === undefined || !SCANNER_NATIVE_FUNCTION_NAMES.has(name)) {
+  if (!name || argsText === undefined || !scannerNativeFunctionPolicy(name)) {
     return undefined;
   }
   if (SCANNER_NATIVE_FUNCTION_UNSUPPORTED_ARGS_PATTERN.test(argsText)) {
@@ -2648,7 +2645,7 @@ function splitScannerNativeFunctionArgs(argsText: string, absoluteStart: number)
   return args;
 }
 
-function scannerNativeFunctionArgKind(text: string): 'hex-color' | 'dimension' | 'number' | undefined {
+function scannerNativeFunctionArgKind(text: string): ScannerNativeFunctionArgKind | undefined {
   if (SCANNER_NATIVE_HEX_COLOR_PATTERN.test(text)) {
     return 'hex-color';
   }
@@ -2657,6 +2654,30 @@ function scannerNativeFunctionArgKind(text: string): 'hex-color' | 'dimension' |
     return undefined;
   }
   return numberMatch.groups.unit ? 'dimension' : 'number';
+}
+
+function scannerNativeFunctionArgsSupported(
+  name: string,
+  args: ReadonlyArray<{ text: string }>
+): boolean {
+  const policy = scannerNativeFunctionPolicy(name);
+  if (!policy) {
+    return false;
+  }
+  if (policy.argumentKindsByPosition) {
+    return args.length === policy.argumentKindsByPosition.length
+      && args.every((arg, index) => {
+        const kind = scannerNativeFunctionArgKind(arg.text);
+        return kind !== undefined
+          && policy.argumentKindsByPosition?.[index]?.includes(kind) === true;
+      });
+  }
+  return args.length > 0
+    && args.every(arg => scannerNativeFunctionArgKind(arg.text) !== undefined);
+}
+
+function scannerNativeFunctionPolicy(name: string): ScannerNativeFunctionPolicy | undefined {
+  return SCANNER_NATIVE_FUNCTION_POLICIES[name];
 }
 
 function scannerNativeFunctionArgNode(
@@ -2817,12 +2838,21 @@ const SCANNER_NATIVE_MIXIN_DEFINITION_SIGNATURE_PATTERN =
   /^(?<name>[.#][-_a-zA-Z][\w-]*)\([ \t]*(?<params>(?:@[a-zA-Z_][\w-]*[ \t]*(?:,[ \t]*@[a-zA-Z_][\w-]*[ \t]*)*)?)\)$/u;
 const SCANNER_NATIVE_MIXIN_CALL_PATTERN =
   /^(?<name>[.#][-_a-zA-Z][\w-]*)\((?<args>[^(){};\r\n]*)\)$/u;
-const SCANNER_NATIVE_FUNCTION_NAMES = new Set([
-  'darken',
-  'lighten',
-  'rgb',
-  'rgba'
-]);
+type ScannerNativeFunctionArgKind = 'hex-color' | 'dimension' | 'number';
+
+interface ScannerNativeFunctionPolicy {
+  argumentKindsByPosition?: readonly (readonly ScannerNativeFunctionArgKind[])[];
+}
+
+const SCANNER_NATIVE_FUNCTION_POLICIES: Record<string, ScannerNativeFunctionPolicy> = {
+  darken: {},
+  lighten: {},
+  rgb: {},
+  rgba: {},
+  scaleX: {
+    argumentKindsByPosition: [['number']]
+  }
+};
 const SCANNER_NATIVE_FUNCTION_CALL_PATTERN = /^(?<name>[-_a-zA-Z][\w-]*)\((?<args>.*)\)$/u;
 const SCANNER_NATIVE_MIXED_FUNCTION_VALUE_PATTERN = /^(?<prefix>.+[ \t]+)(?<call>[-_a-zA-Z][\w-]*\(.*\))$/u;
 const SCANNER_NATIVE_FUNCTION_UNSUPPORTED_ARGS_PATTERN = /[\r\n(){};"']|\/\*|\/\//u;

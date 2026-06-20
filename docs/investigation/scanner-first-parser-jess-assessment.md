@@ -58,6 +58,31 @@ source text
 That keeps the DRY goal, but avoids pretending one shallow parser can replace
 the existing compiler grammar in one step.
 
+## Parked Scanner Backend Spikes
+
+The first implementation should stay handwritten TypeScript because the
+grammar, error recovery, offset/trivia model, progressive node surfaces, and
+JIT materialization policy are still changing. Generated scanner backends are
+not part of the current CSS/Less prototype path. They are only worth a focused
+experiment later, once those contracts are stable enough to compare without
+moving the target.
+
+- [ ] Evaluate `re2js` / `re2c` as a generated scanner backend for
+  `@jesscss/parser` only as a parked follow-up. The spike should generate
+  cursor-based JavaScript from readable checked-in lexer rules, keep the
+  generated output checked in or reproducible through one documented package
+  script, and compare against the handwritten scanner on the real `.css`,
+  `.less`, and `.scss` corpus. The gate is same structural records, same
+  diagnostics/recovery ranges, same trivia and offset behavior, neutral or
+  better package/build complexity, and measured corpus timing before any
+  replacement.
+- [ ] Benchmark lazy line-map construction with direct `charCodeAt` scans
+  before considering regex/split-based line indexing. The expected production
+  shape is a compact line-start table built only on first human-position
+  request; avoid `source.split('\n')` because it allocates the line array and
+  line substrings before diagnostics, sourcemaps, or LSP consumers prove they
+  need them.
+
 ## Implementation Checklist
 
 Detailed slice checklists are in [Implementation Plan](#implementation-plan).
@@ -2759,6 +2784,20 @@ storage.
     rejects Less variable-like tokens, comments, braces, semicolons,
     unbalanced `[]`/`()`, unproven functions other than `repeat(...)`, and
     multiline values other than quoted `grid-template-areas` rows.
+- [x] Structural-fed prototype: support the corpus-observed CSS transform
+  function value `scaleX(<number>)` through the existing progressive function
+  segment path.
+  - Proof target: `transform: scaleX(1)` renders from a raw-name declaration
+    whose value segment is a `Call` with a numeric argument, records zero
+    full-tree fallback, zero actual parses, zero requested islands, and zero
+    promoted bytes, and serializes without eager `Any` property wrappers or a
+    `valueNode`.
+  - Current limit: this deliberately admits only a proven function token shape
+    with a function-specific one-number argument policy. It does not allow
+    arbitrary raw parenthesized declaration strings, dimensions, colors,
+    multiple arguments, nested function arguments, Less variable-like tokens,
+    comments, strings, or the broader CSS transform grammar until those
+    structures are separately represented and proven.
 - [x] Structural-fed prototype: support root unknown statement at-rules with
   scanner-native raw preludes when the name does not have Less import/plugin
   semantics.
@@ -2815,10 +2854,12 @@ storage.
     The current at-rule-family fallback surface is down to one corpus case:
     `tests-unit/at-rules-bubbling/at-rules-bubbling.less`. The
     `tests-unit/starting-style/starting-style.less` file now passes
-    `@starting-style` at-rule-family admission and stops later at richer
-    declaration values from merge/function constructs, so declaration-value
-    fallbacks rose to nine without changing the whole-file structural-fed
-    count. The current mixin-related fallback surface is six richer mixin definition
+    `@starting-style` at-rule-family admission and the corpus-observed
+    `scaleX(...)` transform values, then stops later at Less merge declaration
+    names (`padding+_`). Declaration-value fallbacks are eight and
+    declaration-name fallbacks are five without changing the whole-file
+    structural-fed count.
+    The current mixin-related fallback surface is six richer mixin definition
     signatures and two richer mixin call signatures; the earlier generic
     `unsupported rule child mixin-definition`, `unsupported root node mixin-call`,
     and `unsupported mixin-definition child variable-declaration` reasons are
@@ -2849,11 +2890,11 @@ storage.
   - [x] Added a raw outer-structure benchmark that calls `parseLessStructure()`
     directly instead of running the compiler. On the upstream Less
     `benchmark/benchmark.less` fixture, the latest raw structural scan measured
-    2.21ms median over 20 samples, with 10,259 structural records, 5,738
+    2.78ms median over 20 samples, with 10,259 structural records, 5,738
     raw islands, and zero diagnostics. This is the scanner-first outer-structure
     cost; it is not the same as the full compiler sidecar timings below. The
     same test structurally parsed the 64-file / 65-case included Less corpus in
-    11.22ms total, producing 5,301 structural records, 3,070 raw islands, and 5
+    10.08ms total, producing 5,301 structural records, 3,070 raw islands, and 5
     structural diagnostics.
   - [x] Added a corpus benchmark smoke audit over the same 64 files / 65 cases
     and four modes. It asserts output parity and records full scanner-first
@@ -2877,16 +2918,16 @@ storage.
       scanner-first overhead is not only compared to Jess current.
   - Current repeated-sample snapshot over the same 64 files / 65 cases:
     1 warmup run plus 3 recorded samples. Median corpus render times were
-    current parser/eval/render 296.89ms, structural sidecar full render
-    271.38ms across 306 probe records, selected-materialization sidecar full
-    render 306.44ms across 306 probe records with 5,223
+    current parser/eval/render 288.26ms, structural sidecar full render
+    296.22ms across 306 probe records, selected-materialization sidecar full
+    render 336.90ms across 306 probe records with 5,223
     requested/materialized islands and 147,090 promoted bytes, and
-    structural-fed prototype 284.82ms across 198 prototype records with 39
+    structural-fed prototype 286.57ms across 198 prototype records with 39
     structural-fed records, 159 canonical fallbacks, zero
     requested/materialized islands, zero promoted bytes, and 225 progressive
     nodes. The corresponding ratios against the Less 4.5 `benchmark.less`
-    median were current 7.04x, structural sidecar 6.44x, selected
-    materialization 7.27x, and structural-fed 6.76x. These medians are gate
+    median were current 6.84x, structural sidecar 7.03x, selected
+    materialization 7.99x, and structural-fed 6.80x. These medians are gate
     evidence for parity/instrumentation and broad overhead bounds, not a speed
     claim.
   - [x] Ran the upstream Less v5 `benchmark/benchmark.less` fixture as an

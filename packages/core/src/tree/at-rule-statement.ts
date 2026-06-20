@@ -26,6 +26,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+// AUDIT: How the fuck can a statement have a comment child?
 function hasCommentChild(value: unknown): boolean {
   if (value instanceof Node && value.type === 'Comment') {
     return true;
@@ -86,10 +87,12 @@ function renderAtRuleStatementNodeSyntax(
   }
 }
 
+// AUDIT: Why?
 function isAtRuleWhitespace(code: number): boolean {
   return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
 }
 
+// AUDIT: Why?
 function hasNonAtRuleWhitespace(text: string): boolean {
   for (let i = 0; i < text.length; i++) {
     if (!isAtRuleWhitespace(text.charCodeAt(i))) {
@@ -99,10 +102,12 @@ function hasNonAtRuleWhitespace(text: string): boolean {
   return false;
 }
 
+// AUDIT: Why?
 function startsWithAtRuleWhitespace(text: string): boolean {
   return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(0));
 }
 
+// AUDIT: Why???? WHY SO MANY OF THESE???
 function endsWithAtRuleWhitespace(text: string): boolean {
   return text.length > 0 && isAtRuleWhitespace(text.charCodeAt(text.length - 1));
 }
@@ -191,9 +196,11 @@ export class AtRuleStatement extends Node<AtRuleStatementValue | RawAtRuleStatem
       this.name = undefined;
       this.rawName = value.name;
       this.prelude = undefined;
+      // AUDIT: no.
       this.rawPrelude = value.prelude;
     } else {
       this.name = value.name;
+      // AUDIT: no.
       this.rawName = undefined;
       this.prelude = value.prelude;
       this.rawPrelude = undefined;
@@ -302,6 +309,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue | RawAtRuleStatem
     return this.eval(context);
   }
 
+  // AUDIT: toString() & toTrimmedString() should not track cursors. They should just serialize.
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const mark = options.writer!.mark();

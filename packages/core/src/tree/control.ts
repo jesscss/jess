@@ -553,6 +553,7 @@ export class For extends Rules<StructuredLoopValue> {
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     assertRulesBodyArray('For', value.rules);
+    // AUDIT: Uh.... why is this passing 5 values?
     super(value, options, location, treeContext, value.rules);
     this.pattern = value.pattern;
     this.iterable = value.iterable;

@@ -1394,6 +1394,23 @@ describe('scanner-first CSS/Less e2e probe', () => {
           'name: (Any [role=property] \'color\')',
           'valueNode:'
         ]
+      },
+      {
+        source: '.a { transform: scaleX(1); }\n',
+        renderedSnippet: 'transform: scaleX(1)',
+        typeSnippets: [
+          'selector: \'.a\'',
+          'rawName: \'transform\'',
+          'rawValueSegments:',
+          '(Call',
+          'key: \'scaleX\'',
+          '(Num 1)'
+        ],
+        forbiddenTypeSnippets: [
+          '(BasicSelector',
+          'name: (Any [role=property] \'transform\')',
+          'valueNode:'
+        ]
       }
     ];
 
@@ -1430,6 +1447,40 @@ describe('scanner-first CSS/Less e2e probe', () => {
       for (const snippet of forbiddenTypeSnippets) {
         expect(types).not.toContain(snippet);
       }
+    }
+  });
+
+  it('falls back for scaleX function values outside the scanner-native boundary', async () => {
+    const cases = [
+      '.a { transform: scaleX(1, 2); }\n',
+      '.a { transform: scaleX(1px); }\n',
+      '.a { transform: scaleX(#fff); }\n',
+      '@x: 1;\n.a { transform: scaleX(@x); }\n',
+      '.a { transform: scaleX(calc(1)); }\n',
+      '.a { transform: scaleX("1"); }\n',
+      '.a { transform: scaleX(/* nope */ 1); }\n'
+    ];
+
+    for (const source of cases) {
+      const baseline = await new Compiler().renderString(source, { language: 'less' });
+      const probePlugin = lessPlugin({
+        scannerFirstProbe: {
+          structuralFedPrototype: true
+        }
+      });
+      const rendered = await new Compiler({
+        compile: { plugins: [probePlugin] }
+      }).renderString(source, { language: 'less' });
+
+      expect(rendered).toBe(baseline);
+      expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
+        runtimeTreeSource: 'canonical-fallback',
+        fallbackFullTreeMaterializations: 1,
+        progressiveNodes: 0,
+        actualParses: 0,
+        requestedIslands: 0,
+        promotedBytes: 0
+      });
     }
   });
 

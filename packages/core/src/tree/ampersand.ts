@@ -448,6 +448,7 @@ function finishAmpersandAppendPlacement(
   return placement.result;
 }
 
+// AUDIT: This node is feeling quite large and bloated. We should reason about what is still needed.
 /**
  * The '&' selector element
  */

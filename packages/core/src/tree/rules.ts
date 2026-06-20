@@ -954,10 +954,7 @@ export class Rules<
         sourceLocation,
         this.sourceRoot?._treeContext
       ]
-    );
-    if (!(derived instanceof Rules)) {
-      throw new TypeError('Derived rules value must remain rules-like');
-    }
+    ) as Rules;
     derived.inherit(this);
     derived.resetDerivedState(this);
 
@@ -3776,10 +3773,6 @@ export class Rules<
         const childReferenceRenderEnabled = childReferenceMode
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
-        if (childReferenceMode && !childReferenceRenderEnabled) {
-          emitLeadingBlockCommentForNode(n);
-          return;
-        }
         closeRenderedFramesToBaseline();
         const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
         const childEmittedTrivia = options.emittedTrivia;
