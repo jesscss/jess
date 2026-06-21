@@ -54,7 +54,6 @@ export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
 export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
-export const NO_VALUE: unique symbol = Symbol('NO_VALUE');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
@@ -623,7 +622,7 @@ export abstract class Node<
   }
 
   constructor(
-    value: Data | typeof NO_VALUE,
+    value?: Data,
     options?: O,
     location?: NodeLocation
   ) {
@@ -642,8 +641,8 @@ export abstract class Node<
         configurable: false
       }
     });
-    if (value !== NO_VALUE) {
-      (this as unknown as { value: Data }).value = this._processNodes(value);
+    if (arguments.length > 0) {
+      Reflect.set(this, 'value', this._processNodes(value));
     }
     this._location = location;
     this._options = options;

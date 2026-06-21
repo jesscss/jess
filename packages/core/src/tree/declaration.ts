@@ -2,7 +2,6 @@ import {
   Node,
   F_STATIC,
   defineType,
-  NO_VALUE,
   type LocationInfo
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -521,7 +520,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(NO_VALUE, options, location);
+    super();
+    this._location = location;
+    this._options = options;
     this.name = this._processNodes(value.name);
     this.value = this._processNodes(value.value);
     this.important = this._processNodes(value.important);

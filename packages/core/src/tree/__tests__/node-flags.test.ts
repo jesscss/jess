@@ -20,12 +20,29 @@ import {
   call,
   op,
   decl,
+  rules,
+  atrulestatement,
   quoted,
   url,
   block
 } from '../index.js';
 
+function ownsValue(node: object): boolean {
+  return Object.prototype.hasOwnProperty.call(node, 'value');
+}
+
 describe('Node Flags', () => {
+  describe('node value storage', () => {
+    it('only installs value on value-bearing nodes', () => {
+      expect(ownsValue(any('hello'))).toBe(true);
+      expect(ownsValue(list([any('hello')]))).toBe(true);
+
+      expect(ownsValue(decl({ name: 'color', value: 'blue' }))).toBe(true);
+      expect(ownsValue(rules([]))).toBe(false);
+      expect(ownsValue(atrulestatement({ name: '@import', prelude: 'url("x.css")' }))).toBe(false);
+    });
+  });
+
   describe('leaf node flag assignment', () => {
     it('Any should be F_STATIC', () => {
       const node = any('hello');

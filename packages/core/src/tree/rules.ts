@@ -1,6 +1,5 @@
 import {
   Node,
-  NO_VALUE,
   defineType,
   type NodeOptions,
   type LocationInfo,
@@ -3672,7 +3671,9 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(NO_VALUE, mergedOptions, location);
+    super();
+    this._location = location;
+    this._options = mergedOptions;
     this.rules = this._processNodes(value ?? []);
     this._sourceRoot = this;
     this._treeContext = treeContext;

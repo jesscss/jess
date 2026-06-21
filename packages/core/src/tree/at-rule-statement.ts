@@ -3,7 +3,6 @@ import {
   defineType,
   F_STATIC,
   Node,
-  NO_VALUE,
   type LocationInfo,
   type NodeOptions
 } from './node.js';
@@ -37,7 +36,9 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(NO_VALUE, options, location);
+    super();
+    this._location = location;
+    this._options = options;
     this.name = this._processNodes(value.name);
     this.prelude = this._processNodes(value.prelude);
     this._treeContext = treeContext;
