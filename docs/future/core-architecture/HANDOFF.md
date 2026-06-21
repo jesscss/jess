@@ -103,6 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first simple at-rule prelude tokenization.
+- Verdict: accepted as a parser-shape correctness pass, not a measured
+  performance pass. The Less AST proof now refuses to keep structured media
+  prelude text as one raw string when it has balanced parenthesized structure.
+- New traversal: `parseAtRulePrelude(...)` adds one bounded linear scan over the
+  already-sliced prelude text. It is only reached after source scanning has
+  positively identified an at-rule block; unsupported tokens return a warning
+  instead of falling through to Chevrotain or a raw island.
+- New node/materialization: bare atom preludes such as `screen` remain strings.
+  A balanced parenthesized atom becomes existing `Paren(Any(...))`; a simple
+  top-level sequence such as `screen and (min-width: 1px)` becomes existing
+  `QueryCondition` with scalar children. No new node family or structural facade
+  was added.
+- Render/eval path: no render/eval path was changed. The created nodes are the
+  existing core query surface and serialize through current AtRule rendering.
+- Helper/API surface: the helper is file-local to `packages/less-parser/src/ast.ts`.
+  It accepts only the narrow grammar proven by tests: bare atoms, balanced
+  top-level paren atoms, and whitespace-separated top-level sequences. Commas,
+  nested conditions, interpolation, and general-enclosed syntax remain
+  unsupported for now.
+- Metadata mutations: none beyond normal constructor adoption for the existing
+  core nodes.
+- Evidence: focused `@jesscss/less-parser` AST/source-scanner tests and ESLint
+  passed. No speed claim is made.
+
 - Latest pass: scanner-first string-backed block `AtRule` headers.
 - Verdict: accepted as a parser-shape reduction, not a measured performance
   pass. The scanner-first Less proof can now construct real `AtRule` nodes with

@@ -228,6 +228,60 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(media)).not.toContain('(Any [role=atkeyword]');
   });
 
+  test('parses balanced block at-rule preludes into query-ready nodes', () => {
+    const result = parseLessAstStylesheet('media-query.less', `
+      @media screen and (min-width: 1px) {
+        .inside { color: red; }
+      }
+    `);
+    const [media] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected query-backed AtRule');
+    }
+    expect(typeof media.prelude).not.toBe('string');
+    expect(media.prelude?.toTrimmedString()).toBe('screen and (min-width: 1px)');
+    expect(media.toTrimmedString()).toBe([
+      '@media screen and (min-width: 1px) {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(media)).toContainString(`
+        prelude:
+          (QueryCondition
+            items:
+              [
+                (Any 'screen')
+                (Any 'and')
+                (Paren
+                  node:
+                    (Any 'min-width: 1px')
+    `);
+  });
+
+  test('diagnoses unsupported structured at-rule preludes instead of widening raw strings', () => {
+    const result = parseLessAstStylesheet('unsupported-media.less', `
+      @media screen and (foo, bar) {
+        .comma { color: red; }
+      }
+
+      @media (@{bp}) {
+        .interpolated { color: blue; }
+      }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-at-rule',
+      'less-ast-unsupported-at-rule'
+    ]);
+  });
+
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
       .mixin(@x) { color: @x; }
