@@ -9,6 +9,7 @@ import {
   skipSourceTrivia,
   type SourceScannerOptions
 } from '@jesscss/parser';
+import { parseLessAstStylesheet } from '../src/ast.js';
 
 const testData = path.dirname(require.resolve('@less/test-data'));
 const scannerOptions: SourceScannerOptions = { lineComments: true };
@@ -101,6 +102,47 @@ describe('Less source scanner corpus gate', () => {
       blocks: 1145,
       statements: 309,
       failures: []
+    });
+  });
+
+  test('builds scanner-first AST results for valid Less test-data fixtures without structural errors', () => {
+    let rules = 0;
+    let warnings = 0;
+    let errors = 0;
+    const thrown: Array<{ file: string; message: string }> = [];
+
+    for (const file of files) {
+      const source = fs.readFileSync(path.join(testData, file), 'utf8');
+      try {
+        const result = parseLessAstStylesheet(file, source);
+        rules += result.tree.rules.length;
+        for (const diagnostic of result.diagnostics) {
+          if (diagnostic.severity === 'error') {
+            errors++;
+          } else if (diagnostic.severity === 'warning') {
+            warnings++;
+          }
+        }
+      } catch (error) {
+        thrown.push({
+          file,
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    expect({
+      files: files.length,
+      rules,
+      warnings,
+      errors,
+      thrown
+    }).toEqual({
+      files: 190,
+      rules: 1101,
+      warnings: 773,
+      errors: 0,
+      thrown: []
     });
   });
 });
