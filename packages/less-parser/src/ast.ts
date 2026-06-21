@@ -237,8 +237,12 @@ function isCheapMixinName(source: string): boolean {
     && components[0][0] === source;
 }
 
-function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
-  const source = header.trim();
+type CheapMixinName = {
+  name: string;
+  end: number;
+};
+
+function readCheapMixinName(source: string): CheapMixinName | undefined {
   const first = source[0];
   if (first !== '.' && first !== '#') {
     return undefined;
@@ -251,10 +255,17 @@ function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
     return undefined;
   }
   const name = source.slice(0, nameEnd);
-  if (!isCheapMixinName(name)) {
+  return isCheapMixinName(name) ? { name, end: nameEnd } : undefined;
+}
+
+function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
+  const source = header.trim();
+  const callee = readCheapMixinName(source);
+  if (!callee) {
     return undefined;
   }
-  let cursor = nameEnd;
+  const { name } = callee;
+  let cursor = callee.end;
   cursor = skipSourceTrivia(source, cursor, source.length, LESS_SCANNER_OPTIONS);
   if (source[cursor] !== '(') {
     return undefined;
@@ -403,24 +414,14 @@ function parseAtRuleStatement(source: string, start: number, end: number): Node 
 
 function parseCheapMixinCallStatement(source: string, start: number, end: number): Node | undefined {
   const text = source.slice(start, end).trim();
-  const first = text[0];
-  if (first !== '.' && first !== '#') {
-    return undefined;
-  }
   const importantStart = findTrailingImportantStart(text);
   const callText = importantStart === -1 ? text : text.slice(0, importantStart).trimEnd();
-  let nameEnd = 1;
-  while (nameEnd < callText.length && isLessNameCode(callText.charCodeAt(nameEnd))) {
-    nameEnd++;
-  }
-  if (nameEnd === 1) {
+  const callee = readCheapMixinName(callText);
+  if (!callee) {
     return undefined;
   }
-  const name = callText.slice(0, nameEnd);
-  if (!isCheapMixinName(name)) {
-    return undefined;
-  }
-  let cursor = skipSourceTrivia(callText, nameEnd, callText.length, LESS_SCANNER_OPTIONS);
+  const { name } = callee;
+  let cursor = skipSourceTrivia(callText, callee.end, callText.length, LESS_SCANNER_OPTIONS);
   if (callText[cursor] !== '(') {
     return undefined;
   }

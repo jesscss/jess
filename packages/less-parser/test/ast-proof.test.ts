@@ -311,10 +311,14 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
       .withArgs(@tone);
       .deprecated;
+      .1();
+      .-();
     `);
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
+      'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement'
     ]);
