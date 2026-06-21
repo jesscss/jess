@@ -57,58 +57,44 @@ type DiagnosticSink = (
 
 type QueuedDiagnostic = Parameters<DiagnosticSink>;
 
-function parseDeclarationNodes(
+function parseDeclarationStatementNode(
   source: string,
   start: number,
-  end: number,
-  addDiagnostic: DiagnosticSink
-): Node[] {
-  const declarations: Node[] = [];
-  let cursor = start;
-  while (cursor < end) {
-    cursor = skipSourceTrivia(source, cursor, end);
-    if (cursor >= end) {
-      break;
-    }
-    const statementEnd = findStatementEnd(source, cursor, end);
-    const colon = findTopLevelDelimiter(source, ':', cursor, statementEnd);
-    if (colon !== -1) {
-      const name = source.slice(cursor, colon).trim();
-      const isCustomProperty = name.startsWith('--');
-      const valueText = source.slice(colon + 1, statementEnd);
-      const nameStart = trimStartOffset(source, cursor, colon);
-      const nameEnd = trimEndOffset(source, nameStart, colon);
-      const valueStart = isCustomProperty
-        ? colon + 1
-        : trimStartOffset(source, colon + 1, statementEnd);
-      const valueEnd = statementEnd;
-      let node: Node;
-      if (isCustomProperty) {
-        node = decl({ name, value: valueText });
-      } else {
-        const trimmedValue = valueText.trim();
-        const importantStart = findTrailingImportantStart(trimmedValue);
-        node = decl({
-          name,
-          value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
-          ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
-        });
-      }
-      setFieldSpan(node, DECLARATION_NAME_FIELD, DECLARATION_FIELD_COUNT, nameStart, nameEnd);
-      setFieldSpan(node, DECLARATION_VALUE_FIELD, DECLARATION_FIELD_COUNT, valueStart, valueEnd);
-      declarations.push(node);
-    } else if (source.slice(cursor, statementEnd).trim()) {
-      addDiagnostic(
-        'warning',
-        'css-flat-unsupported-statement',
-        'Flat CSS declaration parser skipped a statement without a top-level declaration colon.',
-        cursor,
-        statementEnd
-      );
-    }
-    cursor = statementEnd + 1;
+  end: number
+): Node | undefined {
+  const textEnd = source[end - 1] === ';' ? end - 1 : end;
+  const textStart = skipSourceTrivia(source, start, textEnd);
+  const colon = findTopLevelDelimiter(source, ':', textStart, textEnd);
+  if (colon === -1) {
+    return undefined;
   }
-  return declarations;
+  const name = source.slice(textStart, colon).trim();
+  if (!name) {
+    return undefined;
+  }
+  const isCustomProperty = name.startsWith('--');
+  const valueText = source.slice(colon + 1, textEnd);
+  const nameStart = trimStartOffset(source, textStart, colon);
+  const nameEnd = trimEndOffset(source, nameStart, colon);
+  const valueStart = isCustomProperty
+    ? colon + 1
+    : trimStartOffset(source, colon + 1, textEnd);
+  const valueEnd = textEnd;
+  let node: Node;
+  if (isCustomProperty) {
+    node = decl({ name, value: valueText });
+  } else {
+    const trimmedValue = valueText.trim();
+    const importantStart = findTrailingImportantStart(trimmedValue);
+    node = decl({
+      name,
+      value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
+      ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
+    });
+  }
+  setFieldSpan(node, DECLARATION_NAME_FIELD, DECLARATION_FIELD_COUNT, nameStart, nameEnd);
+  setFieldSpan(node, DECLARATION_VALUE_FIELD, DECLARATION_FIELD_COUNT, valueStart, valueEnd);
+  return node;
 }
 
 function isCssNameCode(code: number): boolean {
@@ -246,7 +232,7 @@ function parseBlockAtRuleNode(
   return atrule({
     name,
     ...(prelude !== undefined && { prelude }),
-    rules: parseCssNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    rules: parseCssNodes(source, blockStart + 1, blockEnd, true, addDiagnostic)
   });
 }
 
@@ -254,6 +240,7 @@ function parseCssNodes(
   source: string,
   start: number,
   end: number,
+  allowDeclarations: boolean,
   addDiagnostic: DiagnosticSink
 ): Node[] {
   const children: Node[] = [];
@@ -265,38 +252,39 @@ function parseCssNodes(
     }
     const blockStart = findTopLevelBlockStart(source, cursor, end);
     const statementEnd = findStatementEnd(source, cursor, blockStart === -1 ? end : blockStart);
-    if (statementEnd < (blockStart === -1 ? end : blockStart)) {
-      const statement = parseStatementNode(source, cursor, statementEnd + 1);
+    const blockBoundary = blockStart === -1 ? end : blockStart;
+    const declarationColon = allowDeclarations
+      ? findTopLevelDelimiter(source, ':', cursor, blockBoundary)
+      : -1;
+    const declarationStatementEnd = declarationColon !== -1
+      && blockStart !== -1
+      && isCustomPropertyBlockDeclaration(source, cursor, declarationColon)
+      ? findStatementEnd(source, cursor, end)
+      : -1;
+    if (declarationStatementEnd !== -1 || statementEnd < blockBoundary || blockStart === -1) {
+      const statementBoundary = declarationStatementEnd !== -1 ? declarationStatementEnd : statementEnd;
+      const statementLimit = statementBoundary < end ? statementBoundary + 1 : end;
+      const statement = parseStatementNode(source, cursor, statementLimit)
+        ?? (allowDeclarations ? parseDeclarationStatementNode(source, cursor, statementLimit) : undefined);
       if (statement) {
         children.push(statement);
       } else {
-        const statementStart = skipSourceTrivia(source, cursor, statementEnd + 1);
+        const statementStart = skipSourceTrivia(source, cursor, statementLimit);
         const isMalformedAtRule = source[statementStart] === '@';
         addDiagnostic(
           'warning',
           isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
           isMalformedAtRule
             ? 'Flat CSS declaration parser skipped a malformed at-rule statement.'
-            : 'Flat CSS declaration parser skipped a statement without a top-level block.',
+            : allowDeclarations
+              ? 'Flat CSS declaration parser skipped a statement without a top-level declaration colon.'
+              : 'Flat CSS declaration parser skipped a statement without a top-level block.',
           cursor,
-          statementEnd + 1
+          statementLimit
         );
       }
-      cursor = statementEnd + 1;
+      cursor = statementLimit;
       continue;
-    }
-    if (blockStart === -1) {
-      const trailing = source.slice(cursor, end).trim();
-      if (trailing) {
-        addDiagnostic(
-          'warning',
-          'css-flat-unsupported-trailing-source',
-          'Flat CSS declaration parser skipped trailing source without a top-level block.',
-          cursor,
-          end
-        );
-      }
-      break;
     }
     const blockEnd = findBalancedBlockEnd(source, blockStart, end);
     if (blockEnd === -1) {
@@ -337,25 +325,15 @@ function parseCssNodes(
         );
       } else {
         let queuedDiagnostics: QueuedDiagnostic[] | undefined;
-        const rules = parseDeclarationNodes(
+        const rules = parseCssNodes(
           source,
           blockStart + 1,
           blockEnd,
+          true,
           (...args) => {
             (queuedDiagnostics ??= []).push(args);
           }
         );
-        if (rules.length === 0) {
-          addDiagnostic(
-            'warning',
-            'css-flat-unsupported-nested-block',
-            'Flat CSS declaration parser skipped a qualified rule with nested blocks.',
-            cursor,
-            blockEnd + 1
-          );
-          cursor = blockEnd + 1;
-          continue;
-        }
         if (queuedDiagnostics) {
           for (let i = 0; i < queuedDiagnostics.length; i++) {
             addDiagnostic(...queuedDiagnostics[i]!);
@@ -372,6 +350,12 @@ function parseCssNodes(
     cursor = blockEnd + 1;
   }
   return children;
+}
+
+function isCustomPropertyBlockDeclaration(source: string, start: number, colon: number): boolean {
+  const nameStart = skipSourceTrivia(source, start, colon);
+  const nameEnd = trimEndOffset(source, nameStart, colon);
+  return source.startsWith('--', nameStart) && nameEnd > nameStart + 2;
 }
 
 function setFieldSpan(node: Node, fieldIndex: number, fieldCount: number, start: number, end: number): void {
@@ -403,7 +387,7 @@ function isWhitespaceCode(code: number): boolean {
  *
  * This is the existing-AST proof path for scanner-first work: it creates a
  * `Stylesheet` root with string-backed selectors and declaration fields, and it
- * intentionally avoids Chevrotain, structural documents, and deferred-island
+ * intentionally avoids Chevrotain, structural documents, and deferred-field
  * objects. Unsupported syntax is left for later slices rather than hidden
  * behind a broad fallback parser.
  */
@@ -418,7 +402,7 @@ export function parseFlatCssDeclarationStylesheet(
     diagnostics = appendParserDiagnostic(diagnostics, severity, code, message, start, end);
   };
   return {
-    tree: stylesheet(parseCssNodes(source, 0, source.length, addDiagnostic)),
+    tree: stylesheet(parseCssNodes(source, 0, source.length, false, addDiagnostic)),
     source: sourceText,
     diagnostics: diagnostics ?? EMPTY_DIAGNOSTICS
   };

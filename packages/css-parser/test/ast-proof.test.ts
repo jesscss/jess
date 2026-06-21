@@ -153,7 +153,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ]);
   });
 
-  test('parses cheap block at-rules and still rejects nested qualified rules', () => {
+  test('parses cheap block at-rules and nested qualified rules', () => {
     const result = parseFlatCssDeclarationStylesheet('inline.css', `
       @media (min-width: 1px) {
         .inside { color: red; }
@@ -169,11 +169,9 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     `);
     const { tree: root } = result;
 
-    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
-      'css-flat-unsupported-nested-block'
-    ]);
-    expect(root.rules).toHaveLength(2);
-    const [media, kept] = root.rules;
+    expect(result.diagnostics).toEqual([]);
+    expect(root.rules).toHaveLength(3);
+    const [media, outer, kept] = root.rules;
     expect(isNode(media, N.AtRule)).toBe(true);
     if (!isNode(media, N.AtRule)) {
       throw new Error('Expected block at-rule');
@@ -197,6 +195,24 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+    expect(isNode(outer, N.Ruleset)).toBe(true);
+    if (!isNode(outer, N.Ruleset)) {
+      throw new Error('Expected outer ruleset');
+    }
+    expect(outer.selector).toBe('.outer');
+    expect(outer.rules).toHaveLength(1);
+    const nested = outer.rules[0];
+    expect(isNode(nested, N.Ruleset)).toBe(true);
+    if (!isNode(nested, N.Ruleset)) {
+      throw new Error('Expected nested ruleset');
+    }
+    expect(nested.selector).toBe('.nested');
+    expect(nested.toTrimmedString()).toBe([
+      '.nested {',
+      '  color: blue;',
+      '}',
+      ''
+    ].join('\n'));
     expect(isNode(kept, N.Ruleset)).toBe(true);
     if (!isNode(kept, N.Ruleset)) {
       throw new Error('Expected a ruleset');
@@ -205,6 +221,68 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     expect(kept.toTrimmedString()).toBe([
       '.kept {',
       '  color: green;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  test('preserves empty rulesets instead of treating them as unsupported blocks', () => {
+    const result = parseFlatCssDeclarationStylesheet('empty.css', `
+      .empty {}
+      @media screen { .inside {} }
+    `);
+    const [emptyRule, media] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(emptyRule, N.Ruleset)).toBe(true);
+    if (!isNode(emptyRule, N.Ruleset)) {
+      throw new Error('Expected empty ruleset');
+    }
+    expect(emptyRule.selector).toBe('.empty');
+    expect(emptyRule.rules).toEqual([]);
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected media at-rule');
+    }
+    expect(media.rules).toHaveLength(1);
+    expect(media.rules[0]?.toTrimmedString()).toBe('');
+    expect(serializeTypes(media)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude: 'screen'
+        rules:
+          [
+            (Ruleset
+              selector: '.inside'
+              rules:
+                []
+            )
+          ]
+      )
+    `);
+  });
+
+  test('diagnoses unsupported colon selectors without swallowing following declarations', () => {
+    const result = parseFlatCssDeclarationStylesheet('unsupported-nesting.css', `
+      .a {
+        &:hover { color: red; }
+        color: blue;
+      }
+    `);
+    const [rule] = result.tree.rules;
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-selector'
+    ]);
+    expect(isNode(rule, N.Ruleset)).toBe(true);
+    if (!isNode(rule, N.Ruleset)) {
+      throw new Error('Expected outer ruleset');
+    }
+    expect(rule.rules).toHaveLength(1);
+    expect(rule.rules[0]?.toTrimmedString()).toBe('color: blue');
+    expect(rule.toTrimmedString()).toBe([
+      '.a {',
+      '  color: blue;',
       '}',
       ''
     ].join('\n'));

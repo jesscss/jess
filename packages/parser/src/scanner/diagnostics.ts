@@ -21,6 +21,13 @@ export type ParserDiagnostic = {
   recoveryBoundary?: number;
 };
 
+/** Parser result shape used by scanner-first language parser proofs. */
+export interface ScannerParseResult<T> {
+  tree: T;
+  source: SourceText;
+  diagnostics: readonly ParserDiagnostic[];
+}
+
 /** Input form accepted by `createParserDiagnostic`. */
 export type ParserDiagnosticInput = Omit<ParserDiagnostic, 'severity'> & {
   severity?: ParserDiagnosticSeverity;
@@ -50,6 +57,20 @@ export function createParserDiagnostic(
     context: input.context,
     recoveryBoundary: input.recoveryBoundary
   };
+}
+
+/** Append one offset-only parser diagnostic, allocating the array only on first use. */
+export function appendParserDiagnostic(
+  diagnostics: ParserDiagnostic[] | undefined,
+  severity: ParserDiagnosticSeverity,
+  code: string,
+  message: string,
+  start: number,
+  end: number
+): ParserDiagnostic[] {
+  const output = diagnostics ?? [];
+  output.push({ severity, code, message, start, end });
+  return output;
 }
 
 /**

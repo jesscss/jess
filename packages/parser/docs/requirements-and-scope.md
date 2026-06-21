@@ -38,14 +38,15 @@ approach before the project expands.
 2. Store source offsets first; compute line/column positions lazily.
 3. Preserve recoverable diagnostics and enough recovery state for useful errors.
 4. Avoid hard-coded language profiles in `@jesscss/parser`.
-5. Support third-party language activation through plugin-owned profiles and
-   providers.
+5. Keep third-party language activation outside `@jesscss/parser`; plugins or
+   language packages own extension binding and parser construction.
 6. Enable lazy parsing/materialization when evaluation, extend matching, imports,
    visitors, diagnostics, or editor features prove they need it.
 7. Measure object creation, branching, and runtime cost against real CSS/Less
    corpora and benchmark files.
-8. Keep the design DRY across CSS, Less, SCSS, and Jess by sharing scanner and
-   structural primitives, not by forcing every language into one eager AST.
+8. Keep the design DRY across CSS, Less, SCSS, and Jess by sharing scanner,
+   source, span, and diagnostic primitives, not by forcing every language into
+   one eager AST.
 9. Keep the parse result understandable in a debugger. A developer paused in JS
    execution should be able to recognize the stylesheet/ruleset/declaration/value
    shape, understand which fields are unparsed, and know how serialization or
@@ -187,13 +188,15 @@ Touching `node.location` on a source-free node currently allocates an empty
 array through the legacy getter. New scanner-first paths should avoid that
 getter unless they are deliberately interacting with old location-aware code.
 
-### R4. Language Profiles Are Caller-Owned
+### R4. Language Activation Is Outside The Base Parser
 
 `@jesscss/parser` must not hard-code CSS, Less, SCSS, Jess, Tailwind, or other
 language profiles as named exports.
 
-The parser package may define generic profile types and helper constructors.
-Language packages/plugins own:
+The base parser should not define a public language-profile or activation layer
+until a real third-party integration proves that such a layer is cheaper and
+clearer than direct plugin/language-package registration. Language
+packages/plugins own:
 
 - extension binding
 - syntax classification heuristics
@@ -297,36 +300,11 @@ This schema is intentionally field-first:
   valid hydration strategies that cannot be inferred from node type, field name,
   source text, or parser mode
 
-If a provider registry survives, it should be named around deferred fields and
-owned by the language parser or plugin that needs it. `@jesscss/parser` should
-not define a public `LanguageActivation` / `LanguageProfile` layer unless a real
-third-party language integration proves that a package-level abstraction is
-cheaper and clearer than direct parser/plugin registration.
-
-Acceptable target terminology:
-
-```ts
-type DeferredFieldParserKey = {
-  language: string;
-  nodeType: string;
-  field: DeferredFieldName;
-  targetShape: string;
-  parserConfigKey?: ParserConfigKey;
-};
-
-type DeferredFieldParseRequest = {
-  node: Node;
-  field: DeferredFieldName;
-  start: number;
-  end: number;
-  sourceVersion: string | number;
-};
-```
-
 For CSS/Less replacement work, start with direct AST construction and
 node-owned deferred fields. Add a registry only when a concrete caller needs to
 hydrate a field without coupling to the language parser instance that created
-the node.
+the node, and keep that registry in the language parser or plugin unless a
+shared implementation is proven necessary.
 
 Names to avoid in target APIs:
 
@@ -456,8 +434,9 @@ or the target runtime model.
 
 ### R11. DRY Across CSS/Less/SCSS/Jess
 
-Shared code should live at the scanner, source, structural, and provider-contract
-levels.
+Shared code should live at the scanner, source, offset/span, and diagnostic
+levels first. Provider contracts are allowed only after CSS/Less parser slices
+prove direct parser construction is not enough.
 
 The parser substrate should avoid:
 
@@ -471,17 +450,16 @@ DRY does not mean flattening all languages into one eager parser.
 
 ## Scope Slices
 
-### Slice 1. Structural Substrate
+### Slice 1. Scanner Substrate
 
 Status target:
 
 - source text and lazy line map
 - scanner helpers
-- structural document tree
-- field-range metadata
+- packed field/segment span helpers
 - diagnostics and recovery
-- language profile contract
-- node-owned deferred field state if justified
+- no structural document tree, island records, or language profile contract in
+  the base parser package
 - parser-only corpus gates
 
 This is the minimum substrate scope for this package before language-specific
@@ -539,7 +517,7 @@ These should not be added just because they are convenient:
 - per-node line/column fields
 - per-node trivia ownership
 - eager media/prelude/query object trees
-- object graphs for semantic indexes during structural-only parse
+- object graphs for semantic indexes during the cheap scanner/parse path
 - full-tree fallback as the normal compile strategy
 
 ## Questions To Ask Before Adding A Shape
@@ -552,7 +530,7 @@ Every new object, side table, method, map, or node kind should answer:
 4. Is it necessary for a measured editor or incremental parsing need?
 5. Can the same result be derived from offsets and source text when requested?
 6. Can this state live on the owning AST node instead?
-7. Does this allocate during structural-only parse?
+7. Does this allocate during the cheap scanner/parse path?
 8. Does this belong in `@jesscss/parser`, or in a CSS/Less/Jess provider layer?
 
 If the answer is not clear, document the shape as provisional and keep it out of

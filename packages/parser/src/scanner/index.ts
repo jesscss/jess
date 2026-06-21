@@ -1,11 +1,13 @@
 export { ScannerCursor } from './cursor.js';
 export {
+  appendParserDiagnostic,
   createParserDiagnostic,
   renderParserDiagnostic,
   type ParserDiagnostic,
   type ParserDiagnosticInput,
   type ParserDiagnosticSeverity,
-  type RenderedParserDiagnostic
+  type RenderedParserDiagnostic,
+  type ScannerParseResult
 } from './diagnostics.js';
 export {
   collectScannerStats,

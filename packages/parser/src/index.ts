@@ -34,12 +34,6 @@ export {
 } from './source-scanner.js';
 
 export {
-  appendParserDiagnostic,
-  type ParserDiagnostic,
-  type ScannerParseResult
-} from './source-text.js';
-
-export {
   buildTokenMatchBitsets,
   buildTokenTypeSet,
   tokenMatches,
@@ -86,6 +80,7 @@ export {
 
 export {
   ScannerCursor,
+  appendParserDiagnostic,
   collectScannerStats,
   createParserDiagnostic,
   recoverToNextBoundary,
@@ -108,6 +103,7 @@ export {
   type RecoveryResult,
   type RenderedParserDiagnostic,
   type ScanTriviaOptions,
+  type ScannerParseResult,
   type ScannerStats,
   type StringScanResult
 } from './scanner/index.js';

@@ -57,6 +57,44 @@ describe('CSS scanner-first Stylesheet AST', () => {
     expect(serializeTypes(root)).not.toContain('(Any');
   });
 
+  test('parses nested rulesets through the scanner-native AST path', () => {
+    const root = parseCssStylesheet('fixture.css', '.a { .b { color: blue; } }');
+    const outer = root.rules[0];
+    if (!(outer instanceof Ruleset)) {
+      throw new Error('Expected outer ruleset.');
+    }
+    const nested = outer.rules[0];
+    if (!(nested instanceof Ruleset)) {
+      throw new Error('Expected nested ruleset.');
+    }
+
+    expect(outer.selector).toBe('.a');
+    expect(nested.selector).toBe('.b');
+    expect(root.toTrimmedString()).toBe([
+      '.a {',
+      '  .b {',
+      '    color: blue;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  test('does not mistake nested pseudo selectors for declarations', () => {
+    const root = parseCssStylesheet('fixture.css', '.parent { a:hover { color: red; } }');
+    const outer = root.rules[0];
+    if (!(outer instanceof Ruleset)) {
+      throw new Error('Expected outer ruleset.');
+    }
+    const nested = outer.rules[0];
+    if (!(nested instanceof Ruleset)) {
+      throw new Error('Expected nested pseudo ruleset.');
+    }
+
+    expect(nested.selector.toString()).toBe('a:hover');
+    expect(nested.rules[0]).toBeInstanceOf(Declaration);
+  });
+
   test('keeps at-rule names and preludes split by the at-rule contract', () => {
     const root = parseCssStylesheet(
       'fixture.css',
