@@ -22,7 +22,7 @@ import { fixtureLessProfile, fixtureProfile } from './fixtures.js';
 describe('IslandParsePlan', () => {
   test('returns stable request ids and exposes request views lazily', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 3 }),
+      new SourceText('.foo { color: @brand; }', undefined, 3),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -49,7 +49,7 @@ describe('IslandParsePlan', () => {
   test('request views round-trip delimiter-looking cache fields', () => {
     const document = parseStructure(
       // AUDIT: version? Needed because?
-      new SourceText('.foo { color: @brand; }', { version: 'draft|7' }),
+      new SourceText('.foo { color: @brand; }', undefined, 'draft|7'),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -70,7 +70,7 @@ describe('IslandParsePlan', () => {
 
   test('executes providers once and then serves cached records', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const registry = new IslandParserRegistry();
@@ -108,7 +108,7 @@ describe('IslandParsePlan', () => {
 
   test('caches execution diagnostics separately from thrown exceptional failures', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const registry = new IslandParserRegistry();
@@ -136,7 +136,7 @@ describe('IslandParsePlan', () => {
 
   test('records fallback full-tree materialization when no provider is registered', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -155,7 +155,7 @@ describe('IslandParsePlan', () => {
 
   test('requestNode returns island request ids without parsing siblings', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; width: 1px; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; width: 1px; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -170,7 +170,7 @@ describe('IslandParsePlan', () => {
 
   test('summarizes structural probe availability and requests without executing providers', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; width: 1px; }', { filePath: 'fixture.less', version: 1 }),
+      new SourceText('.foo { color: @brand; width: 1px; }', 'fixture.less', 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -209,7 +209,7 @@ describe('IslandParsePlan', () => {
 
   test('visitor planning does not promote the whole tree', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -237,7 +237,7 @@ describe('IslandParsePlan', () => {
 
   test('visitor method analysis narrows typed visitors without materialization', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -265,7 +265,7 @@ describe('IslandParsePlan', () => {
 
   test('Less-compatible visitor method names map to structural requests', () => {
     const document = parseStructure(
-      new SourceText('@media screen { .foo { color: @brand; } }', { version: 1 }),
+      new SourceText('@media screen { .foo { color: @brand; } }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -316,7 +316,7 @@ describe('IslandParsePlan', () => {
 
   test('visitor traversal requests only materialize islands owned by the reached node', () => {
     const document = parseStructure(
-      new SourceText('@media screen { .foo { color: @brand; } }', { version: 1 }),
+      new SourceText('@media screen { .foo { color: @brand; } }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -354,7 +354,7 @@ describe('IslandParsePlan', () => {
 
   test('generic visitor traversal remains demand-driven at the reached node', () => {
     const document = parseStructure(
-      new SourceText('.foo:extend(.bar) { color: @brand; } .unused { width: 1px; }', { version: 1 }),
+      new SourceText('.foo:extend(.bar) { color: @brand; } .unused { width: 1px; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -388,7 +388,7 @@ describe('IslandParsePlan', () => {
 
   test('Less legacy visitor aliases do not widen beyond their requested islands', () => {
     const document = parseStructure(
-      new SourceText('.foo { width: 1px; }', { version: 1 }),
+      new SourceText('.foo { width: 1px; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -418,7 +418,7 @@ describe('IslandParsePlan', () => {
 
   test('replacing visitors still plan from typed methods instead of broad fallback', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: red; }', { version: 1 }),
+      new SourceText('.foo { color: red; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -459,7 +459,7 @@ describe('IslandParsePlan', () => {
 
   test('visitor planning reuses cached rule arrays for equivalent shapes', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -485,7 +485,7 @@ describe('IslandParsePlan', () => {
 
   test('visitor planning cache canonicalizes reordered materialization rules', () => {
     const document = parseStructure(
-      new SourceText('.foo { color: @brand; }', { version: 1 }),
+      new SourceText('.foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);
@@ -519,7 +519,7 @@ describe('IslandParsePlan', () => {
 
   test('generic visit method plans broad observation but still does not execute providers', () => {
     const document = parseStructure(
-      new SourceText('.foo:extend(.bar) { color: @brand; }', { version: 1 }),
+      new SourceText('.foo:extend(.bar) { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);

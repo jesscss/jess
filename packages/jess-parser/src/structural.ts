@@ -18,7 +18,7 @@ export function parseJessStructure(
   source: string,
   options?: ParseStructureOptions
 ): StructuralDocument {
-  return parseStructure(new SourceText(source, { filePath }), jessProfile, options);
+  return parseStructure(new SourceText(source, filePath), jessProfile, options);
 }
 
 /** Creates a demand-driven Jess island materialization plan for a source file. */

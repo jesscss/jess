@@ -8,9 +8,7 @@ import { fixtureLessProfile, fixtureProfile, fixtureScssProfile } from './fixtur
 
 describe('parseStructure', () => {
   test('builds a structural tree with spans, trivia, symbols, and folding ranges', () => {
-    const source = new SourceText('.foo {\n  color: red;\n  --raw: { token: \";}\"; };\n}', {
-      version: 1
-    });
+    const source = new SourceText('.foo {\n  color: red;\n  --raw: { token: \";}\"; };\n}', undefined, 1);
     const document = parseStructure(source, fixtureProfile);
 
     expect(document.root.children).toHaveLength(1);
@@ -306,8 +304,8 @@ describe('parseStructure', () => {
   });
 
   test('reports changed ranges between source versions', () => {
-    const before = parseStructure(new SourceText('.foo { color: red; }', { version: 1 }), fixtureProfile);
-    const after = parseStructure(new SourceText('.foo { color: blue; }', { version: 2 }), fixtureProfile);
+    const before = parseStructure(new SourceText('.foo { color: red; }', undefined, 1), fixtureProfile);
+    const after = parseStructure(new SourceText('.foo { color: blue; }', undefined, 2), fixtureProfile);
 
     expect(after.changedRanges(before)).toEqual([
       {
@@ -320,8 +318,8 @@ describe('parseStructure', () => {
   });
 
   test('reports structural performance guard stats without materializing islands', () => {
-    const before = parseStructure(new SourceText('.foo { color: red; }', { version: 1 }), fixtureLessProfile);
-    const after = parseStructure(new SourceText('.foo { color: @brand; }', { version: 2 }), fixtureLessProfile);
+    const before = parseStructure(new SourceText('.foo { color: red; }', undefined, 1), fixtureLessProfile);
+    const after = parseStructure(new SourceText('.foo { color: @brand; }', undefined, 2), fixtureLessProfile);
     const stats = after.stats(before);
 
     expect(after.source.hasLineMap).toBe(false);

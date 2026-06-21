@@ -18,7 +18,7 @@ export function parseScssStructure(
   source: string,
   options?: ParseStructureOptions
 ): StructuralDocument {
-  return parseStructure(new SourceText(source, { filePath }), scssProfile, options);
+  return parseStructure(new SourceText(source, filePath), scssProfile, options);
 }
 
 /** Creates a demand-driven SCSS island materialization plan for a source file. */

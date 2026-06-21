@@ -110,7 +110,7 @@ export function structuralDiagnosticRanges(document: StructuralDocument): Array<
     return undefined;
   }
   return document.diagnostics.map((diagnostic) => {
-    const position = document.source.offsetToLineColumn(diagnostic.start);
+    const position = document.source.offsetToPosition(diagnostic.start);
     return {
       code: diagnostic.code,
       start: diagnostic.start,

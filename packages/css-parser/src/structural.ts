@@ -24,7 +24,7 @@ export function parseCssStructure(
   source: string,
   options?: ParseStructureOptions
 ): StructuralDocument {
-  return parseStructure(new SourceText(source, { filePath }), cssProfile, options);
+  return parseStructure(new SourceText(source, filePath), cssProfile, options);
 }
 
 /**

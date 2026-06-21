@@ -41,9 +41,7 @@ describe('stylesheet corpus structural scanning', () => {
     expect(files.length).toBeGreaterThan(0);
 
     for (const filePath of files) {
-      const source = new SourceText(readFileSync(filePath, 'utf8'), {
-        filePath: relative(root, filePath)
-      });
+      const source = new SourceText(readFileSync(filePath, 'utf8'), relative(root, filePath));
       const document = parseStructure(source, profileForFile(filePath));
 
       expect(document.root.start, source.filePath).toBe(0);
@@ -66,9 +64,7 @@ describe('stylesheet corpus structural scanning', () => {
     expect(files.length).toBeGreaterThan(0);
 
     for (const filePath of files) {
-      const source = new SourceText(readFileSync(filePath, 'utf8'), {
-        filePath: relative(lessTestDataRoot!, filePath)
-      });
+      const source = new SourceText(readFileSync(filePath, 'utf8'), relative(lessTestDataRoot!, filePath));
       const document = parseStructure(source, profileForFile(filePath));
 
       expect(document.root.start, source.filePath).toBe(0);
@@ -84,8 +80,8 @@ function findRepoRoot(start: string): string {
   while (current !== dirname(current)) {
     const packageJson = join(current, 'package.json');
     if (existsSync(packageJson)) {
-      const manifest = JSON.parse(readFileSync(packageJson, 'utf8')) as { name?: string };
-      if (manifest.name === '@jesscss/root') {
+      const manifest = JSON.parse(readFileSync(packageJson, 'utf8')) as unknown;
+      if (manifest && typeof manifest === 'object' && 'name' in manifest && manifest.name === '@jesscss/root') {
         return current;
       }
     }
@@ -156,9 +152,9 @@ function isSkippedLessTestDataFile(filePath: string): boolean {
   }
 
   return (
-    invalidLess.includes(filePath) ||
-    ADDITIONAL_LESS_TEST_DATA_SKIPS.has(filePath) ||
-    filePath.includes('-REMOVED') ||
-    filePath.startsWith('tests-unit/plugin-')
+    invalidLess.includes(filePath)
+    || ADDITIONAL_LESS_TEST_DATA_SKIPS.has(filePath)
+    || filePath.includes('-REMOVED')
+    || filePath.startsWith('tests-unit/plugin-')
   );
 }

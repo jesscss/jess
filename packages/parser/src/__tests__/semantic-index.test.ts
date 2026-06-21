@@ -12,9 +12,7 @@ import { fixtureLessProfile, fixtureScssProfile } from './fixtures.js';
 describe('SemanticIndexBuilder', () => {
   test('indexes imports and variables structurally without materialization', () => {
     const document = parseStructure(
-      new SourceText('@import "theme.css"; @brand: #f00; .foo { color: @brand; }', {
-        version: 1
-      }),
+      new SourceText('@import "theme.css"; @brand: #f00; .foo { color: @brand; }', undefined, 1),
       fixtureLessProfile
     );
     const plan = new IslandParsePlan(document);

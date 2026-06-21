@@ -19,7 +19,7 @@ export function parseLessStructure(
   source: string,
   options?: ParseStructureOptions
 ): StructuralDocument {
-  return parseStructure(new SourceText(source, { filePath }), lessProfile, options);
+  return parseStructure(new SourceText(source, filePath), lessProfile, options);
 }
 
 /** Creates a demand-driven Less island materialization plan for a source file. */
