@@ -36,6 +36,7 @@ import {
   scanCheapAtRulePrelude,
   scanCheapAtRulePreludeList,
   scanCheapSelectorComponents,
+  scanCheapSelectorListComponents,
   skipQuotedSourceString,
   skipSourceTrivia,
   type CheapAtRulePreludeToken,
@@ -220,39 +221,12 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): string 
   }));
 }
 
-function parseCheapLessSelector(selector: string): string | Selector | undefined {
-  const source = selector.trim();
-  const components = scanCheapSelectorComponents(source);
-  if (!components) {
+function parseCheapLessSelectorList(selector: string): string | Selector | undefined {
+  const selectorList = scanCheapSelectorListComponents(selector, LESS_SCANNER_OPTIONS);
+  if (!selectorList) {
     return undefined;
   }
-  if (components.length === 1) {
-    const only = components[0]!;
-    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
-  }
-  return materializeCheapSelector(components);
-}
-
-function parseCheapLessSelectorList(selector: string): string | Selector | undefined {
-  const firstComma = findTopLevelDelimiter(selector, ',', 0, selector.length, LESS_SCANNER_OPTIONS);
-  if (firstComma === -1) {
-    return parseCheapLessSelector(selector);
-  }
-  const items: Array<string | Selector> = [];
-  let cursor = 0;
-  while (cursor < selector.length) {
-    const comma = findTopLevelDelimiter(selector, ',', cursor, selector.length, LESS_SCANNER_OPTIONS);
-    const itemEnd = comma === -1 ? selector.length : comma;
-    const item = parseCheapLessSelector(selector.slice(cursor, itemEnd));
-    if (item === undefined) {
-      return undefined;
-    }
-    items.push(item);
-    if (comma === -1) {
-      break;
-    }
-    cursor = comma + 1;
-  }
+  const items = selectorList.map(materializeCheapSelector);
   return items.length > 1 ? sellist(items) : items[0];
 }
 

@@ -146,6 +146,19 @@ describe('parseLessAstStylesheet', () => {
     expect(serialized).not.toContain('(Combinator');
   });
 
+  test('diagnoses malformed selector-list boundaries instead of dropping empty branches', () => {
+    const result = parseLessAstStylesheet('selector-list-boundary.less', `
+      .a, { color: red; }
+      .b,   { color: blue; }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header'
+    ]);
+  });
+
   test('keeps interpolated Less selector headers deferred as strings', () => {
     const result = parseLessAstStylesheet('interpolated-selectors.less', `
       @{inputs} {

@@ -26,7 +26,7 @@ import {
   createPackedFieldSpans,
   scanCheapAtRulePrelude,
   scanCheapAtRulePreludeList,
-  scanCheapSelectorComponents,
+  scanCheapSelectorListComponents,
   setPackedFieldSpan,
   SourceText,
   renderParserDiagnostic,
@@ -172,45 +172,12 @@ function materializeCheapSelectorBranch(components: CheapSelectorComponent[]): s
   }));
 }
 
-function parseCheapSelectorBranch(selector: string): string | Selector | undefined {
-  const source = selector.trim();
-  if (!source) {
-    return undefined;
-  }
-  const components = scanCheapSelectorComponents(source);
-  if (!components) {
-    return undefined;
-  }
-  if (components.length === 1) {
-    const only = components[0]!;
-    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelectorBranch(components);
-  }
-  return materializeCheapSelectorBranch(components);
-}
-
 function parseCheapSelector(selector: string): string | Selector | undefined {
-  const source = selector.trim();
-  if (!source) {
+  const selectorList = scanCheapSelectorListComponents(selector);
+  if (!selectorList) {
     return undefined;
   }
-  const items: Array<string | Selector> = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const comma = findTopLevelDelimiter(source, ',', cursor, source.length);
-    const itemEnd = comma === -1 ? source.length : comma;
-    const item = parseCheapSelectorBranch(source.slice(cursor, itemEnd));
-    if (item === undefined) {
-      return undefined;
-    }
-    items.push(item);
-    if (comma === -1) {
-      break;
-    }
-    cursor = comma + 1;
-    if (skipSourceTrivia(source, cursor, source.length) >= source.length) {
-      return undefined;
-    }
-  }
+  const items = selectorList.map(materializeCheapSelectorBranch);
   return items.length === 1 ? items[0]! : sellist(items);
 }
 

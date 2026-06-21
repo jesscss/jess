@@ -12,6 +12,7 @@ export {
 
 export {
   scanCheapSelectorComponents,
+  scanCheapSelectorListComponents,
   type CheapSelectorComponent
 } from './selector-scanner.js';
 

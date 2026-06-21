@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { scanCheapSelectorComponents } from '../selector-scanner.js';
+import {
+  scanCheapSelectorComponents,
+  scanCheapSelectorListComponents
+} from '../selector-scanner.js';
 
 describe('selector scanner helpers', () => {
   test('tokenizes cheap compound and complex selectors without node objects', () => {
@@ -38,5 +41,36 @@ describe('selector scanner helpers', () => {
     expect(scanCheapSelectorComponents('[data-x')).toBeUndefined();
     expect(scanCheapSelectorComponents('.a >')).toBeUndefined();
     expect(scanCheapSelectorComponents('.a, .b')).toBeUndefined();
+  });
+
+  test('splits cheap selector lists without materializing node objects', () => {
+    expect(scanCheapSelectorListComponents('h1, h2 > a > p, h3')).toEqual([
+      [['h1']],
+      [['h2'], '>', ['a'], '>', ['p']],
+      [['h3']]
+    ]);
+    expect(scanCheapSelectorListComponents('.a[data-x=","], .b')).toEqual([
+      [['.a', '[data-x=","]']],
+      [['.b']]
+    ]);
+    expect(scanCheapSelectorListComponents('.a /* before comma */, /* after comma */ .b')).toEqual([
+      [['.a']],
+      [['.b']]
+    ]);
+    expect(scanCheapSelectorListComponents('.a, // after comma\n.b', { lineComments: true })).toEqual([
+      [['.a']],
+      [['.b']]
+    ]);
+    expect(scanCheapSelectorListComponents('.a // before comma\n, [data-x="//"]', { lineComments: true })).toEqual([
+      [['.a']],
+      [['[data-x="//"]']]
+    ]);
+  });
+
+  test('rejects empty selector-list branches', () => {
+    expect(scanCheapSelectorListComponents('.a,')).toBeUndefined();
+    expect(scanCheapSelectorListComponents('.a,   ')).toBeUndefined();
+    expect(scanCheapSelectorListComponents(',.a')).toBeUndefined();
+    expect(scanCheapSelectorListComponents('.a,,.b')).toBeUndefined();
   });
 });

@@ -1,4 +1,9 @@
-import { isSourceWhitespace } from './source-scanner.js';
+import {
+  findTopLevelDelimiter,
+  isSourceWhitespace,
+  skipSourceTrivia,
+  type SourceScannerOptions
+} from './source-scanner.js';
 
 export type CheapSelectorComponent =
   | string[]
@@ -273,4 +278,107 @@ export function scanCheapSelectorComponents(selector: string): CheapSelectorComp
     return undefined;
   }
   return components;
+}
+
+function trimSelectorBranchEnd(
+  source: string,
+  start: number,
+  end: number,
+  options?: SourceScannerOptions
+): number {
+  let cursor = end;
+  while (cursor > start) {
+    const code = source.charCodeAt(cursor - 1);
+    if (isSourceWhitespace(code)) {
+      cursor--;
+      continue;
+    }
+    if (options?.lineComments) {
+      const lineStart = Math.max(
+        source.lastIndexOf('\n', cursor - 1),
+        source.lastIndexOf('\r', cursor - 1),
+        start - 1
+      ) + 1;
+      let commentStart = -1;
+      let scan = lineStart;
+      let quoteCode = 0;
+      while (scan < cursor) {
+        const char = source[scan]!;
+        if (quoteCode !== 0) {
+          if (char === '\\') {
+            scan += 2;
+            continue;
+          }
+          if (char.charCodeAt(0) === quoteCode) {
+            quoteCode = 0;
+          }
+          scan++;
+          continue;
+        }
+        const charCode = char.charCodeAt(0);
+        if (charCode === 34 || charCode === 39) {
+          quoteCode = charCode;
+          scan++;
+          continue;
+        }
+        if (char === '/' && source[scan + 1] === '/') {
+          commentStart = scan;
+          break;
+        }
+        scan++;
+      }
+      if (commentStart >= start) {
+        cursor = commentStart;
+        continue;
+      }
+    }
+    if (source[cursor - 1] === '/' && source[cursor - 2] === '*') {
+      const commentStart = source.lastIndexOf('/*', cursor - 2);
+      if (commentStart >= start) {
+        cursor = commentStart;
+        continue;
+      }
+    }
+    break;
+  }
+  return cursor;
+}
+
+/**
+ * Split and tokenize a cheap selector list without materializing selector nodes.
+ *
+ * Empty selector-list branches are invalid. The scanner rejects them here so
+ * language packages do not silently collapse `.a, {}` into `.a {}`.
+ */
+export function scanCheapSelectorListComponents(
+  selector: string,
+  options?: SourceScannerOptions
+): CheapSelectorComponent[][] | undefined {
+  const source = selector.trim();
+  if (!source) {
+    return undefined;
+  }
+  const items: CheapSelectorComponent[][] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, options);
+    const rawItemEnd = comma === -1 ? source.length : comma;
+    const itemStart = skipSourceTrivia(source, cursor, rawItemEnd, options);
+    const itemEnd = trimSelectorBranchEnd(source, itemStart, rawItemEnd, options);
+    const item = itemStart < itemEnd
+      ? scanCheapSelectorComponents(source.slice(itemStart, itemEnd))
+      : undefined;
+    if (!item) {
+      return undefined;
+    }
+    items.push(item);
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+    if (skipSourceTrivia(source, cursor, source.length, options) >= source.length) {
+      return undefined;
+    }
+  }
+  return items;
 }
