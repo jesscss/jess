@@ -10,8 +10,9 @@ import {
   type SourceScannerOptions
 } from '@jesscss/parser';
 import { parseLessAstStylesheet } from '../src/ast.js';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const scannerOptions: SourceScannerOptions = { lineComments: true };
 
 type ScanFailure = {
@@ -139,8 +140,8 @@ describe('Less source scanner corpus gate', () => {
       thrown
     }).toEqual({
       files: 190,
-      rules: 1352,
-      warnings: 121,
+      rules: 1354,
+      warnings: 113,
       errors: 0,
       thrown: []
     });
