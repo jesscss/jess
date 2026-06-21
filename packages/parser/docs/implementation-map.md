@@ -31,6 +31,7 @@ the agreed requirements. "Useful later" is not enough.
 | --- | --- | --- | --- |
 | `SourceText` | Own source and lazy line map | Keep | Keep small; no per-node copied source strings. |
 | `LineMap` | Offset to line/column conversion | Keep | Keep lazy; verify only if source-map/diagnostic cost becomes visible. |
+| core `LocationInfo` / `node.location` | Legacy Chevrotain-era source tuple and getter. | Do not use in scanner-first AST construction. | Migrate consumers to offset spans plus lazy `LineMap`; avoid touching `location` just to test for provenance. |
 | scanner helpers | Boundary correctness | Keep | Keep generic; do not grow into full tokenization without proof. |
 | structural container/statement node objects | Broad containment and statements | Provisional | Prove they are cheaper than constructing actual existing CSS/Less AST nodes with deferred-capable fields. |
 | `RawIslandNode` objects | Deferred typed parse spans | Suspicious | In the preferred model, this is a string field plus state owned by the AST node, possibly packed inside that node. Delete or rename unless object identity is proven necessary. |
@@ -53,6 +54,7 @@ or enriching a real AST node?
 | --- | --- | --- |
 | `SourceText` | Real AST nodes should not each own the whole source or line map. One source owner is cleaner. | Keep. |
 | `LineMap` | Human-facing offset conversion is document-wide, not node-specific. | Keep, lazy. |
+| `LocationInfo` tuple | No value for scanner-first AST output over offsets plus lazy line mapping; it stores line/column eagerly and the getter can allocate empty arrays. | Legacy only. |
 | `ScannerCursor` | Short-lived parser implementation state; not an output object. | Keep internal. |
 | scanner helpers | Shared boundary logic before AST construction. | Keep internal. |
 | `ParserDiagnostic` | Diagnostics are output records, not AST nodes. | Keep. |
@@ -176,6 +178,12 @@ class Declaration extends Node {
   spans?: number[];
 }
 ```
+
+`LocationInfo` is not the target field-span carrier. It remains a legacy tuple
+for old parser and source-map/trivia consumers while those callsites are moved.
+Scanner-first AST builders should leave `_location` unset unless they are
+explicitly invoking old location-aware behavior, and should never compute
+line/column positions merely to populate node provenance.
 
 The same pattern applies to `Ruleset`, `AtRule`, `VarDeclaration`, and other
 existing AST nodes: the runtime node has `type`, the static side has

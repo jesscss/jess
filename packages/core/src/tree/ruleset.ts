@@ -516,9 +516,10 @@ export class Ruleset extends Rules<RulesetValue | RawRulesetValue, RulesetOption
       value.rules
     );
     if (typeof value.selector === 'string') {
+      const childLocation = this._location?.length ? this._location : undefined;
       const selectorNode = createRawSelectorNode(
         value.selector,
-        this.location.length ? this.location : undefined,
+        childLocation,
         this.sourceRoot?._treeContext
       );
       if (

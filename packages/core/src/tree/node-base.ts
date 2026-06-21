@@ -81,6 +81,7 @@ export type LocationInfo = [
   endColumn: number
 ];
 export type NodeLocation = LocationInfo | [];
+export type FieldSpans = number[];
 
 function createNodeOptions() {
   return Object.create(null);
@@ -274,6 +275,15 @@ export abstract class Node<
    * `null` marks a migrated leaf with no child fields.
    */
   static childKeys: readonly string[] | null | undefined = undefined;
+
+  /**
+   * Optional packed source offsets for source-backed fields.
+   *
+   * Entries are keyed by `childKeys` slot: `[start, end, flags]`. Missing spans
+   * use `[-1, -1, 0]`. This is the offset-first replacement target for eager
+   * `LocationInfo` tuples on scanner-first parse results.
+   */
+  declare spans: FieldSpans | undefined;
 
   _location: NodeLocation | undefined;
   get location() {
@@ -1148,7 +1158,7 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    this._location = node.location;
+    this._location = node._location;
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
       this._treeContext ??= node.sourceRoot?._treeContext;

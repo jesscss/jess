@@ -21,6 +21,16 @@ describe('cloning helpers', () => {
     expect(source._options).toBeUndefined();
   });
 
+  it('inherits source-free nodes without allocating empty location arrays', () => {
+    const source = any('red');
+    const target = any('blue');
+
+    target.inherit(source);
+
+    expect(source._location).toBeUndefined();
+    expect(target._location).toBeUndefined();
+  });
+
   it('clones containers and comments while reusing source-free scalar leaves', () => {
     const originalClone = Any.prototype.clone;
     let scalarClones = 0;

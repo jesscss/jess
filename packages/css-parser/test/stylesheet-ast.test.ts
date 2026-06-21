@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Stylesheet, serializeTypes } from '@jesscss/core';
+import { Declaration, Ruleset, Stylesheet, serializeTypes } from '@jesscss/core';
 import { parseCssStylesheet } from '../src/index.js';
 
 describe('CSS scanner-first Stylesheet AST', () => {
@@ -25,6 +25,24 @@ describe('CSS scanner-first Stylesheet AST', () => {
       '    ]',
       ')'
     ].join('\n'));
+  });
+
+  test('stores source offsets as packed field spans, not LocationInfo tuples', () => {
+    const root = parseCssStylesheet('fixture.css', '.a { color: blue; }');
+    const rule = root.rules[0];
+    if (!(rule instanceof Ruleset)) {
+      throw new Error('Expected first child to be a Ruleset.');
+    }
+    const declaration = rule.rules[0];
+    if (!(declaration instanceof Declaration)) {
+      throw new Error('Expected first ruleset child to be a Declaration.');
+    }
+
+    expect(root._location).toBeUndefined();
+    expect(rule._location).toBeUndefined();
+    expect(declaration._location).toBeUndefined();
+    expect(rule.spans).toEqual([0, 2, 0, -1, -1, 0, -1, -1, 0, -1, -1, 0]);
+    expect(declaration.spans).toEqual([5, 10, 0, 12, 16, 0, -1, -1, 0]);
   });
 
   test('keeps component-value blocks inside declaration strings', () => {

@@ -166,6 +166,27 @@ source references and compact numeric tables over object-heavy maps, indexes,
 or eager query services. Cold editor/probe indexes should stay outside the
 compiler result until measured evidence says otherwise.
 
+### R3a. LocationInfo Is Legacy Storage
+
+Existing core nodes still expose `location` and accept `LocationInfo` because
+the Chevrotain parser, trivia, source syntax, source maps, and some runtime
+paths have not been migrated yet. Scanner-first parser work should treat that
+tuple as legacy compatibility storage, not the target representation.
+
+New scanner-first AST construction should not pass eager
+`[startOffset, startLine, startColumn, endOffset, endLine, endColumn]` tuples.
+It should store offsets only:
+
+- whole-node source ranges only when a whole-node range is needed
+- packed field spans on the owning AST node when field provenance or hydration
+  state is needed
+- line/column conversion through the root `SourceText`/`LineMap` only when a
+  human-facing caller asks for diagnostics, editor ranges, or source maps
+
+Touching `node.location` on a source-free node currently allocates an empty
+array through the legacy getter. New scanner-first paths should avoid that
+getter unless they are deliberately interacting with old location-aware code.
+
 ### R4. Language Profiles Are Caller-Owned
 
 `@jesscss/parser` must not hard-code CSS, Less, SCSS, Jess, Tailwind, or other
