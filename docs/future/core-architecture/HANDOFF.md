@@ -103,6 +103,36 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: frame-owned exact ruleset namespace direct-bucket fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. `findRulesetNamespacePathFast(...)`
+  no longer calls `scope.getCallableEntriesForKey(segment)` as an exact
+  remainder fallback when a `ScopeFrame` exists. Frame-owned exact ruleset
+  namespace matches now come from the prepared callable frame and visible frame
+  collectors; the direct bucket fallback remains only for no-frame callers. No
+  speed claim.
+- New traversal: none. The pass deletes one direct cache/bucket read on modeled
+  frame paths and leaves the no-frame fallback unchanged.
+- Review-flagged allocations: none added.
+- New node/materialization: none.
+- Render path: unchanged. Focused render tests prove output still reaches
+  imported ruleset namespace bodies without re-entering the direct bucket
+  producer.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: no new arrays or objects.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "namespaced reference-imported ruleset array-path lookups"`
+  passed with a spy proving direct bucket reads stay empty for the frame-owned
+  `#Namespace` exact path. Focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "namespaced reference-imported ruleset array-path|namespaced selector-list array-path|callable child-surface namespace misses"`
+  and
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "ruleset namespace path lookup|compound-prefix ruleset lookup|definite namespace misses avoid legacy remainder-array fallback|namespace fast path|reference-import compound prefix|reference-import selector-list prefix|mixin-ruleset calls with args"`
+  passed. The full `import-style.test.ts` file still has an existing failure in
+  `import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains`;
+  that failure reproduces without this slice and remains a separate binding /
+  import placement blocker.
+
 - Latest pass: array-path callable namespace union dedupe deletion.
 - Verdict: accepted as a narrow post-result dedupe cut. `findMixin(array)` can
   legitimately union compound-prefix ruleset results with callable namespace

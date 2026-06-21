@@ -2884,7 +2884,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             exactMatches = collectCallableBucketRemainderResults(frameHit.bucket, true, path, offset);
           }
         }
-        if (exactMatches === undefined) {
+        if (exactMatches === undefined && !scopeFrame) {
           exactMatches = collectCallableBucketRemainderResults(
             scope.getCallableEntriesForKey(segment),
             true,

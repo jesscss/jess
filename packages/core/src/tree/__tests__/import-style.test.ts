@@ -3322,15 +3322,31 @@ describe('Style import', () => {
         })
       ]);
       const directCrawlHits: string[] = [];
+      let directBucketReadCount = 0;
       const nestedArrayPathCalls: unknown[] = [];
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const originalFindMixin = RulesClass.prototype.findMixin;
+      const runtimeRulesPrototype = RulesClass.prototype as typeof RulesClass.prototype & Record<
+        'getCallableEntriesForKey',
+        (key: string, updateFrameMissCoverage?: boolean) => ReturnType<typeof RulesClass.prototype.findMixinsFast>
+      >;
+      const originalGetCallableEntriesForKey = runtimeRulesPrototype.getCallableEntriesForKey;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#Namespace' || key === '.mixin') {
           directCrawlHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
+      };
+      runtimeRulesPrototype.getCallableEntriesForKey = function(
+        this: InstanceType<typeof RulesClass>,
+        ...args: Parameters<typeof originalGetCallableEntriesForKey>
+      ) {
+        const [key, updateFrameMissCoverage] = args;
+        if (this === node && key === '#Namespace' && updateFrameMissCoverage !== false) {
+          directBucketReadCount++;
+        }
+        return originalGetCallableEntriesForKey.apply(this, args);
       };
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== node && Array.isArray(args[0])) {
@@ -3354,9 +3370,11 @@ describe('Style import', () => {
         ));
         expect(generatedFallbackArrayPathCalls).toEqual([]);
         expect(directCrawlHits).toEqual([]);
+        expect(directBucketReadCount).toBe(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         RulesClass.prototype.findMixin = originalFindMixin;
+        runtimeRulesPrototype.getCallableEntriesForKey = originalGetCallableEntriesForKey;
       }
     });
 

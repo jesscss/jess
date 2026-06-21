@@ -1597,6 +1597,11 @@ lane.
   Covered producers are expected to be disjoint; if future evidence finds a
   duplicate, that is a missing ownership/frame fact, not a reason to restore
   result dedupe.
+- Frame-owned exact ruleset namespace lookup no longer reopens the direct
+  `scope.getCallableEntriesForKey(segment)` bucket as a second producer in
+  `findRulesetNamespacePathFast(...)`. If a `ScopeFrame` exists, exact
+  remainder matches must come from the prepared callable frame or visible frame
+  collectors; the direct bucket fallback is retained only for no-frame callers.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
@@ -1657,6 +1662,12 @@ binding work is the callable bridge audit: `Rules.findMixinsFast(...)`,
 `findMixinsFastForUncoveredCallable(...)`, array-path namespace starts, fallback
 frames, and any public array/string conversion that can still act as a broad
 second producer for a modeled lookup.
+
+Known blocker outside the latest cut: full `import-style.test.ts` currently
+fails `import-reference-issues: repeated reference/multiple imports keep
+import-site-local parent chains` even without the latest ruleset namespace
+fallback deletion. Treat that as a separate binding / import placement issue
+before using the full import-style file as a green gate.
 
 Closed cluster map:
 
