@@ -989,8 +989,7 @@ function parseAtRuleBlock(
   start: number,
   blockStart: number,
   blockEnd: number,
-  addDiagnostic: DiagnosticSink,
-  context: LessAstParseContext
+  addDiagnostic: DiagnosticSink
 ): Node | undefined {
   if (source[start] !== '@') {
     return undefined;
@@ -1066,7 +1065,7 @@ function parseLessBlockNode(
     );
   }
   if (selector[0] === '@' && selector[1] !== '{') {
-    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic, context);
+    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic);
     if (atRule) {
       return atRule;
     }
