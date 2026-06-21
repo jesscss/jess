@@ -174,6 +174,9 @@ function parseStatementNode(
 ): Node | undefined {
   const textEnd = source[end - 1] === ';' ? end - 1 : end;
   const textStart = skipSourceTrivia(source, start, textEnd);
+  if (source[textStart] === ';') {
+    return any(';', { role: 'semi' });
+  }
   const text = source.slice(textStart, textEnd).trim();
   if (!text) {
     return undefined;

@@ -288,6 +288,46 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
+  test('parses empty semicolon statements as existing semi nodes', () => {
+    const result = parseFlatCssDeclarationStylesheet('semicolons.css', `
+      a {;;
+        color: black;
+        ; ;
+      }
+    `);
+    const [rule] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(rule, N.Ruleset)).toBe(true);
+    if (!isNode(rule, N.Ruleset)) {
+      throw new Error('Expected ruleset');
+    }
+    expect(rule.rules.map(node => node.toTrimmedString())).toEqual([
+      ';',
+      ';',
+      'color: black',
+      ';',
+      ';'
+    ]);
+    expect(serializeTypes(rule)).toContainString(`
+      rules:
+        [
+          (Any [role=semi] ';')
+          (Any [role=semi] ';')
+          (Declaration
+    `);
+    expect(rule.toTrimmedString()).toBe([
+      'a {',
+      '  ;',
+      '  ;',
+      '  color: black;',
+      '  ;',
+      '  ;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
   test('parses cheap comma-list at-rule preludes without raw broad strings', () => {
     const result = parseFlatCssDeclarationStylesheet('media-list.css', `
       @media screen and (min-width: 1px), print {
