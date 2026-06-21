@@ -52,10 +52,6 @@ export type RulesetValue = {
   selectorBeforeExtend?: Selector | Nil;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
 function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
   const chunks = Reflect.get(writer as object, 'chunks');
   if (!Array.isArray(chunks) || position >= chunks.length) {
@@ -174,24 +170,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         this.attachSelectorBitsToNode(sourceNode, selectorBits);
       }
     }
-    this.attachSelectorBitsToValue(node.value, selectorBits);
-  }
-
-  private attachSelectorBitsToValue(value: unknown, selectorBits: Context['selectorBits']): void {
-    if (value instanceof Node) {
-      this.attachSelectorBitsToNode(value, selectorBits);
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        this.attachSelectorBitsToValue(item, selectorBits);
-      }
-      return;
-    }
-    if (isRecord(value)) {
-      for (const key in value) {
-        this.attachSelectorBitsToValue(value[key], selectorBits);
-      }
+    for (const child of node.children()) {
+      this.attachSelectorBitsToNode(child, selectorBits);
     }
   }
 

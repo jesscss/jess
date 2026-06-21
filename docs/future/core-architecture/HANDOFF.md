@@ -103,6 +103,26 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Ruleset selector-bit traversal stops using generic `node.value`.
+- Verdict: accepted as a direct-field cleanup slice, not a measured performance
+  pass. `Ruleset.attachSelectorBitsToNode(...)` now follows `node.children()`,
+  which is backed by each node's declared `childKeys`, instead of recursing
+  through legacy generic payload objects.
+- New traversal: no new traversal family. The existing selector-bit walk still
+  descends through selector children; it now uses the canonical child surface
+  instead of rediscovering shape through `.value`, arrays, and plain-object
+  recursion.
+- New node/materialization: none.
+- Render path: no render or eval behavior was added. This only affects
+  selector-bit metadata attachment while composing/preparing selectors.
+- Helper/API surface: deleted the private `attachSelectorBitsToValue(...)`
+  helper and its private `isRecord(...)` helper from `ruleset.ts`; added no new
+  public API.
+- Metadata mutations: unchanged. The pass only changes how existing selector
+  children are found before setting `keySetLibrary`.
+- Evidence: focused core `ruleset`, selector-container, and mixin tests passed.
+  No speed claim is made.
+
 - Latest pass: string-backed `SelectorList` items for scanner-first Less selector lists.
 - Verdict: accepted as a parser-shape/object-reduction slice, not a measured
   performance pass. The Less scanner-first AST path now parses cheap comma
