@@ -137,12 +137,14 @@ hard-coding language names into the parser package.
 
 ## Schema And Complexity Map
 
-See [docs/STRUCTURAL-SCHEMA.md](docs/STRUCTURAL-SCHEMA.md) for:
+Start with these package-local docs:
 
-- the structural node schema
-- how raw islands, field ranges, trivia, diagnostics, and lazy line maps fit
-- a requirement-to-feature map
-- which allocations are required today, which are optional, and which are review targets
+- [docs/requirements-and-scope.md](docs/requirements-and-scope.md) defines the
+  fixed needs, non-goals, slice order, and questions every new shape has to
+  answer.
+- [docs/STRUCTURAL-SCHEMA.md](docs/STRUCTURAL-SCHEMA.md) maps the current
+  structural schema, side tables, services, and allocations back to those
+  requirements.
 
 ## Current Status
 
