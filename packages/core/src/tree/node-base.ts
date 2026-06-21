@@ -271,8 +271,6 @@ export const F_DEFAULT = F_VISIBLE;
 export type Mutable<T extends { value: unknown }> =
   Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
-const VALUE_CHILD_KEYS = ['value'] as const;
-
 type ValueBearingNode = Node & {
   value: unknown;
 };
@@ -286,7 +284,7 @@ function childKeysOf(node: Node): readonly string[] | undefined {
   if (childKeys === null) {
     return undefined;
   }
-  return childKeys ?? (hasNodeValue(node) ? VALUE_CHILD_KEYS : undefined);
+  return childKeys;
 }
 
 function readNodeField(node: Node, key: string): unknown {

@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: implicit `.value` child fallback cut.
+- Verdict: accepted as an AST ownership cleanup and parser-shape prerequisite,
+  not a measured performance pass. Base `Node` no longer treats every node with
+  a `.value` property as though `value` were its child surface. Nodes that own
+  semantic children must declare them through `static childKeys`.
+- New traversal: no new traversal was added. Existing base traversal,
+  visitation, and deep trivia detach still read `static childKeys`; the hidden
+  fallback to `['value']` was removed. Host wrappers with `childKeys = null`
+  keep their JS payload for lookup/indexing but no longer expose it as CSS
+  output or traversal.
+- New node/materialization: no new node or wrapper was added. The verifier's
+  materialized array/object matches are existing test fixture literals updated
+  with `expectedParts: []` for host/lookup transport wrappers that render no
+  stylesheet text.
+- Render/eval path: no render-only materialization was added. Existing selector
+  subclasses that genuinely use `.value` as their semantic surface now inherit
+  an explicit selector-base `childKeys = ['value']` contract; leaf selectors
+  that render themselves still override with `childKeys = null`.
+- Helper/API surface: no helper or public export was added.
+- Metadata mutations: none.
+- Evidence: `pnpm --filter @jesscss/core test -- --run
+  src/tree/__tests__/node-render-buffer.test.ts
+  src/tree/__tests__/list.test.ts src/tree/__tests__/js-host.test.ts
+  src/tree/__tests__/selector.test.ts src/tree/__tests__/selector-basic.test.ts`,
+  `pnpm --filter @jesscss/core build`, and `pnpm --filter
+  @jesscss/less-parser test -- --run test/ast-proof.test.ts` passed. No speed
+  claim is made.
+
 - Latest pass: string-token selector containers for scanner-first AST proofs.
 - Verdict: accepted as a parser object-reduction slice, not a measured
   performance pass. CSS/Less scanner-first AST construction now keeps cheap

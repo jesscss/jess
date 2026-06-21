@@ -55,6 +55,7 @@ export function attachSelectorBitLibrary<T extends Selector>(
 }
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
+  static override childKeys = ['value'] as const;
   isSelector = true;
 
   protected _valueOf: string | undefined;
