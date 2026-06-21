@@ -82,6 +82,11 @@ This is the concrete direction implied by the review above.
 
 1. Add an existing-AST proof path before expanding services:
    - parse a small CSS/Less subset directly into existing AST node classes
+   - current CSS proof: `@jesscss/css-parser` exposes
+     `parseCssStylesheet(filePath, source)`, which returns a core
+     `Stylesheet` with string-backed `Ruleset.selector`,
+     `Declaration.name`, and `Declaration.value` for the cheap declaration
+     subset
    - introduce or target a real top-level `Stylesheet extends Rules` node if
      root document state cannot fit cleanly on plain `Rules`
    - widen the actual `@jesscss/core` node fields in place where needed
@@ -872,6 +877,7 @@ and collections:
 | root `StructuralContainerNode` | `src/structure/parse.ts` | R2 | Document container. | Required. |
 | one structural node per detected container/statement/error | `src/structure/types.ts` | R2, R6 | Captures containment and source ranges. | Provisional; direct existing AST nodes with deferred-capable fields may be cheaper. |
 | `StructuralDocument` facade | `src/structure/document.ts` | R2 | Exposes root, diagnostics, trivia, field ranges, islands, and cold queries. | Provisional broad-scan facade. Keep out of compile hot path; direct AST nodes with deferred fields are the preferred CSS/Less parser proof. |
+| CSS `parseCssStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks scanner structural boundaries into a real core `Stylesheet` for a tiny CSS subset. Selector/name/value fields remain strings; no island plan or Chevrotain parse is required. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
 
 The generic `parseStructure(input, profile, options)` allocation accounting has
 zero allocations for:
