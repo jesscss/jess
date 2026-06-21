@@ -24,6 +24,16 @@ describe('selector scanner helpers', () => {
     expect(scanCheapSelectorComponents('a /* comment */b')).toEqual([['a'], ' ', ['b']]);
   });
 
+  test('tokenizes relative selectors only when explicitly allowed', () => {
+    expect(scanCheapSelectorComponents('> .child')).toBeUndefined();
+    expect(scanCheapSelectorComponents('> .child', { allowRelative: true })).toEqual(['>', ['.child']]);
+    expect(scanCheapSelectorComponents('+ .next ~ a', { allowRelative: true })).toEqual(['+', ['.next'], '~', ['a']]);
+    expect(scanCheapSelectorListComponents('> .child, + .next', { allowRelative: true })).toEqual([
+      ['>', ['.child']],
+      ['+', ['.next']]
+    ]);
+  });
+
   test('rejects selector structures outside the cheap scanner subset', () => {
     expect(scanCheapSelectorComponents('.a:hover(.b)')).toBeUndefined();
     expect(scanCheapSelectorComponents(':lang(no)')).toBeUndefined();

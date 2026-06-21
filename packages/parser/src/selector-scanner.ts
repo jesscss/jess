@@ -5,6 +5,11 @@ import {
   type SourceScannerOptions
 } from './source-scanner.js';
 
+type SelectorScannerOptions = SourceScannerOptions & {
+  /** Allow selectors that start with an explicit combinator. */
+  readonly allowRelative?: boolean;
+};
+
 export type CheapSelectorComponent =
   | string[]
   | ' '
@@ -240,7 +245,7 @@ function skipSelectorBlockComment(source: string, start: number): number {
  * This helper returns strings and combinator markers only. Language packages
  * decide whether to materialize those components into core selector nodes.
  */
-export function scanCheapSelectorComponents(selector: string): CheapSelectorComponent[] | undefined {
+export function scanCheapSelectorComponents(selector: string, options?: SelectorScannerOptions): CheapSelectorComponent[] | undefined {
   const source = selector.trim();
   if (!source) {
     return undefined;
@@ -266,7 +271,7 @@ export function scanCheapSelectorComponents(selector: string): CheapSelectorComp
       continue;
     }
     if (char === '>' || char === '+' || char === '~') {
-      if (components.length === 0 || lastWasCombinator) {
+      if ((components.length === 0 && !options?.allowRelative) || lastWasCombinator) {
         return undefined;
       }
       components.push(char);
@@ -370,7 +375,7 @@ function trimSelectorBranchEnd(
  */
 export function scanCheapSelectorListComponents(
   selector: string,
-  options?: SourceScannerOptions
+  options?: SelectorScannerOptions
 ): CheapSelectorComponent[][] | undefined {
   const source = selector.trim();
   if (!source) {
@@ -384,7 +389,7 @@ export function scanCheapSelectorListComponents(
     const itemStart = skipSourceTrivia(source, cursor, rawItemEnd, options);
     const itemEnd = trimSelectorBranchEnd(source, itemStart, rawItemEnd, options);
     const item = itemStart < itemEnd
-      ? scanCheapSelectorComponents(source.slice(itemStart, itemEnd))
+      ? scanCheapSelectorComponents(source.slice(itemStart, itemEnd), options)
       : undefined;
     if (!item) {
       return undefined;

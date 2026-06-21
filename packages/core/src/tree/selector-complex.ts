@@ -49,8 +49,6 @@ export function isStringCombinator(value: string): boolean {
  * @example
  * #id > .class.class
  *
- * @note A complex selector may not always start with a selector. We also use this for a
- * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
   static override childKeys = ['value'] as const;
@@ -82,7 +80,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   private withComponents(
     value: ComplexSelectorValue,
     sourceValue: readonly ComplexSelectorComponent[] = this.value
-  ): this {
+  ): ComplexSelector {
     const ownedValue = new Array<ComplexSelectorComponent>(value.length);
     let hoistToRoot = false;
     for (let i = 0; i < value.length; i++) {
@@ -93,11 +91,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
-    const node = new ComplexSelector(
-      ownedValue,
-      this._options ? { ...this._options } : undefined,
-      this.location
-    ).inherit(this) as this;
+    const node = this instanceof RelativeSelector
+      ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location)
+      : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location);
     if (hoistToRoot) {
       node.hoistToRoot = true;
     }
@@ -552,3 +548,13 @@ export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSel
   location?: SelectorParams[2],
   treeContext?: SelectorParams[3]
 ) => ComplexSelector;
+
+/** A selector branch that starts with a combinator and is resolved relative to a parent selector. */
+export class RelativeSelector extends ComplexSelector {}
+
+export const rel = defineType<ComplexSelectorValue, typeof RelativeSelector>(RelativeSelector, 'RelativeSelector', 'rel') as (
+  value: ComplexSelectorValue,
+  options?: SelectorParams[1],
+  location?: SelectorParams[2],
+  treeContext?: SelectorParams[3]
+) => RelativeSelector;

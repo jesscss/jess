@@ -1,5 +1,5 @@
 import { parseLessAstStylesheet } from '../src/index.js';
-import { N, isNode, serializeTypes } from '@jesscss/core';
+import { N, RelativeSelector, isNode, serializeTypes } from '@jesscss/core';
 
 describe('parseLessAstStylesheet', () => {
   test('returns a string-backed core Stylesheet for cheap Less declarations', () => {
@@ -203,6 +203,9 @@ describe('parseLessAstStylesheet', () => {
           width: @size;
           #id.card { color: blue; }
         }
+        > .relative {
+          display: block;
+        }
         background: green;
       }
     `);
@@ -214,11 +217,12 @@ describe('parseLessAstStylesheet', () => {
       throw new Error('Expected outer ruleset');
     }
 
-    const [color, inner, background] = outer.rules;
+    const [color, inner, relative, background] = outer.rules;
     expect(isNode(color, N.Declaration)).toBe(true);
     expect(isNode(inner, N.Ruleset)).toBe(true);
+    expect(isNode(relative, N.Ruleset)).toBe(true);
     expect(isNode(background, N.Declaration)).toBe(true);
-    if (!isNode(color, N.Declaration) || !isNode(inner, N.Ruleset) || !isNode(background, N.Declaration)) {
+    if (!isNode(color, N.Declaration) || !isNode(inner, N.Ruleset) || !isNode(relative, N.Ruleset) || !isNode(background, N.Declaration)) {
       throw new Error('Expected declarations around nested ruleset');
     }
 
@@ -233,6 +237,12 @@ describe('parseLessAstStylesheet', () => {
     }
     expect(compoundRule.selector.value).toEqual(['#id', '.card']);
     expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+    expect(relative.selector).toBeInstanceOf(RelativeSelector);
+    if (!(relative.selector instanceof RelativeSelector)) {
+      throw new Error('Expected relative selector');
+    }
+    expect(relative.selector.value).toEqual(['>', '.relative']);
+    expect(serializeTypes(relative)).toContain('(RelativeSelector');
     expect(outer.toTrimmedString()).toBe([
       '.outer {',
       '  color: red;',
@@ -241,6 +251,9 @@ describe('parseLessAstStylesheet', () => {
       '    #id.card {',
       '      color: blue;',
       '    }',
+      '  }',
+      '  > .relative {',
+      '    display: block;',
       '  }',
       '  background: green;',
       '}',
@@ -381,6 +394,7 @@ describe('parseLessAstStylesheet', () => {
       .paint() {
         color: red;
         .nested { width: @size; }
+        > .relative { display: block; }
       }
 
       #theme() {
@@ -401,6 +415,17 @@ describe('parseLessAstStylesheet', () => {
     expect(paint.rules[1]?.toTrimmedString()).toBe([
       '.nested {',
       '  width: @size;',
+      '}',
+      ''
+    ].join('\n'));
+    expect(isNode(paint.rules[2], N.Ruleset)).toBe(true);
+    if (!isNode(paint.rules[2], N.Ruleset)) {
+      throw new Error('Expected mixin relative selector ruleset');
+    }
+    expect(paint.rules[2].selector).toBeInstanceOf(RelativeSelector);
+    expect(paint.rules[2].toTrimmedString()).toBe([
+      '> .relative {',
+      '  display: block;',
       '}',
       ''
     ].join('\n'));

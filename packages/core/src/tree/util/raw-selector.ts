@@ -7,7 +7,7 @@
  * drift as the scanner-first subset widens.
  */
 
-const RAW_NAME_START_SOURCE = String.raw`[-_a-zA-Z\x80-\uFFFF]`;
+const RAW_NAME_START_SOURCE = String.raw`(?:[_a-zA-Z\x80-\uFFFF]|-(?=[-_a-zA-Z\x80-\uFFFF]))`;
 const RAW_NAME_BODY_SOURCE = String.raw`[-_a-zA-Z0-9\x80-\uFFFF]*`;
 const RAW_NAME_SOURCE = String.raw`${RAW_NAME_START_SOURCE}${RAW_NAME_BODY_SOURCE}`;
 const RAW_ATTRIBUTE_SELECTOR_SOURCE =

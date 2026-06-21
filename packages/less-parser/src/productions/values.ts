@@ -1361,7 +1361,7 @@ function processStringInterpolation(value: string, location: LocationInfo, conte
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 }
 
-export function mathValue(this: P, T: TokenMap) {
+export function mathValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let valueAlt = (ctx: RuleContext = {}) => [

@@ -177,6 +177,15 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ]);
   });
 
+  test('diagnoses top-level relative selectors instead of materializing them as complex selectors', () => {
+    const result = parseFlatCssDeclarationStylesheet('relative.css', `
+      > .child { color: red; }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual(['css-flat-unsupported-selector']);
+  });
+
   test('parses cheap block at-rules and nested qualified rules', () => {
     const result = parseFlatCssDeclarationStylesheet('inline.css', `
       @media (min-width: 1px) {

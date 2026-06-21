@@ -321,12 +321,13 @@ function materializeCheapSelectorBranch(components: CheapSelectorComponent[]): s
       return materializeCheapCompound(only);
     }
   }
-  return sel(components.map((component) => {
+  const value = components.map((component) => {
     if (typeof component === 'string') {
       return component;
     }
     return materializeCheapCompound(component);
-  }));
+  });
+  return sel(value);
 }
 
 function parseCheapSelector(selector: string): string | Selector | undefined {

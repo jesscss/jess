@@ -12,6 +12,7 @@ import {
   num,
   paren,
   query,
+  rel,
   quoted,
   rest,
   rules,
@@ -61,9 +62,11 @@ type DiagnosticSink = (
 
 type LessAstParseContext = {
   allowKeyframeSelectors?: boolean;
+  allowRelativeSelectors?: boolean;
 };
 
 const DEFAULT_PARSE_CONTEXT: LessAstParseContext = {};
+const NESTED_PARSE_CONTEXT: LessAstParseContext = { allowRelativeSelectors: true };
 const KEYFRAMES_PARSE_CONTEXT: LessAstParseContext = { allowKeyframeSelectors: true };
 
 function isLessNameCode(code: number): boolean {
@@ -213,16 +216,20 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): string 
       return materializeCheapCompound(only);
     }
   }
-  return sel(components.map((component) => {
+  const value = components.map((component) => {
     if (typeof component === 'string') {
       return component;
     }
     return materializeCheapCompound(component);
-  }));
+  });
+  return typeof components[0] === 'string' ? rel(value) : sel(value);
 }
 
-function parseCheapLessSelectorList(selector: string): string | Selector | undefined {
-  const selectorList = scanCheapSelectorListComponents(selector, LESS_SCANNER_OPTIONS);
+function parseCheapLessSelectorList(selector: string, context: LessAstParseContext): string | Selector | undefined {
+  const selectorList = scanCheapSelectorListComponents(selector, {
+    ...LESS_SCANNER_OPTIONS,
+    allowRelative: context.allowRelativeSelectors
+  });
   if (!selectorList) {
     return undefined;
   }
@@ -1020,7 +1027,7 @@ function parseCheapMixinBlock(
     name: any(header.name, { role: 'name' }),
     ...(header.params && { params: header.params }),
     ...(guard && { guard }),
-    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
   });
 }
 
@@ -1033,7 +1040,8 @@ function parseAtRuleBlock(
   start: number,
   blockStart: number,
   blockEnd: number,
-  addDiagnostic: DiagnosticSink
+  addDiagnostic: DiagnosticSink,
+  context: LessAstParseContext
 ): Node | undefined {
   if (source[start] !== '@') {
     return undefined;
@@ -1059,7 +1067,7 @@ function parseAtRuleBlock(
       blockStart + 1,
       blockEnd,
       addDiagnostic,
-      isKeyframesAtRuleName(name) ? KEYFRAMES_PARSE_CONTEXT : DEFAULT_PARSE_CONTEXT
+      isKeyframesAtRuleName(name) ? KEYFRAMES_PARSE_CONTEXT : context
     )
   });
 }
@@ -1088,28 +1096,28 @@ function parseLessBlockNode(
       return ruleset({
         selector: nil(),
         guard,
-        rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+        rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
       });
     }
-    return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic));
+    return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT));
   }
   const deferredAmpersandSelector = parseDeferredLessAmpersandSelector(selector);
   if (deferredAmpersandSelector !== undefined) {
     return ruleset({
       selector: deferredAmpersandSelector,
       ...(guard && { guard }),
-      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
     }, { deferSelectorMaterialization: true });
   }
   const variableName = parseLessVariableBlockName(source, start, blockStart);
   if (variableName) {
     return createDetachedRulesetVariable(
       variableName,
-      parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+      parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
     );
   }
   if (selector[0] === '@' && selector[1] !== '{') {
-    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic);
+    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic, context);
     if (atRule) {
       return atRule;
     }
@@ -1127,7 +1135,7 @@ function parseLessBlockNode(
     return ruleset({
       selector: deferredSelector,
       ...(guard && { guard }),
-      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
     }, { deferSelectorMaterialization: true });
   }
   const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic, selector, guard);
@@ -1136,7 +1144,7 @@ function parseLessBlockNode(
   }
   const parsedSelector = context.allowKeyframeSelectors && !guard
     ? parseKeyframeSelectorList(selector)
-    : parseCheapLessSelectorList(selector);
+    : parseCheapLessSelectorList(selector, context);
   if (parsedSelector === undefined) {
     addDiagnostic(
       'warning',
@@ -1150,7 +1158,7 @@ function parseLessBlockNode(
   return ruleset({
     selector: parsedSelector,
     ...(guard && { guard }),
-    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
   }, context.allowKeyframeSelectors ? { deferSelectorMaterialization: true } : undefined);
 }
 

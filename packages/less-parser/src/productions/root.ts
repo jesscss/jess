@@ -560,7 +560,7 @@ export function main(this: P, T: TokenMap) {
   };
 }
 
-export function declarationList(this: P, T: TokenMap) {
+export function declarationList(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const isMixinOrQualifiedStart = () => {

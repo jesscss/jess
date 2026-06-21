@@ -79,6 +79,9 @@ export enum N {
  * Their combined masks (N.Selector, N.SimpleSelector) are only used by
  * isNode callers, NOT by defineType. Each concrete child already has its own
  * bit, so when defineType walks the chain, the child's bit is sufficient.
+ * RelativeSelector intentionally shares the ComplexSelector bit because the
+ * 32-bit mask is exhausted and relative selectors use the same core operations.
+ * Use `node.type` or `instanceof RelativeSelector` when exact identity matters.
  */
 export const nodeTypeBits: Record<string, number> = {
   // Concrete leaf types — each gets its own bit
@@ -87,6 +90,7 @@ export const nodeTypeBits: Record<string, number> = {
   PseudoSelector: N.PseudoSelector,
   CompoundSelector: N.CompoundSelector,
   ComplexSelector: N.ComplexSelector,
+  RelativeSelector: N.ComplexSelector,
   SelectorList: N.SelectorList,
   Combinator: N.Combinator,
   Any: N.Any,
