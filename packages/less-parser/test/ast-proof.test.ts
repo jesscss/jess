@@ -29,7 +29,7 @@ describe('parseLessAstStylesheet', () => {
     expect(callish.value).toBe('rgb(10, 20, 30)');
     expect(firstRule.selector).toBe('.a');
 
-    const [local, color, background, custom] = firstRule.rules.rules;
+    const [local, color, background, custom] = firstRule.rules;
     expect(isNode(local, N.VarDeclaration)).toBe(true);
     expect(isNode(color, N.Declaration)).toBe(true);
     expect(isNode(background, N.Declaration)).toBe(true);
@@ -179,10 +179,10 @@ describe('parseLessAstStylesheet', () => {
       throw new Error('Expected interpolated selector rulesets');
     }
     expect(interpolatedRoot.selector).toBe('@{inputs}');
-    const [focusRule] = interpolatedRoot.rules.rules;
+    const [focusRule] = interpolatedRoot.rules;
     expect(isNode(focusRule, N.Ruleset)).toBe(true);
     expect(isNode(focusRule, N.Ruleset) && focusRule.selector).toBe('.focus');
-    const [interpolatedChild, pseudoFunctionChild] = host.rules.rules;
+    const [interpolatedChild, pseudoFunctionChild] = host.rules;
     expect(isNode(interpolatedChild, N.Ruleset)).toBe(true);
     expect(isNode(interpolatedChild, N.Ruleset) && interpolatedChild.selector).toBe('&-bar@{state}');
     expect(isNode(pseudoFunctionChild, N.Ruleset)).toBe(true);
@@ -214,7 +214,7 @@ describe('parseLessAstStylesheet', () => {
       throw new Error('Expected outer ruleset');
     }
 
-    const [color, inner, background] = outer.rules.rules;
+    const [color, inner, background] = outer.rules;
     expect(isNode(color, N.Declaration)).toBe(true);
     expect(isNode(inner, N.Ruleset)).toBe(true);
     expect(isNode(background, N.Declaration)).toBe(true);
@@ -223,7 +223,7 @@ describe('parseLessAstStylesheet', () => {
     }
 
     expect(inner.selector).toBe('.inner');
-    const [width, compoundRule] = inner.rules.rules;
+    const [width, compoundRule] = inner.rules;
     expect(isNode(width, N.Declaration)).toBe(true);
     expect(isNode(compoundRule, N.Ruleset)).toBe(true);
     expect(width?.value).toBe('@size');
@@ -273,7 +273,7 @@ describe('parseLessAstStylesheet', () => {
 
     expect(isNode(rootScope.rules[0], N.VarDeclaration)).toBe(true);
     expect(isNode(rootScope.rules[1], N.Ruleset)).toBe(true);
-    const [nestedScope, width] = outer.rules.rules;
+    const [nestedScope, width] = outer.rules;
     expect(isNode(nestedScope, N.Rules)).toBe(true);
     expect(isNode(width, N.Declaration)).toBe(true);
     if (!isNode(nestedScope, N.Rules)) {
@@ -307,7 +307,7 @@ describe('parseLessAstStylesheet', () => {
     if (!isNode(host, N.Ruleset)) {
       throw new Error('Expected host ruleset');
     }
-    const [numbered, focus, item] = host.rules.rules;
+    const [numbered, focus, item] = host.rules;
     expect(isNode(numbered, N.Ruleset)).toBe(true);
     expect(isNode(focus, N.Ruleset)).toBe(true);
     expect(isNode(item, N.Ruleset)).toBe(true);
@@ -367,7 +367,7 @@ describe('parseLessAstStylesheet', () => {
     expect(guardedMixin.guard).toBe('(@tone = red)');
     expect(isNode(guardedScope.selector, N.Nil)).toBe(true);
     expect(guardedScope.guard).toBe('(@debug = 1)');
-    expect(isNode(guardedScope.rules.rules[0], N.Ruleset)).toBe(true);
+    expect(isNode(guardedScope.rules[0], N.Ruleset)).toBe(true);
     expect(negated.selector).toBe('.negated');
     expect(negated.guard).toBe('not (@debug)');
     expect(isNode(whenSelector.selector, N.ComplexSelector)).toBe(true);
@@ -397,15 +397,15 @@ describe('parseLessAstStylesheet', () => {
     }
     expect(paint.name?.valueOf()).toBe('.paint');
     expect(paint.params).toBeUndefined();
-    expect(paint.rules.rules[0]?.toTrimmedString()).toBe('color: red');
-    expect(paint.rules.rules[1]?.toTrimmedString()).toBe([
+    expect(paint.rules[0]?.toTrimmedString()).toBe('color: red');
+    expect(paint.rules[1]?.toTrimmedString()).toBe([
       '.nested {',
       '  width: @size;',
       '}',
       ''
     ].join('\n'));
     expect(theme.name?.valueOf()).toBe('#theme');
-    expect(theme.rules.rules[0]?.toTrimmedString()).toBe('background: blue');
+    expect(theme.rules[0]?.toTrimmedString()).toBe('background: blue');
     expect(serializeTypes(result.tree)).toContainString(`
       (Mixin
         name: (Any [role=name] '.paint')
@@ -592,7 +592,7 @@ describe('parseLessAstStylesheet', () => {
     expect(theme.name.options.role).toBe('name');
     expect(theme.options.markImportant).toBe(true);
 
-    const [nested] = rule.rules.rules;
+    const [nested] = rule.rules;
     expect(isNode(nested, N.Call)).toBe(true);
     if (!isNode(nested, N.Call) || !isNode(nested.name, N.Reference)) {
       throw new Error('Expected nested parameterless mixin call');
@@ -715,7 +715,7 @@ describe('parseLessAstStylesheet', () => {
     expect(spreadAnon.args.items[0]?.type).toBe('Rest');
     expect(isNode(spreadAnon.args.items[0], N.Rest) && spreadAnon.args.items[0].node).toBeUndefined();
 
-    const [nested] = rule.rules.rules;
+    const [nested] = rule.rules;
     expect(isNode(nested, N.Call)).toBe(true);
     if (!isNode(nested, N.Call) || !isNode(nested.args, N.List)) {
       throw new Error('Expected nested argument-bearing mixin call');
@@ -792,7 +792,7 @@ describe('parseLessAstStylesheet', () => {
     expect(descendantCall.name.key).toEqual(['#namespace', '.borders']);
     expect(themedCall.options.markImportant).toBe(true);
 
-    const [nested, nestedChild] = rule.rules.rules;
+    const [nested, nestedChild] = rule.rules;
     expect(isNode(nested, N.Call)).toBe(true);
     expect(isNode(nestedChild, N.Call)).toBe(true);
     if (
@@ -1045,7 +1045,7 @@ describe('parseLessAstStylesheet', () => {
     if (!isNode(keyframes, N.AtRule)) {
       throw new Error('Expected keyframes AtRule');
     }
-    const [from, decimal, endpoints] = keyframes.rules?.rules ?? [];
+    const [from, decimal, endpoints] = keyframes.rules ?? [];
     expect(isNode(from, N.Ruleset) && from.selector).toBe('from');
     expect(isNode(decimal, N.Ruleset) && decimal.selector).toBe('5.5%');
     expect(isNode(endpoints, N.Ruleset)).toBe(true);
@@ -1087,7 +1087,7 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(media)).toContainString(`
         prelude:
           (QueryCondition
-            items:
+            value:
               [
                 (Any 'screen')
                 (Any 'and')
@@ -1244,7 +1244,7 @@ describe('parseLessAstStylesheet', () => {
     if (!isNode(rulesetVariable, N.VarDeclaration) || !isNode(rulesetVariable.value, N.Mixin)) {
       throw new Error('Expected detached ruleset variable with anonymous mixin value');
     }
-    expect(rulesetVariable.value.rules.options.rulesVisibility).toEqual({
+    expect(rulesetVariable.value.options.rulesVisibility).toEqual({
       Declaration: 'public',
       Mixin: 'private',
       Ruleset: 'public',
@@ -1256,28 +1256,22 @@ describe('parseLessAstStylesheet', () => {
         value:
           (Mixin
             rules:
-              (Rules
-                rules:
-                  [
-                    (Declaration
-                      name: 'color'
-                      value: 'black'
-                    )
-                    (Ruleset
-                      selector: '.nested'
-                      rules:
-                        (Rules
-                          rules:
-                            [
-                              (Declaration
-                                name: 'width'
-                                value: '@size'
-                              )
-                            ]
-                        )
-                    )
-                  ]
-              )
+              [
+                (Declaration
+                  name: 'color'
+                  value: 'black'
+                )
+                (Ruleset
+                  selector: '.nested'
+                  rules:
+                    [
+                      (Declaration
+                        name: 'width'
+                        value: '@size'
+                      )
+                    ]
+                )
+              ]
           )
       )
     `);
@@ -1290,7 +1284,7 @@ describe('parseLessAstStylesheet', () => {
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
       'less-ast-empty-declaration-name'
     ]);
-    expect(isNode(rule, N.Ruleset) && rule.rules.rules).toHaveLength(1);
+    expect(isNode(rule, N.Ruleset) && rule.rules).toHaveLength(1);
     expect(rule?.toTrimmedString()).toBe([
       '.a {',
       '  color: green;',

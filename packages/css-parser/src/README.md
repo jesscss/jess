@@ -27,5 +27,6 @@ Stylesheet {
 ```
 
 This path does not use the island materialization plan. The older
-`parseCssStructure(...)` API remains a structural/probe surface for now; it
-should not be treated as the compiler parse-result target.
+`parseCssStructure(...)` / CSS island-provider API has been removed from this
+package surface because it produced a parallel structural schema instead of the
+compiler-facing core AST shape.

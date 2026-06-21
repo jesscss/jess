@@ -35,7 +35,7 @@ export type InterpolationShellScanResult = DelimitedSpan & {
   closed: boolean;
 };
 
-/** Structural recovery boundary reached after malformed input. */
+/** Recovery boundary reached after malformed input. */
 export type RecoveryBoundary = 'statement' | 'block-close' | 'eof';
 
 /** Span skipped during recovery and the boundary that stopped scanning. */
@@ -45,7 +45,7 @@ export type RecoveryResult = {
   boundary: RecoveryBoundary;
 };
 
-/** Trivia scanning options supplied by the active language profile/parser. */
+/** Trivia scanning options supplied by the active parser. */
 export type ScanTriviaOptions = {
   lineComments?: boolean;
 };
@@ -65,7 +65,7 @@ export type ScannerStats = {
 /**
  * Collects scanner event counts in a detached pass.
  *
- * This is intentionally not wired into the structural parser hot path. It
+ * This is intentionally not wired into parser hot paths. It
  * exists for performance guards that need stable counts for trivia, delimiter,
  * string/comment, and recovery behavior without allocating compiler AST nodes.
  */
@@ -284,7 +284,7 @@ export function scanBlockComment(
 }
 
 /**
- * Scans a nested parenthesis/bracket/brace island as raw balanced text.
+ * Scans a nested parenthesis/bracket/brace span as raw balanced text.
  *
  * Strings and comments are skipped as opaque ranges so delimiter recovery does
  * not mistake their contents for syntax.
@@ -462,7 +462,7 @@ function isUrlFunctionOpenParen(cursor: ScannerCursor): boolean {
 /**
  * Scans interpolation shells such as `#{...}` or `@{...}`.
  *
- * The longest configured start sequence wins, which lets profiles add richer
+ * The longest configured start sequence wins, which lets parsers add richer
  * interpolation forms without changing scanner control flow.
  */
 export function scanInterpolationShell(
@@ -556,7 +556,7 @@ export function scanInterpolationShell(
 /**
  * Appends contiguous trivia runs at the current cursor position.
  *
- * The structural parser keeps trivia out of the node tree; callers that need
+ * The parser keeps trivia out of the node tree; callers that need
  * formatting or comments retain them through this side list.
  */
 export function scanTriviaInto(

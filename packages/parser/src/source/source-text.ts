@@ -22,9 +22,9 @@ export type SourceTextStats = {
 };
 
 /**
- * Immutable source wrapper shared by scanner, structural parser, and services.
+ * Immutable source wrapper shared by scanner, parsers, and diagnostics.
  *
- * Expensive line mapping is allocated lazily so structural-only callers can
+ * Expensive line mapping is allocated lazily so parser-only callers can
  * inspect spans and slices without paying diagnostic-rendering costs.
  */
 export class SourceText {
@@ -47,8 +47,8 @@ export class SourceText {
   /**
    * Lazily builds the line map on first human-facing position lookup.
    *
-   * Structural parsing, island planning, and semantic indexing should prefer
-   * raw offsets so they can avoid this allocation on hot paths.
+   * Parser, scanner, and AST hydration paths should prefer raw offsets so they
+   * can avoid this allocation on hot paths.
    */
   get lineMap(): LineMap {
     return this.#lineMap ??= new LineMap(this.text);

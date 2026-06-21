@@ -67,6 +67,7 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
+type ProductionRule = (...args: any[]) => any;
 
 // ── Save references to CSS production factories ────────────────────────
 const cssMain = cssProductions.main;
@@ -91,11 +92,11 @@ function prependRules(rules: Rules, nodes: Node[], context: TreeContext): Rules 
 }
 
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
-  return (ctx?.parenFrames as boolean[] | undefined) ?? [];
+  return ctx?.parenFrames ?? [];
 }
 
 function getCalcFrames(ctx: RuleContext | undefined): number {
-  return (ctx?.calcFrames as number | undefined) ?? 0;
+  return ctx?.calcFrames ?? 0;
 }
 
 function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext {
@@ -377,7 +378,7 @@ function groupExtendsByTargetAndFlag(
 // ── Exported production rules ─────────────────────────────────────────
 
 /** Charset moved within `main` (explained in that rule) */
-export function stylesheet(this: P, T: TokenMap) {
+export function stylesheet(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (options: Record<string, any> = {}) => {
     let context: TreeContext;
@@ -835,7 +836,7 @@ export function lessMediaQueryFromReference(this: P, T: TokenMap) {
   };
 }
 
-export function lessMediaQueryTail(this: P, T: TokenMap) {
+export function lessMediaQueryTail(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1061,7 +1062,7 @@ export function mediaFeature(this: P, T: TokenMap) {
   ]);
 }
 
-export function mfValue(this: P, T: TokenMap) {
+export function mfValue(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
@@ -1155,7 +1156,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
     // After declarationList, check if new extends were added (e.g., by ampersandExtend)
     // If so, merge them with the saved extends; otherwise restore the saved extends
-      const newExtends = ctx.extendNodes as Extend[] | undefined;
+      const newExtends = ctx.extendNodes;
       if (newExtends && newExtends.length) {
       // New extends were added during declarationList (e.g., &:extend())
         if (savedExtendNodes && savedExtendNodes.length > 0) {
@@ -1222,7 +1223,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       }
       const hasDefault = Boolean(ctx.hasDefault);
       let node = new Ruleset(
-        { selector, rules, guard },
+        { selector, rules: rules.rules, guard },
         guard && hasDefault ? { hasDefault } : undefined,
         undefined,
         $.context
@@ -1237,7 +1238,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
   };
 }
 
-export function qualifiedRule(this: P, T: TokenMap) {
+export function qualifiedRule(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}, altContext?: AltContext) => {
     let selectorAlt = altContext ?? ((ctx: RuleContext) => [
@@ -1316,13 +1317,13 @@ export function qualifiedRule(this: P, T: TokenMap) {
       ctx.extendNodes = undefined;
     }
     // Restore parent's extendNodes and merge with any bubbling extends
-    const hasBubblingExtends = bubblingExtends && (bubblingExtends as ExtendType[]).length > 0;
+    const hasBubblingExtends = bubblingExtends && bubblingExtends.length > 0;
     if (hasBubblingExtends) {
       // Bubble them up to parent
       if (parentExtendNodes && parentExtendNodes.length > 0) {
-        ctx.extendNodes = [...parentExtendNodes, ...(bubblingExtends as ExtendType[])];
+        ctx.extendNodes = [...parentExtendNodes, ...bubblingExtends];
       } else {
-        ctx.extendNodes = bubblingExtends as ExtendType[];
+        ctx.extendNodes = bubblingExtends;
       }
     } else {
       ctx.extendNodes = parentExtendNodes;
@@ -1340,12 +1341,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
     const convertArgsForDefinition = (args: List<Node> | undefined): void => {
-      if (!args || !args.items.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args.items.length; i++) {
-        const node = args.items[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
@@ -1357,7 +1358,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context);
           args.adopt(replacement);
-          args.items[i] = replacement;
+          args.value[i] = replacement;
         }
         // Rest nodes with string values can stay as-is for mixin definitions
       }
@@ -1365,12 +1366,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
     // Helper function to convert Any nodes to Reference nodes for mixin call arguments
     const convertArgsForCall = (args: List<Node> | undefined): void => {
-      if (!args || !args.items.length) {
+      if (!args || !args.value.length) {
         return;
       }
 
-      for (let i = 0; i < args.items.length; i++) {
-        const node = args.items[i]!;
+      for (let i = 0; i < args.value.length; i++) {
+        const node = args.value[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
@@ -1385,7 +1386,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
         if (replacement) {
           args.adopt(replacement);
-          args.items[i] = replacement;
+          args.value[i] = replacement;
         }
       }
     };
@@ -1504,7 +1505,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
+                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules: rules.rules, guard },
                     guard && hasDefault ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context

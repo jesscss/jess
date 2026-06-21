@@ -20,17 +20,14 @@ describe('serializeTypes coverage', () => {
               selector:
                 (BasicSelector 'a')
               rules:
-                (Rules
-                  rules:
-                    [
-                      (Declaration
-                        name:
-                          (Any [role=property] 'b')
-                        value:
-                          (Any [role=ident] 'c')
-                      )
-                    ]
-                )
+                [
+                  (Declaration
+                    name:
+                      (Any [role=property] 'b')
+                    value:
+                      (Any [role=ident] 'c')
+                  )
+                ]
             )
           ]
       )
@@ -182,7 +179,7 @@ describe('serializeTypes coverage', () => {
         name: ':unknown'
         arg:
           (Sequence
-            items:
+            value:
               [
                 (Any '.sel')
                 (Any '.a')
@@ -291,7 +288,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.rules[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
@@ -371,7 +368,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset) || !ruleset.rules) {
       throw new Error('Expected first parsed rule to have nested rules');
     }
-    const [nested] = ruleset.rules.rules;
+    const [nested] = ruleset.rules;
     if (!isNode(nested, N.Ruleset)) {
       throw new Error('Expected nested rule to be a ruleset');
     }
@@ -411,7 +408,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.rules[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
@@ -438,7 +435,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.rules[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
@@ -509,7 +506,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] 'n')
         value:
           (Sequence
-            items:
+            value:
               [
                 (Num 1)
                 (Num 2)

@@ -1,7 +1,7 @@
 /**
  * Half-open source range in UTF-16 offsets.
  *
- * Parser structures store offsets as numbers first; this object shape is the
+ * Parser data stores offsets as numbers first; this object shape is the
  * API view used when callers need to pass or persist a range.
  */
 export type SourceSpan = {
@@ -30,7 +30,8 @@ export type PackedSegmentSpans = number[];
 
 /**
  * Span for a delimited construct, keeping the outer token range separate from
- * its content so island parsers can choose whether to include syntax wrappers.
+ * its content so deferred field parsers can choose whether to include syntax
+ * wrappers.
  */
 export type DelimitedSpan = {
   start: number;
@@ -44,10 +45,10 @@ export type DelimitedSpan = {
 };
 
 /**
- * Trivia categories preserved outside the structural node tree.
+ * Trivia categories preserved outside the AST node tree.
  *
  * Trivia remains source-owned so formatting and exact-source consumers can opt
- * in without making every structural node carry whitespace/comment fields.
+ * in without making every AST node carry whitespace/comment fields.
  */
 export type TriviaKind =
   | 'whitespace'

@@ -3,7 +3,4 @@ export * from './util/index.js';
 export * from './ast.js';
 export * from './cssRecursiveParser.js';
 export * from './cssParser.js';
-export * from './island-providers.js';
-export * from './structural.js';
-export * from './structural-profile.js';
 export * as productions from './productions/index.js';

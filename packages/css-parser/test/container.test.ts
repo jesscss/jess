@@ -4,10 +4,32 @@ import { serializeTypes } from '@jesscss/core';
 
 const cssParser = new CssParser();
 
-function getPreludeQueryNode(atRule: any) {
+type SerializedTestNode = {
+  type?: string;
+  value?: SerializedTestNode[];
+  node?: SerializedTestNode;
+  name?: string;
+  args?: SerializedTestNode;
+  prelude?: SerializedTestNode;
+};
+
+function isSerializedTestNode(value: unknown): value is SerializedTestNode {
+  return typeof value === 'object' && value !== null;
+}
+
+function getPreludeQueryNode(atRule: unknown): SerializedTestNode {
+  expect(isSerializedTestNode(atRule)).toBe(true);
+  if (!isSerializedTestNode(atRule)) {
+    throw new TypeError('Expected at-rule-like test node');
+  }
   const prelude = atRule.prelude;
+  expect(isSerializedTestNode(prelude)).toBe(true);
+  if (!isSerializedTestNode(prelude)) {
+    throw new TypeError('Expected at-rule prelude test node');
+  }
   if (prelude?.type === 'Sequence') {
-    return prelude.value[0];
+    expect(Array.isArray(prelude.value)).toBe(true);
+    return prelude.value?.[0] ?? prelude;
   }
   return Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
 }
@@ -75,7 +97,7 @@ describe('@container at-rule parsing and serialization', () => {
   test('container query with NOT condition', () => {
     const { tree, errors } = cssParser.parse('@container not (width < 400px) { .card { font-size: 1.2rem; } }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
@@ -92,11 +114,11 @@ describe('@container at-rule parsing and serialization', () => {
             [
               (QueryCondition
                 value:
-                [
-                  (Keyword [role=keyword] 'not')
-                  (Paren
-                    node:
-                      (QueryCondition
+                  [
+                    (Keyword [role=keyword] 'not')
+                    (Paren
+                      node:
+                        (QueryCondition
       `);
   });
 
@@ -177,7 +199,7 @@ describe('@container at-rule parsing and serialization', () => {
   test('simple container query parses as QueryCondition in Paren', () => {
     const { tree, errors } = cssParser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     expect(queryNode.type).toBe('Paren');
@@ -192,7 +214,7 @@ describe('@media at-rule - QueryCondition parsing', () => {
   test('simple media query parses as QueryCondition in Paren (no outer QueryCondition)', () => {
     const { tree, errors } = cssParser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     if (queryNode) {
@@ -261,7 +283,7 @@ describe('@container - container query type functions', () => {
     expect(out).toContain('and');
 
     // Verify structure: Call -> List -> QueryCondition -> [Paren(Declaration), Any('and'), Paren(Declaration)]
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value[0].type).toBe('Call');
@@ -296,7 +318,7 @@ describe('@container - container query type functions', () => {
     expect(out).toContain('stuck');
 
     // Verify structure: QueryCondition -> [Any('not'), QueryCondition -> [Call]]
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
@@ -306,18 +328,18 @@ describe('@container - container query type functions', () => {
     expect(queryNode.value[1].value[0].type).toBe('Call');
     expect(queryNode.value[1].value[0].name).toBe('scroll-state');
     expect(out).toContainString(`
-	      (QueryCondition
-	        value:
-	          [
-	            (Keyword [role=keyword] 'not')
-	            (QueryCondition
-	              value:
-	                [
-	                  (Call
-	                    name: 'scroll-state'
-	                    args:
-	                      (List
-	      `);
+          (QueryCondition
+            value:
+              [
+                (Keyword [role=keyword] 'not')
+                (QueryCondition
+                  value:
+                    [
+                      (Call
+                        name: 'scroll-state'
+                        args:
+                          (List
+          `);
   });
 
   test('complex style() queries with commas, and/or/not', () => {
@@ -335,7 +357,7 @@ describe('@container - container query type functions', () => {
     expect(out).toContain('List');
 
     // Verify structure: List of queries, each can be QueryCondition
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('List');
     expect(queryNode.value.length).toBe(4); // 4 comma-separated queries

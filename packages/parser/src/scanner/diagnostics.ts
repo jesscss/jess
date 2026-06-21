@@ -1,10 +1,10 @@
 import type { SourceText } from '../source/source-text.js';
 
-/** Diagnostic severities understood by parser services. */
+/** Diagnostic severities understood by parser consumers. */
 export type ParserDiagnosticSeverity = 'error' | 'warning';
 
 /**
- * Offset-based diagnostic emitted during scanner or structural recovery.
+ * Offset-based diagnostic emitted during scanner or parser recovery.
  *
  * Diagnostics stay in source offsets until rendered so callers that only need
  * machine-readable spans avoid allocating line maps.

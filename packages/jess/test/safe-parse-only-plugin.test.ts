@@ -39,6 +39,5 @@ describe('safeParse-only parser plugins', () => {
     expect(css).toContain('color: red');
     expect(safeOnlyPlugin.safeParse).toHaveBeenCalledTimes(1);
     expect('parse' in safeOnlyPlugin).toBe(false);
-    expect('structuralActivation' in safeOnlyPlugin).toBe(false);
   });
 });

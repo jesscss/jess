@@ -111,33 +111,3 @@ export {
   type ScannerStats,
   type StringScanResult
 } from './scanner/index.js';
-
-export {
-  createLanguageProfile,
-  normalizeAtRuleName,
-  pushIfMissing,
-  rangeText,
-  type AtRuleKind,
-  type DeclarationNameKind,
-  type LanguageName,
-  type LanguageProfile,
-  type ProfileConfig,
-  type RuleHeaderKind,
-  type StatementStarter,
-  type StatementStarterKind
-} from './profiles/index.js';
-
-export {
-  FieldRangeTable,
-  parseStructure,
-  type ChangedRange,
-  type DocumentSymbol,
-  type ErrorNode,
-  type FieldRange,
-  type FieldRangeKind,
-  type FieldRangeName,
-  type ReadonlyFieldRangeTable,
-  type FoldingRange,
-  type ParseStructureInput,
-  type ParseStructureOptions
-} from './structure/index.js';

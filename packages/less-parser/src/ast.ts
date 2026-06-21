@@ -398,15 +398,14 @@ function parseLessVariableBlockName(source: string, start: number, blockStart: n
 }
 
 function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclaration {
-  const bodyRules = rules(body, {
-    rulesVisibility: {
-      Mixin: 'private',
-      VarDeclaration: 'private'
-    }
-  });
   return new VarDeclaration({
     name,
-    value: mixin({ rules: bodyRules })
+    value: mixin({ rules: body }, {
+      rulesVisibility: {
+        Mixin: 'private',
+        VarDeclaration: 'private'
+      }
+    })
   });
 }
 
@@ -1021,7 +1020,7 @@ function parseCheapMixinBlock(
     name: any(header.name, { role: 'name' }),
     ...(header.params && { params: header.params }),
     ...(guard && { guard }),
-    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
   });
 }
 
@@ -1055,13 +1054,13 @@ function parseAtRuleBlock(
   return atrule({
     name,
     ...(prelude !== undefined && { prelude }),
-    rules: rules(parseLessNodes(
+    rules: parseLessNodes(
       source,
       blockStart + 1,
       blockEnd,
       addDiagnostic,
       isKeyframesAtRuleName(name) ? KEYFRAMES_PARSE_CONTEXT : DEFAULT_PARSE_CONTEXT
-    ))
+    )
   });
 }
 
@@ -1089,7 +1088,7 @@ function parseLessBlockNode(
       return ruleset({
         selector: nil(),
         guard,
-        rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+        rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
       });
     }
     return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic));
@@ -1099,8 +1098,8 @@ function parseLessBlockNode(
     return ruleset({
       selector: deferredAmpersandSelector,
       ...(guard && { guard }),
-      rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-    });
+      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    }, { deferSelectorMaterialization: true });
   }
   const variableName = parseLessVariableBlockName(source, start, blockStart);
   if (variableName) {
@@ -1128,8 +1127,8 @@ function parseLessBlockNode(
     return ruleset({
       selector: deferredSelector,
       ...(guard && { guard }),
-      rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-    });
+      rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    }, { deferSelectorMaterialization: true });
   }
   const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic, selector, guard);
   if (mixinDefinition) {
@@ -1151,8 +1150,8 @@ function parseLessBlockNode(
   return ruleset({
     selector: parsedSelector,
     ...(guard && { guard }),
-    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-  });
+    rules: parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+  }, context.allowKeyframeSelectors ? { deferSelectorMaterialization: true } : undefined);
 }
 
 function parseAtRuleStatement(source: string, start: number, end: number): Node | undefined {
