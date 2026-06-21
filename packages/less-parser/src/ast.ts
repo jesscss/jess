@@ -1,6 +1,5 @@
 import {
   VarDeclaration,
-  any,
   atrule,
   atrulestatement,
   co,
@@ -8,18 +7,15 @@ import {
   decl,
   el,
   mixin,
-  paren,
-  query,
   rules,
   ruleset,
   sel,
-  type AtRulePrelude,
   stylesheet,
   type Node,
   type Selector,
   type Stylesheet
 } from '@jesscss/core';
-import { scanCheapSelectorComponents, type CheapSelectorComponent } from '@jesscss/css-parser';
+import { parseCheapAtRulePrelude, scanCheapSelectorComponents, type CheapSelectorComponent } from '@jesscss/css-parser';
 import {
   SourceText,
   appendParserDiagnostic,
@@ -28,7 +24,6 @@ import {
   findTrailingImportantStart,
   findTopLevelBlockStart,
   findTopLevelDelimiter,
-  skipQuotedSourceString,
   skipSourceTrivia,
   type ParserDiagnostic,
   type ScannerParseResult,
@@ -150,134 +145,6 @@ function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclarati
   });
 }
 
-function isPreludeAtomText(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
-    if (!isLessNameCode(code)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isSimpleParenPreludeText(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const code = text.charCodeAt(i);
-    if (
-      isLessNameCode(code)
-      || (code >= 48 && code <= 57)
-      || code === 32
-      || code === 9
-      || code === 10
-      || code === 13
-      || code === 12
-      || char === ':'
-      || char === '.'
-    ) {
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
-function parseParenthesizedPreludeAtom(text: string): Node | undefined {
-  if (text.length < 2 || text[0] !== '(' || text[text.length - 1] !== ')') {
-    return undefined;
-  }
-  const inner = text.slice(1, -1).trim();
-  if (!isSimpleParenPreludeText(inner)) {
-    return undefined;
-  }
-  return paren(any(inner));
-}
-
-function readPreludeToken(source: string, start: number): [token: string, next: number] | undefined {
-  let cursor = skipSourceTrivia(source, start, source.length, LESS_SCANNER_OPTIONS);
-  if (cursor >= source.length) {
-    return undefined;
-  }
-  if (source[cursor] !== '(') {
-    const tokenStart = cursor;
-    while (cursor < source.length) {
-      const code = source.charCodeAt(cursor);
-      if (code === 32 || code === 9 || code === 10 || code === 13 || code === 12) {
-        break;
-      }
-      if (source[cursor] === '(' || source[cursor] === ')' || source[cursor] === ',') {
-        return undefined;
-      }
-      cursor++;
-    }
-    const token = source.slice(tokenStart, cursor);
-    return token ? [token, cursor] : undefined;
-  }
-  const tokenStart = cursor;
-  let depth = 0;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    if (char === '"' || char === '\'') {
-      cursor = skipQuotedSourceString(source, cursor, source.length);
-      continue;
-    }
-    if (char === '\\') {
-      cursor += 2;
-      continue;
-    }
-    if (char === '(') {
-      depth++;
-    } else if (char === ')') {
-      depth--;
-      if (depth === 0) {
-        cursor++;
-        return [source.slice(tokenStart, cursor), cursor];
-      }
-    }
-    cursor++;
-  }
-  if (depth !== 0) {
-    return undefined;
-  }
-  return undefined;
-}
-
-function parseAtRulePrelude(text: string): AtRulePrelude | undefined {
-  const source = text.trim();
-  if (!source) {
-    return undefined;
-  }
-  if (isPreludeAtomText(source)) {
-    return source;
-  }
-  const parenAtom = parseParenthesizedPreludeAtom(source);
-  if (parenAtom) {
-    return parenAtom;
-  }
-  const parts: Node[] = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const read = readPreludeToken(source, cursor);
-    if (!read) {
-      return undefined;
-    }
-    const [token, next] = read;
-    const node = parseParenthesizedPreludeAtom(token) ?? (isPreludeAtomText(token) ? any(token) : undefined);
-    if (!node) {
-      return undefined;
-    }
-    parts.push(node);
-    cursor = skipSourceTrivia(source, next, source.length, LESS_SCANNER_OPTIONS);
-  }
-  return parts.length > 1 ? query(parts) : parts[0];
-}
-
 function parseAtRuleBlock(
   source: string,
   start: number,
@@ -297,7 +164,7 @@ function parseAtRuleBlock(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = parseAtRulePrelude(preludeText);
+  const prelude = parseCheapAtRulePrelude(preludeText, LESS_SCANNER_OPTIONS);
   if (preludeText && !prelude) {
     return undefined;
   }

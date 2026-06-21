@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: shared cheap at-rule prelude helper and CSS block at-rules.
+- Verdict: accepted as a CSS/Less parser-shape DRY pass, not a measured
+  performance pass. The cheap prelude tokenizer now lives in `@jesscss/css-parser`
+  and is reused by Less; CSS can parse cheap block at-rules into real `AtRule`
+  nodes instead of warning on every block at-rule.
+- New traversal: CSS parser root/body walking now uses one recursive
+  `parseCssNodes(...)` helper, so block at-rule bodies reuse the same statement,
+  qualified-rule, and diagnostic flow as the root. This adds recursion only when
+  a positively parsed at-rule block owns a body. The prelude helper keeps the
+  same bounded linear scan over the sliced prelude text.
+- New node/materialization: no new node families were added. CSS block at-rules
+  create existing `AtRule` nodes; bare preludes remain strings; simple balanced
+  preludes create existing `Paren(Any(...))` or `QueryCondition` nodes. Less
+  deletes its duplicate prelude-tokenizer implementation and imports the shared
+  helper.
+- Render/eval path: no render/eval path was changed. Parsed CSS/Less nodes use
+  existing core serialization.
+- Helper/API surface: `parseCheapAtRulePrelude(...)` is now exported from
+  `@jesscss/css-parser` because Less already depends on css-parser's cheap
+  selector helper and both languages share this CSS-family prelude subset. The
+  helper remains intentionally narrow and returns `undefined` for commas,
+  interpolation, nested conditions, or general-enclosed syntax.
+- Metadata mutations: none beyond normal constructor adoption for existing core
+  nodes.
+- Evidence: focused CSS AST/corpus tests, focused Less AST/source-scanner tests,
+  ESLint, and package builds passed. No speed claim is made.
+
 - Latest pass: scanner-first simple at-rule prelude tokenization.
 - Verdict: accepted as a parser-shape correctness pass, not a measured
   performance pass. The Less AST proof now refuses to keep structured media

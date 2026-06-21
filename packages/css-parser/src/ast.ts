@@ -1,12 +1,17 @@
 import {
+  any,
+  atrule,
   atrulestatement,
   co,
   compound,
   decl,
   el,
+  paren,
+  query,
   rules,
   ruleset,
   sel,
+  type AtRulePrelude,
   stylesheet,
   type Node,
   type Selector,
@@ -22,6 +27,8 @@ import {
   SourceText,
   type ScannerParseResult,
   type ParserDiagnostic,
+  type SourceScannerOptions,
+  skipQuotedSourceString,
   skipSourceTrivia
 } from '@jesscss/parser';
 
@@ -100,6 +107,156 @@ function isSelectorNameCode(code: number): boolean {
     || code === 45
     || code === 95
   );
+}
+
+function isCssNameCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 95
+  );
+}
+
+function isPreludeAtomText(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (!isCssNameCode(text.charCodeAt(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isSimpleParenPreludeText(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const code = text.charCodeAt(i);
+    if (
+      isCssNameCode(code)
+      || (code >= 48 && code <= 57)
+      || code === 32
+      || code === 9
+      || code === 10
+      || code === 13
+      || code === 12
+      || char === ':'
+      || char === '.'
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function parseParenthesizedPreludeAtom(text: string): Node | undefined {
+  if (text.length < 2 || text[0] !== '(' || text[text.length - 1] !== ')') {
+    return undefined;
+  }
+  const inner = text.slice(1, -1).trim();
+  if (!isSimpleParenPreludeText(inner)) {
+    return undefined;
+  }
+  return paren(any(inner));
+}
+
+function readPreludeToken(
+  source: string,
+  start: number,
+  options?: SourceScannerOptions
+): [token: string, next: number] | undefined {
+  let cursor = skipSourceTrivia(source, start, source.length, options);
+  if (cursor >= source.length) {
+    return undefined;
+  }
+  if (source[cursor] !== '(') {
+    const tokenStart = cursor;
+    while (cursor < source.length) {
+      const code = source.charCodeAt(cursor);
+      if (isSourceSelectorWhitespace(code)) {
+        break;
+      }
+      if (source[cursor] === '(' || source[cursor] === ')' || source[cursor] === ',') {
+        return undefined;
+      }
+      cursor++;
+    }
+    const token = source.slice(tokenStart, cursor);
+    return token ? [token, cursor] : undefined;
+  }
+  const tokenStart = cursor;
+  let depth = 0;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '"' || char === '\'') {
+      cursor = skipQuotedSourceString(source, cursor, source.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth--;
+      if (depth === 0) {
+        cursor++;
+        return [source.slice(tokenStart, cursor), cursor];
+      }
+    }
+    cursor++;
+  }
+  return undefined;
+}
+
+/**
+ * Tokenize a deliberately tiny at-rule prelude subset into existing core nodes.
+ *
+ * Bare atoms stay strings. Simple balanced parenthesized atoms become
+ * `Paren(Any(...))`; whitespace-separated top-level sequences become
+ * `QueryCondition`. Commas, interpolation, nested conditions, and
+ * general-enclosed syntax return `undefined` so callers can warn instead of
+ * hiding unsupported structure as raw text.
+ */
+export function parseCheapAtRulePrelude(
+  text: string,
+  options?: SourceScannerOptions
+): AtRulePrelude | undefined {
+  const source = text.trim();
+  if (!source) {
+    return undefined;
+  }
+  if (isPreludeAtomText(source)) {
+    return source;
+  }
+  const parenAtom = parseParenthesizedPreludeAtom(source);
+  if (parenAtom) {
+    return parenAtom;
+  }
+  const parts: Node[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const read = readPreludeToken(source, cursor, options);
+    if (!read) {
+      return undefined;
+    }
+    const [token, next] = read;
+    const node = parseParenthesizedPreludeAtom(token) ?? (isPreludeAtomText(token) ? any(token) : undefined);
+    if (!node) {
+      return undefined;
+    }
+    parts.push(node);
+    cursor = skipSourceTrivia(source, next, source.length, options);
+  }
+  return parts.length > 1 ? query(parts) : parts[0];
 }
 
 function isSelectorNameStartCode(code: number, allowUppercase: boolean): boolean {
@@ -294,26 +451,126 @@ function parseStatementNode(
   });
 }
 
-function pushSkippedStatementDiagnostic(
+function parseBlockAtRuleNode(
   source: string,
-  diagnostics: ParserDiagnostic[] | undefined,
   start: number,
-  end: number
-): ParserDiagnostic[] | undefined {
-  if (!source.slice(start, end).trim()) {
-    return diagnostics;
+  blockStart: number,
+  blockEnd: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  if (source[start] !== '@') {
+    return undefined;
   }
-  const isMalformedAtRule = source[skipSourceTrivia(source, start, end)] === '@';
-  return appendParserDiagnostic(
-    diagnostics,
-    'warning',
-    isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
-    isMalformedAtRule
-      ? 'Flat CSS declaration parser skipped a malformed at-rule statement.'
-      : 'Flat CSS declaration parser skipped a statement without a top-level block.',
-    start,
-    end
-  );
+  let nameEnd = start + 1;
+  while (nameEnd < blockStart && isCssNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  const name = source.slice(start, nameEnd);
+  if (name.length === 1) {
+    return undefined;
+  }
+  const preludeText = source.slice(nameEnd, blockStart).trim();
+  const prelude = parseCheapAtRulePrelude(preludeText);
+  if (preludeText && !prelude) {
+    return undefined;
+  }
+  return atrule({
+    name,
+    ...(prelude !== undefined && { prelude }),
+    rules: rules(parseCssNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+  });
+}
+
+function parseCssNodes(
+  source: string,
+  start: number,
+  end: number,
+  addDiagnostic: DiagnosticSink
+): Node[] {
+  const children: Node[] = [];
+  let cursor = start;
+  while (cursor < end) {
+    cursor = skipSourceTrivia(source, cursor, end);
+    if (cursor >= end) {
+      break;
+    }
+    const blockStart = findTopLevelBlockStart(source, cursor, end);
+    const statementEnd = findStatementEnd(source, cursor, blockStart === -1 ? end : blockStart);
+    if (statementEnd < (blockStart === -1 ? end : blockStart)) {
+      const statement = parseStatementNode(source, cursor, statementEnd + 1);
+      if (statement) {
+        children.push(statement);
+      } else {
+        const statementStart = skipSourceTrivia(source, cursor, statementEnd + 1);
+        const isMalformedAtRule = source[statementStart] === '@';
+        addDiagnostic(
+          'warning',
+          isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
+          isMalformedAtRule
+            ? 'Flat CSS declaration parser skipped a malformed at-rule statement.'
+            : 'Flat CSS declaration parser skipped a statement without a top-level block.',
+          cursor,
+          statementEnd + 1
+        );
+      }
+      cursor = statementEnd + 1;
+      continue;
+    }
+    if (blockStart === -1) {
+      const trailing = source.slice(cursor, end).trim();
+      if (trailing) {
+        addDiagnostic(
+          'warning',
+          'css-flat-unsupported-trailing-source',
+          'Flat CSS declaration parser skipped trailing source without a top-level block.',
+          cursor,
+          end
+        );
+      }
+      break;
+    }
+    const blockEnd = findBalancedBlockEnd(source, blockStart, end);
+    if (blockEnd === -1) {
+      addDiagnostic(
+        'error',
+        'css-flat-unclosed-block',
+        'Flat CSS declaration parser reached the end of source before the block closed.',
+        blockStart,
+        end
+      );
+      break;
+    }
+    const header = source.slice(cursor, blockStart).trim();
+    if (header[0] === '@') {
+      const atRule = parseBlockAtRuleNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+      if (atRule) {
+        children.push(atRule);
+      } else {
+        addDiagnostic(
+          'warning',
+          'css-flat-unsupported-at-rule',
+          'Flat CSS declaration parser skipped an at-rule.',
+          cursor,
+          blockEnd + 1
+        );
+      }
+    } else if (header && canParseFlatQualifiedRule(source, header, blockStart + 1, blockEnd)) {
+      children.push(ruleset({
+        selector: parseCheapSelector(header),
+        rules: rules(parseDeclarationNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+      }));
+    } else if (header) {
+      addDiagnostic(
+        'warning',
+        'css-flat-unsupported-nested-block',
+        'Flat CSS declaration parser skipped a qualified rule with nested blocks.',
+        cursor,
+        blockEnd + 1
+      );
+    }
+    cursor = blockEnd + 1;
+  }
+  return children;
 }
 
 /**
@@ -335,73 +592,8 @@ export function parseFlatCssDeclarationStylesheet(
   const addDiagnostic: DiagnosticSink = (severity, code, message, start, end): void => {
     diagnostics = appendParserDiagnostic(diagnostics, severity, code, message, start, end);
   };
-  const children: Node[] = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    cursor = skipSourceTrivia(source, cursor);
-    if (cursor >= source.length) {
-      break;
-    }
-    const blockStart = findTopLevelBlockStart(source, cursor);
-    const statementEnd = findStatementEnd(source, cursor, blockStart === -1 ? source.length : blockStart);
-    if (statementEnd < (blockStart === -1 ? source.length : blockStart)) {
-      const statement = parseStatementNode(source, cursor, statementEnd + 1);
-      if (statement) {
-        children.push(statement);
-      } else {
-        diagnostics = pushSkippedStatementDiagnostic(source, diagnostics, cursor, statementEnd + 1);
-      }
-      cursor = statementEnd + 1;
-      continue;
-    }
-    if (blockStart === -1) {
-      const trailing = source.slice(cursor).trim();
-      if (trailing) {
-        diagnostics = appendParserDiagnostic(
-          diagnostics,
-          'warning',
-          'css-flat-unsupported-trailing-source',
-          'Flat CSS declaration parser skipped trailing source without a top-level block.',
-          cursor,
-          source.length
-        );
-      }
-      break;
-    }
-    const blockEnd = findBalancedBlockEnd(source, blockStart);
-    if (blockEnd === -1) {
-      diagnostics = appendParserDiagnostic(
-        diagnostics,
-        'error',
-        'css-flat-unclosed-block',
-        'Flat CSS declaration parser reached the end of source before the block closed.',
-        blockStart,
-        source.length
-      );
-      break;
-    }
-    const selector = source.slice(cursor, blockStart).trim();
-    if (selector && canParseFlatQualifiedRule(source, selector, blockStart + 1, blockEnd)) {
-      children.push(ruleset({
-        selector: parseCheapSelector(selector),
-        rules: rules(parseDeclarationNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-      }));
-    } else if (selector) {
-      diagnostics = appendParserDiagnostic(
-        diagnostics,
-        'warning',
-        selector[0] === '@' ? 'css-flat-unsupported-at-rule' : 'css-flat-unsupported-nested-block',
-        selector[0] === '@'
-          ? 'Flat CSS declaration parser skipped an at-rule.'
-          : 'Flat CSS declaration parser skipped a qualified rule with nested blocks.',
-        cursor,
-        blockEnd + 1
-      );
-    }
-    cursor = blockEnd + 1;
-  }
   return {
-    tree: stylesheet(children),
+    tree: stylesheet(parseCssNodes(source, 0, source.length, addDiagnostic)),
     source: sourceText,
     diagnostics: diagnostics ?? EMPTY_DIAGNOSTICS
   };

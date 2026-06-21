@@ -134,7 +134,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     `);
   });
 
-  test('does not turn unsupported at-rules or nested blocks into fake flat rulesets', () => {
+  test('parses cheap block at-rules and still rejects nested qualified rules', () => {
     const result = parseFlatCssDeclarationStylesheet('inline.css', `
       @media (min-width: 1px) {
         .inside { color: red; }
@@ -151,11 +151,33 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     const { tree: root } = result;
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
-      'css-flat-unsupported-at-rule',
       'css-flat-unsupported-nested-block'
     ]);
-    expect(root.rules).toHaveLength(1);
-    const [kept] = root.rules;
+    expect(root.rules).toHaveLength(2);
+    const [media, kept] = root.rules;
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected block at-rule');
+    }
+    expect(media.name).toBe('@media');
+    expect(typeof media.prelude).not.toBe('string');
+    expect(media.prelude?.toTrimmedString()).toBe('(min-width: 1px)');
+    expect(serializeTypes(media)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude:
+          (Paren
+            node:
+              (Any 'min-width: 1px')
+    `);
+    expect(media.toTrimmedString()).toBe([
+      '@media (min-width: 1px) {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
     expect(isNode(kept, N.Ruleset)).toBe(true);
     if (!isNode(kept, N.Ruleset)) {
       throw new Error('Expected a ruleset');
@@ -167,6 +189,24 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+  });
+
+  test('diagnoses unsupported structured at-rule preludes instead of widening raw strings', () => {
+    const result = parseFlatCssDeclarationStylesheet('unsupported-media.css', `
+      @media screen and (foo, bar) {
+        .comma { color: red; }
+      }
+
+      @media (foo[bar]) {
+        .general { color: blue; }
+      }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-at-rule'
+    ]);
   });
 
   test('records offset-only diagnostics and maps positions lazily', () => {
