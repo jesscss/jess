@@ -1549,6 +1549,17 @@ files changed in this pass. The binding-owned queue and cluster inventory are
 closed; broad changed-baseline failures remain documented outside the binding
 lane.
 
+Worker-tail integration note: `/private/tmp/jess-binding-goal` still had
+uncommitted lookup proof when this parser branch was resumed. The staged tail
+carried forward here is the non-duplicative reference proof: ordinary static
+callable references prepare frame lookup instead of entering broad
+`findMixinsFast(...)`, and stale `searchScope`/`leakyRules`
+declaration-family and callable-family handles clear and rebuild without
+public `Rules.find(...)` or broad callable bridge hits. The fallback-frame
+namespace descendant proof was already present in this branch, so the duplicate
+worker tests and duplicate `rules.ts` block were discarded. This is not a
+closure claim for item 87's cumulative `Rules` ownership lane.
+
 87. [ ] Unify cumulative `Rules` lookup/index ownership before adding more
 scanner-first parser or binding narrow cases. This is an implementation lane,
 not a read-only audit. Scope: `packages/core/src/tree/rules.ts` line-range

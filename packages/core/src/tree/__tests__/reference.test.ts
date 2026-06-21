@@ -50,6 +50,14 @@ function setRulesContext(root: Node): RulesClass {
   return root;
 }
 
+function expectRules(value: unknown): RulesClass {
+  expect(value).toBeInstanceOf(RulesClass);
+  if (!(value instanceof RulesClass)) {
+    throw new Error('Expected Rules node');
+  }
+  return value;
+}
+
 function expectNodeType(value: unknown, type: string): void {
   expect(isNode(value)).toBe(true);
   if (isNode(value)) {
@@ -3154,7 +3162,7 @@ describe('reference', () => {
             rules: childBody
           })
         ]);
-        const childRules = root.at(1) as RulesClass;
+        const childRules = expectRules(root.at(1));
         context.root = root;
         context.rulesContext = childRules;
 
@@ -3183,7 +3191,7 @@ describe('reference', () => {
           rules: childBody
         })
       ]);
-      const childRules = root.at(1) as RulesClass;
+      const childRules = expectRules(root.at(1));
       context.root = root;
       context.rulesContext = childRules;
       childRules.scopeFrame = childRules.getScopeFrame(root.getScopeFrame());
@@ -3243,7 +3251,7 @@ describe('reference', () => {
           rules: childBody
         })
       ]);
-      const childRules = root.at(1) as RulesClass;
+      const childRules = expectRules(root.at(1));
       context.root = root;
       context.rulesContext = childRules;
       const rootFrame = root.getScopeFrame();
@@ -3646,7 +3654,7 @@ describe('reference', () => {
         'child-color',
         { searchParents: false }
       )?.node.value.valueOf()).toBe('blue');
-      const childRules = root.directDeclarationChildEntries?.[0]?.node as RulesClass;
+      const childRules = expectRules(root.directDeclarationChildEntries?.[0]?.node);
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
@@ -4084,7 +4092,7 @@ describe('reference', () => {
             rules: childBody
           })
         ]);
-        const childRules = root.at(1) as RulesClass;
+        const childRules = expectRules(root.at(1));
         context.root = root;
         context.rulesContext = childRules;
 
@@ -5226,16 +5234,13 @@ describe('reference', () => {
       const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const framePreparations: string[] = [];
-      const broadCallableLookups: string[] = [];
+      const broadCallableLookups: unknown[][] = [];
       RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
         framePreparations.push(this.toTrimmedString());
         return originalGetScopeFrame.apply(this, args);
       };
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key] = args;
-        if (key === '.paint') {
-          broadCallableLookups.push(key);
-        }
+        broadCallableLookups.push(args);
         return originalFindMixinsFast.apply(this, args);
       };
 
@@ -5485,7 +5490,7 @@ describe('reference', () => {
         })
       ]);
       const evald = setRulesContext(await root.eval(context));
-      const childRules = evald.at(0) as RulesClass;
+      const childRules = expectRules(evald.at(0));
       const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -5836,112 +5841,131 @@ describe('reference', () => {
     });
 
     it('searchScope and leakyRules stale declaration handles rebuild without public declaration bridges', async () => {
-      const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
-      const node = rules([
-        ignoredDeclaration,
-        vardecl({ name: 'tone', value: any('red') }),
-        decl({ name: 'color', value: any('blue') }),
-        decl({ name: 'border', value: any('1px solid black') })
-      ]);
+      const originalFind = RulesClass.prototype.find;
+      const variableDeclaration = vardecl({ name: 'color', value: any('blue') });
+      const propertyDeclaration = decl({ name: 'border-color', value: any('green') });
+      const declarationDeclaration = decl({ name: 'background-color', value: any('red') });
+      const node = rules([variableDeclaration, propertyDeclaration, declarationDeclaration]);
       const root = setRulesContext(await node.eval(context));
       const leakyContext = new Context({ leakyRules: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
-      const variableRef = ref({ key: 'tone' }, { type: 'variable' });
-      const propertyRef = ref({ key: 'color' }, { type: 'property' });
-      const declarationRef = ref({ key: 'border' }, { type: 'declaration' });
-      const refs = [variableRef, propertyRef, declarationRef];
-      const originalFind = RulesClass.prototype.find;
-      const declarationBridgeHits: string[] = [];
+      const variableRef = ref({ key: 'color' }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      });
+      const propertyRef = ref({ key: 'border-color' }, {
+        type: 'property',
+        fallbackValue: any('fallback')
+      });
+      const declarationRef = ref({ key: 'background-color' }, {
+        type: 'declaration',
+        fallbackValue: any('fallback')
+      });
+      const bridgeHits: unknown[][] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [type, key] = args;
-        if (type === 'declaration') {
-          declarationBridgeHits.push(String(key));
-        }
+        bridgeHits.push(args);
         return originalFind.apply(this, args);
       };
 
       try {
-        for (const lookupRef of refs) {
-          expect(lookupRef.eval(context)).toBeDefined();
-          const handle = lookupRef._rulesLookupHandle;
-          expect(handle).toBeDefined();
+        expect(variableRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyRef.eval(context).valueOf()).toBe('green');
+        expect(declarationRef.eval(context).valueOf()).toBe('red');
+        const variableHandle = variableRef._rulesLookupHandle;
+        const propertyHandle = propertyRef._rulesLookupHandle;
+        const declarationHandle = declarationRef._rulesLookupHandle;
 
-          expect(lookupRef.eval(leakyContext)).toBeDefined();
-          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+        context.searchScope.add(variableDeclaration);
+        context.searchScope.add(propertyDeclaration);
+        context.searchScope.add(declarationDeclaration);
+        expect(variableRef.eval(context).valueOf()).toBe('fallback');
+        expect(propertyRef.eval(context).valueOf()).toBe('fallback');
+        expect(declarationRef.eval(context).valueOf()).toBe('fallback');
+        context.searchScope.delete(variableDeclaration);
+        context.searchScope.delete(propertyDeclaration);
+        context.searchScope.delete(declarationDeclaration);
 
-          expect(lookupRef.eval(context)).toBeDefined();
-          expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+        expect(variableRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyRef.eval(context).valueOf()).toBe('green');
+        expect(declarationRef.eval(context).valueOf()).toBe('red');
+        expect(variableRef._rulesLookupHandle).not.toBe(variableHandle);
+        expect(propertyRef._rulesLookupHandle).not.toBe(propertyHandle);
+        expect(declarationRef._rulesLookupHandle).not.toBe(declarationHandle);
 
-          context.searchScope.add(ignoredDeclaration);
-          expect(lookupRef.eval(context)).toBeDefined();
-          expect(lookupRef._rulesLookupHandle).toBeUndefined();
-          context.searchScope.delete(ignoredDeclaration);
+        expect(variableRef.eval(leakyContext).valueOf()).toBe('blue');
+        expect(propertyRef.eval(leakyContext).valueOf()).toBe('green');
+        expect(declarationRef.eval(leakyContext).valueOf()).toBe('red');
+        expect(variableRef._rulesLookupHandle).toBeUndefined();
+        expect(propertyRef._rulesLookupHandle).toBeUndefined();
+        expect(declarationRef._rulesLookupHandle).toBeUndefined();
 
-          expect(lookupRef.eval(context)).toBeDefined();
-          expect(lookupRef._rulesLookupHandle).toBeDefined();
-        }
-        expect(declarationBridgeHits).toEqual([]);
+        expect(variableRef.eval(context).valueOf()).toBe('blue');
+        expect(propertyRef.eval(context).valueOf()).toBe('green');
+        expect(declarationRef.eval(context).valueOf()).toBe('red');
+        expect(variableRef._rulesLookupHandle).toBeDefined();
+        expect(propertyRef._rulesLookupHandle).toBeDefined();
+        expect(declarationRef._rulesLookupHandle).toBeDefined();
+        expect(bridgeHits).toEqual([]);
       } finally {
         RulesClass.prototype.find = originalFind;
-        context.searchScope.delete(ignoredDeclaration);
       }
     });
 
     it('searchScope and leakyRules stale callable handles rebuild without broad callable bridges', async () => {
-      const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
-      const node = rules([
-        ignoredDeclaration,
-        mixin({
-          name: any('.paint-mixin'),
-          rules: [decl({ name: 'color', value: any('blue') })]
-        }),
-        ruleset({
-          selector: el('.paint-ruleset'),
-          rules: [decl({ name: 'color', value: any('green') })]
-        })
-      ]);
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const mixinNode = mixin({
+        name: any('.paint-mixin'),
+        rules: [decl({ name: 'color', value: any('green') })]
+      });
+      const rulesetNode = ruleset({
+        selector: el('.paint-ruleset'),
+        rules: [decl({ name: 'color', value: any('blue') })]
+      });
+      const ignoredDeclaration = decl({ name: 'marker', value: any('black') });
+      const node = rules([ignoredDeclaration, mixinNode, rulesetNode]);
       const root = setRulesContext(await node.eval(context));
       const leakyContext = new Context({ leakyRules: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const mixinRef = ref({ key: '.paint-mixin' }, { type: 'mixin' });
       const rulesetRef = ref({ key: '.paint-ruleset' }, { type: 'mixin-ruleset' });
-      const refs = [mixinRef, rulesetRef];
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const broadCallableLookups: string[] = [];
+      const broadHits: unknown[][] = [];
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key] = args;
-        if (key === '.paint-mixin' || key === '.paint-ruleset') {
-          broadCallableLookups.push(key);
-        }
+        broadHits.push(args);
         return originalFindMixinsFast.apply(this, args);
       };
 
       try {
-        for (const lookupRef of refs) {
-          expectNodeType(lookupRef.eval(context), 'MixinCollection');
-          const handle = lookupRef._rulesLookupHandle;
-          expect(handle).toBeDefined();
+        expectNodeType(mixinRef.eval(context), 'MixinCollection');
+        expectNodeType(rulesetRef.eval(context), 'MixinCollection');
+        const mixinHandle = mixinRef._rulesLookupHandle;
+        const rulesetHandle = rulesetRef._rulesLookupHandle;
 
-          expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
-          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+        context.searchScope.add(ignoredDeclaration);
+        expectNodeType(mixinRef.eval(context), 'MixinCollection');
+        expectNodeType(rulesetRef.eval(context), 'MixinCollection');
+        expect(mixinRef._rulesLookupHandle).toBeUndefined();
+        expect(rulesetRef._rulesLookupHandle).toBeUndefined();
+        context.searchScope.delete(ignoredDeclaration);
 
-          expectNodeType(lookupRef.eval(context), 'MixinCollection');
-          expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+        expectNodeType(mixinRef.eval(context), 'MixinCollection');
+        expectNodeType(rulesetRef.eval(context), 'MixinCollection');
+        expect(mixinRef._rulesLookupHandle).not.toBe(mixinHandle);
+        expect(rulesetRef._rulesLookupHandle).not.toBe(rulesetHandle);
 
-          context.searchScope.add(ignoredDeclaration);
-          expectNodeType(lookupRef.eval(context), 'MixinCollection');
-          expect(lookupRef._rulesLookupHandle).toBeUndefined();
-          context.searchScope.delete(ignoredDeclaration);
+        expectNodeType(mixinRef.eval(leakyContext), 'MixinCollection');
+        expectNodeType(rulesetRef.eval(leakyContext), 'MixinCollection');
+        expect(mixinRef._rulesLookupHandle).toBeUndefined();
+        expect(rulesetRef._rulesLookupHandle).toBeUndefined();
 
-          expectNodeType(lookupRef.eval(context), 'MixinCollection');
-          expect(lookupRef._rulesLookupHandle).toBeDefined();
-        }
-        expect(broadCallableLookups).toEqual([]);
+        expectNodeType(mixinRef.eval(context), 'MixinCollection');
+        expectNodeType(rulesetRef.eval(context), 'MixinCollection');
+        expect(mixinRef._rulesLookupHandle).toBeDefined();
+        expect(rulesetRef._rulesLookupHandle).toBeDefined();
+        expect(broadHits).toEqual([]);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        context.searchScope.delete(ignoredDeclaration);
       }
     });
 
