@@ -6,7 +6,7 @@ import { assertValidTree } from './assert-valid-tree.js';
 const parser = new Parser();
 
 function firstRuleDeclValue(tree: any) {
-  return tree?.value?.[0]?.value?.rules?.value?.[0]?.value?.value;
+  return tree?.rules?.[0]?.rules?.rules?.[0]?.value;
 }
 
 describe('scss-parser (ast serialize)', () => {
@@ -21,10 +21,11 @@ describe('scss-parser (ast serialize)', () => {
           (BasicSelector '.a')
         rules:
           (Rules
-            [
-              (Declaration
-                name:
-                  (Any [role=property] 'color')
+            rules:
+              [
+                (Declaration
+                  name:
+                    (Any [role=property] 'color')
       `);
   });
 
@@ -35,20 +36,21 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Collection
-        [
-          (Declaration
-            name:
-              (Any [role=property] 'regular')
-            value:
-              (Num 400)
-          )
-          (Declaration
-            name:
-              (Any [role=property] 'medium')
-            value:
-              (Num 500)
-          )
-        ]
+        rules:
+          [
+            (Declaration
+              name:
+                (Any [role=property] 'regular')
+              value:
+                (Num 400)
+            )
+            (Declaration
+              name:
+                (Any [role=property] 'medium')
+              value:
+                (Num 500)
+            )
+          ]
       )
     `);
   });
@@ -74,7 +76,7 @@ describe('scss-parser (ast serialize)', () => {
         node:
           (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('+');
+    expect(firstRuleDeclValue(tree)?.node?.operator).toBe('+');
   });
 
   it('serializes isolated parenthesized slash division as Expression(Operation)', () => {
@@ -87,7 +89,7 @@ describe('scss-parser (ast serialize)', () => {
         node:
           (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('/');
+    expect(firstRuleDeclValue(tree)?.node?.operator).toBe('/');
   });
 
   it('keeps paren list slash forms as grouped values, not arithmetic expressions', () => {
@@ -109,7 +111,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'font')
-        valueNode:
+        value:
           (Collection
     `);
     expect(serializeTypes(tree)).toContainString(`size`);
@@ -125,7 +127,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'margin')
-        valueNode:
+        value:
           (Sequence
     `);
     expect(serializeTypes(tree)).toContainString(`(Collection`);
@@ -280,7 +282,8 @@ describe('scss-parser (ast serialize)', () => {
       (JsImport
         path:
           (Quoted
-            (Any [role=any] '#sass/map')
+            value:
+              (Any [role=any] '#sass/map')
           )
       `);
   });
@@ -404,7 +407,7 @@ describe('scss-parser (ast serialize)', () => {
       (Ruleset
         selector:
           (ComplexSelector
-            value:
+            components:
               [
                 (Ampersand
     `);
@@ -480,21 +483,22 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
-            target: 
+            target:
               (Reference
                 key: 'ns'
               )
             key: 'foo'
           )
-        args: 
+        args:
           (List
-            [
-              (Reference
-                key: 'x'
-              )
-            ]
+            items:
+              [
+                (Reference
+                  key: 'x'
+                )
+              ]
           )
       )
     `);

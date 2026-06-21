@@ -26,7 +26,6 @@ import {
   emitTriviaTokens,
   getPrintableTriviaTokens
 } from './util/trivia.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
 import { QueryCondition } from './query-condition.js';
@@ -141,7 +140,11 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
     && name.options.mixinRulesetCallHasArgs !== true
   ) {
     return new Reference(
-      name.value,
+      {
+        target: name.target,
+        key: name.key,
+        rawKey: name.rawKey
+      },
       {
         ...name.options,
         mixinRulesetCallHasArgs: true
@@ -531,7 +534,9 @@ export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index:
   if (!diagnosticSource) {
     return undefined;
   }
-  return `argument ${diagnosticSource.index + 1} from ${diagnosticSource.source.valueOf()}`;
+  const sourceText = getKnownSourceCallText(diagnosticSource.sourceArg) ?? diagnosticSource.sourceArg.toTrimmedString();
+  const sourceArgText = sourceText.startsWith('$') ? sourceText : `$${sourceText}`;
+  return `argument ${diagnosticSource.index + 1} from ${sourceArgText}`;
 }
 
 /**
@@ -577,7 +582,11 @@ export class Call extends Node<CallValue, CallOptions> {
       && name.options?.preserveRulesLike !== true
     ) {
       name = new Reference(
-        name.value,
+        {
+          target: name.target,
+          key: name.key,
+          rawKey: name.rawKey
+        },
         {
           ...name.options,
           preserveRulesLike: true
@@ -657,7 +666,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
       let evald = await first;
       out[startIndex] = evald === source[startIndex]!
-        ? ownResults ? copyWithReusableLeaves(evald) : evald
+        ? ownResults ? evald.cloneForPlacement() : evald
         : evald;
       changed ||= evald !== source[startIndex]!;
       for (let i = startIndex + 1; i < source.length; i++) {
@@ -672,7 +681,7 @@ export class Call extends Node<CallValue, CallOptions> {
           nextEvald = await next.eval(context) as Node;
         }
         out[i] = nextEvald === next
-          ? ownResults ? copyWithReusableLeaves(nextEvald) : nextEvald
+          ? ownResults ? nextEvald.cloneForPlacement() : nextEvald
           : nextEvald;
         changed ||= nextEvald !== next;
       }
@@ -686,7 +695,7 @@ export class Call extends Node<CallValue, CallOptions> {
       ) {
         const evald = evalImmediate(node);
         out[i] = evald === node
-          ? ownResults ? copyWithReusableLeaves(evald) : evald
+          ? ownResults ? evald.cloneForPlacement() : evald
           : evald;
         changed ||= evald !== node;
         continue;
@@ -697,7 +706,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       const resolved = evald as Node;
       out[i] = resolved === node
-        ? ownResults ? copyWithReusableLeaves(resolved) : resolved
+        ? ownResults ? resolved.cloneForPlacement() : resolved
         : resolved;
       changed ||= resolved !== node;
     }
@@ -1131,7 +1140,7 @@ export class Call extends Node<CallValue, CallOptions> {
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const { name, contentNode } = callNode.value;
+    const { name, contentNode } = callNode;
     if (!callNode.args && !contentNode && typeof name === 'string') {
       const out = `${name}${callNode.options?.silentFail ? '?' : ''}()${callNode.options?.markImportant ? ' !important' : ''}`;
       w.add(out, callNode);

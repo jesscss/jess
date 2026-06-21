@@ -250,6 +250,13 @@ The target is not a parallel `ProgressiveDeclaration`, `ParsedDeclaration`, or
 scanner-only declaration shape. The target is to widen the existing AST
 node classes/interfaces in place where that is the correct runtime model.
 
+Do not treat base `Node.value` as the source of truth. Value-bearing nodes may
+own a `value` field when that field is semantically real, such as declaration
+values, selector lists, lists, sequences, and scalar leaves. Direct-field nodes
+such as `Ruleset`, `AtRule`, `Mixin`, and future `Stylesheet` should store their
+semantic state in named fields and should not receive a duplicate constructor
+payload field just to satisfy generic copy/traversal code.
+
 Keep the deferred state as small as the owning node allows. A generic
 `{ field, start, end, hydrated }` object is easy to explain, but it is not the
 preferred runtime shape. If the node already declares field order through
@@ -281,6 +288,8 @@ This schema is intentionally field-first:
   parser/hydrator
 - the AST node remains the thing a developer inspects, serializes, and mutates
 - a compact node-owned table avoids redundant field names and per-field objects
+- generic traversal, clone, and detach logic should read `static childKeys`, not
+  reconstruct from an old constructor payload
 - do not add a generic field object unless one node really needs multiple
   deferred fields that cannot be expressed as field-specific slots
 - do not add a `DeferredFieldKind` enum unless one node field truly has multiple
@@ -380,6 +389,11 @@ only materialize richer structure when correctness requires it or a caller
 observes that richer structure. Nodes may hydrate or mutate internal field
 representation when the serialized output shape remains the same.
 
+Clone and placement ownership must follow the same rule. A node with direct
+semantic fields owns its own `clone()` implementation; parser work should not
+add external copy helpers that rebuild nodes from an assumed generic payload.
+Temporary constructor migration sentinels are debt, not target architecture.
+
 ### R9. Visitor Support Is Conditional
 
 Less supports visitors, but Jess does not need to preserve every leaf-level
@@ -426,6 +440,8 @@ The parser substrate should avoid:
 - copy/pasted source location services
 - language-specific hard-coded node constructors
 - parallel plugin activation systems
+- generic generator traversal as the default hot-path primitive without callsite
+  evidence
 
 Language-specific grammar details still belong in language packages/providers.
 DRY does not mean flattening all languages into one eager parser.
@@ -438,7 +454,8 @@ Status target:
 
 - source text and lazy line map
 - scanner helpers
-- structural document tree
+- boundary representation, which may be existing AST nodes with string fields,
+  temporary structural records, or packed field state depending on proof
 - field-range metadata
 - diagnostics and recovery
 - language profile contract
@@ -515,6 +532,8 @@ Every new object, side table, method, map, or node kind should answer:
 6. Can this state live on the owning AST node instead?
 7. Does this allocate during structural-only parse?
 8. Does this belong in `@jesscss/parser`, or in a CSS/Less/Jess provider layer?
+9. Does it add generator/iterator, map/set, side-table, wrapper, or clone work
+   in a parser/eval/render hot path that could be a direct loop or direct field?
 
 If the answer is not clear, document the shape as provisional and keep it out of
 hot paths.

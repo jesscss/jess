@@ -103,6 +103,101 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: base `Node.value` contract cut for direct-field nodes.
+- Verdict: accepted as an AST ownership correction and prerequisite cleanup for
+  parser AST-shape work, not a measured performance pass. Base `Node` no longer
+  declares `.value` as a universal field; direct-field containers such as
+  `Ruleset`, `AtRule`, and `Mixin` do not get a duplicate payload field.
+- New traversal: base `children()`, `_visitEntries`, `_visitValues`, and
+  `detachTrivia(true)` now read `static childKeys` and direct fields instead of
+  assuming every node has a constructor payload. This keeps old generator
+  surfaces working for visitor/extend callsites, but generators remain an audit
+  target rather than the model for new parser work.
+- New node/materialization: no new node family was added. Comment stripping in
+  placement cloning now strips `Comment` before reusable-leaf sharing, and
+  selector header visibility uses scoped flag restoration instead of cloning a
+  source-free basic selector.
+- Render/eval path: no render-only node construction was added. Explicit
+  callable reference fallbacks now return callable signature text instead of
+  resolving to a `MixinCollection` that renders empty in declaration value
+  position.
+- Helper/API surface: no parser-facing helper was added. Temporary constructor
+  sentinel use for migrated direct-field nodes is debt, not target
+  architecture; parser docs now say node fields plus `childKeys` are the
+  source of truth.
+- Metadata mutations: the selector visibility restoration list is scoped to the
+  header render try/finally and restores flags before returning. This is a
+  smaller render-local mutation than cloning selector leaves for visibility.
+- Evidence: `pnpm --filter @jesscss/core build` passed. Focused
+  `ruleset.test.ts`, `at-rule.test.ts`, and `import-style.test.ts` passed:
+  `3` files, `229` tests, `1` skipped. No speed claim is made without
+  benchmark/profile evidence.
+
+- Latest pass: node-owned clone/copy source-of-truth cut.
+- Verdict: accepted as a machinery deletion and AST ownership correction, not a
+  measured performance pass. External constructor-reconstruction helpers are not
+  the target model. A node with direct semantic fields owns its own `clone()`;
+  `cloneForPlacement(...)` is only a small placement-policy wrapper around
+  node-owned cloning.
+- New traversal: no production tree walk was added for this pass. The retained
+  import-placement descendant source lookup already existed; the new source-free
+  leaf branch exits before that projection when placement/source identity is the
+  same object.
+- Review-flagged allocations: `packages/core/src/tree/util/cloning.ts`,
+  `Node.copy()`, and the exported reusable-leaf copy helper surface were
+  removed. The follow-up review flagged `Ruleset`, `Mixin`, and `AtRule` as
+  still relying on inherited constructor-payload cloning despite direct fields;
+  those nodes now override `clone()` directly.
+- New node/materialization: no new wrapper node family was added. Placement
+  cloning still creates semantic placement state where an import/callable output
+  surface must own parents/source metadata; source-free scalar leaves are reused
+  directly instead of cloned.
+- Render path: no render-only node creation was added. The focused tests assert
+  several render/eval paths avoid `Rules.clone()` or source-backed child copies.
+- Helper/API surface: the broad copy helper module is gone. Remaining copy-like
+  names are node methods (`clone`, `cloneForPlacement`) or narrow semantic
+  helpers such as callable/import placement policy. Any object/direct-field node
+  added later must override `clone()` rather than teaching an external helper
+  how to reconstruct it.
+- Metadata mutations: the pass removed `Reflect.construct` reconstruction from
+  ordinary clone/derive paths and removed pointless runtime `instanceof` checks
+  after constructors whose result type is already known. `defineType(...)` still
+  uses `Reflect.construct` as a factory boundary and should be audited
+  separately before changing that public helper.
+- Evidence: focused core clone/declaration/rules/import/reference tests passed:
+  `5` files, `466` tests, `6` skipped. Sub-agent review found the remaining
+  direct-field clone overrides and stale docs; this block records the corrected
+  rule. No speed claim is made without a benchmark/profile pair.
+
+- Latest pass: composed selector ownership and source-trivia separator cleanup.
+- Verdict: accepted as a correctness fix found while proving the direct-field
+  cleanup against CSS parser serialization, not a measured performance pass.
+  Generated collapsed selectors must not adopt live-owned selector leaves from
+  source rulesets; they now build from placement-owned selector components.
+- New traversal: no new tree walk was added. The selector composition helper
+  maps the already-known parent/child selector component arrays once when a
+  generated composed selector is required.
+- Review-flagged allocations: the new placement copies replace an invalid
+  live-node adoption that could create parent/source ownership cycles and hang
+  collapsed rendering. They are semantic placement state for a generated
+  selector, not render-only materialization for string output.
+- Render path: `Sequence` no longer synthesizes an extra default space after it
+  already emitted authored comment trivia between adjacent source nodes. The
+  emitted trivia run owns the separator exactly as parsed.
+- Helper/API surface: one private selector-component ownership helper was added
+  inside `Ruleset`; no public API or parser-facing helper was added.
+- Metadata mutations: `Rules._emitRulesBody(...)` now reads `this.rules`
+  instead of the legacy constructor payload. Generated composed selectors own
+  their cloned components instead of stealing parent pointers from canonical
+  source selectors.
+- Evidence: DebugMCP was attempted for the hanging CSS parser test, then a
+  tiny built-runtime reproduction isolated `Ruleset._prependParent(a, b)` as
+  the hang. After the fix, the reproduction returned `a b` and collapsed CSS
+  output. Focused `@jesscss/core` ruleset/list/sequence and wider
+  ruleset/at-rule/import/call/list tests passed; `@jesscss/css-parser`
+  `ast-proof.test.ts` and `ast-serialize.test.ts` passed after rebuilding
+  `@jesscss/parser` and `@jesscss/core`.
+
 - Latest pass: string-backed CSS AST proof path.
 - Verdict: accepted as a narrow parser-shape proof, not a runtime hydration or
   performance pass. Existing `Declaration` and `Ruleset` nodes now accept string

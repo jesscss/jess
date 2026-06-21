@@ -283,7 +283,7 @@ function getNodeLocation(node: Node): LocationInfo | undefined {
 function prefixAtRootSelector(selector: Selector, context: any): Selector {
   if (isNode(selector, N.SelectorList)) {
     const list = new SelectorList(
-      (selector as SelectorList).selectors.map(item => prefixAtRootSelector(item as Selector, context)),
+      (selector as SelectorList).value.map(item => prefixAtRootSelector(item as Selector, context)),
       undefined,
       getNodeLocation(selector),
       context
@@ -294,7 +294,7 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
   const amp = createNullParentAmpersand(context, selector);
   if (isNode(selector, N.ComplexSelector)) {
     const complex = new ComplexSelector(
-      [amp, ...(selector as ComplexSelector).components],
+      [amp, ...(selector as ComplexSelector).value],
       undefined,
       getNodeLocation(selector),
       context
@@ -359,7 +359,7 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
 
 function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.selectors) {
+    for (const item of selector.value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -376,11 +376,11 @@ function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSel
         : isNode(selector, N.ComplexSelector)
           ? ['complex']
           : ['simple'];
-  if (isNode(selector, N.CompoundSelector) && selector.components.length === 1) {
-    return findDisallowedExtendSelector(selector.components[0], allowed);
+  if (isNode(selector, N.CompoundSelector) && selector.value.length === 1) {
+    return findDisallowedExtendSelector(selector.value[0], allowed);
   }
-  if (isNode(selector, N.ComplexSelector) && selector.components.length === 1) {
-    return findDisallowedExtendSelector(selector.components[0], allowed);
+  if (isNode(selector, N.ComplexSelector) && selector.value.length === 1) {
+    return findDisallowedExtendSelector(selector.value[0], allowed);
   }
   if (kinds.some(k => allowed.includes(k))) {
     return undefined;
@@ -397,7 +397,7 @@ function validateExtendTarget($: P, target: any): void {
   if (!disallowed) {
     return;
   }
-  const kindList = allowed.length === 1 ? `${allowed[0]} selectors` : allowed.join(', ');
+  const kindList = allowed.length === 1 ? `${allowed[0]} value` : allowed.join(', ');
   $.SAVE_ERROR(new NoViableAltException(
     `@extend only allows ${kindList}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
     $.LA(1),
@@ -838,14 +838,14 @@ export function scssExtendAtRule(this: P, T: TokenMap) {
       if (isNode(sel, N.BasicSelector)) {
         return sel.value.startsWith('\\');
       }
-      if (isNode(sel, N.SelectorList) && sel.selectors.length === 1) {
-        return isPlaceholderTarget(sel.selectors[0]!);
+      if (isNode(sel, N.SelectorList) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
-      if (isNode(sel, N.CompoundSelector) && sel.components.length === 1) {
-        return isPlaceholderTarget(sel.components[0]!);
+      if (isNode(sel, N.CompoundSelector) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
-      if (isNode(sel, N.ComplexSelector) && sel.components.length === 1) {
-        return isPlaceholderTarget(sel.components[0]!);
+      if (isNode(sel, N.ComplexSelector) && sel.value.length === 1) {
+        return isPlaceholderTarget(sel.value[0]!);
       }
       return false;
     };
@@ -2092,7 +2092,7 @@ export function scssDiagnosticAtRule(this: P, T: TokenMap) {
 /**
  * SCSS: `@at-root [selector] { ... }` or `@at-root (without: media) { ... }`
  *
- * Plain `@at-root { ... }` is lowered by prefixing contained selectors with a
+ * Plain `@at-root { ... }` is lowered by prefixing contained value with a
  * null-parent ampersand template so they hoist naturally during selector
  * composition. Prelude/filter forms remain preserved as unsupported at-rules.
  */

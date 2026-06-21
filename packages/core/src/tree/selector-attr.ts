@@ -7,7 +7,6 @@ import { quoted } from './quoted.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -58,7 +57,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.resolve(context);
+            const out = decl.value.resolve(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -142,7 +141,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.eval(context);
+            const out = decl.value.eval(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -163,12 +162,12 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const ownedName = typeof resolvedName === 'string'
       ? resolvedName
       : resolvedName === currentName
-        ? canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName)
-        : canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName);
+        ? resolvedName.canReuseAsLeaf() ? resolvedName.reuseAsLeaf() : resolvedName.cloneForPlacement()
+        : resolvedName.canReuseAsLeaf() ? resolvedName.reuseAsLeaf() : resolvedName.cloneForPlacement();
     const ownedValue = resolvedValue
       ? resolvedValue === currentValue
-        ? canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
-        : canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
+        ? resolvedValue.canReuseAsLeaf() ? resolvedValue.reuseAsLeaf() : resolvedValue.cloneForPlacement()
+        : resolvedValue.canReuseAsLeaf() ? resolvedValue.reuseAsLeaf() : resolvedValue.cloneForPlacement()
       : undefined;
     const node = new AttributeSelector(
       {

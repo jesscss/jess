@@ -36,4 +36,8 @@ describe('source scanner helpers', () => {
     expect(firstStatementEnd).toBe(source.indexOf('; background'));
     expect(secondColon).toBe(source.indexOf(': blue'));
   });
+
+  test('rejects multi-character delimiters instead of silently missing', () => {
+    expect(() => findTopLevelDelimiter('a --> b', '-->', 0, 7)).toThrow(TypeError);
+  });
 });

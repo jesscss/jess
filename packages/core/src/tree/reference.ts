@@ -14,7 +14,6 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -241,7 +240,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (const node of selector.components) {
+    for (const node of selector.value) {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
@@ -2617,6 +2616,32 @@ function finalizeFallbackReferenceResult(
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
 
+function finalizeCallableFallbackReferenceResult(
+  referenceNode: Reference,
+  returnVal: ReferenceLookupReturnValue | unknown,
+  valueKey: NormalizedLookupKey,
+  lookupType: LookupType,
+  fallbackValue: ReferenceOptions['fallbackValue'],
+  context: Context
+): Node | undefined {
+  if (
+    fallbackValue !== true
+    || (lookupType !== 'mixin' && lookupType !== 'mixin-ruleset')
+    || !isArray(returnVal)
+  ) {
+    return undefined;
+  }
+  const candidate = returnVal[0];
+  if (!isNode(candidate, N.Mixin) && !isNode(candidate, N.Ruleset)) {
+    return undefined;
+  }
+  const params = isNode(candidate, N.Mixin) && candidate.params
+    ? candidate.params.toTrimmedString()
+    : '';
+  context.popReference();
+  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.role });
+}
+
 function finalizeDirectReferenceResult(
   referenceNode: Reference,
   returnVal: unknown,
@@ -2781,7 +2806,7 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.valueNode;
+  const declarationValue = declaration.value;
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
@@ -2949,7 +2974,7 @@ function evaluateReferenceValueNode(
     ) {
       return declValue;
     }
-    return copyWithReusableLeaves(declValue).eval(context);
+    return declValue.cloneForPlacement().eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }
@@ -3053,6 +3078,17 @@ function finalizeReferenceLookupResult(
       textOnly
     );
   }
+  const callableFallback = finalizeCallableFallbackReferenceResult(
+    referenceNode,
+    returnVal,
+    valueKey,
+    lookupType,
+    fallbackValue,
+    context
+  );
+  if (callableFallback) {
+    return callableFallback;
+  }
   if (isScopeFrameVariableBindingHandle(returnVal)) {
     return finalizeScopeFrameVariableBindingResult(referenceNode, returnVal, context);
   }
@@ -3075,10 +3111,10 @@ function finalizeRawReferenceLookupTarget(
     return getBindingHandleValue(returnVal);
   }
   if (isDirectDeclarationOccurrence(returnVal)) {
-    return returnVal.node.valueNode;
+    return returnVal.node.value;
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return returnVal.valueNode;
+    return returnVal.value;
   }
   return returnVal;
 }

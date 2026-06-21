@@ -96,9 +96,8 @@ This is the concrete direction implied by the review above.
      `parseFlatCssDeclarationStylesheet(filePath, source)`, which returns a
      core `Stylesheet` with string-backed `Ruleset.selector`,
      `Declaration.name`, and declaration value fields for a flat qualified-rule
-     declaration subset. The current core field is still named `valueNode`;
-     renaming that to the semantic `value` field remains core-shape debt, not a
-     parser requirement.
+     declaration subset. `Declaration.value` is the semantic declaration value;
+     parser code should not introduce parallel payload names for it.
    - introduce or target a real top-level `Stylesheet extends Rules` node if
      root document state cannot fit cleanly on plain `Rules`
    - widen the actual `@jesscss/core` node fields in place where needed
@@ -201,6 +200,27 @@ line/column positions merely to populate node provenance.
 The same pattern applies to `Ruleset`, `AtRule`, `VarDeclaration`, and other
 existing AST nodes: the runtime node has `type`, the static side has
 `childKeys`, and `spans` is packed by that static field order.
+
+Direct fields are also the clone source of truth. If a node stores semantic
+state in fields such as `name`, `value`, `selector`, `rules`, `prelude`, or
+`important`, that node must own a `clone()` override that reconstructs from
+those fields. Do not add parser-side copy helpers, `valueNode` bridges, raw
+payload mirrors, or external constructor-reconstruction services to keep old
+payload assumptions alive.
+
+Base `Node.value` is not the target storage contract. A node may own a semantic
+`value` field, but that is different from every node inheriting a generic
+constructor payload. Direct-field containers should not duplicate their fields
+into `.value`, and generic traversal/copy/detach code should use
+`static childKeys` plus direct field reads. The current constructor sentinel used
+by migrated direct-field nodes is migration debt; do not model parser APIs after
+it.
+
+Generator traversal is also an audit target, not a default for new parser work.
+Existing `children()`/`nodes()` callsites remain for visitor and extend paths,
+but scanner-first parser code should prefer direct loops over known field arrays
+or offsets. Adding a generator, map, side table, or wrapper to make a generic API
+look neat must be justified against allocation and callsite evidence.
 
 If a registry remains necessary, use field terminology:
 
@@ -898,7 +918,7 @@ In the scanner-first prototype branch, calling
 | root `StructuralContainerNode` | `src/structure/parse.ts` | R2 | Document container. | Required. |
 | one structural node per detected container/statement/error | `src/structure/types.ts` | R2, R6 | Captures containment and source ranges. | Provisional; direct existing AST nodes with deferred-capable fields may be cheaper. |
 | `StructuralDocument` facade | `src/structure/document.ts` | R2 | Exposes root, diagnostics, trivia, field ranges, islands, and cold queries. | Provisional broad-scan facade. Keep out of compile hot path; direct AST nodes with deferred fields are the preferred CSS/Less parser proof. |
-| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks source-scanner boundaries into a real core `Stylesheet` for a tiny flat CSS qualified-rule declaration subset. It skips at-rules and nested blocks rather than manufacturing empty rulesets for unsupported syntax. Selector/name/value payloads remain strings; no island plan, structural node, or Chevrotain parse is required. Current `Ruleset.rules: Rules` and `Declaration.valueNode` shapes are inherited core debt, not parser-owned structural objects. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
+| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks source-scanner boundaries into a real core `Stylesheet` for a tiny flat CSS qualified-rule declaration subset. It skips at-rules and nested blocks rather than manufacturing empty rulesets for unsupported syntax. Selector/name/value payloads remain strings; no island plan, structural node, or Chevrotain parse is required. Current `Ruleset.rules: Rules` is inherited core debt, not a parser-owned structural object. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
 
 The prototype generic `parseStructure(input, profile, options)` allocation
 accounting has zero allocations for:

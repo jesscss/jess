@@ -72,6 +72,19 @@ describe('Declaration', () => {
     expect(rule.toTrimmedString()).toBe('color: #eee');
   });
 
+  it('uses direct fields as the declaration source of truth', () => {
+    const name = any('color');
+    const value = any('red');
+    const important = any('!important', { role: 'flag' });
+    const node = decl({ name, value, important });
+
+    expect(node.name).toBe(name);
+    expect(node.value).toBe(value);
+    expect(node.important).toBe(important);
+    expect(node.value).not.toHaveProperty('name');
+    expect([...node.children()]).toEqual([name, value, important]);
+  });
+
   it('does not allocate options when serializing a default declaration', () => {
     const rule = decl({ name: 'color', value: color('#eee') });
 
@@ -271,17 +284,17 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalNameCopy = sourceName.copy;
-    const originalValueCopy = sourceValue.copy;
+    const originalNameCopy = sourceName.cloneForPlacement;
+    const originalValueCopy = sourceValue.cloneForPlacement;
     let sourcePartCopies = 0;
-    sourceName.copy = function copyNameForCounting(
+    sourceName.cloneForPlacement = function copyNameForCounting(
       this: typeof sourceName,
       ...args: Parameters<typeof originalNameCopy>
     ): ReturnType<typeof originalNameCopy> {
       sourcePartCopies++;
       return originalNameCopy.apply(this, args);
     };
-    sourceValue.copy = function copyValueForCounting(
+    sourceValue.cloneForPlacement = function copyValueForCounting(
       this: typeof sourceValue,
       ...args: Parameters<typeof originalValueCopy>
     ): ReturnType<typeof originalValueCopy> {
@@ -296,8 +309,8 @@ describe('Declaration', () => {
       expect(sourceValue.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
-      sourceName.copy = originalNameCopy;
-      sourceValue.copy = originalValueCopy;
+      sourceName.cloneForPlacement = originalNameCopy;
+      sourceValue.cloneForPlacement = originalValueCopy;
     }
   });
 
@@ -316,7 +329,7 @@ describe('Declaration', () => {
     ];
 
     for (const [assign, expected] of cases) {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
       const prior = makePrior(assign);
       const root = rules([prior]);
@@ -329,7 +342,7 @@ describe('Declaration', () => {
         name: any('background-color'),
         value
       }, { assign });
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -345,7 +358,7 @@ describe('Declaration', () => {
         expect(value.parent).toBe(sourceDeclaration);
         expect(sourceDeclaration.registrationPrepared).toBe(false);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     }
   });
@@ -404,7 +417,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
-    const sourceValue = node.valueNode;
+    const sourceValue = node.value;
 
     const resolved = await node.resolve(context);
 
@@ -463,8 +476,8 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.type).toBe('Sequence');
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.type).toBe('Sequence');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
     expect(value.registrationPrepared).toBe(false);
   });
@@ -486,7 +499,7 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(deriveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -950,9 +963,9 @@ describe('Declaration', () => {
         value: any('foo')
       }, { assign: '+:' })
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let scalarCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(red|foo)$/u.test(String(this.valueOf()))) {
         scalarCopies++;
       }
@@ -967,7 +980,7 @@ describe('Declaration', () => {
       `);
       expect(scalarCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1114,7 +1127,7 @@ describe('Declaration', () => {
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1180,7 +1193,7 @@ describe('Declaration', () => {
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
@@ -1377,9 +1390,9 @@ describe('Declaration', () => {
         }, { assign: AssignmentType.MergeList })
       ])
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let srcValueCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(one|two|three)$/u.test(String(this.valueOf()))) {
         srcValueCopies++;
       }
@@ -1394,7 +1407,7 @@ describe('Declaration', () => {
       `);
       expect(srcValueCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1538,9 +1551,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.Add })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = List.prototype.copy;
+    const originalCopy = List.prototype.cloneForPlacement;
     let sourceListCopies = 0;
-    List.prototype.copy = function copyForCounting(
+    List.prototype.cloneForPlacement = function copyForCounting(
       this: List,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1558,7 +1571,7 @@ describe('Declaration', () => {
       expect(sourceListCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      List.prototype.copy = originalCopy;
+      List.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1575,9 +1588,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.MergeSequence })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     let sourceSequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1594,7 +1607,7 @@ describe('Declaration', () => {
       expect(sourceSequenceCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
     }
   });
 

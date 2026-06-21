@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node, type PlacementCloneOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -12,7 +12,6 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 
 function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
@@ -93,7 +92,7 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
     return true;
   }
   if (isNode(node, N.ComplexSelector) || isNode(node, N.CompoundSelector)) {
-    return node.components.length === 1 && isNode(node.components[0], N.Ampersand);
+    return node.value.length === 1 && isNode(node.value[0], N.Ampersand);
   }
   return false;
 };
@@ -218,10 +217,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.selectors;
+    return baseSelector.arg.value;
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.selectors;
+    return baseSelector.value;
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
@@ -229,11 +228,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(exactBasicText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
@@ -241,11 +240,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(selectorText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   return [baseSelector];
 }
@@ -310,7 +309,7 @@ function createAmpersandWithSelectorContainer(
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = copyOwnedWithReusableLeaves(selector);
+  const owned = selector.cloneForPlacement({ reuseLeaves: false });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
@@ -341,21 +340,20 @@ function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
 }
 
 function ownComplexComponentForAppend(component: ComplexSelectorComponent): ComplexSelectorComponent {
-  return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
+  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
 }
 
 function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
-  const node = Reflect.construct(
-    selector.constructor,
-    [
-      value,
-      { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location
-    ]
+  const Ctor = selector.constructor as new (
+    value: unknown,
+    options?: NodeOptions,
+    location?: LocationInfo
+  ) => SimpleSelector;
+  const node = new Ctor(
+    value,
+    { ...selector.options },
+    selector.location.length === 0 ? undefined : selector.location
   );
-  if (!(node instanceof SimpleSelector)) {
-    throw new TypeError('Expected simple selector copy');
-  }
   return node.inherit(selector);
 }
 
@@ -371,7 +369,7 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
 
 function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
   if (isNode(selector, N.SelectorList)) {
-    const sourceItems = selector.selectors;
+    const sourceItems = selector.value;
     const items = new Array<Selector>(sourceItems.length);
     for (let i = 0; i < sourceItems.length; i++) {
       const item = sourceItems[i]!;
@@ -388,8 +386,8 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const component = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const component = selector.value[i]!;
       if (isNode(component, N.Combinator)) {
         continue;
       }
@@ -397,15 +395,15 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (!result.appended) {
         continue;
       }
-      const sourceComponents = selector.components;
-      const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
+      const sourceComponents = selector.value;
+      const value = new Array<ComplexSelectorComponent>(sourceComponents.length);
       for (let j = 0; j < sourceComponents.length; j++) {
-        components[j] = j === i
+        value[j] = j === i
           ? expectComplexAppendResult(result.selector)
           : ownComplexComponentForAppend(sourceComponents[j]!);
       }
       return {
-        selector: ComplexSelector.create(components).inherit(selector),
+        selector: ComplexSelector.create(value).inherit(selector),
         appended: true
       };
     }
@@ -413,10 +411,10 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const part = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const part = selector.value[i]!;
       const result = appendSimpleSelector(part, appendValue);
-      const sourceParts = selector.components;
+      const sourceParts = selector.value;
       const parts = new Array<SimpleSelector>(sourceParts.length);
       for (let j = 0; j < sourceParts.length; j++) {
         parts[j] = j === i ? result.selector : ownSelectorForAppend(sourceParts[j]!);
@@ -481,7 +479,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.appendValue = finalValue.appendValue;
     this._treeContext = treeContext;
 
-    // Set the F_AMPERSAND flag so it bubbles up to parent selectors
+    // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);
   }
 
@@ -547,7 +545,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const arg = copyOwnedWithReusableLeaves(selector);
+      const arg = selector.cloneForPlacement();
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
@@ -686,6 +684,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       node._storedSelector = this._storedSelector;
     }
     return node;
+  }
+
+  override cloneForPlacement(_options?: PlacementCloneOptions): Node {
+    const derived = this.derive();
+    derived.frozen = true;
+    return derived;
   }
 
   /** @todo - move to ToModuleVisitor */

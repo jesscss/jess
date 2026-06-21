@@ -14,7 +14,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -60,8 +59,8 @@ export class Operation extends Node<OperationValue> {
   }
 
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.left ? copyOwnedWithReusableLeaves(left) : left;
-    const finalRight = right === this.right ? copyOwnedWithReusableLeaves(right) : right;
+    const finalLeft = left === this.left ? left.cloneForPlacement({ reuseLeaves: false }) : left;
+    const finalRight = right === this.right ? right.cloneForPlacement({ reuseLeaves: false }) : right;
     const node = new Operation(
       [finalLeft, this.operator, finalRight],
       this._options ? { ...this._options } : undefined,

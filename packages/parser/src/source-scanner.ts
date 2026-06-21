@@ -154,6 +154,9 @@ export function findTopLevelDelimiter(
   start: number,
   end: number
 ): number {
+  if (delimiterChar.length !== 1) {
+    throw new TypeError('findTopLevelDelimiter expects a single-character delimiter.');
+  }
   let cursor = start;
   let depth = 0;
   while (cursor < end) {

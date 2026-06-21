@@ -170,7 +170,7 @@ function findDisallowedExtendSelector(selector: Selector, allowed?: readonly Ext
     return undefined;
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of selector.selectors) {
+    for (const item of selector.value) {
       const disallowed = findDisallowedExtendSelector(item, allowed);
       if (disallowed) {
         return disallowed;
@@ -201,10 +201,10 @@ function formatAllowedExtendSelectors(allowed: readonly ExtendSelectorKind[]) {
     return 'no selector kinds';
   }
   if (allowed.length === 1) {
-    return `${allowed[0]} selectors`;
+    return `${allowed[0]} value`;
   }
   const head = allowed.slice(0, -1).join(', ');
-  return `${head}, or ${allowed[allowed.length - 1]} selectors`;
+  return `${head}, or ${allowed[allowed.length - 1]} value`;
 }
 
 function validateExtendTarget($: P, selector: Selector, source: ':extend()' | '&:extend()') {
@@ -221,9 +221,9 @@ function validateExtendTarget($: P, selector: Selector, source: ':extend()' | '&
 /**
  * Groups extends by target (using valueOf()) and flag.
  * Returns an array of grouped Extend nodes where extends with the same target and flag
- * are combined into a single Extend node with a SelectorList of all matching selectors.
+ * are combined into a single Extend node with a SelectorList of all matching value.
  *
- * @todo Group complex selectors into selector lists
+ * @todo Group complex value into selector lists
  */
 function groupExtendsByTargetAndFlag(
   extendNodes: Extend[]
@@ -282,7 +282,7 @@ function mergeExtends(
       if (!(target instanceof SelectorList)) {
         nextTarget = new SelectorList([target, ext.target], undefined, location, context);
       } else {
-        nextTarget = new SelectorList([...target.selectors, ext.target], undefined, location, context);
+        nextTarget = new SelectorList([...target.value, ext.target], undefined, location, context);
       }
       currentNode = new Extend({
         selector,
@@ -380,7 +380,7 @@ export function relativeSelector(this: P, T: TokenMap) {
               ? node.selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            const nodes = [combinator, ...targetNode.components] as ComplexSelectorValue;
+            const nodes = [combinator, ...targetNode.value] as ComplexSelectorValue;
             const complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
               const location = node.location.length === 6
@@ -507,7 +507,7 @@ export function compoundSelector(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
-        A sequence of simple selectors that are not separated by
+        A sequence of simple value that are not separated by
         a combinator.
           .e.g. `a#selected`
       */
@@ -515,13 +515,13 @@ export function compoundSelector(this: P, T: TokenMap) {
     //   : simpleSelector+
     //   ;
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    let selectors: SimpleSelector[];
+    let value: SimpleSelector[];
     if (!RECORDING_PHASE) {
-      selectors = [];
+      value = [];
     }
     let sel: SimpleSelector = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
     if (!RECORDING_PHASE) {
-      selectors!.push(sel);
+      value!.push(sel);
     }
     $.MANY({
       /** Make sure we don't ignore space combinators */
@@ -529,17 +529,17 @@ export function compoundSelector(this: P, T: TokenMap) {
       DEF: () => {
         let sel: SimpleSelector = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          selectors!.push(sel);
+          value!.push(sel);
         }
       }
     });
     if (RECORDING_PHASE) {
       return;
     }
-    if (selectors!.length === 1) {
-      return selectors![0]!;
+    if (value!.length === 1) {
+      return value![0]!;
     }
-    return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), $.context);
+    return new CompoundSelector(value!, undefined, $.getLocationFromNodes(value!), $.context);
   };
 }
 
@@ -552,10 +552,10 @@ export function complexSelector(this: P, T: TokenMap) {
     const RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
 
-    let selectors: ComplexSelectorValue | undefined;
+    let value: ComplexSelectorValue | undefined;
     if (!RECORDING_PHASE) {
       const first: ComplexSelectorComponent = $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
-      selectors = [first];
+      value = [first];
     } else {
       $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
     }
@@ -587,7 +587,7 @@ export function complexSelector(this: P, T: TokenMap) {
 
         const compound: ComplexSelectorComponent = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          selectors!.push(combinator!, compound);
+          value!.push(combinator!, compound);
         }
       }
     });
@@ -595,9 +595,9 @@ export function complexSelector(this: P, T: TokenMap) {
     let selector: Selector | undefined;
     if (!RECORDING_PHASE) {
       const location = $.endRule();
-      selector = selectors!.length === 1
-        ? selectors![0]
-        : new ComplexSelector(selectors!, undefined, location, $.context);
+      selector = value!.length === 1
+        ? value![0]
+        : new ComplexSelector(value!, undefined, location, $.context);
     }
 
     let flag: IToken | undefined;
@@ -706,7 +706,7 @@ export function extend(this: P, T: TokenMap) {
       // Bubbled extends keep their selector and get it set correctly in qualifiedRule
       let merged = mergeExtends(selector, extendTargets!, location, $.context, flag);
       /**
-       * If we don't have as many extends as we have selectors, we need a way to signal
+       * If we don't have as many extends as we have value, we need a way to signal
        * that these should be bumped above the ruleset.
        */
       /** We've converted these extend targets to nodes, so we can reset extend targets */
@@ -802,7 +802,7 @@ export function simpleSelector(this: P, T: TokenMap) {
       { ALT: () => {
         let initialIsQualifiedRule = ctx.qualifiedRule;
         ctx.qualifiedRule = false;
-        /** Make sure we prevent things like :extend() inside pseudo-selectors */
+        /** Make sure we prevent things like :extend() inside pseudo-value */
         try {
           let pseudo = $.SUBRULE($.pseudoSelector, { ARGS: [ctx] });
           return pseudo;
@@ -833,7 +833,7 @@ export function simpleSelector(this: P, T: TokenMap) {
       },
       */
       { ALT: () => $.SUBRULE($.attributeSelector, { ARGS: [ctx] }) },
-      /** Supports keyframes selectors */
+      /** Supports keyframes value */
       { ALT: () => $.CONSUME(T.DimensionInt) },
       { ALT: () => $.CONSUME(T.DimensionNum) }
     ];
@@ -849,7 +849,7 @@ export function simpleSelector(this: P, T: TokenMap) {
         selector.tokenType.name === 'InterpolatedSelector'
         || selector.tokenType.name === 'InterpolatedIdent'
       ) {
-        // Create an InterpolatedSelector wrapper for interpolated selectors
+        // Create an InterpolatedSelector wrapper for interpolated value
         let nameValue = selector.image;
         let interpolatedNode = getInterpolatedNode(nameValue, $.getLocationInfo(selector), $.context);
 
@@ -919,7 +919,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         }
 
         const validPropertyCount = properties.filter((decl) => {
-          const { name } = decl.value;
+          const { name } = decl;
           const propName = typeof name === 'string' ? name : name?.valueOf();
           if (!propName) {
             return false;

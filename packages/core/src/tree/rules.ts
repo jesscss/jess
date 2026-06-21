@@ -43,7 +43,6 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import type { StyleImport } from './import-style.js';
 import {
@@ -142,14 +141,8 @@ type UncoveredCallableResult =
   | MixinEntry[]
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
-function syncDeclarationValueNode(declaration: Declaration, value: Node): void {
-  declaration.value.value = value;
-  Object.defineProperty(declaration, 'valueNode', {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value
-  });
+function syncDeclarationValue(declaration: Declaration, value: Node): void {
+  declaration.value = value;
   declaration.adopt(value);
 }
 
@@ -915,18 +908,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   derive(value: Node[] = [...this.rules]): Rules {
     const sourceLocation = this.location.length === 6 ? this.location : undefined;
-    const derived = Reflect.construct(
-      this.constructor,
-      [
-        value,
-        this.options ? { ...this.options } : undefined,
-        sourceLocation,
-        this.sourceRoot?._treeContext
-      ]
+    const Ctor = this.constructor as new (
+      value: Node[],
+      options?: RulesOptions,
+      location?: LocationInfo,
+      treeContext?: TreeContext
+    ) => Rules;
+    const derived = new Ctor(
+      value,
+      this.options ? { ...this.options } : undefined,
+      sourceLocation,
+      this.sourceRoot?._treeContext
     );
-    if (!(derived instanceof Rules)) {
-      throw new TypeError('Derived rules value must remain rules-like');
-    }
     derived.inherit(this);
     derived.resetDerivedState(this);
 
@@ -1815,7 +1808,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
           const cell = varEntry?.cell ?? {
-            value: changedVariable.valueNode,
+            value: changedVariable.value,
             sourceNode: changedVariable,
             readonly: Boolean(changedVariable.options?.readonly)
           };
@@ -3724,7 +3717,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const context = options.context;
     const depth = options.depth ?? 0;
     const space = indent(depth);
-    const { value } = this;
+    const value = this.rules;
     const lastRenderedFrames = options.lastRenderedFrames!;
     const frameHeaders = options.frameHeaders!;
     const renderedFrameBaseline = lastRenderedFrames.length;
@@ -4301,7 +4294,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             if (variableHit.readonly || variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
             }
-            let assignedValue = node.valueNode;
+            let assignedValue = node.value;
             if (context) {
               const evaluatedValue = assignedValue.eval(context);
               if (!isThenable(evaluatedValue)) {
@@ -4311,7 +4304,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             variableHit.cell.value = assignedValue;
             const sourceNode = variableHit.sourceNode;
             if (isNode(sourceNode, N.VarDeclaration)) {
-              syncDeclarationValueNode(sourceNode, assignedValue);
+              syncDeclarationValue(sourceNode, assignedValue);
             }
             return;
           }
@@ -4331,7 +4324,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const result = resultOccurrence.node;
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-          let assignedValue = node.valueNode;
+          let assignedValue = node.value;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
             if (!isThenable(evaluatedValue)) {
@@ -4339,7 +4332,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
           if (isNode(result.parent, N.Rules)) {
-            syncDeclarationValueNode(result, assignedValue);
+            syncDeclarationValue(result, assignedValue);
             assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
           }
           return;
@@ -5351,7 +5344,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return decl.valueNode;
+      return decl.value;
     };
     const replaceOwnedDeclaration = (
       ownerRules: Rules,
@@ -5372,9 +5365,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         : replacement;
     };
     const copyMergedValue = (value: Node): Node => (
-      canReuseLeaf(value)
-        ? reuseLeaf(value)
-        : copyWithReusableLeaves(value)
+      value.canReuseAsLeaf()
+        ? value.reuseAsLeaf()
+        : value.cloneForPlacement()
     );
     const forEachMergedItem = (
       value: Node,
@@ -5513,7 +5506,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ownerRules,
           outputDecl,
           outputDecl.deriveWithParts({
-            value: outputDecl.valueNode,
+            value: outputDecl.value,
             important: priorImportant
           })
         );
@@ -6001,7 +5994,7 @@ function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
-      if (param.valueNode instanceof Nil) {
+      if (param.value instanceof Nil) {
         return false;
       }
       continue;

@@ -14,23 +14,25 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('a { b: c; }');
     expect(serializeTypes(tree)).toBeString(`
       (Rules
-        [
-          (Ruleset
-            selector: 
-              (BasicSelector 'a')
-            rules: 
-              (Rules
-                [
-                  (Declaration
-                    name: 
-                      (Any [role=property] 'b')
-                    value: 
-                      (Any [role=ident] 'c')
-                  )
-                ]
-              )
-          )
-        ]
+        rules:
+          [
+            (Ruleset
+              selector:
+                (BasicSelector 'a')
+              rules:
+                (Rules
+                  rules:
+                    [
+                      (Declaration
+                        name:
+                          (Any [role=property] 'b')
+                        value:
+                          (Any [role=ident] 'c')
+                      )
+                    ]
+                )
+            )
+          ]
       )
     `);
   });
@@ -41,18 +43,19 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       selector:
         (ComplexSelector
-          [
-            (BasicSelector 'a')
-            (Combinator '+')
-            (BasicSelector 'b')
-          ]
+          value:
+            [
+              (BasicSelector 'a')
+              (Combinator '+')
+              (BasicSelector 'b')
+            ]
         )
     `);
   });
 
   test('descendant combinator pops one whitespace character from trivia map', () => {
     const { tree, trivia } = cssParser.parse('a /* gap */ b { c: d; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
@@ -77,12 +80,11 @@ describe('serializeTypes coverage', () => {
       selector: 
         (AttributeSelector
           name: 'foo'
-          op: '='
-          value: 
+          attributeValue:
             (Quoted
-              (Any [role=any] 'bar')
+              value:
+                (Any [role=any] 'bar')
             )
-          mod: 'i'
         )
     `);
   });
@@ -168,7 +170,7 @@ describe('serializeTypes coverage', () => {
     const { errors, tree, trivia } = cssParser.parse(':unknown(.sel.a) { color: red; }');
     expect(errors.length).toBe(0);
 
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
@@ -180,7 +182,7 @@ describe('serializeTypes coverage', () => {
         name: ':unknown'
         arg:
           (Sequence
-            value:
+            items:
               [
                 (Any '.sel')
                 (Any '.a')
@@ -203,7 +205,7 @@ describe('serializeTypes coverage', () => {
     for (const [source, expected] of cases) {
       const { errors, tree, trivia } = cssParser.parse(source);
       expect(errors.length).toBe(0);
-      const ruleset = tree.value[0];
+      const ruleset = tree.rules[0];
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
@@ -224,7 +226,7 @@ describe('serializeTypes coverage', () => {
     for (const [source, expected, shape] of cases) {
       const { errors, tree, trivia } = cssParser.parse(source);
       expect(errors.length).toBe(0);
-      const ruleset = tree.value[0];
+      const ruleset = tree.rules[0];
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
@@ -252,7 +254,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'w')
-        valueNode:
+        value:
           (Dimension
             number: 10
             unit: 'px'
@@ -262,7 +264,7 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'z')
-        valueNode:
+        value:
           (Num 2)
     `);
   });
@@ -276,7 +278,7 @@ describe('serializeTypes coverage', () => {
         name: 'color'
         args:
           (List
-            value:
+            items:
               [
                 (Color
                   node: 'plum'
@@ -285,15 +287,15 @@ describe('serializeTypes coverage', () => {
 
   test('function argument comments stay in trivia between list members and separator', () => {
     const { tree, trivia } = cssParser.parse('a { b: linear-gradient(#333 /*{comment}*/, #111); }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.rules[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
     if (!isNode(value, N.Call) || !isNode(value.args, N.List)) {
       throw new Error('Expected declaration value to be a function call with list args');
     }
@@ -317,7 +319,7 @@ describe('serializeTypes coverage', () => {
 
   test('selector list comments stay in trivia between selector members', () => {
     const { tree, trivia } = cssParser.parse('#a,\n/*x*//*y*/\n.b,/*z*/.c { d: e; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
       throw new Error('Expected first parsed rule to have a selector list');
     }
@@ -339,7 +341,7 @@ describe('serializeTypes coverage', () => {
 
   test('selector list comments before separators stay in trivia after selector members', () => {
     const { tree, trivia } = cssParser.parse('#comments /* boo *//* boo again*/, .comments { color: red; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
       throw new Error('Expected first parsed rule to have a selector list');
     }
@@ -365,11 +367,11 @@ describe('serializeTypes coverage', () => {
 
   test('same-line comments before nested selectors stay in selector trivia', () => {
     const { tree, trivia } = cssParser.parse('a { /*x*/ b { c: d; } }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !ruleset.rules) {
       throw new Error('Expected first parsed rule to have nested rules');
     }
-    const [nested] = ruleset.rules.value;
+    const [nested] = ruleset.rules.rules;
     if (!isNode(nested, N.Ruleset)) {
       throw new Error('Expected nested rule to be a ruleset');
     }
@@ -405,15 +407,15 @@ describe('serializeTypes coverage', () => {
 
   test('declaration value comments stay in trivia before declaration terminators', () => {
     const { tree, trivia } = cssParser.parse('a { b: yes /* comment */; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.rules[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
     expect(trivia.lookup(value.location[3], 'after')?.map(token => token.image)).toEqual([
@@ -432,15 +434,15 @@ describe('serializeTypes coverage', () => {
 
   test('declaration name comments stay in trivia before declaration separators', () => {
     const { tree, trivia } = cssParser.parse('a { color/* survive */ /* me too */: grey; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.rules[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const { name } = declaration.value;
+    const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
     expect(trivia.lookup(name.location[3], 'after')?.map(token => token.image)).toEqual([
@@ -461,11 +463,11 @@ describe('serializeTypes coverage', () => {
 
   test('at-rule prelude comments stay in trivia before rule blocks', () => {
     const { tree, trivia } = cssParser.parse('@-webkit-keyframes /* Safari */ hover /* and Chrome */ { 0% { color: red; } }');
-    const atRule = tree.value[0];
+    const atRule = tree.rules[0];
     if (!isNode(atRule, N.AtRule)) {
       throw new Error('Expected first parsed rule to be an at-rule');
     }
-    const { name, prelude } = atRule.value;
+    const { name, prelude } = atRule;
     if (!prelude) {
       throw new Error('Expected at-rule prelude');
     }
@@ -491,9 +493,9 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'm')
-        valueNode:
+        value:
           (List
-            value:
+            items:
               [
                 (Num 1)
                 (Num 2)
@@ -505,9 +507,9 @@ describe('serializeTypes coverage', () => {
       (Declaration
         name:
           (Any [role=property] 'n')
-        valueNode:
+        value:
           (Sequence
-            value:
+            items:
               [
                 (Num 1)
                 (Num 2)

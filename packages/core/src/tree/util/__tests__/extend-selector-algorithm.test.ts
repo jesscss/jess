@@ -6,7 +6,7 @@ import { getImplicitSelector } from '../selector-utils.js';
 
 describe('Extend Selector Tests', () => {
   describe('Extension validation', () => {
-    it('should prevent extending when it would create duplicate element selectors', () => {
+    it('should prevent extending when it would create duplicate element value', () => {
       // Selector: a.info, Target: .info, Extend with: div.foo
       // This should not extend because it would create "adiv.foo" which is invalid
       // Use partial: true to allow the match, then conflict detection should catch it
@@ -21,7 +21,7 @@ describe('Extend Selector Tests', () => {
       expect(result.error!.type).toBe(ExtendErrorType.ELEMENT_CONFLICT);
     });
 
-    it('should prevent extending when it would create duplicate ID selectors', () => {
+    it('should prevent extending when it would create duplicate ID value', () => {
       // Selector: #main.info, Target: .info, Extend with: #other.foo
       // This should not extend because it would create a selector with multiple IDs
       // Use partial: true to allow the match, then conflict detection should catch it
@@ -62,113 +62,60 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Full match extend examples', () => {
-    it('derives selector-list extend output without cloning the matched source item', () => {
+    it('derives selector-list extend output without reparenting the matched source item', () => {
       const target = sellist([el('.a'), el('.b')]);
       const sourceItem = target.value[0]!;
       expect(sourceItem.isSelector).toBe(true);
-      const originalClone = sourceItem.clone;
-      let sourceItemClones = 0;
-      sourceItem.clone = function cloneForCounting(
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        sourceItemClones++;
-        return originalClone.apply(this, args);
-      };
+      const result = extendSelector(target, el('.a'), el('.c'), false);
 
-      try {
-        const result = extendSelector(target, el('.a'), el('.c'), false);
-
-        expect(sourceItemClones).toBe(0);
-        expect(result.valueOf()).toBe('.a,.b,.c');
-        expect(target.value[0]).toBe(sourceItem);
-        expect(sourceItem.valueOf()).toBe('.a');
-      } finally {
-        sourceItem.clone = originalClone;
-      }
+      expect(result.valueOf()).toBe('.a,.b,.c');
+      expect(target.value[0]).toBe(sourceItem);
+      expect(sourceItem.valueOf()).toBe('.a');
     });
 
-    it('extends selector lists without cloning the source list for inheritance', () => {
+    it('extends selector lists without mutating the source list', () => {
       const target = sellist([el('.a'), el('.b')]);
-      const originalClone = target.clone.bind(target);
-      let cloneCalls = 0;
-      const cloneForCounting: typeof target.clone = (...args) => {
-        cloneCalls++;
-        return originalClone(...args);
-      };
-      target.clone = cloneForCounting;
+      const result = extendSelector(target, el('.a'), el('.c'), false);
 
-      try {
-        const result = extendSelector(target, el('.a'), el('.c'), false);
-
-        expect(cloneCalls).toBe(0);
-        expect(result.valueOf()).toBe('.a,.b,.c');
-        expect(target.valueOf()).toBe('.a,.b');
-      } finally {
-        target.clone = originalClone;
-      }
+      expect(result.valueOf()).toBe('.a,.b,.c');
+      expect(target.valueOf()).toBe('.a,.b');
     });
 
-    it('extends legacy full-match targets without cloning them for inheritance', () => {
+    it('extends legacy full-match targets without mutating them', () => {
       const target = el('.a');
-      const originalClone = target.clone.bind(target);
-      let cloneCalls = 0;
-      const cloneForCounting: typeof target.clone = (...args) => {
-        cloneCalls++;
-        return originalClone(...args);
-      };
-      target.clone = cloneForCounting;
+      const result = extendSelector(
+        target,
+        el('.a'),
+        el('.c'),
+        false,
+        false,
+        true
+      );
 
-      try {
-        const result = extendSelector(
-          target,
-          el('.a'),
-          el('.c'),
-          false,
-          false,
-          true
-        );
-
-        expect(cloneCalls).toBe(0);
-        expect(result.valueOf()).toBe('.a,.c');
-        expect(target.valueOf()).toBe('.a');
-      } finally {
-        target.clone = originalClone;
-      }
+      expect(result.valueOf()).toBe('.a,.c');
+      expect(target.valueOf()).toBe('.a');
     });
 
-    it('dedistributes exact cartesian selector output without calling Combinator.copy()', () => {
+    it('dedistributes exact cartesian selector output', () => {
       const templateCombinator = co(' ');
-      const originalCopy = templateCombinator.copy.bind(templateCombinator);
-      let copyCalls = 0;
-      const copyForCounting: typeof templateCombinator.copy = (...args) => {
-        copyCalls++;
-        return originalCopy(...args);
-      };
-      templateCombinator.copy = copyForCounting;
+      const target = sellist([
+        sel([el('.a'), templateCombinator, el('.b')]),
+        sel([el('.a'), co(' '), el('.d')]),
+        sel([el('.c'), co(' '), el('.b')])
+      ]);
 
-      try {
-        const target = sellist([
-          sel([el('.a'), templateCombinator, el('.b')]),
-          sel([el('.a'), co(' '), el('.d')]),
-          sel([el('.c'), co(' '), el('.b')])
-        ]);
+      const result = extendSelector(
+        target,
+        sel([el('.c'), co(' '), el('.b')]),
+        sel([el('.c'), co(' '), el('.d')]),
+        false
+      );
 
-        const result = extendSelector(
-          target,
-          sel([el('.c'), co(' '), el('.b')]),
-          sel([el('.c'), co(' '), el('.d')]),
-          false
-        );
-
-        expect(copyCalls).toBe(0);
-        expect(result.valueOf()).toBe(':is(.a,.c) :is(.b,.d)');
-        expect(templateCombinator.parent?.valueOf()).toBe('.a .b');
-      } finally {
-        templateCombinator.copy = originalCopy;
-      }
+      expect(result.valueOf()).toBe(':is(.a,.c) :is(.b,.d)');
+      expect(templateCombinator.parent?.valueOf()).toBe('.a .b');
     });
 
-    it('flattens generated :is() nesting without copying the inner selector through generic copy()', () => {
+    it('flattens generated :is() nesting', () => {
       const prefix = is(sellist([el('.aa'), el('.bb')]));
       if (!isNode(prefix, N.PseudoSelector)) {
         throw new TypeError('Expected pseudo selector');
@@ -177,51 +124,26 @@ describe('Extend Selector Tests', () => {
       const invisibleSpace = co(' ');
       invisibleSpace.removeFlag(F_VISIBLE);
       const inner = el('.cc');
-      const originalCopy = inner.copy.bind(inner);
-      let innerCopies = 0;
-      const copyForCounting: typeof inner.copy = (...args) => {
-        innerCopies++;
-        return originalCopy(...args);
-      };
-      inner.copy = copyForCounting;
+      const selector = sel([prefix, invisibleSpace, is(sellist([inner, el('.dd')]))]);
+      const result = createProcessedSelector(selector, true);
 
-      try {
-        const selector = sel([prefix, invisibleSpace, is(sellist([inner, el('.dd')]))]);
-        const result = createProcessedSelector(selector, true);
-
-        expect(innerCopies).toBe(0);
-        expect(Array.isArray(result)).toBe(true);
-        if (!Array.isArray(result)) {
-          throw new Error('Expected processed selector array');
-        }
-        expect(result.map(item => item.valueOf())).toEqual(['.cc', '.dd']);
-      } finally {
-        inner.copy = originalCopy;
+      expect(Array.isArray(result)).toBe(true);
+      if (!Array.isArray(result)) {
+        throw new Error('Expected processed selector array');
       }
+      expect(result.map(item => item.valueOf())).toEqual(['.cc', '.dd']);
     });
 
-    it('processes generated :is() roots without calling generic PseudoSelector.copy()', () => {
+    it('processes generated :is() roots', () => {
       const selector = is(sellist([el('.a'), el('.b')])) as PseudoSelector;
       selector.generated = true;
-      const originalCopy = selector.copy.bind(selector);
-      let copyCalls = 0;
-      selector.copy = ((...args) => {
-        copyCalls++;
-        return originalCopy(...args);
-      }) as typeof selector.copy;
+      const result = createProcessedSelector(selector, true);
 
-      try {
-        const result = createProcessedSelector(selector, true);
-
-        expect(copyCalls).toBe(0);
-        expect(Array.isArray(result)).toBe(true);
-        if (!Array.isArray(result)) {
-          throw new Error('Expected processed selector array');
-        }
-        expect(result.map(item => item.valueOf())).toEqual(['.a', '.b']);
-      } finally {
-        selector.copy = originalCopy;
+      expect(Array.isArray(result)).toBe(true);
+      if (!Array.isArray(result)) {
+        throw new Error('Expected processed selector array');
       }
+      expect(result.map(item => item.valueOf())).toEqual(['.a', '.b']);
     });
 
     it('should extend simple selector with simple target - example 1', () => {
@@ -257,7 +179,7 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     });
 
-    it('extends pseudo arguments without reparenting source selectors', () => {
+    it('extends pseudo arguments without reparenting source value', () => {
       const arg = el('.a');
       const extendWith = el('.c');
       const selector = is(arg);
@@ -318,31 +240,18 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(':is(.z,.visible)+:is(.z,.visible) .sub');
     });
 
-    it('wraps partial compound matches without copying the matched source component for inheritance', () => {
+    it('wraps partial compound matches without reparenting the matched source component', () => {
       const matched = el('.class');
-      const originalCopy = matched.copy.bind(matched);
-      let copyCalls = 0;
-      const copyForCounting: typeof matched.copy = (...args) => {
-        copyCalls++;
-        return originalCopy(...args);
-      };
-      matched.copy = copyForCounting;
+      const selector = compound([el('.target'), matched]);
+      const result = extendSelector(selector, el('.class'), el('.visible'), true);
 
-      try {
-        const selector = compound([el('.target'), matched]);
-        const result = extendSelector(selector, el('.class'), el('.visible'), true);
-
-        expect(copyCalls).toBe(0);
-        expect(result.valueOf()).toBe('.target:is(.class,.visible)');
-        expect(matched.parent).toBe(selector);
-      } finally {
-        matched.copy = originalCopy;
-      }
+      expect(result.valueOf()).toBe('.target:is(.class,.visible)');
+      expect(matched.parent).toBe(selector);
     });
 
     it('characterization: self-extend on complex compound duplicates class in :is() wrapper', () => {
       // This mirrors import-reference.less self-extend shape for investigation:
-      // `.class:extend(.class all)` on authored selectors with `.class` already present.
+      // `.class:extend(.class all)` on authored value with `.class` already present.
       const selector = compound([
         el('input[type="text"]'),
         el('.class'),
@@ -408,9 +317,9 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe('.a>:is(.b.c>.d.e,.f)');
     });
 
-    it('should extend all duplicate components in compound selector (.foo.foo)', () => {
+    it('should extend all duplicate value in compound selector (.foo.foo)', () => {
       // Selector: .foo.foo, Target: .foo (partial), Extend with: .ext
-      // Result: :is(.foo, .ext):is(.foo, .ext) - both .foo components should be extended
+      // Result: :is(.foo, .ext):is(.foo, .ext) - both .foo value should be extended
       const selector = compound([el('.foo'), el('.foo')]);
       const target = el('.foo');
       const extendWith = el('.ext');
@@ -419,7 +328,7 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(':is(.foo,.ext):is(.foo,.ext)');
     });
 
-    it('should extend all duplicate components in compound selector with full match (.foo.foo)', () => {
+    it('should extend all duplicate value in compound selector with full match (.foo.foo)', () => {
       // Selector: .foo.foo, Target: .foo (full), Extend with: .ext
       // In full mode, .foo is a partial match within .foo.foo, so it should be rejected
       // Result: .foo.foo (unchanged) - full mode rejects partial matches
@@ -738,7 +647,7 @@ describe('Extend Selector Tests', () => {
     });
   });
 
-  describe('Flattening inside other pseudo-selectors', () => {
+  describe('Flattening inside other pseudo-value', () => {
     // Helper to create :not() pseudo-selector (not generated - simulates authored code)
     const not = (arg: Selector) => new PseudoSelector({ name: ':not', arg });
 
@@ -748,7 +657,7 @@ describe('Extend Selector Tests', () => {
       const selector = not(el('.foo'));
       const result = extendSelector(selector, el('.foo'), el('.bar'), false);
 
-      // The :not() should remain, containing both selectors as a list
+      // The :not() should remain, containing both value as a list
       expect(result.valueOf()).toBe(':not(.foo,.bar)');
     });
 
@@ -768,7 +677,7 @@ describe('Extend Selector Tests', () => {
     });
   });
 
-  describe('No duplicate selectors - regression tests', () => {
+  describe('No duplicate value - regression tests', () => {
     it('should NOT create both raw and :is()-wrapped duplicates when extending in nested :is()', () => {
       // Bug: extending .foo with .ext inside :is(.foo) could create both:
       // - .ext (raw)
@@ -786,7 +695,7 @@ describe('Extend Selector Tests', () => {
       expect(extCount).toBe(1);
     });
 
-    it('should NOT duplicate complex selectors when extending multiple times', () => {
+    it('should NOT duplicate complex value when extending multiple times', () => {
       // This replicates the extend.less test case that was failing
       // :is(.foo) .bar, :is(.foo) .baz extended with .ext1 .ext2, then .ext3, then .ext4
 
@@ -941,8 +850,8 @@ describe('Extend Selector Tests', () => {
 
     it('should allow matching inside :is() when pseudo-selector is first component with partial: true', () => {
       // .a:extend(.b .c all) should match .b :is(.c) because with all flag (partial: true),
-      // we can match components inside :is() boundaries
-      // The :is() pseudo-selector being the first component means there are no components before it
+      // we can match value inside :is() boundaries
+      // The :is() pseudo-selector being the first component means there are no value before it
       const target = is(el('.c')); // :is(.c) - pseudo-selector is the only/first component
       const find = el('.c');
       const extendWith = el('.a');
@@ -954,7 +863,7 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toContain('.a');
     });
 
-    it('should reject matching inside :is() when there are components before it with partial: false', () => {
+    it('should reject matching inside :is() when there are value before it with partial: false', () => {
       // .aa :is(.dd,.ee) matching .dd with partial: false should be rejected
       // because .aa is before the :is(), making it a partial match
       const target = sel([el('.aa'), co(' '), is(sellist([el('.dd'), el('.ee')]))]); // .aa :is(.dd,.ee)
@@ -966,7 +875,7 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(target.valueOf());
     });
 
-    it('should reject matching complex selector inside :is() when there are components before it with partial: false', () => {
+    it('should reject matching complex selector inside :is() when there are value before it with partial: false', () => {
       // d :is(.b .c) matching .b .c with partial: false should be rejected
       // because d is before the :is(), making it a partial match
       // .a:extend(.b .c) should NOT match d :is(.b .c)

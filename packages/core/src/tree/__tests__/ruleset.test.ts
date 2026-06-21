@@ -54,6 +54,24 @@ describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  it('keeps direct-field containers off the legacy base value payload', () => {
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([])
+    });
+    const media = atrule({
+      name: any('media'),
+      prelude: any('screen'),
+      rules: rules([])
+    });
+    const leaf = any('red');
+
+    expect('value' in node).toBe(false);
+    expect('value' in media).toBe(false);
+    expect('value' in leaf).toBe(true);
+  });
+
   it('should serialize to CSS', async () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),

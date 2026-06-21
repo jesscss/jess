@@ -25,7 +25,6 @@ import {
   emitNodeSourceSyntaxWithTrivia,
   emitTriviaTokens
 } from './util/trivia.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   evaluateNodeArrayMaybe,
   evaluateNodeArraySync
@@ -126,7 +125,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   private deriveAdditionSequence(): Sequence {
     const values = new Array<Node>(this.items.length);
     for (let i = 0; i < this.items.length; i++) {
-      values[i] = copyWithReusableLeaves(this.items[i]!);
+      values[i] = this.items[i]!.cloneForPlacement();
     }
     return new Sequence(
       values,
@@ -352,7 +351,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     printOptions: ReturnType<typeof getPrintOptions>
   ): void {
     const w = printOptions.writer;
-    emitCommentTriviaBetweenNodes(prev, node, printOptions);
     const sourceTrivia = (
       printOptions.trivia
       && sequenceNodeTrivia(prev) === printOptions.trivia
@@ -360,11 +358,17 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     )
       ? printOptions.trivia
       : undefined;
+    const emittedBefore = printOptions.emittedTrivia?.size ?? 0;
+    emitCommentTriviaBetweenNodes(prev, node, printOptions);
+    const emittedBetween = (printOptions.emittedTrivia?.size ?? 0) !== emittedBefore;
     const leadingTrivia = sourceTrivia
       ? consumeTrivia(sourceTrivia, node.location[0], 'before', printOptions)
       : undefined;
     if (leadingTrivia) {
       emitTriviaTokens(leadingTrivia, printOptions);
+      return;
+    }
+    if (emittedBetween) {
       return;
     }
     const prevLastChar = w.lastChar();
@@ -493,7 +497,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const values = new Array<Node>(b.items.length + 1);
       values[0] = newSequence;
       for (let i = 0; i < b.items.length; i++) {
-        values[i + 1] = copyWithReusableLeaves(b.items[i]!);
+        values[i + 1] = b.items[i]!.cloneForPlacement();
       }
       return new List(values).inherit(this);
     } else if (isNode(b, N.Sequence)) {
@@ -502,7 +506,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         values[i] = newSequence.items[i]!;
       }
       for (let i = 0; i < b.items.length; i++) {
-        values[newSequence.items.length + i] = copyWithReusableLeaves(b.items[i]!);
+        values[newSequence.items.length + i] = b.items[i]!.cloneForPlacement();
       }
       return new Sequence(
         values,
@@ -510,7 +514,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         newSequence.location.length ? newSequence.location : undefined
       ).inherit(newSequence);
     } else {
-      b = copyWithReusableLeaves(b);
+      b = b.cloneForPlacement();
       const values = new Array<Node>(newSequence.items.length + 1);
       for (let i = 0; i < newSequence.items.length; i++) {
         values[i] = newSequence.items[i]!;

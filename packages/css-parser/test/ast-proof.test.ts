@@ -30,10 +30,10 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     }
 
     expect(color.name).toBe('color');
-    expect(color.valueNode).toBe('red');
+    expect(color.value).toBe('red');
     expect(background.important).toBe('!important');
     expect(custom.name).toBe('--gap');
-    expect(custom.valueNode).toBe('  1px 2px');
+    expect(custom.value).toBe('  1px 2px');
     expect(root.toTrimmedString()).toBe([
       '.a {',
       '  color: red;',

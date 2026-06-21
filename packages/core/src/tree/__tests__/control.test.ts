@@ -820,7 +820,7 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.value.some(node => (
         node.type === 'Declaration'
-        && node.value?.name?.valueOf?.() === 'tick'
+        && node.name?.valueOf?.() === 'tick'
       ))) {
         clonedLoopRules++;
       }
@@ -856,11 +856,11 @@ describe('Control Nodes', () => {
 
   it('reuses childless source-free scalar leaves in $while per-iteration body copies', async () => {
     const context = new Context();
-    const originalCopy = Any.prototype.copy;
+    const originalCopy = Any.prototype.cloneForPlacement;
     const originalClone = Any.prototype.clone;
     let scalarCopies = 0;
     let scalarClones = 0;
-    Any.prototype.copy = function copyForCounting(
+    Any.prototype.cloneForPlacement = function copyForCounting(
       this: Any,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -904,7 +904,7 @@ describe('Control Nodes', () => {
       expect(scalarCopies).toBe(0);
       expect(scalarClones).toBe(0);
     } finally {
-      Any.prototype.copy = originalCopy;
+      Any.prototype.cloneForPlacement = originalCopy;
       Any.prototype.clone = originalClone;
     }
   });
@@ -1305,7 +1305,7 @@ describe('Control Nodes', () => {
         deep === false
         && this.value.some(node => (
           node.type === 'Declaration'
-          && node.value?.name?.valueOf?.() === 'marker'
+          && node.name?.valueOf?.() === 'marker'
         ))
       ) {
         shallowMarkerBodyClones++;
@@ -1358,7 +1358,7 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.value.some(node => (
         node.type === 'Declaration'
-        && node.value?.name?.valueOf?.() === 'item'
+        && node.name?.valueOf?.() === 'item'
       ))) {
         clonedLoopRules++;
       }
@@ -1677,11 +1677,11 @@ describe('Control Nodes', () => {
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {
     const context = new Context();
-    const originalCopy = Any.prototype.copy;
+    const originalCopy = Any.prototype.cloneForPlacement;
     const originalClone = Any.prototype.clone;
     let scalarCopies = 0;
     let scalarClones = 0;
-    Any.prototype.copy = function copyForCounting(
+    Any.prototype.cloneForPlacement = function copyForCounting(
       this: Any,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1712,7 +1712,7 @@ describe('Control Nodes', () => {
       expect(scalarCopies).toBe(0);
       expect(scalarClones).toBe(0);
     } finally {
-      Any.prototype.copy = originalCopy;
+      Any.prototype.cloneForPlacement = originalCopy;
       Any.prototype.clone = originalClone;
     }
   });

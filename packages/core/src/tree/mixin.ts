@@ -1,4 +1,4 @@
-import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
+import { F_VISIBLE, Node, NO_VALUE, defineType, type LocationInfo } from './node.js';
 import { Condition } from './condition.js';
 import { List } from './list.js';
 import { Any, type AnyRole } from './any.js';
@@ -7,7 +7,6 @@ import { Interpolated } from './interpolated.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
@@ -93,19 +92,19 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
-    super(value, options, location);
+    super(NO_VALUE, options, location);
     this._treeContext = treeContext;
-    this.name = value.name;
-    this.rules = value.rules;
-    this.params = value.params;
-    this.guard = value.guard;
+    this.name = this._processNodes(value.name);
+    this.rules = this._processNodes(value.rules);
+    this.params = this._processNodes(value.params);
+    this.guard = this._processNodes(value.guard);
     this.removeFlag(F_VISIBLE);
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
     if (owned instanceof Interpolated || owned instanceof Any) {
       return owned;
     }
@@ -113,7 +112,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   private ownRules(value: Rules): Rules {
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
     if (owned instanceof Rules) {
       return owned;
     }
@@ -124,7 +123,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (!value) {
       return undefined;
     }
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
     if (owned instanceof List) {
       return owned;
     }
@@ -135,7 +134,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (!value) {
       return undefined;
     }
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
     if (owned instanceof Condition) {
       return owned;
     }
@@ -163,6 +162,24 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       this.location.length === 6 ? this.location : undefined,
       this.sourceRoot?._treeContext
     ).inherit(this);
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    cloneFn ??= n => n.clone(deep);
+    const clonePart = <T extends Node | undefined>(part: T): T => (
+      deep && part instanceof Node ? cloneFn(part) as T : part
+    );
+    return new Mixin(
+      {
+        name: clonePart(this.name),
+        rules: clonePart(this.rules),
+        params: clonePart(this.params),
+        guard: clonePart(this.guard)
+      },
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
+    ).inherit(this) as this;
   }
 
   /** Return a selector-like keySet */

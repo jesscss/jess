@@ -15,7 +15,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import { evaluateNodeArrayMaybe, evaluateNodeArraySync } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
@@ -280,7 +279,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   private deriveAdditionList(): List<Node> {
     const values = new Array<Node>(this.items.length);
     for (let i = 0; i < this.items.length; i++) {
-      values[i] = copyWithReusableLeaves(this.items[i]!);
+      values[i] = this.items[i]!.cloneForPlacement();
     }
     return new List<Node>(
       values,
@@ -361,10 +360,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const newList = this.deriveAdditionList();
     if (b instanceof List) {
       for (let i = 0; i < b.items.length; i++) {
-        newList.items.push(copyWithReusableLeaves(b.items[i]!));
+        newList.items.push(b.items[i]!.cloneForPlacement());
       }
     } else {
-      newList.items.push(copyWithReusableLeaves(b));
+      newList.items.push(b.cloneForPlacement());
     }
     return newList;
   }

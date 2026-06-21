@@ -1,4 +1,4 @@
-import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, NO_VALUE, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Anonymous, Any, Keyword } from './any.js';
 import { Rules } from './rules.js';
@@ -17,7 +17,6 @@ import {
   emitCommentTriviaBetweenNodes,
   emitNodeSourceSyntaxWithTrivia
 } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 
@@ -618,15 +617,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   rules: AtRuleValue['rules'];
 
   constructor(value: AtRuleValue, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(value, options, location);
-    this.name = value.name;
-    this.prelude = value.prelude;
-    this.rules = value.rules;
+    super(NO_VALUE, options, location);
+    this.name = this._processNodes(value.name);
+    this.prelude = this._processNodes(value.prelude);
+    this.rules = this._processNodes(value.rules);
     this._treeContext = treeContext;
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
-    const owned = canReuseLeaf(name) ? reuseLeaf(name) : copyWithReusableLeaves(name);
+    const owned = name.canReuseAsLeaf() ? name.reuseAsLeaf() : name.cloneForPlacement();
     if (!(owned instanceof Any) && !(owned instanceof Interpolated)) {
       throw new TypeError('Expected at-rule name copy');
     }
@@ -634,11 +633,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private ownNode(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+    return node.canReuseAsLeaf() ? node.reuseAsLeaf() : node.cloneForPlacement();
   }
 
   private ownRules(rules: Rules): Rules {
-    const owned = canReuseLeaf(rules) ? reuseLeaf(rules) : copyWithReusableLeavesPreservingComments(rules);
+    const owned = rules.canReuseAsLeaf() ? rules.reuseAsLeaf() : rules.cloneForPlacement({ stripComments: false });
     if (!(owned instanceof Rules)) {
       throw new TypeError('Expected at-rule rules copy');
     }
@@ -667,6 +666,24 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       this.sourceRoot?._treeContext
     ).inherit(this);
     return this.applyDerivedMetadata(node);
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    cloneFn ??= n => n.clone(deep);
+    const clonePart = <T extends Node | undefined>(part: T): T => (
+      deep && part instanceof Node ? cloneFn(part) as T : part
+    );
+    const node = new AtRule(
+      {
+        name: clonePart(this.name),
+        prelude: clonePart(this.prelude),
+        rules: clonePart(this.rules)
+      },
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
+    ).inherit(this) as this;
+    return this.applyDerivedMetadata(node) as this;
   }
 
   /** Used for equality comparison with other at-rules */
@@ -716,7 +733,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     if (!this.rules) {
-      if (writeDirectLeafAtRuleHeader(options, this.value)) {
+      if (writeDirectLeafAtRuleHeader(options, {
+        name: this.name,
+        prelude: this.prelude
+      })) {
         return;
       }
       options.writer.add(this.getHeaderString(options));

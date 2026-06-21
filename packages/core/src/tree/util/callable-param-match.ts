@@ -55,7 +55,7 @@ export function matchCallableParams({
   for (let i = 0; i < params.items.length; i++) {
     const param = params.items[i]!;
     if (isNode(param, N.VarDeclaration)) {
-      if (param.valueNode instanceof Nil) {
+      if (param.value instanceof Nil) {
         requiredPositions++;
       }
     } else if (isNode(param, N.Any) && param.role === 'property') {
@@ -96,7 +96,7 @@ export function matchCallableParams({
       }
       if (paramIndex >= 0) {
         param = params.items[paramIndex];
-        argValue = arg.valueNode;
+        argValue = arg.value;
       } else {
         match = false;
         break;
@@ -182,12 +182,12 @@ export function matchCallableParams({
     if (isNode(param, N.VarDeclaration)) {
       bindingRecordsByIndex[i] = {
         name: param.name.valueOf(),
-        value: param.valueNode,
+        value: param.value,
         prepareValue: cloneDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
       };
-      signatureParts[i] = getCallableNodeSignature(param.valueNode);
+      signatureParts[i] = getCallableNodeSignature(param.value);
     } else if (param.type === 'Rest') {
       const restName = param.value ? `${param.value}` : `rest${i}`;
       bindingRecordsByIndex[i] = {

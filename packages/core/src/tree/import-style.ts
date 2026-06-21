@@ -15,7 +15,6 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
-import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
 import { Comment } from './comment.js';
 import {
   isRenderBuffer,
@@ -120,42 +119,6 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
   }
 }
 
-function copyImportPlacementValue(value: unknown): unknown {
-  if (value instanceof Node) {
-    return copyImportPlacementNode(value);
-  }
-  if (Array.isArray(value)) {
-    const out = new Array<unknown>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      out[i] = copyImportPlacementValue(value[i]);
-    }
-    return out;
-  }
-  if (isObject(value)) {
-    const out: Record<string, unknown> = {};
-    for (const key in value) {
-      out[key] = copyImportPlacementValue(value[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-function constructImportPlacementNode(node: Node, value: unknown): Node {
-  const copy = Reflect.construct(
-    node.constructor,
-    [
-      value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
-    ]
-  );
-  if (!(copy instanceof Node)) {
-    throw new TypeError('Expected import placement copy to remain a node');
-  }
-  return copy.inherit(node);
-}
-
 function copyImportPlacementAmpersand(node: Node): Node | undefined {
   if (!isNode(node, N.Ampersand)) {
     return undefined;
@@ -177,10 +140,10 @@ function copyImportPlacementNode(node: Node): Node {
   if (derivedAmpersand) {
     return derivedAmpersand;
   }
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
+  if (node.canReuseAsLeaf()) {
+    return node.reuseAsLeaf();
   }
-  return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
+  return node.clone(true, copyImportPlacementNode);
 }
 
 function getInlineSourceLocation(source: string): NodeLocation {
@@ -377,6 +340,11 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
 
 type ImportPlacementValuePath = readonly (string | number)[];
 
+function nodeChildKeys(node: Node): readonly string[] | undefined {
+  const childKeys = (node.constructor as typeof Node).childKeys;
+  return childKeys === null ? undefined : childKeys;
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -390,6 +358,18 @@ function findImportPlacementValuePath(
     return out;
   }
   if (value instanceof Node) {
+    const childKeys = nodeChildKeys(value);
+    if (childKeys) {
+      for (const key of childKeys) {
+        path.push(key);
+        const found = findImportPlacementValuePath((value as unknown as Record<string, unknown>)[key], target, path);
+        path.pop();
+        if (found) {
+          return found;
+        }
+      }
+      return undefined;
+    }
     return findImportPlacementValuePath(value.value, target, path);
   }
   if (Array.isArray(value)) {
@@ -420,6 +400,10 @@ function readImportPlacementValuePath(value: unknown, path: ImportPlacementValue
   let cursor = value;
   for (const segment of path) {
     if (cursor instanceof Node) {
+      if (typeof segment === 'string') {
+        cursor = (cursor as unknown as Record<string, unknown>)[segment];
+        continue;
+      }
       cursor = cursor.value;
     }
     if (Array.isArray(cursor)) {
@@ -462,16 +446,19 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
+  if (placementChild.canReuseAsLeaf()) {
+    return placementChild;
+  }
   for (const segment of state.childSegments) {
     const placementSegment = placementRules.rules[segment.index];
     if (placementSegment === placementChild) {
       return segment.source;
     }
-    const path = findImportPlacementValuePath(placementSegment.value, placementChild);
+    const path = findImportPlacementValuePath(placementSegment, placementChild);
     if (!path) {
       continue;
     }
-    const sourceDescendant = readImportPlacementValuePath(segment.source.value, path);
+    const sourceDescendant = readImportPlacementValuePath(segment.source, path);
     return sourceDescendant instanceof Node ? sourceDescendant : undefined;
   }
   return undefined;
@@ -791,7 +778,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         continue;
       }
       liveSlots.set(name, {
-        value: node.valueNode,
+        value: node.value,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);

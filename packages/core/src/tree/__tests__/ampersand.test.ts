@@ -35,7 +35,7 @@ describe('Ampersand', () => {
   });
 
   /** We need a root node to bubble rules */
-  let wrapAmp = (selectors: SimpleSelector[]) => rules([
+  let wrapAmp = (value: SimpleSelector[]) => rules([
     ruleset({
       selector: compound([
         el('.one'),
@@ -44,7 +44,7 @@ describe('Ampersand', () => {
       rules: rules([
         decl({ name: 'chungus', value: spaced([el('foo'), el('bar')]) }),
         ruleset({
-          selector: compound(selectors),
+          selector: compound(value),
           rules: rules([
             decl({ name: 'inner', value: spaced([el('one'), el('two')]) })
           ])
@@ -53,13 +53,13 @@ describe('Ampersand', () => {
     })
   ]);
 
-  let wrapAmpList = (selectors: Selector[]) => rules([
+  let wrapAmpList = (value: Selector[]) => rules([
     ruleset({
       selector: sellist([sel([el('.one')]), sel([el('.two')])]),
       rules: rules([
         decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
         ruleset({
-          selector: sellist(selectors),
+          selector: sellist(value),
           rules: rules([
             decl({ name: 'inner', value: spaced([any('one'), any('two')]) })
           ])
@@ -160,7 +160,7 @@ describe('Ampersand', () => {
     expect(resolved.hoistToRoot).toBe(true);
   });
 
-  it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
+  it('derives appended framed ampersand value without cloning the frame selector', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
       rules: rules([])
@@ -227,11 +227,11 @@ describe('Ampersand', () => {
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
-    const originalMap = parentSelector.selectors.map;
-    Object.defineProperty(parentSelector.selectors, 'map', {
+    const originalMap = parentSelector.value.map;
+    Object.defineProperty(parentSelector.value, 'map', {
       configurable: true,
       value: () => {
-        throw new Error('Ampersand selector-list append should not map source selectors');
+        throw new Error('Ampersand selector-list append should not map source value');
       }
     });
 
@@ -247,7 +247,7 @@ describe('Ampersand', () => {
         .two
       `);
     } finally {
-      Object.defineProperty(parentSelector.selectors, 'map', {
+      Object.defineProperty(parentSelector.value, 'map', {
         configurable: true,
         writable: true,
         value: originalMap
@@ -255,7 +255,7 @@ describe('Ampersand', () => {
     }
   });
 
-  it('derives appended framed complex selectors without reparenting source selector children', async () => {
+  it('derives appended framed complex value without reparenting source selector children', async () => {
     const frame = ruleset({
       selector: sel([el('.foo'), co(' '), el('.bar')]),
       rules: rules([])
@@ -277,7 +277,7 @@ describe('Ampersand', () => {
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
-  it('renders appended generated selectors without reparenting source selectors', async () => {
+  it('renders appended generated value without reparenting source value', async () => {
     const parentSelector = sel([el('.button')]);
     const nestedSelector = sel([amp('-primary')]);
     const sourceParentChildren = [...parentSelector.value];
@@ -309,7 +309,7 @@ describe('Ampersand', () => {
     expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
-  it('extends appended generated selectors without reparenting source selectors', async () => {
+  it('extends appended generated value without reparenting source value', async () => {
     const parentSelector = sel([el('.button')]);
     const nestedSelector = sel([amp('-primary')]);
     const sourceParentChildren = [...parentSelector.value];
@@ -414,7 +414,7 @@ describe('Ampersand', () => {
     }
   });
 
-  it('should collapse selectors when in collapsing mode #1', async () => {
+  it('should collapse value when in collapsing mode #1', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
     context = new Context({ collapseNesting: true });
@@ -428,7 +428,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should collapse selectors when in collapsing mode #2', async () => {
+  it('should collapse value when in collapsing mode #2', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmpList([sel([amp()])]);
     context = new Context({ collapseNesting: true });
@@ -444,7 +444,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should order selectors when collapsing', async () => {
+  it('should order value when collapsing', async () => {
     let node = wrapAmp([amp(), el('h2')]);
     context = new Context({ collapseNesting: true });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
@@ -458,7 +458,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should collapse selectors when ampersand is set to hoist #1', async () => {
+  it('should collapse value when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ collapseNesting: true });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
@@ -471,7 +471,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should collapse selectors when ampersand is set to hoist #2', async () => {
+  it('should collapse value when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ collapseNesting: true });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
@@ -485,7 +485,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should collapse selectors when ampersand has an appended value #1', async () => {
+  it('should collapse value when ampersand has an appended value #1', async () => {
     let node = wrapAmp([amp('-1')]);
     context = new Context({ collapseNesting: true });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
@@ -499,7 +499,7 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should collapse selectors when ampersand has an appended value #2', async () => {
+  it('should collapse value when ampersand has an appended value #2', async () => {
     let node = wrapAmpList([sel([amp('-1')])]);
     context = new Context({ collapseNesting: true });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
@@ -560,9 +560,9 @@ describe('Ampersand', () => {
     });
     context.rulesetFrames.push(frame);
     let publicStringCalls = 0;
-    const originals = new Array<(typeof sourceSelector.selectors)[number]['toTrimmedString']>(sourceSelector.selectors.length);
-    for (let index = 0; index < sourceSelector.selectors.length; index++) {
-      const selector = sourceSelector.selectors[index]!;
+    const originals = new Array<(typeof sourceSelector.value)[number]['toTrimmedString']>(sourceSelector.value.length);
+    for (let index = 0; index < sourceSelector.value.length; index++) {
+      const selector = sourceSelector.value[index]!;
       originals[index] = selector.toTrimmedString;
       selector.toTrimmedString = function countPublicStringTransport(
         this: typeof selector,
@@ -574,8 +574,8 @@ describe('Ampersand', () => {
     }
 
     const resolved = await amp('&-theme').resolve(context);
-    for (let index = 0; index < sourceSelector.selectors.length; index++) {
-      sourceSelector.selectors[index]!.toTrimmedString = originals[index]!;
+    for (let index = 0; index < sourceSelector.value.length; index++) {
+      sourceSelector.value[index]!.toTrimmedString = originals[index]!;
     }
 
     expect(resolved).toBeInstanceOf(Selector);

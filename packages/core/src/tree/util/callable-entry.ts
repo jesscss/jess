@@ -28,10 +28,6 @@ export type CallableLookupEntry = {
   match: string[];
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
 export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<Node>): boolean {
   if (!node) {
     return false;
@@ -50,33 +46,9 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
       return true;
     }
   }
-  const value = node.value;
-  if (isNode(value)) {
-    return callableGuardContainsDefault(value, seen);
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      const item = value[i];
-      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  if (isRecord(value)) {
-    for (const key in value) {
-      const item = value[key];
-      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
-        return true;
-      }
-      if (Array.isArray(item)) {
-        for (let i = 0; i < item.length; i++) {
-          const child = item[i];
-          if (isNode(child) && callableGuardContainsDefault(child, seen)) {
-            return true;
-          }
-        }
-      }
+  for (const child of node.children()) {
+    if (callableGuardContainsDefault(child, seen)) {
+      return true;
     }
   }
   return false;

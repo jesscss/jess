@@ -61,7 +61,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const position = w.position();
-    if (this._options?.paramVar && this.valueNode instanceof Nil) {
+    if (this._options?.paramVar && this.value instanceof Nil) {
       if (this.name instanceof Any) {
         const nameText = this.name.value.replace(/\s+$/u, '');
         w.add('$', this);
@@ -89,7 +89,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    if (this._options?.paramVar && this.valueNode instanceof Nil) {
+    if (this._options?.paramVar && this.value instanceof Nil) {
       this.writeBareParameterSyntax(options);
       return;
     }

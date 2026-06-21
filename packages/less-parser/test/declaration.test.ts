@@ -28,15 +28,15 @@ describe('declaration', () => {
   it('should parse custom property declaration with generic function value', () => {
     const { errors, tree } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Sequence');
-    expect(tree?.value.value.value?.[0]?.type).toBe('Call');
+    expect(tree?.value.type).toBe('Sequence');
+    expect(tree?.value.value?.[0]?.type).toBe('Call');
   });
 
   it('should parse custom property declaration with if() as a structured call value', () => {
     const { errors, tree } = parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Sequence');
-    expect(tree?.value.value.value?.[0]?.type).toBe('Call');
+    expect(tree?.value.type).toBe('Sequence');
+    expect(tree?.value.value?.[0]?.type).toBe('Call');
   });
 
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
@@ -60,7 +60,7 @@ describe('declaration', () => {
   it('should parse legacy IE filter declarations as structured interpolated values', () => {
     const { errors, tree } = parse('filter: progid:DXImageTransform.Microsoft.Alpha(opacity=@fat)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.value.type).toBe('Interpolated');
+    expect(tree?.value.type).toBe('Interpolated');
   });
 
   it('normalizes Less property merge "+:" to the list-merge assign form', () => {

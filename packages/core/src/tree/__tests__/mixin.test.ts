@@ -362,8 +362,8 @@ describe('Mixin', () => {
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(firstDecl?.type).toBe('Declaration');
       expect(secondDecl?.type).toBe('Declaration');
-      expect(firstDecl.valueNode).toBe(sourceValue);
-      expect(secondDecl.valueNode).toBe(sourceValue);
+      expect(firstDecl.value).toBe(sourceValue);
+      expect(secondDecl.value).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -968,7 +968,7 @@ describe('Mixin', () => {
           deep === false
           && this.value.some(node => (
             node.type === 'Declaration'
-            && node.value?.name?.valueOf?.() === 'color'
+            && node.name?.valueOf?.() === 'color'
           ))
         ) {
           detachedRuleClones++;
@@ -1502,7 +1502,7 @@ describe('Mixin', () => {
           deep === false
           && this.value.some(node => (
             node.type === 'Declaration'
-            && node.value?.name?.valueOf?.() === 'marker'
+            && node.name?.valueOf?.() === 'marker'
           ))
         ) {
           shallowMarkerBodyClones++;
@@ -1546,9 +1546,9 @@ describe('Mixin', () => {
     });
 
     it('does not copy childless evaluated scalar args just to bind mixin params', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1582,7 +1582,7 @@ describe('Mixin', () => {
         expect(css).toBe('');
         expect(scalarCopies).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -1629,9 +1629,9 @@ describe('Mixin', () => {
     });
 
     it('does not copy childless scalar params again when resolving live slots', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1666,14 +1666,14 @@ describe('Mixin', () => {
         expect(css).toContain('color: red;');
         expect(scalarCopies).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
     it('does not copy childless static default params just to bind mixin params', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1707,7 +1707,7 @@ describe('Mixin', () => {
         expect(css).toBe('');
         expect(scalarCopies).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -1788,9 +1788,9 @@ describe('Mixin', () => {
         }
       });
 
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1830,14 +1830,14 @@ describe('Mixin', () => {
         expect(css).toContain('margin: red 10px;');
         expect(scalarCopies).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
     it('does not copy childless scalar rest param values when resolving rest slots', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1875,7 +1875,7 @@ describe('Mixin', () => {
         expect(css).toContain('margin: red 10px;');
         expect(scalarCopies).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -6019,9 +6019,9 @@ describe('Mixin', () => {
     });
 
     it('does not copy static bool guards before evaluating candidates', async () => {
-      const originalCopy = Bool.prototype.copy;
+      const originalCopy = Bool.prototype.cloneForPlacement;
       let guardCopies = 0;
-      Bool.prototype.copy = function copyForCounting(
+      Bool.prototype.cloneForPlacement = function copyForCounting(
         this: Bool,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -6051,7 +6051,7 @@ describe('Mixin', () => {
         expect(css).toContain('color: red;');
         expect(guardCopies).toBe(0);
       } finally {
-        Bool.prototype.copy = originalCopy;
+        Bool.prototype.cloneForPlacement = originalCopy;
       }
     });
 

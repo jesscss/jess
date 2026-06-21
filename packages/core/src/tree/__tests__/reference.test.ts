@@ -378,11 +378,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -410,7 +410,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -431,9 +431,9 @@ describe('reference', () => {
         ])
       );
       context.rulesContext = runtimeScope;
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -453,7 +453,7 @@ describe('reference', () => {
         expect(sourceValue.frozen).toBe(false);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -578,11 +578,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -612,7 +612,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -635,11 +635,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.copy;
+      const originalCopy = Sequence.prototype.cloneForPlacement;
       const originalInherit = Sequence.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      Sequence.prototype.copy = function copyForCounting(
+      Sequence.prototype.cloneForPlacement = function copyForCounting(
         this: Sequence,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -669,7 +669,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.cloneForPlacement = originalCopy;
         Sequence.prototype.inherit = originalInherit;
       }
     });
@@ -693,11 +693,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -727,7 +727,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -926,11 +926,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -955,7 +955,7 @@ describe('reference', () => {
         expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -972,11 +972,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1001,7 +1001,7 @@ describe('reference', () => {
         expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -1018,11 +1018,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1050,7 +1050,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1067,11 +1067,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.copy;
+      const originalCopy = Sequence.prototype.cloneForPlacement;
       const originalInherit = Sequence.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      Sequence.prototype.copy = function copyForCounting(
+      Sequence.prototype.cloneForPlacement = function copyForCounting(
         this: Sequence,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1099,7 +1099,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.cloneForPlacement = originalCopy;
         Sequence.prototype.inherit = originalInherit;
       }
     });
@@ -1159,11 +1159,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1191,7 +1191,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1655,11 +1655,11 @@ describe('reference', () => {
         target: ref({ key: 'targetArray' }, { type: 'variable' }),
         key: 0
       }, { type: 'index' });
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceListCopies = 0;
       let sourceListInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1685,7 +1685,7 @@ describe('reference', () => {
         expect(sourceList.parent).toBe(targetArray);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1702,11 +1702,11 @@ describe('reference', () => {
         target: ref({ key: 'targetObject' }, { type: 'variable' }),
         key: quoted('tones')
       }, { type: 'index' });
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceListCopies = 0;
       let sourceListInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1732,7 +1732,7 @@ describe('reference', () => {
         expect(sourceList.parent).toBe(targetObject);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1958,11 +1958,11 @@ describe('reference', () => {
     });
 
     it('does not copy childless scalar fallback values before resolve(context)', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = Any.prototype.inherit;
       let scalarCopies = 0;
       let scalarInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2000,7 +2000,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(refNode.toTrimmedString()).toBe('$missing');
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         Any.prototype.inherit = originalInherit;
       }
     });
@@ -2071,11 +2071,11 @@ describe('reference', () => {
       const fallback = list([any('red'), any('blue')]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let fallbackCopies = 0;
       let fallbackInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2109,7 +2109,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2118,11 +2118,11 @@ describe('reference', () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let fallbackCopies = 0;
       let fallbackCopyInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2161,7 +2161,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2170,9 +2170,9 @@ describe('reference', () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       let fallbackCopies = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2203,7 +2203,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -2575,11 +2575,11 @@ describe('reference', () => {
       ]);
       const evaldRoot = setRulesContext(await node.eval(context));
 
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let listCopies = 0;
       let listInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2607,7 +2607,7 @@ describe('reference', () => {
         expect(listInherits).toBe(0);
         expect(sourceValue.toTrimmedString()).toBe('red');
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2684,10 +2684,10 @@ describe('reference', () => {
       ]);
 
       const originalInherit = List.prototype.inherit;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       let listCopies = 0;
       let listInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2713,7 +2713,7 @@ describe('reference', () => {
         if (evaluatedDecl?.type !== 'Declaration') {
           return;
         }
-        const evaluatedValue = evaluatedDecl.valueNode;
+        const evaluatedValue = evaluatedDecl.value;
         listCopies = 0;
         listInherits = 0;
         const resolved = await refNode.resolve(context);
@@ -2723,7 +2723,7 @@ describe('reference', () => {
         expect(listCopies).toBe(0);
         expect(listInherits).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2771,12 +2771,12 @@ describe('reference', () => {
         }, { normalizedFromAssign: '+:' })
       ]);
 
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let valueCopyCount = 0;
       let latestCopiedList: List | undefined;
       let finalizedList: List | undefined;
-      Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
+      Any.prototype.cloneForPlacement = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
         if (this.value === 'red' || this.value === 'foo') {
           valueCopyCount++;
         }
@@ -2803,7 +2803,7 @@ describe('reference', () => {
         expect(latestCopiedList).toBeDefined();
         expect(finalizedList).toBeDefined();
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -3275,7 +3275,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('variable occurrence lookup uses the variable lane directly', async () => {
@@ -3286,7 +3286,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
@@ -3297,7 +3297,7 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.valueNode,
+        value: liveSource.value,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3322,7 +3322,7 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.valueNode,
+        value: liveSource.value,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3347,7 +3347,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findPropertyDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup records merge-chain occurrence slots', async () => {
@@ -3382,7 +3382,7 @@ describe('reference', () => {
       ]);
       const css = await renderNodeToString(renderNode, context);
 
-      expect(directFound?.valueNode.valueOf()).toBe('foo');
+      expect(directFound?.value.valueOf()).toBe('foo');
       expect(cachedSlot).toBe(1);
       expect(css).toBeString(`
         background-color: red, foo;
@@ -3406,7 +3406,7 @@ describe('reference', () => {
 
       await node.eval(context);
 
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
       expect(findPropertyDeclarationOccurrence(node, 'unrelated')).toBeUndefined();
       const buckets = node.directDeclarationsByName;
@@ -3433,8 +3433,8 @@ describe('reference', () => {
       expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
         key => key.startsWith('unrelated\u001f')
       )).toEqual([]);
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
-      expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.valueNode.valueOf()).toBe('1');
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.value.valueOf()).toBe('1');
     });
 
     it('direct declaration cache survives unrelated static child declaration surface writes', async () => {
@@ -3444,7 +3444,7 @@ describe('reference', () => {
 
       await node.eval(context);
 
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
       expect(findPropertyDeclarationOccurrence(node, 'child-color')).toBeUndefined();
       const buckets = node.directDeclarationsByName;
@@ -3475,7 +3475,7 @@ describe('reference', () => {
       expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
         key => key.startsWith('child-color\u001f')
       )).toEqual([]);
-      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.valueNode.valueOf()).toBe('green');
+      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.value.valueOf()).toBe('green');
     });
 
     it('direct declaration cache resets for unknown child declaration surface writes', async () => {
@@ -3485,7 +3485,7 @@ describe('reference', () => {
 
       await node.eval(context);
 
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.valueNode.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'dynamic-color')).toBeUndefined();
       const declarationLookupVersion = node.declarationLookupVersion;
       expect(node.directDeclarationsByName).toBeDefined();
@@ -3514,7 +3514,7 @@ describe('reference', () => {
       };
       const found = findVariableDeclarationOccurrence(node, 'color', opts)?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup ignores empty candidate sets', async () => {
@@ -3529,7 +3529,7 @@ describe('reference', () => {
       };
       const found = findPropertyDeclarationOccurrence(node, 'color', opts)?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
       expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
     });
 
@@ -3547,7 +3547,7 @@ describe('reference', () => {
         optionalCandidates
       })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
       expect(found).toBeDefined();
       expect(candidates.has(found!)).toBe(true);
       expect(candidates.has(stale)).toBe(true);
@@ -3582,7 +3582,7 @@ describe('reference', () => {
         filter: () => true
       })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
@@ -3603,7 +3603,7 @@ describe('reference', () => {
         semanticFilter: true,
         filter: () => true
       })?.node;
-      expect(found?.valueNode.valueOf()).toBe('blue');
+      expect(found?.value.valueOf()).toBe('blue');
     });
 
     it('direct property lookup reuses carried child rule entries after indexing', async () => {
@@ -3623,7 +3623,7 @@ describe('reference', () => {
         root,
         'child-color',
         { searchParents: false }
-      )?.node.valueNode.valueOf()).toBe('blue');
+      )?.node.value.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
@@ -3648,7 +3648,7 @@ describe('reference', () => {
 
       try {
         const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
-        expect(found?.valueNode.valueOf()).toBe('blue');
+        expect(found?.value.valueOf()).toBe('blue');
       } finally {
         Object.defineProperty(root, 'value', {
           configurable: true,
@@ -3760,7 +3760,7 @@ describe('reference', () => {
 
       const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('blue');
+      expect(found?.value.valueOf()).toBe('blue');
     });
 
     it('direct property lookup enters reference-import child surfaces even when family flags are absent', async () => {
@@ -3786,7 +3786,7 @@ describe('reference', () => {
 
       const found = findPropertyDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('blue');
+      expect(found?.value.valueOf()).toBe('blue');
     });
 
     it('direct variable reference-import miss does not widen ordinary property child scans', async () => {

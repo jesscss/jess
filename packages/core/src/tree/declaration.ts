@@ -30,7 +30,6 @@ import {
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -346,7 +345,7 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   }
   for (let i = 0; i < node.items.length; i++) {
     const child = node.items[i];
-    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+    if (!(child instanceof Node) || !child.canReuseAsLeaf()) {
       return false;
     }
   }
@@ -506,12 +505,12 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  static override childKeys = ['name', 'valueNode', 'important'];
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue['value'], Opts> {
+  static override childKeys = ['name', 'value', 'important'];
 
-  readonly name: DeclarationValue['name'];
-  readonly valueNode: DeclarationValue['value'];
-  readonly important: DeclarationValue['important'];
+  declare override value: DeclarationValue['value'];
+  name: DeclarationValue['name'];
+  important: DeclarationValue['important'];
 
   override allowRuleRoot = true;
 
@@ -521,20 +520,53 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location, treeContext);
+    super(value.value, options, location);
     this.name = value.name;
-    this.valueNode = value.value;
     this.important = value.important;
+    this._treeContext = treeContext;
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.important instanceof Node) {
+      this.adopt(value.important);
+    }
+  }
+
+  override *children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    const childValues = reverse
+      ? [this.important, this.value, this.name]
+      : [this.name, this.value, this.important];
+    for (let i = 0; i < childValues.length; i++) {
+      const child = childValues[i];
+      if (child instanceof Node) {
+        yield child;
+        if (deep) {
+          yield* child.children(deep, reverse);
+        }
+      }
+    }
+  }
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    cloneFn ??= n => n.clone(deep);
+    const clonePart = <T extends Node | string | undefined>(part: T): T => (
+      deep && part instanceof Node ? cloneFn(part) as T : part
+    );
+    return this.withParts({
+      name: clonePart(this.name),
+      value: clonePart(this.value),
+      important: clonePart(this.important)
+    });
   }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
     if (typeof node === 'string') {
       return node;
     }
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+    if (node.canReuseAsLeaf()) {
+      return node.reuseAsLeaf();
     }
-    const copy = copyWithReusableLeaves(node);
+    const copy = node.cloneForPlacement();
     if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
       throw new TypeError('Copied declaration name must remain a declaration name');
     }
@@ -546,17 +578,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (typeof node === 'string') {
       return node;
     }
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
+      : node.cloneForPlacement();
   }
 
   private ownRenderAssignmentInput(node: Node): Node {
-    return canReuseLeaf(node) || canReuseSourceFreeAssignmentInput(node)
-      ? reuseLeaf(node)
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
       : this.copyValueForDerived(node);
   }
 
   private ownMergedAssignmentOutputItem(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+    return node.canReuseAsLeaf() ? node.reuseAsLeaf() : this.copyValueForDerived(node);
   }
 
   private copyImportantForDerived(node: DeclarationValue['important']): DeclarationValue['important'] {
@@ -566,10 +600,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (typeof node === 'string') {
       return node;
     }
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+    if (node.canReuseAsLeaf() || node instanceof Any) {
+      return node.reuseAsLeaf();
     }
-    const copy = copyWithReusableLeaves(node);
+    const copy = node.cloneForPlacement();
     if (!(copy instanceof Any)) {
       throw new TypeError('Copied important flag must remain an Any node');
     }
@@ -582,13 +616,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private withParts(value: DeclarationValue): this {
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        value,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+    const Ctor = this.constructor as new (
+      value: DeclarationValue,
+      options?: Opts,
+      location?: LocationInfo,
+      treeContext?: Context['treeContext']
+    ) => this;
+    const node = new Ctor(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
     );
     return this.applyDerivedMetadata(node);
   }
@@ -596,7 +634,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private derive(): this {
     return this.withParts({
       name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
+      value: this.copyValueForDerived(this.value),
       important: this.copyImportantForDerived(this.important)
     });
   }
@@ -613,7 +651,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         ? this.copyNameForDerived(this.name)
         : parts.name,
       value: parts.value === undefined
-        ? this.copyValueForDerived(this.valueNode)
+        ? this.copyValueForDerived(this.value)
         : parts.value,
       important: parts.important === undefined
         ? this.copyImportantForDerived(this.important)
@@ -662,7 +700,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return this.valueRequiresSemi(this.valueNode);
+    return this.valueRequiresSemi(this.value);
   }
 
   private valueRequiresSemi(value: DeclarationValue['value']): boolean {
@@ -675,7 +713,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   protected declTrimmedString(options?: PrintOptions) {
     return this.declValueTrimmedString({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
@@ -869,7 +907,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return false;
     }
     const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
-    const valueText = maybeDirectSyntheticDeclarationLeafText(this.valueNode);
+    const valueText = maybeDirectSyntheticDeclarationLeafText(this.value);
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
       return false;
     }
@@ -885,7 +923,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
     w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
-    w.add(valueText, this.valueNode instanceof Node ? this.valueNode : this);
+    w.add(valueText, this.value instanceof Node ? this.value : this);
     if (importantText !== undefined) {
       w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
     }
@@ -898,7 +936,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     this.writeDeclarationValueSyntax({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
@@ -960,7 +998,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }, options)
         : state.output.renderDeclarationPartsToBuffer(context, buffer, {
             name: state.output.name,
-            value: state.output.valueNode,
+            value: state.output.value,
             important: state.output.important
           }, options);
     }
@@ -1249,7 +1287,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         output,
         name: output instanceof Declaration ? output.name : undefined,
-        value: output instanceof Declaration ? output.valueNode : undefined,
+        value: output instanceof Declaration ? output.value : undefined,
         important: output instanceof Declaration ? output.important : undefined,
         nil: output instanceof Nil
       };
@@ -1282,13 +1320,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (options.reuseCanonical === true) {
       return {
         name: this.name,
-        value: this.valueNode,
+        value: this.value,
         important: this.important
       };
     }
     return {
       name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
+      value: this.copyValueForDerived(this.value),
       important: this.copyImportantForDerived(this.important)
     };
   }
@@ -1296,7 +1334,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private createRenderRegistrationState(): DeclarationRegistrationState {
     return {
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important,
       renderOnly: true
     };
@@ -1485,7 +1523,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): this {
     const changed = (
       state.name !== this.name
-      || state.value !== this.valueNode
+      || state.value !== this.value
       || state.important !== this.important
       || state.normalizedFromAssign !== undefined
       || state.bindOutput !== undefined
@@ -1496,7 +1534,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const node = this.withParts({
       name: state.name === this.name ? this.copyNameForDerived(state.name) : state.name,
-      value: state.value === this.valueNode ? this.copyValueForDerived(state.value) : state.value,
+      value: state.value === this.value ? this.copyValueForDerived(state.value) : state.value,
       important: state.important === this.important
         ? this.copyImportantForDerived(state.important)
         : state.important
@@ -1510,14 +1548,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    if (typeof this.valueNode === 'string') {
+    if (typeof this.value === 'string') {
       throw new TypeError('String-backed declaration values must be hydrated before evaluation');
     }
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
       return {
         source: this,
-        value: this.valueNode,
+        value: this.value,
         important: this.important,
         changed: false
       };
@@ -1526,7 +1564,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let node = this;
       const state: DeclarationValueState = {
         source: node,
-        value: node.valueNode,
+        value: node.value,
         important: node.important,
         changed: false
       };
@@ -1570,7 +1608,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (node.type === 'VarDeclaration') {
         return state;
       }
-      const { name, valueNode: value } = node;
+      const { name, value: value } = node;
       if (value instanceof Node) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
@@ -1623,7 +1661,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const output = node.withParts({
       name: this.copyNameForDerived(node.name),
-      value: state.value === node.valueNode
+      value: state.value === node.value
         ? this.copyValueForDerived(state.value)
         : state.value,
       important: state.important === node.important

@@ -96,7 +96,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         attachSelectorBitLibrary(selectorArg, this.keySetLibrary);
       }
       const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
-        && (!isNode(selectorArg, N.SelectorList) || selectorArg.selectors.length === 1);
+        && (!isNode(selectorArg, N.SelectorList) || selectorArg.value.length === 1);
       if (omitGeneratedWrapper) {
         selectorArg.toString(options);
         return w.getSince(mark);
@@ -142,9 +142,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (isNode(arg, N.SelectorList)) {
           const omitGeneratedWrapper = this.generated
             && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.selectors.length === 1;
+            && arg.value.length === 1;
           this._requiredKeySet = omitGeneratedWrapper
-            ? arg.selectors[0]!.requiredKeySet
+            ? arg.value[0]!.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;
@@ -191,10 +191,20 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const cloned = super.clone(deep, cloneFn) as this;
+    const currentArg = this.arg;
+    cloneFn ??= n => n.clone(deep);
+    const clonedArg = deep && currentArg ? cloneFn(currentArg) : currentArg;
+    const cloned = new PseudoSelector(
+      {
+        name: this.name,
+        arg: clonedArg,
+        generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
+      },
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
+    ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;
-    cloned._treeContext = this._treeContext;
-    cloned.generatedPseudoPlacementOverride = this.generatedPseudoPlacementOverride;
     return cloned;
   }
 

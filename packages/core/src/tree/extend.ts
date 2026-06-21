@@ -50,12 +50,12 @@ export type ExtendValue = {
   flag?: ExtendFlag;
 };
 /**
- * Extends selectors - parsed by Less as an independent statement
+ * Extends value - parsed by Less as an independent statement
  * at the beginning of rules.
  *
  * @todo - figure out eval -- use Rules lookups
  * @note - there is some pseudo-code somewhere that smartly
- * registers selectors by a string code.
+ * registers value by a string code.
  */
 export interface Extend extends Node<ExtendValue> {
   eval(context: Context): MaybePromise<Selector>;
@@ -148,7 +148,7 @@ export class Extend extends Node<ExtendValue> {
       selector.addFlag(F_VISIBLE);
     }
     // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
-    // Don't convert non-ampersand selectors to ampersand - they should be used as-is
+    // Don't convert non-ampersand value to ampersand - they should be used as-is
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
@@ -327,7 +327,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node;
       const parts: ComplexSelectorComponent[] = [];
-      for (const part of complex.components) {
+      for (const part of complex.value) {
         if (isNode(part, N.Ampersand)) {
           const amp = part;
           if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -339,7 +339,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.selectors.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
@@ -355,7 +355,7 @@ function materializeImplicitAmpersands(
 
     if (isNode(node, N.SelectorList)) {
       return attachSelectorBitLibrary(
-        SelectorList.create(node.selectors.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
         library
       );
     }
@@ -383,14 +383,14 @@ function hasMaterializableImplicitAmpersand(
     }
 
     if (isNode(node, N.ComplexSelector)) {
-      return node.components.some(part => (
+      return node.value.some(part => (
         !isNode(part, N.Combinator)
         && visit(part)
       ));
     }
 
     if (isNode(node, N.SelectorList)) {
-      return node.selectors.some(item => visit(item as Selector));
+      return node.value.some(item => visit(item as Selector));
     }
 
     return false;

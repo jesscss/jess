@@ -24,7 +24,6 @@ import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -159,7 +158,7 @@ async function runWithRulesContext<T>(
 }
 
 function deriveIterationChild(node: Node): Node {
-  return copyWithReusableLeaves(node);
+  return node.cloneForPlacement();
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {
@@ -267,7 +266,7 @@ async function syncDirectWhileStateMutations(
       throw new TypeError('Expected $while mutation name to resolve to Any');
     }
     setScopeFrameLiveBinding(stateFrame, name.valueOf(), {
-      value: await mutation.valueNode.eval(context),
+      value: await mutation.value.eval(context),
       sourceNode: mutation,
       readonly: mutation.options?.readonly
     });
@@ -345,7 +344,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      yield [rule.value, rule.name];
     }
     return;
   }
@@ -358,7 +357,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      yield [rule.value, rule.name];
     }
     return;
   }

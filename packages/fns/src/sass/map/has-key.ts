@@ -51,7 +51,7 @@ const hasKey = defineFunction(
       }
 
       // Get the value and check if it's a Collection (nested map)
-      const value = decl.valueNode;
+      const value = decl.value;
       if (!isNode(value, N.Collection)) {
         return new Bool(false);
       }

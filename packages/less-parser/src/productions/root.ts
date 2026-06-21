@@ -346,9 +346,9 @@ const { isArray } = Array;
 /**
  * Groups extends by target (using valueOf()) and flag.
  * Returns an array of grouped Extend nodes where extends with the same target and flag
- * are combined into a single Extend node with a SelectorList of all matching selectors.
+ * are combined into a single Extend node with a SelectorList of all matching value.
  *
- * @todo Group complex selectors into selector lists
+ * @todo Group complex value into selector lists
  */
 function groupExtendsByTargetAndFlag(
   extendNodes: Extend[]
@@ -1183,19 +1183,19 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           if (!selectorList) {
             return;
           }
-          const selectorCount = selectorList.selectors.length;
+          const selectorCount = selectorList.value.length;
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
-          // 1. If any selectors in the list have extends (extendCount < selectorCount)
-          // 2. If all selectors have extends but their "all" flags don't match
+          // 1. If any value in the list have extends (extendCount < selectorCount)
+          // 2. If all value have extends but their "all" flags don't match
           let shouldBubble = false;
 
           if (extendCount < selectorCount) {
-          // Some selectors have extends, some don't - bubble up
+          // Some value have extends, some don't - bubble up
             shouldBubble = true;
           } else if (extendCount === selectorCount) {
-          // All selectors have extends - check if flags match
+          // All value have extends - check if flags match
             let finalExtends = groupExtendsByTargetAndFlag(extend);
             if (finalExtends.length === 1) {
             // All extends have same target and flag - can be inside ruleset
@@ -1223,7 +1223,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       const hasDefault = Boolean(ctx.hasDefault);
       let node = new Ruleset(
         { selector, rules, guard },
-        guard ? { hasDefault } : undefined,
+        guard && hasDefault ? { hasDefault } : undefined,
         undefined,
         $.context
       );
@@ -1462,7 +1462,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let isPossibleMixinCall = true;
     if (!$.RECORDING_PHASE && !isSelectorList && !isPossibleMixinDefinition) {
       for (let s of selector.nodes()) {
-        /** Keep going until we get to basic selectors. */
+        /** Keep going until we get to basic value. */
         if (s instanceof ComplexSelector || s instanceof CompoundSelector) {
           continue;
         }
@@ -1505,7 +1505,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
                     { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
-                    guard ? { hasDefault } : undefined,
+                    guard && hasDefault ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context
                   );

@@ -187,7 +187,7 @@ export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext): 
     { ALT: () => $.CONSUME(T.Star) },
     { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
     { ALT: () => $.SUBRULE($.attributeSelector, { ARGS: [ctx] }) },
-    /** Supports keyframes selectors */
+    /** Supports keyframes value */
     { ALT: () => $.CONSUME(T.DimensionInt) },
     { ALT: () => $.CONSUME(T.DimensionNum) }
   ];
@@ -483,7 +483,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
 export function compoundSelector(this: C, T: TokenMap) {
   const $ = this;
   /**
-      A sequence of simple selectors that are not separated by
+      A sequence of simple value that are not separated by
       a combinator.
         .e.g. `a#selected`
     */
@@ -492,13 +492,13 @@ export function compoundSelector(this: C, T: TokenMap) {
   //   ;
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
-    let selectors: SimpleSelector[];
+    let value: SimpleSelector[];
     if (!RECORDING_PHASE) {
-      selectors = [];
+      value = [];
     }
     let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
     if (!RECORDING_PHASE) {
-      selectors!.push(sel);
+      value!.push(sel);
     }
     $.MANY({
       /** Make sure we don't ignore space combinators */
@@ -506,17 +506,17 @@ export function compoundSelector(this: C, T: TokenMap) {
       DEF: () => {
         sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          selectors.push(sel);
+          value.push(sel);
         }
       }
     });
     if (RECORDING_PHASE) {
       return;
     }
-    if (selectors!.length === 1) {
-      return selectors![0]!;
+    if (value!.length === 1) {
+      return value![0]!;
     }
-    return new CompoundSelector(selectors!, undefined, $.getLocationFromNodes(selectors!), this.context);
+    return new CompoundSelector(value!, undefined, $.getLocationFromNodes(value!), this.context);
   };
 }
 
@@ -529,7 +529,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
   manyGate ??= (ctx: RuleContext) => () => $.hasWS() || $.isTypeAt(1, T.Combinator);
 
   /**
-      A sequence of one or more simple and/or compound selectors
+      A sequence of one or more simple and/or compound value
       that are separated by combinators.
         .e.g. a#selected > .icon
     */
@@ -540,7 +540,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let GATE = manyGate(ctx);
     $.startRule();
-    let selectors: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] })];
+    let value: ComplexSelectorValue = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] })];
 
     /**
      * Only space combinators and specified combinators will enter the MANY
@@ -563,7 +563,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
         }
         let compound: CompoundSelector = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          selectors.push(
+          value.push(
             combinator!,
             compound
           );
@@ -573,10 +573,10 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      if (selectors.length === 1) {
-        return selectors[0]!;
+      if (value.length === 1) {
+        return value[0]!;
       }
-      return new ComplexSelector(selectors as ComplexSelectorValue, undefined, location, this.context);
+      return new ComplexSelector(value as ComplexSelectorValue, undefined, location, this.context);
     }
   };
 }
@@ -603,7 +603,7 @@ export function relativeSelector(this: C, T: TokenMap) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
               complex.adopt(combinator);
-              complex.components.unshift(combinator);
+              complex.value.unshift(combinator);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;

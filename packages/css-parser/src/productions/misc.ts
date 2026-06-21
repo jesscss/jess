@@ -676,7 +676,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
     $.startRule();
 
     let preludeNodes: Node[];
-    let valueNodes!: Node[];
+    let values!: Node[];
     let declRules: Rules | undefined;
     let endToken: IToken | undefined;
     let innerBlockLocation: LocationInfo | undefined;
@@ -697,7 +697,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
       {
         ALT: () => {
           if (!RECORDING_PHASE) {
-            valueNodes = [];
+            values = [];
           }
           $.CONSUME(LCurly);
           $.startRule();
@@ -743,7 +743,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
                 $.MANY9(() => {
                   const value = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
                   if (!RECORDING_PHASE) {
-                    valueNodes.push(value);
+                    values.push(value);
                   }
                 });
               }
@@ -763,10 +763,10 @@ export function unknownAtRule(this: C, T: TokenMap) {
       if (declRules) {
         rules = declRules;
       } else {
-        if (valueNodes?.length) {
+        if (values?.length) {
           // Create a single Sequence from all inner nodes, so serialization treats it as one unit
-          const seqLoc = $.getLocationFromNodes(valueNodes!);
-          const seq = new Sequence(valueNodes!, undefined, seqLoc, this.context);
+          const seqLoc = $.getLocationFromNodes(values!);
+          const seq = new Sequence(values!, undefined, seqLoc, this.context);
           // Use RawRules to avoid inserting newlines/indentation during serialization
           rules = new RawRules([seq], undefined, seqLoc, this.context);
         }

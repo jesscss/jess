@@ -13,6 +13,9 @@ diagnostic, trivia, and recovery primitives that language parser packages can
 use without eagerly parsing every selector/value/prelude. The preferred CSS/Less
 replacement proof should produce existing AST nodes with string/deferred fields
 as early as that is cheaper and clearer than a parallel structural tree.
+Those AST nodes should be understandable from their own semantic fields:
+`selector`, `rules`, `name`, `value`, `prelude`, `important`, and `static
+childKeys`. Base `Node.value` is not a parser-storage contract.
 
 ## What This Package Is
 
@@ -90,7 +93,9 @@ document 0..35
 The current prototype stores offsets into one `SourceText`. The readable field
 labels above come from a side table. The target CSS/Less path may instead store
 string values directly on existing AST fields, with optional packed spans on the
-owning node when offsets or hydration state are needed.
+owning node when offsets or hydration state are needed. A direct-field node
+should not also carry a duplicate generic payload just so generic traversal can
+discover children.
 
 If a profile marks `.foo` as an unparsed selector field or `red` as an unparsed
 declaration-value field, the current prototype can store those spans separately

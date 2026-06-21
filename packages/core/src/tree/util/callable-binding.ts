@@ -1,6 +1,5 @@
 import { F_HAS_NODE_CHILD, F_STATIC, Node } from '../node.js';
 import { Sequence } from '../sequence.js';
-import { copyWithReusableLeaves } from './cloning.js';
 
 function canReuseStaticScalarLeaf(value: Node): boolean {
   return value.hasFlag(F_STATIC)
@@ -12,7 +11,7 @@ export function cloneBoundValue(value: Node): Node {
   if (canReuseStaticScalarLeaf(value)) {
     return value;
   }
-  return copyWithReusableLeaves(value).detachTrivia(true);
+  return value.cloneForPlacement().detachTrivia(true);
 }
 
 export function createRestBindingValue(args: Node[]): Sequence {

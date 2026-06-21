@@ -58,15 +58,15 @@ describe('Complex selector', () => {
       expect(node.toTrimmedString()).toBe('a > .foo');
     });
 
-    test('exposes components as direct child field', () => {
+    test('exposes value as direct child field', () => {
       const first = el('a');
       const combinator = co('>');
       const second = el('.foo');
       const node = sel([first, combinator, second]);
 
-      expect(node.components).toEqual([first, combinator, second]);
       expect(node.value).toEqual([first, combinator, second]);
-      expect(ComplexSelector.childKeys).toEqual(['components']);
+      expect(node.value).toEqual([first, combinator, second]);
+      expect(ComplexSelector.childKeys).toEqual(['value']);
     });
 
     test('writes empty complex selector syntax without writer readback', () => {
@@ -78,7 +78,7 @@ describe('Complex selector', () => {
       expect(writer.captures).toBe(0);
     });
 
-    test('streams selector components without capture scaffolding', () => {
+    test('streams selector value without capture scaffolding', () => {
       const writer = new CountingWriter();
       const node = sel([
         el('a'),
@@ -256,9 +256,9 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
-      const sourceCompound = selector.components[0]!;
-      const sourceCombinator = selector.components[1]!;
-      const sourceChild = selector.components[2]!;
+      const sourceCompound = selector.value[0]!;
+      const sourceCombinator = selector.value[1]!;
+      const sourceChild = selector.value[2]!;
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
@@ -273,7 +273,7 @@ describe('Complex selector', () => {
         amp(),
         el('.keep')
       ]);
-      const sourceChild = selector.components[1]!;
+      const sourceChild = selector.value[1]!;
       const sourceParent = sourceChild.parent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);

@@ -59,7 +59,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const root = rules([
       ruleset({
-        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.copy(true), co(' '), el('.c')])]),
+        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.clone(true), co(' '), el('.c')])]),
         rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
       }),
       ruleset({
@@ -85,7 +85,7 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
-  it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
+  it('extends value inside nested rulesets (Less extend-selector replace case)', async () => {
     // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
     // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
     // No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
@@ -368,7 +368,7 @@ describe('extend integration (eval -> toString)', () => {
     }
   });
 
-  it('extends attribute selectors without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
+  it('extends attribute value without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
     // Represents:
     // .attributes {
     //   [data="test"] { extend: attributes; }
@@ -716,7 +716,7 @@ describe('extend integration (eval -> toString)', () => {
   it('extend-chaining.less AST shape: same nodes and selector shapes as parsed (start through @media (tv))', async () => {
     // Same nodes and AST shape as Jess/Less parser for extend-chaining.less from document start
     // through end of @media (tv), plus .mb/.mc so the extend chain resolves. Selector shape:
-    // BasicSelector for ruleset selectors; Paren(QueryCondition(Keyword)) for @media prelude;
+    // BasicSelector for ruleset value; Paren(QueryCondition(Keyword)) for @media prelude;
     // one Extend with SelectorList target for .ma; Extend before Declaration in .ma rules.
     const blackColor = color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 });
     const maExtendTarget = sellist([
@@ -988,7 +988,7 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
-  it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged selectors', async () => {
+  it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged value', async () => {
     // Failure-point parity from jess all-less extend-chaining.less:
     // .ma:extend(.a, .md) parsed as a single Extend with SelectorList target,
     // and compiler defaults to collapseNesting true.

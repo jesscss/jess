@@ -102,7 +102,7 @@ describe('createLessAdapter', () => {
     const nextValue = new Any('blue');
     adapter.value = nextValue;
 
-    expect(declaration.valueNode).toBe(nextValue);
+    expect(declaration.value).toBe(nextValue);
     expect(declaration.value.value).not.toBe(nextValue);
     expect(declaration.toTrimmedString()).toBe('color: blue');
   });
