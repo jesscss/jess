@@ -100,10 +100,10 @@ export type DeclarationOptions = {
 type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
 
 export type DeclarationValue<T extends AnyRole = 'property'> = {
-  name: NameValue<T>;
-  value: Node;
+  name: NameValue<T> | string;
+  value: Node | string;
   /** The actual string representation of important, if it exists */
-  important?: Any<'flag'>;
+  important?: Any<'flag'> | string;
 };
 
 type DeclarationEvalState = {
@@ -420,14 +420,17 @@ const trimCustomTrailingNewline = (text: string): string => {
   return text.slice(0, index + 1);
 };
 
-const nodeValueText = (node: Node): string | undefined => {
+const nodeValueText = (node: Node | string): string | undefined => {
+  if (typeof node === 'string') {
+    return node;
+  }
   const value = node.valueOf();
   return typeof value === 'string' || typeof value === 'number'
     ? String(value)
     : undefined;
 };
 
-const maybeTrimmedScalarText = (node: Node): string | undefined => {
+const maybeTrimmedScalarText = (node: Node | string): string | undefined => {
   const text = nodeValueText(node);
   if (text === undefined || text.length === 0) {
     return text;
@@ -442,7 +445,10 @@ const maybeTrimmedScalarText = (node: Node): string | undefined => {
     : text;
 };
 
-const maybeDirectSyntheticDeclarationLeafText = (node: Node): string | undefined => {
+const maybeDirectSyntheticDeclarationLeafText = (node: Node | string): string | undefined => {
+  if (typeof node === 'string') {
+    return maybeTrimmedScalarText(node);
+  }
   if (
     node.type !== 'Any'
     && node.type !== 'Anonymous'
@@ -522,6 +528,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
+    if (typeof node === 'string') {
+      return node;
+    }
     if (canReuseLeaf(node)) {
       return reuseLeaf(node);
     }
@@ -533,7 +542,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return copy;
   }
 
-  private copyValueForDerived(node: Node): Node {
+  private copyValueForDerived(node: DeclarationValue['value']): DeclarationValue['value'] {
+    if (typeof node === 'string') {
+      return node;
+    }
     return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
   }
 
@@ -547,9 +559,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
   }
 
-  private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
+  private copyImportantForDerived(node: DeclarationValue['important']): DeclarationValue['important'] {
     if (!node) {
       return undefined;
+    }
+    if (typeof node === 'string') {
+      return node;
     }
     if (canReuseLeaf(node)) {
       return reuseLeaf(node);
@@ -650,7 +665,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.valueRequiresSemi(this.valueNode);
   }
 
-  private valueRequiresSemi(value: Node): boolean {
+  private valueRequiresSemi(value: DeclarationValue['value']): boolean {
+    if (typeof value === 'string') {
+      return true;
+    }
     return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
@@ -706,17 +724,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
-    if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
+    if (typeof name === 'string') {
+      w.add(hasTrailingWhitespace(name) ? name.trimEnd() : name, this);
+    } else if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
       name.writeSyntax(options);
     } else {
       const nameMark = w.mark();
       name.writeSyntax(options);
       w.trimEndSince(nameMark);
     }
-    emitCommentTriviaAfterNode(name, options);
+    if (name instanceof Node) {
+      emitCommentTriviaAfterNode(name, options);
+    }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
-    const isCustomProperty = name.valueOf().startsWith('--');
+    const isCustomProperty = nameText?.startsWith('--') === true;
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
@@ -724,15 +746,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
       const customValueText = nodeValueText(value);
-      const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+      const fallbackOut = typeof value === 'string'
+        ? undefined
+        : stringifyCustomFallbackFunctionCall(value, options);
       if (
         !hasCustomInterpolatedRender
         && fallbackOut === undefined
         && customValueText !== undefined
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
-        emitLeadingTriviaForCustomValue(value, options);
-        value.writeSyntax(options);
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          emitLeadingTriviaForCustomValue(value, options);
+          value.writeSyntax(options);
+        }
       } else if (fallbackOut !== undefined) {
         const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
@@ -750,8 +778,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
         const valueMark = w.mark();
-        emitLeadingTriviaForCustomValue(value, options);
-        value.writeSyntax(options);
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          emitLeadingTriviaForCustomValue(value, options);
+          value.writeSyntax(options);
+        }
         w.replaceSince(valueMark, (valueOut) => {
           const customOut = fallbackOut === undefined
             ? valueOut
@@ -767,21 +799,29 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.renderCommaValueSyntax(mergeAdapter.items, options);
       } else {
         const valueMark = w.mark();
-        value.writeSyntax(options);
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          value.writeSyntax(options);
+        }
         w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
-      if (!isNode(value, N.Collection)) {
+      if (typeof value === 'string' || !isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantText = maybeTrimmedScalarText(important);
-            if (importantText !== undefined) {
-              w.add(importantText, important);
+            if (typeof important === 'string') {
+              w.add(important, this);
             } else {
-              const importantMark = w.mark();
-              important.writeSyntax(options);
-              w.trimStartSince(importantMark);
-              w.trimEndSince(importantMark);
+              const importantText = maybeTrimmedScalarText(important);
+              if (importantText !== undefined) {
+                w.add(importantText, important);
+              } else {
+                const importantMark = w.mark();
+                important.writeSyntax(options);
+                w.trimStartSince(importantMark);
+                w.trimEndSince(importantMark);
+              }
             }
           } else {
             w.add(importantText!, value);
@@ -790,7 +830,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
     }
     if (this.valueRequiresSemi(value)) {
-      emitCommentTriviaAfterNode(important ?? value, options);
+      const triviaSource = important ?? value;
+      if (triviaSource instanceof Node) {
+        emitCommentTriviaAfterNode(triviaSource, options);
+      }
     }
   }
 
@@ -840,11 +883,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
-    w.add(nameText, this.name);
+    w.add(nameText, this.name instanceof Node ? this.name : this);
     w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
-    w.add(valueText, this.valueNode);
+    w.add(valueText, this.valueNode instanceof Node ? this.valueNode : this);
     if (importantText !== undefined) {
-      w.add(` ${importantText}`, this.important);
+      w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
     }
     return true;
   }
@@ -1022,7 +1065,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return chain ? chain.then(() => evaluated) : evaluated;
     };
     const evaluate = (): MaybePromise<DeclarationRenderValue> => {
-      const isCustomProperty = state.name.valueOf().startsWith('--');
+      if (typeof state.value === 'string') {
+        throw new TypeError('String-backed declaration values must be hydrated before evaluation');
+      }
+      const stateNameText = nodeValueText(state.name);
+      const isCustomProperty = stateNameText?.startsWith('--') === true;
       const previousInCustom = context.inCustom;
       if (isCustomProperty) {
         if (!shouldResolveCustomPropertyValue(state.value)) {
@@ -1463,6 +1510,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
+    if (typeof this.valueNode === 'string') {
+      throw new TypeError('String-backed declaration values must be hydrated before evaluation');
+    }
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
       return {
@@ -1624,23 +1674,8 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
-function isDeclarationValue(
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> }
-): value is DeclarationValue {
-  return typeof value.name !== 'string';
-}
-
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue,
   options?: DeclarationOptions,
   location?: LocationInfo
-) => {
-  if (!isDeclarationValue(value)) {
-    return new Declaration({
-      name: any(value.name, { role: 'property' }),
-      value: value.value,
-      important: value.important
-    }, options, location);
-  }
-  return new Declaration(value, options, location);
-};
+) => new Declaration(value, options, location);

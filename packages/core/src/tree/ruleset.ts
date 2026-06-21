@@ -36,7 +36,7 @@ import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export type RulesetValue = {
-  selector: Selector | Nil;
+  selector: Selector | Nil | string;
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -133,6 +133,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {
+    if (typeof value === 'string') {
+      return value;
+    }
     if (value instanceof Nil) {
       return value;
     }
@@ -549,7 +552,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       this._valueOf = '';
       return this._valueOf;
     }
-    this._valueOf = (selector as Selector).valueOf();
+    this._valueOf = typeof selector === 'string' ? selector : (selector as Selector).valueOf();
     return this._valueOf;
   }
 
@@ -560,7 +563,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
    * mutates `selector`, we must clear this cache so frame/header caching
    * reflects the updated selector.
    */
-  invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
+  invalidateSelectorValueCache(nextSelector?: RulesetValue['selector']): void {
     this._valueOf = undefined;
     this._composedSelector = undefined;
     nextSelector ??= this.selector;
@@ -576,7 +579,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return;
     }
     if (nextSelector) {
-      cacheOwner._valueOf = nextSelector.valueOf();
+      cacheOwner._valueOf = typeof nextSelector === 'string' ? nextSelector : nextSelector.valueOf();
       return;
     }
     cacheOwner._valueOf = undefined;
@@ -634,6 +637,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return false;
     }
     const { selector, rules } = this;
+    if (typeof selector === 'string') {
+      return false;
+    }
     if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !rules.hasFlag(F_STATIC)) {
       return false;
     }
@@ -870,8 +876,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return false;
   }
 
-  static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
-    if (!sel || sel instanceof Nil) {
+  static hasExtendedTopLevelSelector(sel: Selector | Nil | string): boolean {
+    if (!sel || sel instanceof Nil || typeof sel === 'string') {
       return false;
     }
     if (isNode(sel, N.SelectorList)) {
@@ -1179,6 +1185,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (selector instanceof Nil) {
       return false;
     }
+    if (typeof selector === 'string') {
+      options.writer.add(selector, this);
+      return selector.trim().length > 0;
+    }
 
     let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
     const referenceFilteredLocal = (
@@ -1313,7 +1323,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       : this._finishRulesetSelectorPrep(node, sel, context);
   }
 
-  private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
+  private _prepareRulesetSelectorIdentity(selector: RulesetValue['selector'], context: Context): MaybePromise<Selector | Nil> {
+    if (typeof selector === 'string') {
+      throw new TypeError('String-backed ruleset selectors must be hydrated before evaluation');
+    }
     return selector.eval(context);
   }
 
@@ -1490,6 +1503,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       let { selector } = this;
 
+      if (typeof selector === 'string') {
+        throw new TypeError('String-backed ruleset selectors must be hydrated before evaluation');
+      }
       if (selector instanceof Nil) {
         // If selector evaluates to Nil, return the rules body directly instead of the ruleset.
         this.adopt(selector);

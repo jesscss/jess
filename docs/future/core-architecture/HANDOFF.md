@@ -103,6 +103,45 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: string-backed CSS AST proof path.
+- Verdict: accepted as a narrow parser-shape proof, not a runtime hydration or
+  performance pass. Existing `Declaration` and `Ruleset` nodes now accept string
+  fields where strings serialize correctly, and `@jesscss/css-parser` exposes a
+  deliberately narrow `parseFlatCssDeclarationStylesheet(...)` proof that
+  returns a core `Stylesheet` directly. The slice adds no `Progressive*`,
+  `Structural*`, `RawIsland*`, Chevrotain, side-map, or provider-plan machinery.
+- New traversal: the proof parser adds straight source scans for flat qualified
+  rules and declaration statements. These are parser-local scans, not eval/render
+  walks, and they replace a heavier structural/island proof vehicle for this
+  tiny subset.
+- Review-flagged allocations: the per-declaration intermediate value object was
+  cut after review. The remaining production node construction is the actual
+  AST output: `Stylesheet`, `Ruleset`, `Rules`, and `Declaration` nodes. The
+  `decl(...)` factory now returns `new Declaration(...)` directly instead of
+  first converting string names into `Any` nodes.
+- New node/materialization: only named AST ownership boundaries are created.
+  String-backed selector/declaration fields are not materialized into selector,
+  value, or flag nodes during the proof parse.
+- Render path: syntax serialization can write string-backed fields directly.
+  Eval/render paths that would need typed selector/value semantics now throw a
+  local hydration-required `TypeError` instead of crashing later or silently
+  pretending strings are evaluated nodes.
+- Helper/API surface: one narrow exported proof function,
+  `parseFlatCssDeclarationStylesheet(...)`, is added. It is intentionally not a
+  full `parseCssStylesheet(...)` replacement and the docs were updated to avoid
+  overstating its scope.
+- Metadata mutations: no parent/source/frozen/location/line-column/span metadata
+  was added for string fields. Existing node adoption ignores primitive field
+  values.
+- Evidence: sub-agent review flagged eval/render safety, over-broad selector
+  metadata widening, parser naming scope, and a small allocation. The slice was
+  revised to fence string-backed eval, cut metadata widening, rename the proof,
+  and remove the intermediate object. Focused `stylesheet.test.ts`,
+  `css-parser` `ast-proof.test.ts`, `@jesscss/core` build,
+  `@jesscss/css-parser` build, `verify:package-exports`,
+  `verify:public-packages`, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed.
+
 - Latest pass: slim `Stylesheet extends Rules` root.
 - Verdict: accepted as an AST-shape prerequisite for scanner-first compiler
   parse results, not a performance pass. The node adds no document services,
