@@ -89,7 +89,7 @@ describe('extend integration (eval -> toString)', () => {
     // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
     // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
     // No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
-    // Progressive reproduction:
+    // Scanner-fed reproduction:
     // - Step 0: no extends → nested output
     // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`; inner block must show .replace, .rep_ace, .c
 
@@ -102,9 +102,9 @@ describe('extend integration (eval -> toString)', () => {
         rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-                rules: [
-                  decl({ name: 'prop', value: any('copy-paste-replace') })
-                ]
+            rules: [
+              decl({ name: 'prop', value: any('copy-paste-replace') })
+            ]
           })
         ]
       }),

@@ -1,10 +1,10 @@
+import { createParserDiagnostic } from '@jesscss/parser';
 import {
-  createParserDiagnostic,
   providerKey,
   type IslandExecutionContext,
   type IslandParserRegistry,
   type IslandParseResult
-} from '@jesscss/parser';
+} from '@jesscss/parser/services/index';
 import { ScssParser, type ScssRules } from './scssParser.js';
 
 /** Compiler-visible result shapes that SCSS providers can materialize. */

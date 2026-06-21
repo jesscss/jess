@@ -2336,7 +2336,8 @@ storage.
   mixed-unit arithmetic/calc behavior, Less import options, reference/multiple/
   once/de-dupe behavior, unresolved imports, unquoted HTTP `url(...)` imports,
   block at-rule families outside the root `@media` / `@layer` / `@supports` /
-  declaration-block `@font-face` / `@page` / `@counter-style` subset,
+  declaration-block `@font-face` / `@page` / `@viewport` /
+  `@counter-style` subset,
   pseudo selectors outside the proven nested `&:pseudo` branch,
   attribute/interpolated selectors, and richer nested at-rule bodies remain
   canonical fallbacks until their progressive materializers are proven.
@@ -2392,15 +2393,15 @@ storage.
     The prototype still records `progressiveNodes` as the cheap structural-fed
     node count so tests and corpus logs prove the cheap path was actually used.
   - [x] Added the first root declaration-block at-rule proofs. Root
-    `@font-face`, `@page`, and `@counter-style <ident>` now build thin-field
-    core `AtRule` nodes with declaration children, render equal CSS,
-    serialize raw at-rule names/preludes plus declaration names/values, and
-    report zero island requests, zero legacy parser executions, and zero
-    promoted bytes. The proof covers the upstream
+    `@font-face`, `@page`, `@viewport`, and
+    `@counter-style <ident>` now build thin-field core `AtRule` nodes with
+    declaration children, render equal CSS, serialize raw at-rule names/preludes
+    plus declaration names/values, and report zero island requests, zero legacy
+    parser executions, and zero promoted bytes. The proof covers the upstream
     `tests-unit/at-rules-declarations/at-rules-declarations.less` shape,
     including `src: url("myfont.woff2")`, but remains a named whitelist:
-    nested declaration-block at-rules, `@font-face`/`@page` preludes, and
-    missing `@counter-style` preludes still fall back.
+    nested declaration-block at-rules, `@font-face`/`@page`/`@viewport`
+    preludes, and missing `@counter-style` preludes still fall back.
   - [x] Fourth thin proof: scope-only rule headers (`&` and an empty header from
     a bare block) map to real core `Rules` containers instead of selector
     `Ruleset` nodes. The tests parse `.a { & { color: blue; } }` and
@@ -2971,10 +2972,11 @@ storage.
     comma-value, standalone block-comment, mixin-local `@media`, direct nested
     at-rule, recursive nested supported at-rule,
     ruleset-local no-arg mixin, root-level no-arg mixin call, and at-rule-local
-    variable proofs above did not change the included-corpus counts because the
-    relevant upstream files also contain other unsupported constructs. The CSS
-    grid proof moves `tests-unit/css-grid/css-grid.less` onto the structural-fed
-    path by preserving single-line grid tracks plus multiline
+    variable and root `@viewport` declaration-block proofs above did not change
+    the included-corpus counts because the relevant upstream files also contain
+    other unsupported constructs. The CSS grid proof moves
+    `tests-unit/css-grid/css-grid.less` onto the structural-fed path by
+    preserving single-line grid tracks plus multiline
     `grid-template-areas` rows without parsing declaration values. Progressive
     render/serialize proof is covered by the dedicated thin structure-target
     tests rather than inferred only from this broad upstream corpus.

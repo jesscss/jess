@@ -30,7 +30,6 @@ import {
   Sequence,
   Paren,
   QueryCondition,
-  ProgressiveVariableDeclaration,
   VarDeclaration,
   Node,
   getErrorFromParser,
@@ -59,23 +58,27 @@ import {
   registerLessIslandProviders
 } from '@jesscss/less-parser';
 import {
+  type FieldRange,
+  type FieldRangeKind,
+  type FieldRangeName,
+  type ParseStructureOptions
+} from '@jesscss/parser';
+import type {
+  StructuralContainerNode,
+  StructuralDocument,
+  StructuralNode,
+  StructuralStatementNode,
+  RawIslandNode
+} from '@jesscss/parser/structure/index';
+import {
   IslandParsePlan,
   IslandParserRegistry,
   countRequestedIslandKinds,
   countRequestedOwnerKinds,
   createStructuralProbeSnapshot,
   structuralDiagnosticRanges,
-  type FieldRange,
-  type FieldRangeKind,
-  type FieldRangeName,
-  type LanguageActivation,
-  type ParseStructureOptions,
-  type RawIslandNode,
-  type StructuralContainerNode,
-  type StructuralDocument,
-  type StructuralNode,
-  type StructuralStatementNode
-} from '@jesscss/parser';
+  type LanguageActivation
+} from '@jesscss/parser/services/index';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
@@ -118,10 +121,10 @@ export type ScannerFirstPrototypeResult = ScannerFirstProbeResult & {
   fallbackReason?: string;
   warnings?: WarningDiagnostic[];
   /**
-   * Cheap progressive core nodes constructed directly from structural fields
+   * Cheap existing core nodes constructed directly from structural fields
    * instead of from canonical island materialization.
    */
-  progressiveNodes?: number;
+  structuralNodes?: number;
   /**
    * Offset-first structural diagnostics promoted to line/column only for probe
    * reporting. The compiler still owns user-facing diagnostic formatting.
@@ -338,7 +341,7 @@ export class LessPlugin extends AbstractPlugin {
    * whose bodies contain ordinary declarations and nested ordinary rules.
    * The supported subset stores scanner-native strings plus packed field
    * ranges for simple selectors and simple literal declaration values, then
-   * constructs progressive core nodes directly at the compiler boundary.
+   * constructs existing core nodes directly at the compiler boundary.
    * Anything outside that shape records a canonical fallback instead of
    * proving the new path with legacy parser islands.
    */
@@ -382,7 +385,7 @@ export class LessPlugin extends AbstractPlugin {
         cacheHits: plan.counters.cacheHits,
         cacheMisses: plan.counters.cacheMisses,
         fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         materializationMs: nowMs() - startedAt,
         totalProbeMs: nowMs() - startedAt,
         requestsByIslandKind: countRequestedIslandKinds(plan),
@@ -402,7 +405,7 @@ export class LessPlugin extends AbstractPlugin {
     const rootVariables = collectStructuralFedScopeVariables(plan.document, plan.document.root.children, new Map());
     const rules: Node[] = [];
     const variables = rootVariables.variables;
-    let progressiveNodes = 0;
+    let structuralNodes = 0;
     const ownerIslands = indexIslandsByOwner(plan.document.islands());
     const canonicalFilePath = canonicalScannerFirstPath(filePath);
     if (canonicalFilePath) {
@@ -416,7 +419,7 @@ export class LessPlugin extends AbstractPlugin {
         return fallback(comments.reason);
       }
       rules.push(...comments.nodes);
-      progressiveNodes += comments.progressiveNodes;
+      structuralNodes += comments.structuralNodes;
       triviaCursor = child.end;
 
       if (
@@ -436,7 +439,7 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(result.reason);
         }
         rules.push(...result.rules);
-        progressiveNodes += result.progressiveNodes;
+        structuralNodes += result.structuralNodes;
         continue;
       }
       if (child.kind === 'at-rule-statement') {
@@ -445,7 +448,7 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(result.reason);
         }
         rules.push(result.node);
-        progressiveNodes += result.progressiveNodes ?? 0;
+        structuralNodes += result.structuralNodes ?? 0;
         continue;
       }
       if (child.kind === 'variable-declaration') {
@@ -459,7 +462,7 @@ export class LessPlugin extends AbstractPlugin {
         }
         variables.set(result.name, result.valueToken);
         rules.push(result.node);
-        progressiveNodes += result.progressiveNodes;
+        structuralNodes += result.structuralNodes;
         continue;
       }
       if (child.kind === 'mixin-definition') {
@@ -468,7 +471,7 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(result.reason);
         }
         rules.push(result.node);
-        progressiveNodes += result.progressiveNodes ?? 0;
+        structuralNodes += result.structuralNodes ?? 0;
         continue;
       }
       if (child.kind === 'mixin-call') {
@@ -477,7 +480,7 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(result.reason);
         }
         rules.push(result.node);
-        progressiveNodes += result.progressiveNodes ?? 0;
+        structuralNodes += result.structuralNodes ?? 0;
         continue;
       }
       if (child.kind === 'at-rule') {
@@ -490,7 +493,7 @@ export class LessPlugin extends AbstractPlugin {
           return fallback(result.reason);
         }
         rules.push(result.node);
-        progressiveNodes += result.progressiveNodes ?? 0;
+        structuralNodes += result.structuralNodes ?? 0;
         continue;
       }
       const eligibilityReason = validateStructuralFedRule(plan.document, child, variables, true, true, this.mathMode);
@@ -502,14 +505,14 @@ export class LessPlugin extends AbstractPlugin {
         return fallback(result.reason);
       }
       rules.push(result.node);
-      progressiveNodes += result.progressiveNodes ?? 0;
+      structuralNodes += result.structuralNodes ?? 0;
     }
     const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, plan.document.root.end, undefined, context);
     if ('reason' in trailingComments) {
       return fallback(trailingComments.reason);
     }
     rules.push(...trailingComments.nodes);
-    progressiveNodes += trailingComments.progressiveNodes;
+    structuralNodes += trailingComments.structuralNodes;
 
     const tree = new Rules(
       rules,
@@ -528,7 +531,7 @@ export class LessPlugin extends AbstractPlugin {
       cacheHits: plan.counters.cacheHits,
       cacheMisses: plan.counters.cacheMisses,
       fallbackFullTreeMaterializations: plan.counters.fallbackFullTreeMaterializations,
-      progressiveNodes,
+      structuralNodes,
       warnings: structuralFedDeprecationWarnings(plan.document, filePath, context),
       requestsByIslandKind: countRequestedIslandKinds(plan),
       requestsByOwnerKind: countRequestedOwnerKinds(plan),
@@ -564,7 +567,7 @@ export class LessPlugin extends AbstractPlugin {
         ? result
         : {
             rules: [result.node],
-            progressiveNodes: result.progressiveNodes ?? 0
+            structuralNodes: result.structuralNodes ?? 0
           };
     }
 
@@ -595,7 +598,7 @@ export class LessPlugin extends AbstractPlugin {
     }
     return {
       rules: imported.tree.rules,
-      progressiveNodes: imported.result.progressiveNodes ?? 0
+      structuralNodes: imported.result.structuralNodes ?? 0
     };
   }
 
@@ -930,7 +933,7 @@ function singleIsland(
 }
 
 type StructuralFedCommentBuildResult =
-  | { nodes: Comment[]; progressiveNodes: number }
+  | { nodes: Comment[]; structuralNodes: number }
   | { reason: string };
 
 function structuralFedBlockCommentsBetween(
@@ -964,7 +967,7 @@ function structuralFedBlockCommentsBetween(
   }
   return {
     nodes,
-    progressiveNodes: nodes.length
+    structuralNodes: nodes.length
   };
 }
 
@@ -1013,15 +1016,15 @@ function collectStructuralFedDeprecationWarnings(
 }
 
 type StructuralFedBuildResult =
-  | { node: Node; progressiveNodes?: number }
+  | { node: Node; structuralNodes?: number }
   | { reason: string };
 
 type StructuralFedVariableBuildResult =
-  | { node: ProgressiveVariableDeclaration; name: string; valueToken: ScannerNativeValueToken; progressiveNodes: 1 }
+  | { node: VarDeclaration; name: string; valueToken: ScannerNativeValueToken; structuralNodes: 1 }
   | { reason: string };
 
 type StructuralFedImportBuildResult =
-  | { rules: Node[]; progressiveNodes: number }
+  | { rules: Node[]; structuralNodes: number }
   | { reason: string };
 
 function validateStructuralFedRule(
@@ -1141,7 +1144,7 @@ function validateStructuralFedAtRule(
     return STRUCTURAL_FED_AT_RULE_FAMILY_REASON;
   }
   if (name === '@layer' && parentKind !== 'root') {
-    return 'only root @layer block at-rules are in the progressive structural-fed subset';
+    return 'only root @layer block at-rules are in the structural-fed subset';
   }
   const prelude = structuralFieldText(document, atRule, 'prelude', 'prelude');
   if (rootDeclarationBlockPrelude === 'none' && prelude !== undefined) {
@@ -1157,7 +1160,7 @@ function validateStructuralFedAtRule(
     return 'at-rule prelude is outside the scanner-native structural-fed subset';
   }
   if (prelude !== undefined && MULTILINE_VALUE_PATTERN.test(prelude)) {
-    return 'multiline at-rule preludes are not in the progressive structural-fed subset';
+    return 'multiline at-rule preludes are not in the structural-fed subset';
   }
   if (prelude !== undefined && !isScannerNativeAtRulePrelude(name, prelude)) {
     return 'at-rule prelude is outside the scanner-native structural-fed subset';
@@ -1237,7 +1240,7 @@ function structuralFedRootDeclarationBlockPrelude(
   if (parentKind !== 'root') {
     return undefined;
   }
-  if (name === '@font-face' || name === '@page') {
+  if (name === '@font-face' || name === '@page' || name === '@viewport') {
     return 'none';
   }
   if (name === '@counter-style') {
@@ -1347,10 +1350,10 @@ function buildStructuralFedRuleset(
 
   const rules: Node[] = [];
   const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, rule.children, variables);
-  let progressiveNodes = 1;
+  let structuralNodes = 1;
   if (extendSelector) {
     rules.push(extendSelector.node);
-    progressiveNodes++;
+    structuralNodes++;
   }
   let triviaCursor = rule.bodyStart;
   for (const child of rule.children) {
@@ -1359,7 +1362,7 @@ function buildStructuralFedRuleset(
       return comments;
     }
     rules.push(...comments.nodes);
-    progressiveNodes += comments.progressiveNodes;
+    structuralNodes += comments.structuralNodes;
     triviaCursor = child.end;
 
     const builtChild = buildStructuralFedRuleChild(
@@ -1380,14 +1383,14 @@ function buildStructuralFedRuleset(
       localVariables.set(builtChild.name, builtChild.valueToken);
     }
     rules.push(builtChild.node);
-    progressiveNodes += builtChild.progressiveNodes ?? 0;
+    structuralNodes += builtChild.structuralNodes ?? 0;
   }
   const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, rule.end, undefined, context);
   if ('reason' in trailingComments) {
     return trailingComments;
   }
   rules.push(...trailingComments.nodes);
-  progressiveNodes += trailingComments.progressiveNodes;
+  structuralNodes += trailingComments.structuralNodes;
 
   if (scopeOnly) {
     return {
@@ -1397,7 +1400,7 @@ function buildStructuralFedRuleset(
         locationFromRange(plan.document, rule.start, rule.end),
         context
       ),
-      progressiveNodes
+      structuralNodes
     };
   }
 
@@ -1406,7 +1409,7 @@ function buildStructuralFedRuleset(
       selector: selectorToken!.text,
       rules
     }, undefined, locationFromRange(plan.document, rule.start, rule.end), context),
-    progressiveNodes
+    structuralNodes
   };
 }
 
@@ -1433,7 +1436,7 @@ function buildStructuralFedMixinDefinition(
     inheritedVariables.set(name, token);
   }
   const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, mixinDefinition.children, inheritedVariables);
-  let progressiveNodes = 1 + signature.paramVariables.size;
+  let structuralNodes = 1 + signature.paramVariables.size;
   let triviaCursor = mixinDefinition.bodyStart;
   for (const child of mixinDefinition.children) {
     const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
@@ -1441,7 +1444,7 @@ function buildStructuralFedMixinDefinition(
       return comments;
     }
     rules.push(...comments.nodes);
-    progressiveNodes += comments.progressiveNodes;
+    structuralNodes += comments.structuralNodes;
     triviaCursor = child.end;
 
     const builtChild = buildStructuralFedRuleChild(
@@ -1462,14 +1465,14 @@ function buildStructuralFedMixinDefinition(
       localVariables.set(builtChild.name, builtChild.valueToken);
     }
     rules.push(builtChild.node);
-    progressiveNodes += builtChild.progressiveNodes ?? 0;
+    structuralNodes += builtChild.structuralNodes ?? 0;
   }
   const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, mixinDefinition.end, undefined, context);
   if ('reason' in trailingComments) {
     return trailingComments;
   }
   rules.push(...trailingComments.nodes);
-  progressiveNodes += trailingComments.progressiveNodes;
+  structuralNodes += trailingComments.structuralNodes;
 
   return {
     node: new Mixin({
@@ -1477,7 +1480,7 @@ function buildStructuralFedMixinDefinition(
       params: scannerNativeMixinParamsList(plan.document, signature, context),
       rules
     }, undefined, locationFromRange(plan.document, mixinDefinition.start, mixinDefinition.end), context),
-    progressiveNodes
+    structuralNodes
   };
 }
 
@@ -1524,7 +1527,7 @@ function buildStructuralFedAtRule(
     return { reason: STRUCTURAL_FED_AT_RULE_FAMILY_REASON };
   }
   if (name === '@layer' && parentKind !== 'root') {
-    return { reason: 'only root @layer block at-rules are in the progressive structural-fed subset' };
+    return { reason: 'only root @layer block at-rules are in the structural-fed subset' };
   }
   const preludeIsland = singleIsland(ownerIslands, atRule, 'at-rule-prelude');
   if (!preludeIsland && name !== '@layer' && rootDeclarationBlockPrelude === undefined && !noPreludeBlockAtRule) {
@@ -1551,7 +1554,7 @@ function buildStructuralFedAtRule(
 
   const rules: Node[] = [];
   const { variables: localVariables } = collectStructuralFedScopeVariables(plan.document, atRule.children, variables);
-  let progressiveNodes = 1;
+  let structuralNodes = 1;
   let triviaCursor = atRule.bodyStart;
   for (const child of atRule.children) {
     const comments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, child.start, child, context);
@@ -1559,7 +1562,7 @@ function buildStructuralFedAtRule(
       return comments;
     }
     rules.push(...comments.nodes);
-    progressiveNodes += comments.progressiveNodes;
+    structuralNodes += comments.structuralNodes;
     triviaCursor = child.end;
 
     if (child.kind === 'variable-declaration') {
@@ -1572,7 +1575,7 @@ function buildStructuralFedAtRule(
       }
       localVariables.set(builtChild.name, builtChild.valueToken);
       rules.push(builtChild.node);
-      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      structuralNodes += builtChild.structuralNodes ?? 0;
       continue;
     }
     if (child.kind === 'at-rule') {
@@ -1584,7 +1587,7 @@ function buildStructuralFedAtRule(
         return builtChild;
       }
       rules.push(builtChild.node);
-      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      structuralNodes += builtChild.structuralNodes ?? 0;
       continue;
     }
     if (child.kind === 'rule') {
@@ -1609,7 +1612,7 @@ function buildStructuralFedAtRule(
         return builtChild;
       }
       rules.push(builtChild.node);
-      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      structuralNodes += builtChild.structuralNodes ?? 0;
       continue;
     }
     if (child.kind === 'mixin-call') {
@@ -1621,7 +1624,7 @@ function buildStructuralFedAtRule(
         return builtChild;
       }
       rules.push(builtChild.node);
-      progressiveNodes += builtChild.progressiveNodes ?? 0;
+      structuralNodes += builtChild.structuralNodes ?? 0;
       continue;
     }
     if ((rootDeclarationBlockPrelude === undefined && parentKind === 'root') || child.kind !== 'declaration') {
@@ -1640,14 +1643,14 @@ function buildStructuralFedAtRule(
       return builtChild;
     }
     rules.push(builtChild.node);
-    progressiveNodes += builtChild.progressiveNodes ?? 0;
+    structuralNodes += builtChild.structuralNodes ?? 0;
   }
   const trailingComments = structuralFedBlockCommentsBetween(plan.document, triviaCursor, atRule.end, undefined, context);
   if ('reason' in trailingComments) {
     return trailingComments;
   }
   rules.push(...trailingComments.nodes);
-  progressiveNodes += trailingComments.progressiveNodes;
+  structuralNodes += trailingComments.structuralNodes;
 
   return {
     node: new AtRule({
@@ -1655,7 +1658,7 @@ function buildStructuralFedAtRule(
       prelude: preludeToken?.node ?? preludeToken?.text,
       rules
     }, undefined, locationFromRange(plan.document, atRule.start, atRule.end), context),
-    progressiveNodes
+    structuralNodes
   };
 }
 
@@ -1710,7 +1713,7 @@ function buildStructuralFedRuleChild(
     if (ampersandExtend) {
       return {
         node: ampersandExtend,
-        progressiveNodes: 1
+        structuralNodes: 1
       };
     }
     return buildStructuralFedDeclaration(plan, child, ownerIslands, context, variables, allowLessVariables, mathMode);
@@ -1736,7 +1739,7 @@ function buildStructuralFedMixinCall(
   if (each) {
     return {
       node: each,
-      progressiveNodes: 1 + each.rules.length
+      structuralNodes: 1 + each.rules.length
     };
   }
   const call = scannerNativeMixinCall(plan.document, child, context);
@@ -1753,7 +1756,7 @@ function buildStructuralFedMixinCall(
       ),
       args: call.args
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1 + (call.args?.value.length ?? 0)
+    structuralNodes: 1 + (call.args?.value.length ?? 0)
   };
 }
 
@@ -1772,7 +1775,7 @@ function buildStructuralFedRuleAtRuleStatement(
       name,
       prelude
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1
+    structuralNodes: 1
   };
 }
 
@@ -1806,7 +1809,7 @@ function buildStructuralFedAtRuleStatement(
       name,
       prelude
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1
+    structuralNodes: 1
   };
 }
 
@@ -1828,7 +1831,7 @@ function buildStructuralFedCssImportStatement(
       name,
       prelude
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1
+    structuralNodes: 1
   };
 }
 
@@ -1956,7 +1959,7 @@ function buildStructuralFedDeclaration(
       sourceBacked: true,
       ...(assign && { assign })
     }, locationFromRange(plan.document, child.start, child.end), context),
-    progressiveNodes: 1
+    structuralNodes: 1
   };
 }
 
@@ -2012,13 +2015,13 @@ function buildStructuralFedVariableDeclaration(
     return { reason: 'variable declaration value is outside the scanner-native structural-fed subset' };
   }
   return {
-    node: new ProgressiveVariableDeclaration({
+    node: new VarDeclaration({
       name,
       value: [valueToken.text]
     }, undefined, locationFromRange(plan.document, child.start, child.end), context),
     name,
     valueToken,
-    progressiveNodes: 1
+    structuralNodes: 1
   };
 }
 
@@ -3044,7 +3047,7 @@ function splitScannerNativeDeclarationImportant(valueText: string): {
 
 const IMPORTANT_FLAG_PATTERN = /!\s*important\b/iu;
 const STRUCTURAL_FED_AT_RULE_FAMILY_REASON =
-  'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset';
+  'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, root @viewport, and root @counter-style block at-rules are in the structural-fed subset';
 const SCANNER_NATIVE_IMPORTANT_PATTERN = /^(?<value>.+?[ \t]+)(?<important>!\s*important)$/iu;
 const MULTILINE_VALUE_PATTERN = /[\r\n]/u;
 const PLAIN_ASSIGNMENT_PATTERN = /^\s*:\s*$/u;
@@ -3140,7 +3143,8 @@ const KNOWN_SEMANTIC_BLOCK_AT_RULE_NAMES = new Set([
   '@media',
   '@page',
   '@starting-style',
-  '@supports'
+  '@supports',
+  '@viewport'
 ]);
 const QUOTED_IMPORT_PATH_PATTERN =
   /^(?:"(?<double>(?:\\.|[^"\\])*)"|'(?<single>(?:\\.|[^'\\])*)')(?:[ \t]+.+)?$/u;

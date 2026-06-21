@@ -2,11 +2,13 @@ import {
   createLanguageProfile,
   pushIfMissing,
   type DeclarationNameKind,
-  type IslandClassificationContext,
-  type IslandKind,
   type LanguageProfile,
   type RuleHeaderKind
 } from '../index.js';
+import type {
+  IslandClassificationContext,
+  IslandKind
+} from '../profiles/index.js';
 
 /** Minimal stylesheet-like profile used only by parser package tests. */
 export const fixtureProfile: LanguageProfile = createLanguageProfile({
@@ -57,8 +59,8 @@ export const fixtureLessProfile: LanguageProfile = createLanguageProfile({
     }
     return classifyFixtureRuleHeader(text);
   },
-  classifyIsland(text, _source, _range, context): readonly IslandKind[] {
-    const kinds = [...classifyFixtureIsland(text, _source, _range, context)];
+  classifyIsland(text, source, range, context): readonly IslandKind[] {
+    const kinds = [...classifyFixtureIsland(text, source, range, context)];
     if (text.includes('@{') || text.includes('${')) {
       pushIfMissing(kinds, 'interpolation');
     }
@@ -110,8 +112,8 @@ export const fixtureScssProfile: LanguageProfile = createLanguageProfile({
     }
     return classifyFixtureRuleHeader(text);
   },
-  classifyIsland(text, _source, _range, context): readonly IslandKind[] {
-    const kinds = [...classifyFixtureIsland(text, _source, _range, context)];
+  classifyIsland(text, source, range, context): readonly IslandKind[] {
+    const kinds = [...classifyFixtureIsland(text, source, range, context)];
     if (text.includes('#{')) {
       pushIfMissing(kinds, 'interpolation');
     }
@@ -160,12 +162,12 @@ function classifyFixtureIsland(
 
 function looksLikeFixtureSelector(text: string): boolean {
   return (
-    text.includes('&') ||
-    text.startsWith('.') ||
-    text.startsWith('#') ||
-    text.startsWith('[') ||
-    text.startsWith(':') ||
-    text.startsWith('%') ||
-    /^[a-zA-Z_*|-]/.test(text)
+    text.includes('&')
+    || text.startsWith('.')
+    || text.startsWith('#')
+    || text.startsWith('[')
+    || text.startsWith(':')
+    || text.startsWith('%')
+    || /^[a-zA-Z_*|-]/.test(text)
   );
 }

@@ -1,11 +1,13 @@
 import {
-  IslandParsePlan,
-  IslandParserRegistry,
   SourceText,
   parseStructure,
-  type ParseStructureOptions,
-  type StructuralDocument
+  type ParseStructureOptions
 } from '@jesscss/parser';
+import type { StructuralDocument } from '@jesscss/parser/structure/index';
+import {
+  IslandParsePlan,
+  IslandParserRegistry
+} from '@jesscss/parser/services/index';
 import { LessParser } from './lessParser.js';
 import { registerLessIslandProviders } from './island-providers.js';
 import type { LessParserConfig } from './lessRecursiveParser.js';

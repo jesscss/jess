@@ -1,11 +1,13 @@
 import {
-  IslandParsePlan,
-  IslandParserRegistry,
   SourceText,
   parseStructure,
-  type ParseStructureOptions,
-  type StructuralDocument
+  type ParseStructureOptions
 } from '@jesscss/parser';
+import type { StructuralDocument } from '@jesscss/parser/structure/index';
+import {
+  IslandParsePlan,
+  IslandParserRegistry
+} from '@jesscss/parser/services/index';
 import { CssParser } from './cssParser.js';
 import { registerCssIslandProviders } from './island-providers.js';
 import { cssProfile } from './structural-profile.js';

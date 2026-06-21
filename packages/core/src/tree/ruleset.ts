@@ -386,7 +386,7 @@ function splitRawRelativeSelector(value: string): RawComplexSelectorPart[] | und
   return firstBranch ? [combinator, ...firstBranch] : undefined;
 }
 
-function markProgressiveSelector<T extends Selector>(selector: T): T {
+function markStaticSelector<T extends Selector>(selector: T): T {
   selector.addFlag(F_STATIC);
   return selector;
 }
@@ -398,14 +398,14 @@ function createRawSelectorBranchNode(
 ): SimpleSelector | CompoundSelector | undefined {
   const pseudoName = readRawAmpersandPseudoSelector(value);
   if (pseudoName) {
-    return markProgressiveSelector(CompoundSelector.create([
+    return markStaticSelector(CompoundSelector.create([
       new Ampersand(undefined, undefined, location, treeContext),
       new PseudoSelector({ name: pseudoName }, undefined, location, treeContext)
     ], undefined, location, treeContext));
   }
   const parts = splitRawCompoundSelector(value);
   return parts
-    ? markProgressiveSelector(CompoundSelector.create(parts, undefined, location, treeContext))
+    ? markStaticSelector(CompoundSelector.create(parts, undefined, location, treeContext))
     : undefined;
 }
 
@@ -425,7 +425,7 @@ function createRawSelectorNode(
       }
       branches.push(surface);
     }
-    return markProgressiveSelector(SelectorList.create(branches, undefined, location, treeContext));
+    return markStaticSelector(SelectorList.create(branches, undefined, location, treeContext));
   }
   const relativeParts = splitRawRelativeSelector(value);
   if (relativeParts) {
@@ -437,7 +437,7 @@ function createRawSelectorNode(
   }
   const compoundParts = splitRawCompoundSelector(value);
   if (compoundParts && compoundParts.length > 1) {
-    return markProgressiveSelector(CompoundSelector.create(compoundParts, undefined, location, treeContext));
+    return markStaticSelector(CompoundSelector.create(compoundParts, undefined, location, treeContext));
   }
   return undefined;
 }
@@ -460,7 +460,7 @@ function createRawComplexSelectorSurface(
     }
     components.push(component as ComplexSelectorComponent);
   }
-  return markProgressiveSelector(ComplexSelector.create(components, undefined, location, treeContext));
+  return markStaticSelector(ComplexSelector.create(components, undefined, location, treeContext));
 }
 
 type RulesetOptions = NodeOptions & {

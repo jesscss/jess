@@ -2,11 +2,13 @@ import {
   createLanguageProfile,
   pushIfMissing,
   type DeclarationNameKind,
-  type IslandClassificationContext,
-  type IslandKind,
   type LanguageProfile,
   type RuleHeaderKind
 } from '@jesscss/parser';
+import type {
+  IslandClassificationContext,
+  IslandKind
+} from '@jesscss/parser/profiles/index';
 import { classifyCssIsland, cssProfile, looksLikeCssSelector } from '@jesscss/css-parser';
 
 /** Structural SCSS profile owned by `@jesscss/scss-parser`. */

@@ -1,10 +1,12 @@
 import {
   createLanguageProfile,
   type DeclarationNameKind,
-  type IslandClassificationContext,
-  type IslandKind,
   type LanguageProfile
 } from '@jesscss/parser';
+import type {
+  IslandClassificationContext,
+  IslandKind
+} from '@jesscss/parser/profiles/index';
 
 /** Structural CSS profile owned by `@jesscss/css-parser`. */
 export const cssProfile: LanguageProfile = createLanguageProfile({

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser';
+import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser/services/index';
 import { serializeTypes } from '@jesscss/core';
 import {
   parseScssStructure,
@@ -74,8 +74,8 @@ describe('SCSS island providers', () => {
     const selectorId = plan.requestIsland(selectorIsland, 'scss-selector');
     const valueId = plan.requestIsland(valueIsland, 'scss-value');
     const selectedBytes =
-      selectorIsland.end - selectorIsland.start +
-      valueIsland.end - valueIsland.start;
+      selectorIsland.end - selectorIsland.start
+      + valueIsland.end - valueIsland.start;
 
     plan.execute(selectorId);
     plan.execute(valueId);

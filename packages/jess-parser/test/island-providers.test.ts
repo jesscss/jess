@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser';
+import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser/services/index';
 import { serializeTypes } from '@jesscss/core';
 import {
   parseJessStructure,
@@ -92,8 +92,8 @@ describe('Jess island providers', () => {
     const selectorId = plan.requestIsland(selectorIsland, 'jess-selector');
     const valueId = plan.requestIsland(valueIsland, 'jess-value');
     const selectedBytes =
-      selectorIsland.end - selectorIsland.start +
-      valueIsland.end - valueIsland.start;
+      selectorIsland.end - selectorIsland.start
+      + valueIsland.end - valueIsland.start;
 
     plan.execute(selectorId);
     plan.execute(valueId);

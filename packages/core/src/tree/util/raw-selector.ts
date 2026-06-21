@@ -1,5 +1,5 @@
 /**
- * Shared scanner-native selector classifier for progressive raw selector paths.
+ * Shared scanner-native selector classifier for string-backed selector paths.
  *
  * This intentionally recognizes only the cheap subset that can render as raw
  * selector text and later materialize into current core selector nodes. Keep

@@ -1,12 +1,12 @@
 import { TreeContext } from '@jesscss/core';
+import { createParserDiagnostic } from '@jesscss/parser';
 import {
-  createParserDiagnostic,
   providerKey,
   type IslandExecutionContext,
   type IslandParserRegistry,
   type IslandParseResult,
   type ParserConfigKey
-} from '@jesscss/parser';
+} from '@jesscss/parser/services/index';
 import { LessParser, type LessRules } from './lessParser.js';
 import type { LessParserConfig } from './lessRecursiveParser.js';
 

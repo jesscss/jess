@@ -9,22 +9,25 @@ import {
   AssignmentType,
   Extend,
   ExtendFlag,
+  decl,
   Node,
   Ruleset,
+  ruleset,
   serializeTypes as serializeRuntimeTypes,
   TreeContext
 } from '@jesscss/core';
-import { progressivedecl, progressiveruleset, serializeTypes } from '../../core/src/index.js';
 import {
   createLanguageProfile,
   parseStructure,
   type FieldRangeKind,
-  type FieldRangeName,
-  type StructuralContainerNode,
-  type StructuralDocument,
-  type StructuralNode,
-  type StructuralNodeKind
+  type FieldRangeName
 } from '../../parser/src/index.js';
+import type {
+  StructuralContainerNode,
+  StructuralDocument,
+  StructuralNode,
+  StructuralNodeKind
+} from '../../parser/src/structure/index.js';
 
 const tempDirs: string[] = [];
 
@@ -141,7 +144,7 @@ type ThinStructureTarget = {
   thinTypeSnippets: string[];
   forbiddenTypeSnippets: string[];
   fieldRangeFacts: ThinFieldRangeFact[];
-  progressiveNodes: number;
+  structuralNodes: number;
 };
 
 type ThinFieldRangeFact = {
@@ -335,7 +338,7 @@ async function renderProfileModes(source: string): Promise<ProfileModeResults> {
 }
 
 describe('scanner-first CSS/Less e2e probe', () => {
-  it('builds progressive proof nodes from structural field metadata', () => {
+  it('builds string-backed proof nodes from structural field metadata', () => {
     const source = '.a { color: blue; }';
     const document = parseStructure(source, cssStructureProfile);
     const rule = document.root.children[0];
@@ -347,10 +350,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       throw new Error('Expected one structural declaration.');
     }
 
-    const progressive = progressiveruleset({
+    const parsed = ruleset({
       selector: structuralFieldText(document, rule, 'selector'),
       rules: [
-        progressivedecl({
+        decl({
           name: structuralFieldText(document, declaration, 'name'),
           value: [structuralFieldText(document, declaration, 'value')]
         })
@@ -358,13 +361,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
     });
 
     expect(document.fieldRanges.size).toBeGreaterThan(0);
-    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
-    expect(serializeTypes(progressive)).toBe([
-      '(ProgressiveRuleset',
+    expect(parsed.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(serializeRuntimeTypes(parsed)).toBe([
+      '(Ruleset',
       '  selector: \'.a\'',
       '  rules:',
       '    [',
-      '      (ProgressiveDeclaration',
+      '      (Declaration',
       '        name: \'color\'',
       '        value:',
       '          [\'blue\']',
@@ -610,7 +613,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'structural-fed',
       structuralDiagnostics: 0,
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       executedIslands: 0
@@ -633,7 +636,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 2,
+      structuralNodes: 2,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -650,7 +653,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('name: \'color\'');
     expect(types).toContain('value:\n          [\'blue\']');
     expect(types).not.toContain('(BasicSelector');
-    expect(types).not.toContain('(ProgressiveDeclaration');
     expect(types).not.toContain('name: (Any \'color\')');
     expect(types).not.toContain('value: (Any \'blue\')');
   });
@@ -677,7 +679,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
-        progressiveNodes: 2
+        structuralNodes: 2
       },
       {
         name: 'ordered literal declarations',
@@ -703,7 +705,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         name: 'nested ordinary rule',
@@ -728,7 +730,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'width' },
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: '1px' }
         ],
-        progressiveNodes: 4
+        structuralNodes: 4
       },
       {
         name: 'custom property string value',
@@ -753,7 +755,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         name: 'at-rule with raw prelude',
@@ -780,7 +782,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
           { nodeKind: 'declaration', field: 'name', kind: 'declaration-name', text: 'color' },
           { nodeKind: 'declaration', field: 'value', kind: 'value', text: 'blue' }
         ],
-        progressiveNodes: 3
+        structuralNodes: 3
       }
     ];
 
@@ -802,7 +804,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype, target.name).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: target.progressiveNodes,
+        structuralNodes: target.structuralNodes,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -842,7 +844,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -864,7 +866,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -897,7 +899,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -906,7 +908,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('(Rules');
-    expect(types).toContain('(ProgressiveVariableDeclaration');
+    expect(types).toContain('(VarDeclaration');
     expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('name: \'color\'');
     expect(types).not.toContain('selector: \'\'');
@@ -931,7 +933,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -957,7 +959,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -990,7 +992,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1016,17 +1018,17 @@ describe('scanner-first CSS/Less e2e probe', () => {
         source: '.a { --brand: #06c; }\n',
         name: '--brand',
         value: '#06c',
-        progressiveNodes: 2
+        structuralNodes: 2
       },
       {
         source: '.a { --raw: { token: "}"; }; color: blue; }\n',
         name: '--raw',
         value: '{ token: "}"; }',
-        progressiveNodes: 3
+        structuralNodes: 3
       }
     ];
 
-    for (const { source, name, value, progressiveNodes } of cases) {
+    for (const { source, name, value, structuralNodes } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -1043,7 +1045,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1086,7 +1088,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1121,7 +1123,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1166,7 +1168,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1204,7 +1206,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'string declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1228,7 +1230,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'declaration value is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1252,7 +1254,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1296,7 +1298,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1312,7 +1314,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).not.toContain('value: (');
   });
 
-  it('feeds simple Less function values through progressive declaration segments', async () => {
+  it('feeds simple Less function values through string-backed declaration segments', async () => {
     const cases = [
       {
         source: '.a { color: lighten(#000, 10%); }\n',
@@ -1432,7 +1434,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -1480,7 +1482,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1530,7 +1532,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'canonical-fallback',
         fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -1538,7 +1540,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     }
   });
 
-  it('feeds mixed string and function declaration values through progressive segments', async () => {
+  it('feeds mixed string and function declaration values through string-backed segments', async () => {
     const source = '.a { box-shadow: 0 0 2px lighten(#000, 10%); }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -1555,7 +1557,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 2,
+      structuralNodes: 2,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1638,19 +1640,19 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       {
         source: '/* keep */\n.a { color: blue; }\n',
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         source: '.a {\n  /* keep */\n  color: blue;\n}\n',
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         source: '@media screen {\n  /* keep */\n  .a { color: blue; }\n}\n',
-        progressiveNodes: 4
+        structuralNodes: 4
       }
     ];
 
-    for (const { source, progressiveNodes } of cases) {
+    for (const { source, structuralNodes } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -1666,7 +1668,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -1701,7 +1703,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'inline block comments require canonical trivia preservation',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1731,7 +1733,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1776,7 +1778,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -1815,7 +1817,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -1880,7 +1882,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1923,7 +1925,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -1975,7 +1977,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 2,
+        structuralNodes: 2,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2015,7 +2017,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -2057,7 +2059,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -2108,7 +2110,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -2156,7 +2158,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -2208,7 +2210,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2234,7 +2236,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2249,25 +2251,25 @@ describe('scanner-first CSS/Less e2e probe', () => {
         value: '"Open Sans"',
         property: 'font-family',
         declarationRuleIndex: 1,
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         source: '@image: url(/assets/a}/b.png);\n.a { background: @image; }\n',
         value: 'url(/assets/a}/b.png)',
         property: 'background',
         declarationRuleIndex: 1,
-        progressiveNodes: 3
+        structuralNodes: 3
       },
       {
         source: '.a { @font: "Open Sans"; font-family: @font; .b { font-family: @font; } }\n',
         value: '"Open Sans"',
         property: 'font-family',
         declarationRuleIndex: 0,
-        progressiveNodes: 5
+        structuralNodes: 5
       }
     ];
 
-    for (const { source, value, property, declarationRuleIndex, progressiveNodes } of cases) {
+    for (const { source, value, property, declarationRuleIndex, structuralNodes } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -2283,7 +2285,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2343,7 +2345,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 3,
+        structuralNodes: 3,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2397,7 +2399,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         runtimeTreeSource: 'canonical-fallback',
         fallbackReason: 'string declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
         fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2429,7 +2431,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'string declaration values with Less variable-like tokens are not in the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2455,7 +2457,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'Less variable declaration reference is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2482,7 +2484,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2495,21 +2497,21 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.a { color: @brand; .b { border-color: @brand; } @brand: blue; }\n',
         expected: ['color: blue', 'border-color: blue'],
-        progressiveNodes: 5
+        structuralNodes: 5
       },
       {
         source: '.a { color: @brand; @brand: blue; @brand: red; }\n',
         expected: ['color: red'],
-        progressiveNodes: 4
+        structuralNodes: 4
       },
       {
         source: '@brand: blue; .a { color: @brand; @brand: red; .b { color: @brand; } }\n',
         expected: ['color: red'],
-        progressiveNodes: 6
+        structuralNodes: 6
       }
     ];
 
-    for (const { source, expected, progressiveNodes } of cases) {
+    for (const { source, expected, structuralNodes } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -2527,7 +2529,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2553,7 +2555,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2580,7 +2582,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2607,7 +2609,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 6,
+      structuralNodes: 6,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2632,7 +2634,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -2756,7 +2758,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2841,7 +2843,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 3,
+        structuralNodes: 3,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -2917,7 +2919,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2940,13 +2942,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'import statement prelude is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
   });
 
-  it('falls back for source HTTP url imports until url boundary scanning is proven', async () => {
+  it('falls back for source HTTP url imports outside the scanner-native import subset', async () => {
     const source = '@import url(https://cdn.example.com/theme.css) screen;\n.a { color: blue; }\n';
     const baseline = await new Compiler().renderString(source, { language: 'less' });
     const probePlugin = lessPlugin({
@@ -2961,9 +2963,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'structural diagnostics are present',
+      fallbackReason: 'import statement prelude is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -2986,7 +2988,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'import statement prelude is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3023,14 +3025,14 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(importedPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
     expect(entryPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3045,7 +3047,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const parseResult = parsePlugin.safeParse(entry, fs.readFileSync(entry, 'utf8'));
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!);
-    expect(types).toContain('(ProgressiveVariableDeclaration');
+    expect(types).toContain('(VarDeclaration');
     expect(types).toContain('selector: \'.utility\'');
     expect(types).toContain('selector: \'.card\'');
     expect(types).toContain('name: \'color\'');
@@ -3078,7 +3080,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'multiple import statements require canonical import ordering and de-dupe semantics',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3151,7 +3153,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 3,
+        structuralNodes: 3,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -3188,7 +3190,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3203,7 +3205,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('prelude: \'screen\'');
     expect(types).toContain('(Ruleset');
     expect(types).toContain('selector: \'.a\'');
-    expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@media\')');
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
@@ -3226,7 +3227,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -3243,7 +3244,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('(Ruleset');
     expect(types).toContain('selector: \'.a\'');
     expect(types).toContain('name: \'color\'');
-    expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@unknown-block\')');
     expect(types).not.toContain('prelude: (Any \'card\')');
   });
@@ -3263,9 +3263,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, root @viewport, and root @counter-style block at-rules are in the structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -3302,7 +3302,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: 3,
+        structuralNodes: 3,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -3323,7 +3323,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
       }
       expect(types).toContain('selector: \'.a\'');
       expect(types).toContain('name: \'color\'');
-      expect(types).not.toContain('(ProgressiveAtRule');
       expect(types).not.toContain('name: (Any \'@layer\')');
     }
   });
@@ -3363,7 +3362,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('(Any [role=property] \'display:\'');
     expect(types).toContain('(Any [role=keyword] \'grid\'');
     expect(types).not.toContain('prelude: (Any');
-    expect(types).not.toContain('(ProgressiveAtRule');
   });
 
   it('falls back for root @layer shapes outside the structural-fed subset', async () => {
@@ -3398,7 +3396,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         runtimeTreeSource: 'canonical-fallback',
         fallbackReason: reason,
         fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -3433,7 +3431,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         runtimeTreeSource: 'canonical-fallback',
         fallbackReason: reason,
         fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         actualParses: 0,
         requestedIslands: 0
       });
@@ -3518,13 +3516,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         name: 'root',
         source: '@starting-style { .a { opacity: 0; } }\n',
-        expectedProgressiveNodes: 3,
+        expectedStructuralNodes: 3,
         filePath: '/virtual/root-starting-style.less'
       },
       {
         name: 'rule-local',
         source: '.a { opacity: 1; @starting-style { opacity: 0; } }\n',
-        expectedProgressiveNodes: 4,
+        expectedStructuralNodes: 4,
         filePath: '/virtual/nested-starting-style.less'
       }
     ];
@@ -3546,7 +3544,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype, target.name).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes: target.expectedProgressiveNodes,
+        structuralNodes: target.expectedStructuralNodes,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -3632,7 +3630,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         name: 'mixin body',
         source: '.m() { @starting-style { opacity: 0; } }\n.a { .m(); }\n',
-        reason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset'
+        reason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, root @viewport, and root @counter-style block at-rules are in the structural-fed subset'
       }
     ];
 
@@ -3652,7 +3650,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
         runtimeTreeSource: 'canonical-fallback',
         fallbackReason: reason,
         fallbackFullTreeMaterializations: 1,
-        progressiveNodes: 0,
+        structuralNodes: 0,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -3679,7 +3677,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 3,
+      structuralNodes: 3,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3695,7 +3693,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('name: \'@media\'');
     expect(types).toContain('prelude: \'screen\'');
     expect(types).toContain('name: \'color\'');
-    expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@media\')');
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
@@ -3719,7 +3716,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -3736,7 +3733,6 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(types).toContain('prelude: \'screen\'');
     expect(types).toContain('selector: \'.b\'');
     expect(types).toContain('name: \'color\'');
-    expect(types).not.toContain('(ProgressiveAtRule');
     expect(types).not.toContain('name: (Any \'@media\')');
     expect(types).not.toContain('prelude: (Any \'screen\')');
   });
@@ -3759,7 +3755,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -3854,7 +3850,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -3925,11 +3921,10 @@ describe('scanner-first CSS/Less e2e probe', () => {
       const parseResult = parsePlugin.safeParse('/virtual/at-rule-vars.less', source);
       expect(parseResult.errors).toEqual([]);
       const types = serializeRuntimeTypes(parseResult.tree!);
-      expect(types).toContain('(ProgressiveVariableDeclaration');
+      expect(types).toContain('(VarDeclaration');
       expect(types).toContain('name: \'@brand\'');
       expect(types).toContain('[\'blue\']');
       expect(types).toContain('name: \'color\'');
-      expect(types).not.toContain('(VarDeclaration');
       expect(types).not.toContain('(Reference [role=value]');
       expect(types).not.toContain('value: (Any \'blue\')');
     }
@@ -3998,7 +3993,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 6,
+      structuralNodes: 6,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -4042,7 +4037,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: 'Less variable references are not in this structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -4056,6 +4051,12 @@ describe('scanner-first CSS/Less e2e probe', () => {
       '  margin: 2cm;',
       '  size: A4;',
       '  marks: crop cross;',
+      '}',
+      '',
+      '// @viewport with declarations',
+      '@viewport {',
+      '  width: device-width;',
+      '  initial-scale: 1;',
       '}',
       '',
       '// @font-face with declarations',
@@ -4086,12 +4087,13 @@ describe('scanner-first CSS/Less e2e probe', () => {
 
     expect(rendered).toBe(baseline);
     expect(rendered).toContain('@page');
+    expect(rendered).toContain('@viewport');
     expect(rendered).toContain('src: url("myfont.woff2")');
     expect(rendered).toContain('@counter-style my-counter');
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 13,
+      structuralNodes: 16,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -4108,6 +4110,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(parseResult.errors).toEqual([]);
     const types = serializeRuntimeTypes(parseResult.tree!);
     expect(types).toContain('name: \'@page\'');
+    expect(types).toContain('name: \'@viewport\'');
     expect(types).toContain('name: \'@font-face\'');
     expect(types).toContain('name: \'@counter-style\'');
     expect(types).toContain('prelude: \'my-counter\'');
@@ -4131,9 +4134,9 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(rendered).toBe(baseline);
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'canonical-fallback',
-      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, and root @counter-style block at-rules are in the progressive structural-fed subset',
+      fallbackReason: 'only @media, @supports, @starting-style, root @layer, root @font-face, root @page, root @viewport, and root @counter-style block at-rules are in the structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -4165,7 +4168,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: '@font-face preludes are outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -4197,7 +4200,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: '@page preludes are outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -4229,7 +4232,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       runtimeTreeSource: 'canonical-fallback',
       fallbackReason: '@counter-style prelude is outside the scanner-native structural-fed subset',
       fallbackFullTreeMaterializations: 1,
-      progressiveNodes: 0,
+      structuralNodes: 0,
       actualParses: 0,
       requestedIslands: 0
     });
@@ -4252,7 +4255,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -4282,7 +4285,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       {
         source: '.paint(@color) { color: @color; }\n.a { .paint(blue); }\n',
-        progressiveNodes: 6,
+        structuralNodes: 6,
         expectedRender: ['color: blue'],
         serializedFragments: [
           'Any [role=name] \'.paint\'',
@@ -4294,7 +4297,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '.paint(@color, @width) { color: @color; width: @width; }\n.a { .paint(blue, 1px); }\n',
-        progressiveNodes: 9,
+        structuralNodes: 9,
         expectedRender: ['color: blue', 'width: 1px'],
         serializedFragments: [
           'Any [role=name] \'.paint\'',
@@ -4311,7 +4314,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       },
       {
         source: '.a { .paint(@color) { color: @color; } .paint(blue); }\n',
-        progressiveNodes: 6,
+        structuralNodes: 6,
         expectedRender: ['.a {', 'color: blue'],
         serializedFragments: [
           'selector: \'.a\'',
@@ -4324,7 +4327,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       }
     ];
 
-    for (const { source, progressiveNodes, expectedRender, serializedFragments } of cases) {
+    for (const { source, structuralNodes, expectedRender, serializedFragments } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -4342,7 +4345,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -4387,7 +4390,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 4,
+      structuralNodes: 4,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0
@@ -4516,19 +4519,19 @@ describe('scanner-first CSS/Less e2e probe', () => {
     const cases = [
       {
         source: '.m() { color: blue; width: 1px; }\n.a { .m(); }\n',
-        progressiveNodes: 5,
+        structuralNodes: 5,
         expectedFragments: ['color: blue', 'width: 1px'],
         serializedFragments: ['name: \'color\'', '\'blue\'', 'name: \'width\'', '\'1px\'']
       },
       {
         source: '.m() { .b { color: blue; } }\n.a { .m(); }\n',
-        progressiveNodes: 5,
+        structuralNodes: 5,
         expectedFragments: ['.b', 'color: blue'],
         serializedFragments: ['selector: \'.b\'', 'name: \'color\'']
       }
     ];
 
-    for (const { source, progressiveNodes, expectedFragments, serializedFragments } of cases) {
+    for (const { source, structuralNodes, expectedFragments, serializedFragments } of cases) {
       const baseline = await new Compiler().renderString(source, { language: 'less' });
       const probePlugin = lessPlugin({
         scannerFirstProbe: {
@@ -4546,7 +4549,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
       expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
         runtimeTreeSource: 'structural-fed',
         fallbackFullTreeMaterializations: 0,
-        progressiveNodes,
+        structuralNodes,
         actualParses: 0,
         requestedIslands: 0,
         promotedBytes: 0
@@ -4634,17 +4637,17 @@ describe('scanner-first CSS/Less e2e probe', () => {
       {
         source: '.m() { @brand: blue; color: @brand; }\n.a { .m(); }\n',
         expectedFragments: ['.a {', 'color: blue'],
-        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'name: \'@brand\'', 'name: \'color\'']
+        serializedFragments: ['(Mixin', '(VarDeclaration', 'name: \'@brand\'', 'name: \'color\'']
       },
       {
         source: '.m() { @brand: blue; .b { color: @brand; } }\n.a { .m(); }\n',
         expectedFragments: ['.b {', 'color: blue'],
-        serializedFragments: ['(Mixin', '(ProgressiveVariableDeclaration', 'selector: \'.b\'', 'name: \'color\'']
+        serializedFragments: ['(Mixin', '(VarDeclaration', 'selector: \'.b\'', 'name: \'color\'']
       },
       {
         source: '.a { .m() { @brand: blue; color: @brand; } .m(); }\n',
         expectedFragments: ['.a {', 'color: blue'],
-        serializedFragments: ['selector: \'.a\'', '(Mixin', '(ProgressiveVariableDeclaration', 'name: \'color\'']
+        serializedFragments: ['selector: \'.a\'', '(Mixin', '(VarDeclaration', 'name: \'color\'']
       }
     ];
 
@@ -4731,7 +4734,7 @@ describe('scanner-first CSS/Less e2e probe', () => {
     expect(probePlugin.lastScannerFirstPrototype).toMatchObject({
       runtimeTreeSource: 'structural-fed',
       fallbackFullTreeMaterializations: 0,
-      progressiveNodes: 5,
+      structuralNodes: 5,
       actualParses: 0,
       requestedIslands: 0,
       promotedBytes: 0

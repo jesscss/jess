@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import {
-  IslandParsePlan,
-  SemanticIndexBuilder,
   SourceText,
   parseStructure
 } from '../index.js';
+import {
+  IslandParsePlan,
+  SemanticIndexBuilder
+} from '../services/index.js';
 import { fixtureLessProfile, fixtureScssProfile } from './fixtures.js';
 
 describe('SemanticIndexBuilder', () => {

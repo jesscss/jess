@@ -20,15 +20,17 @@ import {
   scssProfile
 } from '@jesscss/scss-parser';
 import {
+  type ParseStructureOptions
+} from '@jesscss/parser';
+import type { StructuralDocument } from '@jesscss/parser/structure/index';
+import {
   IslandParsePlan,
   IslandParserRegistry,
   countRequestedIslandKinds,
   countRequestedOwnerKinds,
   createStructuralProbeSnapshot,
-  type LanguageActivation,
-  type ParseStructureOptions,
-  type StructuralDocument
-} from '@jesscss/parser';
+  type LanguageActivation
+} from '@jesscss/parser/services/index';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';

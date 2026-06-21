@@ -1,22 +1,22 @@
 import { describe, expect, test } from 'vitest';
 import {
+  SourceText,
+  createParserDiagnostic,
+  parseStructure
+} from '../index.js';
+import {
   IslandParsePlan,
   IslandParserRegistry,
   LanguageActivationRegistry,
-  SourceText,
+  VisitorMethodTableCache,
   countRequestedIslandKinds,
   countRequestedOwnerKinds,
-  createParserDiagnostic,
   createStructuralProbeSnapshot,
-  parseStructure,
   providerKey,
   stableConfigKey,
-  structuralDiagnosticRanges
-} from '../index.js';
-import {
-  VisitorMethodTableCache,
+  structuralDiagnosticRanges,
   visitorShapeFromMethods
-} from '../index.js';
+} from '../services/index.js';
 import { fixtureLessProfile, fixtureProfile } from './fixtures.js';
 
 describe('IslandParsePlan', () => {

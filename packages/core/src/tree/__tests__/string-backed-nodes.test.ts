@@ -3,18 +3,10 @@ import { Context } from '../../context.js';
 import {
   N,
   Declaration,
-  ProgressiveAtRule,
-  ProgressiveDeclaration,
-  ProgressiveRuleset,
-  ProgressiveVariableDeclaration,
   any,
   atrule,
   atrulestatement,
   decl,
-  progressiveatrule,
-  progressivedecl,
-  progressiveruleset,
-  progressivevardecl,
   ref,
   rules,
   ruleset,
@@ -24,215 +16,7 @@ import { isNode } from '../util/is-node.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { serializeTypes } from '../util/serialize-types.js';
 
-describe('progressive scanner-first proof nodes', () => {
-  test('render and serialize string-backed declaration values', () => {
-    const declaration = progressivedecl({
-      name: 'color',
-      value: ['blue']
-    });
-
-    expect(declaration).toBeInstanceOf(ProgressiveDeclaration);
-    expect(declaration.toTrimmedString()).toBe('color: blue');
-    expect(serializeTypes(declaration)).toBeString(`
-      (ProgressiveDeclaration
-        name: 'color'
-        value:
-          ['blue']
-      )
-    `);
-  });
-
-  test('preserves exact progressive declaration value segments', () => {
-    const declaration = progressivedecl({
-      name: 'width',
-      value: ['calc(', '100%', ' - ', '1px', ')']
-    });
-
-    expect(declaration.toTrimmedString()).toBe('width: calc(100% - 1px)');
-  });
-
-  test('renders progressive string-backed rulesets', () => {
-    const progressive = progressiveruleset({
-      selector: '.a',
-      rules: [
-        progressivedecl({
-          name: 'color',
-          value: ['blue']
-        })
-      ]
-    });
-
-    expect(progressive).toBeInstanceOf(ProgressiveRuleset);
-    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
-    expect(progressive.toTrimmedString({ compress: true })).toBe('.a { color: blue; }');
-    expect(isNode(progressive, N.Ruleset)).toBe(false);
-    expect(serializeTypes(progressive)).toBeString(`
-      (ProgressiveRuleset
-        selector: '.a'
-        rules:
-          [
-            (ProgressiveDeclaration
-              name: 'color'
-              value:
-                ['blue']
-            )
-          ]
-      )
-    `);
-  });
-
-  test('renders progressive string-backed at-rules', () => {
-    const progressive = progressiveatrule({
-      name: '@media',
-      prelude: 'screen',
-      rules: [
-        progressiveruleset({
-          selector: '.a',
-          rules: [
-            progressivedecl({
-              name: 'color',
-              value: ['blue']
-            })
-          ]
-        })
-      ]
-    });
-
-    expect(progressive).toBeInstanceOf(ProgressiveAtRule);
-    expect(progressive.toTrimmedString()).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
-    expect(progressive.toTrimmedString({ compress: true })).toBe('@media screen { .a { color: blue; } }');
-    expect(serializeTypes(progressive)).toBeString(`
-      (ProgressiveAtRule
-        name: '@media'
-        prelude: 'screen'
-        rules:
-          [
-            (ProgressiveRuleset
-              selector: '.a'
-              rules:
-                [
-                  (ProgressiveDeclaration
-                    name: 'color'
-                    value:
-                      ['blue']
-                  )
-                ]
-            )
-          ]
-      )
-    `);
-  });
-
-  test('serializes invisible progressive variable declarations without value nodes', () => {
-    const declaration = progressivevardecl({
-      name: '@brand',
-      value: ['blue']
-    });
-
-    expect(declaration).toBeInstanceOf(ProgressiveVariableDeclaration);
-    expect(declaration.visible).toBe(false);
-    expect(declaration.toTrimmedString()).toBe('@brand: blue');
-    expect(serializeTypes(declaration)).toBeString(`
-      (ProgressiveVariableDeclaration
-        name: '@brand'
-        value:
-          ['blue']
-      )
-    `);
-  });
-
-  test('omits progressive rulesets that only contain invisible variable declarations', () => {
-    const progressive = progressiveruleset({
-      selector: '.a',
-      rules: [
-        progressivevardecl({
-          name: '@brand',
-          value: ['blue']
-        })
-      ]
-    });
-
-    expect(progressive.visible).toBe(false);
-    expect(progressive.toTrimmedString()).toBe('');
-    expect(progressive.toTrimmedString({ compress: true })).toBe('');
-  });
-
-  test('omits progressive at-rules whose descendants are all invisible', () => {
-    const progressive = progressiveatrule({
-      name: '@media',
-      prelude: 'screen',
-      rules: [
-        progressiveruleset({
-          selector: '.a',
-          rules: [
-            progressivevardecl({
-              name: '@brand',
-              value: ['blue']
-            })
-          ]
-        })
-      ]
-    });
-
-    expect(progressive.visible).toBe(false);
-    expect(progressive.toTrimmedString()).toBe('');
-    expect(progressive.toTrimmedString({ compress: true })).toBe('');
-  });
-
-  test('keeps string rule entries and nested rules from gaining declaration semicolons', () => {
-    const progressive = progressiveruleset({
-      selector: '.a',
-      rules: [
-        'display: block;',
-        progressiveruleset({
-          selector: '.b',
-          rules: [
-            progressivedecl({
-              name: 'color',
-              value: ['blue']
-            })
-          ]
-        })
-      ]
-    });
-
-    expect(progressive.toTrimmedString()).toBe('.a {\n  display: block;\n  .b {\n    color: blue;\n  }\n}\n');
-  });
-
-  test('writes progressive render output without value child nodes', () => {
-    const context = new Context();
-    const buffer = createRenderBuffer('segmented');
-    const node = progressiveruleset({
-      selector: '.a',
-      rules: [
-        progressivedecl({ name: 'color', value: ['blue'] })
-      ]
-    });
-
-    expect(node.render(context, buffer)).toBe('.a {\n  color: blue;\n}\n');
-    expect(buffer.segments).toEqual(['.a {\n  color: blue;\n}\n']);
-  });
-
-  test('writes progressive at-rule render output without prelude child nodes', () => {
-    const context = new Context();
-    const buffer = createRenderBuffer('segmented');
-    const node = progressiveatrule({
-      name: '@media',
-      prelude: 'screen',
-      rules: [
-        progressiveruleset({
-          selector: '.a',
-          rules: [
-            progressivedecl({ name: 'color', value: ['blue'] })
-          ]
-        })
-      ]
-    });
-
-    expect(node.render(context, buffer)).toBe('@media screen {\n  .a {\n    color: blue;\n  }\n}\n');
-    expect(buffer.segments).toEqual(['@media screen {\n  .a {\n    color: blue;\n  }\n}\n']);
-  });
-
+describe('string-backed scanner-first proof nodes', () => {
   test('renders string-backed core declarations without allocating value wrappers', () => {
     const declaration = decl({
       name: 'color',
@@ -330,18 +114,18 @@ describe('progressive scanner-first proof nodes', () => {
       name: 'color',
       value: ['blue']
     });
-    const progressiveDeclaration = decl({
+    const childDeclaration = decl({
       name: 'color',
       value: ['blue']
     });
     const root = rules([rootDeclaration]);
-    const progressive = progressiveruleset({
+    const childRuleset = ruleset({
       selector: '.a',
-      rules: [progressiveDeclaration]
+      rules: [childDeclaration]
     });
 
     expect(root.toTrimmedString()).toBe('color: blue;');
-    expect(progressive.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
+    expect(childRuleset.toTrimmedString()).toBe('.a {\n  color: blue;\n}\n');
   });
 
   test('renders string-selector core rulesets without selector child nodes', () => {

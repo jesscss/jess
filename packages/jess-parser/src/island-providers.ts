@@ -1,11 +1,13 @@
 import {
-  createParserDiagnostic,
+  createParserDiagnostic
+} from '@jesscss/parser';
+import type { StructuralNode } from '@jesscss/parser/structure/index';
+import {
   providerKey,
   type IslandExecutionContext,
   type IslandParserRegistry,
-  type IslandParseResult,
-  type StructuralNode
-} from '@jesscss/parser';
+  type IslandParseResult
+} from '@jesscss/parser/services/index';
 import { JessParser, type JessRules } from './jessParser.js';
 
 /** Compiler-visible result shapes that Jess providers can materialize. */

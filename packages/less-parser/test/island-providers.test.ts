@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser';
+import { IslandParsePlan, IslandParserRegistry } from '@jesscss/parser/services/index';
 import { serializeTypes } from '@jesscss/core';
 import {
   parseLessStructure,
