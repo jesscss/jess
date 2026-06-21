@@ -1398,7 +1398,7 @@ describe('Style import', () => {
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.name.valueOf() === 'baseColor')) {
+        if (this.rules.some(node => isNode(node, N.VarDeclaration) && node.name.valueOf() === 'baseColor')) {
           clonedLibraryRules++;
         }
         return originalClone.apply(this, args);
@@ -1993,7 +1993,7 @@ describe('Style import', () => {
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value.some(node => isNode(node, N.Ruleset))) {
+        if (this.rules.some(node => isNode(node, N.Ruleset))) {
           clonedImportRoots++;
         }
         return originalClone.apply(this, args);
@@ -2046,12 +2046,12 @@ describe('Style import', () => {
       ]);
 
       const evald = await node.eval(context);
-      const placement = evald.value[0];
+      const placement = evald.rules[0];
       expect(isNode(placement, N.Rules)).toBe(true);
       if (!isNode(placement, N.Rules)) {
         throw new TypeError('Expected import result to be a Rules placement');
       }
-      expect(placement.value[0]).not.toBe(sourceChild);
+      expect(placement.rules[0]).not.toBe(sourceChild);
       expect(sourceChild?.parent).toBe(importedRules);
     });
 
@@ -2070,12 +2070,12 @@ describe('Style import', () => {
       ]);
 
       const evald = await node.eval(context);
-      const placement = evald.value[0];
+      const placement = evald.rules[0];
       expect(isNode(placement, N.Rules)).toBe(true);
       if (!isNode(placement, N.Rules)) {
         throw new TypeError('Expected import result to be a Rules placement');
       }
-      const placementDecl = placement.value[0];
+      const placementDecl = placement.rules[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(sourceDecl.parent).toBe(importedRules);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
@@ -2105,12 +2105,12 @@ describe('Style import', () => {
       ]);
 
       const evald = await node.eval(context);
-      const placement = evald.value[0];
+      const placement = evald.rules[0];
       expect(isNode(placement, N.Rules)).toBe(true);
       if (!isNode(placement, N.Rules)) {
         throw new TypeError('Expected import result to be a Rules placement');
       }
-      const placementRuleset = placement.value[0];
+      const placementRuleset = placement.rules[0];
       expect(placementRuleset).not.toBe(sourceRuleset);
       expect(sourceRuleset.parent).toBe(importedRules);
       expect(isNode(placementRuleset, N.Ruleset)).toBe(true);
@@ -2127,7 +2127,7 @@ describe('Style import', () => {
       ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
-      const placementDecl = placementRuleset.rules?.value[0];
+      const placementDecl = placementRuleset.rules?.rules[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
@@ -2170,8 +2170,8 @@ describe('Style import', () => {
         })
       ]).eval(context);
 
-      expect(firstEval.value[0]).not.toBe(importedRules);
-      const referencePlacement = secondEval.value[0];
+      expect(firstEval.rules[0]).not.toBe(importedRules);
+      const referencePlacement = secondEval.rules[0];
       expect(isNode(referencePlacement, N.Rules)).toBe(true);
       if (!isNode(referencePlacement, N.Rules)) {
         throw new TypeError('Expected reference import placement');
@@ -2219,7 +2219,7 @@ describe('Style import', () => {
       ]);
 
       const evald = await node.eval(context);
-      const wrapped = evald.value[0];
+      const wrapped = evald.rules[0];
       expect(isNode(wrapped, N.Rules)).toBe(true);
       if (!isNode(wrapped, N.Rules)) {
         throw new TypeError('Expected postlude Rules wrapper');
@@ -2234,7 +2234,7 @@ describe('Style import', () => {
       });
       expect(placement?.outputRules).toBe(wrapped);
       expect(isNode(placement?.sourceRules.rules[0], N.Ruleset)).toBe(true);
-      expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
+      expect(isNode(wrapped.rules[0], N.AtRule)).toBe(true);
       expect(await evald.render(context)).toContain('@layer components');
     });
 
@@ -2264,7 +2264,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       // Both imports should be present
-      expect(evald.value.length).toBe(2);
+      expect(evald.rules.length).toBe(2);
     });
   });
 
@@ -3909,9 +3909,9 @@ describe('Style import', () => {
         style({ path: quoted(any('missing-file.jess')) }, { type: 'import', importOptions: { optional: true } })
       ]);
       const evald = await node.eval(context);
-      expect(evald.value.length).toBe(1);
+      expect(evald.rules.length).toBe(1);
       const imported = evald.at(0) as Rules;
-      expect(imported.value.length).toBe(0);
+      expect(imported.rules.length).toBe(0);
     });
 
     it('resolves optional missing imports without touching render state', async () => {
@@ -3926,7 +3926,7 @@ describe('Style import', () => {
       const resolved = await node.resolve(context);
 
       expect(isNode(resolved, N.Rules)).toBe(true);
-      expect((resolved as Rules).value.length).toBe(0);
+      expect((resolved as Rules).rules.length).toBe(0);
       expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
@@ -4106,7 +4106,7 @@ describe('Style import', () => {
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value.some(node => isNode(node, N.Ruleset))) {
+        if (this.rules.some(node => isNode(node, N.Ruleset))) {
           clonedLibraryRules++;
         }
         return originalClone.apply(this, args);
@@ -4134,7 +4134,7 @@ describe('Style import', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(evald.value.length).toBe(2);
+        expect(evald.rules.length).toBe(2);
         const first = evald.at(0) as Rules;
         const second = evald.at(1) as Rules;
         expect(first.options.rulesVisibility.Ruleset).toBe('public');

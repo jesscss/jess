@@ -200,7 +200,7 @@ describe('Mixin', () => {
     expect(output).not.toBe(body);
     expect(output.options.mixinOutputSlot?.sourceRules).toBe(body);
     expect(output.options.mixinOutputSlot?.ambientLookup).toBe(false);
-    expect(output.value).toEqual([]);
+    expect(output.rules).toEqual([]);
   });
 
   it('creates callable outer rules wrappers through a named helper', () => {
@@ -215,8 +215,8 @@ describe('Mixin', () => {
 
     expect(output).not.toBe(body);
     expect(output.options.rulesVisibility?.Declaration).toBe('public');
-    expect(output.value).toEqual([]);
-    expect(body.value).toHaveLength(1);
+    expect(output.rules).toEqual([]);
+    expect(body.rules).toHaveLength(1);
   });
 
   describe('calling', () => {
@@ -346,8 +346,8 @@ describe('Mixin', () => {
       if (!(firstResult instanceof RulesClass) || !(secondResult instanceof RulesClass)) {
         throw new Error('Expected Rules results');
       }
-      const firstDecl = firstResult.value[0];
-      const secondDecl = secondResult.value[0];
+      const firstDecl = firstResult.rules[0];
+      const secondDecl = secondResult.rules[0];
       expect(firstDecl).toBeDefined();
       expect(secondDecl).toBeDefined();
       expect(firstDecl).toBe(sourceDecl);
@@ -512,7 +512,7 @@ describe('Mixin', () => {
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      const outputDecl = result.value[0];
+      const outputDecl = result.rules[0];
       expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
@@ -558,18 +558,18 @@ describe('Mixin', () => {
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.value);
-      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.value);
-      expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.value);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.value);
-      expect(result.value.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
-      expect(result.value.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
-      expect(result.value[0]).not.toBe(sourceComment);
-      expect(result.value[1]).not.toBe(sourceNested);
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.rules);
+      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.rules);
+      expect(sourceBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.rules);
+      expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
+      expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
+      expect(result.rules[0]).not.toBe(sourceComment);
+      expect(result.rules[1]).not.toBe(sourceNested);
       expect(sourceComment.parent).toBe(sourceBody);
       expect(sourceNested.parent).toBe(sourceBody);
-      expect(result.value.map(child => child.parent)).toEqual([result, result]);
+      expect(result.rules.map(child => child.parent)).toEqual([result, result]);
     });
 
     it('should call a mixin with parameters', async () => {
@@ -966,7 +966,7 @@ describe('Mixin', () => {
         const [deep] = args;
         if (
           deep === false
-          && this.value.some(node => (
+          && this.rules.some(node => (
             node.type === 'Declaration'
             && node.name?.valueOf?.() === 'color'
           ))
@@ -1360,28 +1360,28 @@ describe('Mixin', () => {
         source: segment.source,
         output: segment.output,
         index: segment.index
-      }))).toEqual(mixinBody.value.map((source, index) => ({
+      }))).toEqual(mixinBody.rules.map((source, index) => ({
         kind: 'source-child',
         source,
-        output: result.value[index],
+        output: result.rules[index],
         index
       })));
-      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
-      expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
-      expect(getMixinOutputPlacementChildren(result)).toEqual(result.value);
-      expect(getMixinOutputChildPlacementState(result, result.value[0]!)).toEqual({
-        outputChild: result.value[0],
+      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.rules);
+      expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.rules);
+      expect(getMixinOutputPlacementChildren(result)).toEqual(result.rules);
+      expect(getMixinOutputChildPlacementState(result, result.rules[0]!)).toEqual({
+        outputChild: result.rules[0],
         outputRules: result,
-        sourceChild: mixinBody.value[0],
+        sourceChild: mixinBody.rules[0],
         sourceIndex: 0
       });
       expect(getMixinOutputPlacementRecord(result)?.source).toBe(mixinBody);
       expect(getMixinOutputPlacementRecord(result)?.output).toBe(result);
       expect(getMixinOutputScopeFrame(result)).toBe(result.getScopeFrame());
-      expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
-      expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
-      expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
-      expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
+      expect(mixinBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
+      expect(result.rules.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
+      expect(result.rules.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
+      expect(result.rules.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
@@ -1398,19 +1398,19 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       expect(secondResult).not.toBe(result);
-      expect(secondResult.value).not.toBe(result.value);
+      expect(secondResult.rules).not.toBe(result.rules);
       expect(secondResult.options.referenceMode).toBe(false);
       expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
-      expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
-      expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
-      expect(getMixinOutputPlacementChildren(secondResult)).toEqual(secondResult.value);
+      expect(secondResult.rules.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.rules);
+      expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.rules);
+      expect(getMixinOutputPlacementChildren(secondResult)).toEqual(secondResult.rules);
       expect(getMixinOutputScopeFrame(secondResult)).toBe(secondResult.getScopeFrame());
-      expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
-      expect(secondResult.value.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
-      expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
-      expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
+      expect(mixinBody.rules.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.rules);
+      expect(secondResult.rules.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
+      expect(secondResult.rules.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
+      expect(secondResult.rules.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(secondResult.value).toEqual(result.value);
+      expect(secondResult.rules).toEqual(result.rules);
     });
 
     it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
@@ -1436,7 +1436,7 @@ describe('Mixin', () => {
       expect(getMixinOutputReferenceMode(output)).toBe(false);
       expect(output.options.mixinOutputSlot?.fallbackFrame).toBe(fallbackFrame);
       expect(getMixinOutputRulesVisibility(output)).toBe(output.options.rulesVisibility);
-      expect(getMixinOutputPlacementChildren(output)).toEqual(output.value);
+      expect(getMixinOutputPlacementChildren(output)).toEqual(output.rules);
       expect(getMixinOutputScopeFrame(output)).toBe(output.getScopeFrame());
       expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
@@ -1484,10 +1484,10 @@ describe('Mixin', () => {
       ]);
       attachMixinOutputSlot(ambientOutput, source, false);
 
-      expect(isFromRestrictedMixinOutput(restrictedOutput.value[0])).toBe(true);
-      expect(isFromRestrictedMixinOutput(ambientOutput.value[0])).toBe(false);
-      expect(keepsDuplicateMixinOutputDeclaration(restrictedOutput.value[0])).toBe(true);
-      expect(keepsDuplicateMixinOutputDeclaration(ambientOutput.value[0])).toBe(false);
+      expect(isFromRestrictedMixinOutput(restrictedOutput.rules[0])).toBe(true);
+      expect(isFromRestrictedMixinOutput(ambientOutput.rules[0])).toBe(false);
+      expect(keepsDuplicateMixinOutputDeclaration(restrictedOutput.rules[0])).toBe(true);
+      expect(keepsDuplicateMixinOutputDeclaration(ambientOutput.rules[0])).toBe(false);
     });
 
     it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
@@ -1500,7 +1500,7 @@ describe('Mixin', () => {
         const [deep] = args;
         if (
           deep === false
-          && this.value.some(node => (
+          && this.rules.some(node => (
             node.type === 'Declaration'
             && node.name?.valueOf?.() === 'marker'
           ))
@@ -4190,7 +4190,7 @@ describe('Mixin', () => {
       expect(root.directChildRuleEntries).toBeNull();
       root.getScopeFrame();
 
-      const originalValue = childRules.value;
+      const originalValue = childRules.rules;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.prepared-child-missing') {
@@ -4198,7 +4198,7 @@ describe('Mixin', () => {
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      Object.defineProperty(childRules, 'value', {
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('prepared callable child entries should prevent recursive rediscovery');
@@ -4209,7 +4209,7 @@ describe('Mixin', () => {
         expect(root.findMixin('.prepared-child-missing', 'Mixin')).toBeUndefined();
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -4548,8 +4548,8 @@ describe('Mixin', () => {
       root.collectDirectChildRulesEntries();
       expect(root.directChildRuleEntries).toBeNull();
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('mixin-only lookup should trust prepared null child entries');
@@ -4559,7 +4559,7 @@ describe('Mixin', () => {
       try {
         expect(root.findMixin('.prepared-null-direct-missing', 'Mixin')).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -4591,12 +4591,12 @@ describe('Mixin', () => {
         return originalFindMixinsFast.apply(this, args);
       };
 
-      const descriptor = Object.getOwnPropertyDescriptor(childRules, 'value');
+      const descriptor = Object.getOwnPropertyDescriptor(childRules, 'rules');
       try {
         expect(root.findMixin(['.warmup-missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
         expect(root.hasExactRulesetChildSurface).toBe(false);
 
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           get() {
             throw new Error('ruleset path lookup should skip mixin-only child surfaces');
@@ -4606,7 +4606,7 @@ describe('Mixin', () => {
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         if (descriptor) {
-          Object.defineProperty(childRules, 'value', descriptor);
+          Object.defineProperty(childRules, 'rules', descriptor);
         }
       }
     });

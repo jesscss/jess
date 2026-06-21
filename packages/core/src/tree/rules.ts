@@ -1,5 +1,6 @@
 import {
   Node,
+  NO_VALUE,
   defineType,
   type NodeOptions,
   type LocationInfo,
@@ -652,7 +653,7 @@ export type RulesOptions = {
   referenceMode?: boolean;
 };
 
-export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
+export interface Rules extends Node<never, RulesOptions & NodeOptions> {
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
@@ -844,7 +845,7 @@ function setAssignmentTargetBinding(
  *   (Declaration background-color: white;)
  * ]
  */
-export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
+export class Rules extends Node<never, RulesOptions & NodeOptions> {
   static override childKeys = ['rules'] as const;
 
   readonly rules: Node[];
@@ -900,10 +901,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
   override clone(copyChildren?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newRules = super.clone(copyChildren, cloneFn);
-    newRules.resetDerivedState(this);
-
-    return newRules;
+    const source = this.rules;
+    let value: Node[];
+    if (copyChildren) {
+      cloneFn ??= n => n.clone(copyChildren);
+      value = new Array<Node>(source.length);
+      for (let i = 0; i < source.length; i++) {
+        value[i] = cloneFn(source[i]!);
+      }
+    } else {
+      value = [...source];
+    }
+    return this.derive(value) as this;
   }
 
   derive(value: Node[] = [...this.rules]): Rules {
@@ -1005,9 +1014,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   getScopeFrame(parent?: ScopeFrame, prepareCallableCoverage = true): ScopeFrame {
     if (!this._scopeFrame) {
+      const rulesBody = this.rules;
       let pendingDeclarationNames: VarDeclaration[] | undefined;
       if (this.varsByName === undefined) {
-        pendingDeclarationNames = this.prepareScopeFrameDeclarationIndex();
+        pendingDeclarationNames = this.prepareScopeFrameDeclarationIndex(rulesBody);
       }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
@@ -1035,7 +1045,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         prepareCallableCoverage,
         this._hasReferenceImports
       );
-      this.prepareScopeFrameAssignmentBindings(this._scopeFrame);
+      this.prepareScopeFrameAssignmentBindings(this._scopeFrame, rulesBody);
     }
     return this._scopeFrame;
   }
@@ -1052,9 +1062,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pendingDeclarationNames;
   }
 
-  private prepareScopeFrameDeclarationIndex(): VarDeclaration[] | undefined {
+  private prepareScopeFrameDeclarationIndex(value = this.rules): VarDeclaration[] | undefined {
     const varsByName = this.varsByName = new Map();
-    const value = this.rules;
     let pendingDeclarationNames: VarDeclaration[] | undefined;
     this._hasReferenceImports = (
       this._hasReferenceImports
@@ -1101,9 +1110,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pendingDeclarationNames;
   }
 
-  private prepareScopeFrameAssignmentBindings(frame: ScopeFrame): void {
-    this.collectPublicChildVariableAssignmentBindingsInto(false, frame, frame);
-    frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface();
+  private prepareScopeFrameAssignmentBindings(frame: ScopeFrame, value = this.rules): void {
+    const childEntries = this.collectDirectDeclarationChildEntries(value);
+    this.collectPublicChildVariableAssignmentBindingsInto(false, frame, frame, childEntries ?? null);
+    frame.hasUncoveredAssignmentTargetSurface = this.hasUncoveredChildVariableAssignmentSurface(childEntries ?? null);
   }
 
   private getHasUncoveredAssignmentTargetEntrySurface(): boolean {
@@ -1135,9 +1145,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private collectPublicChildVariableAssignmentBindingsInto(
     inheritedReadonly: boolean,
     target: AssignmentTargetBindingTarget,
-    shadowingFrame?: ScopeFrame
+    shadowingFrame?: ScopeFrame,
+    childEntries: Array<RulesEntryLike> | null | undefined = this.collectDirectDeclarationChildEntries()
   ): void {
-    const childEntries = this.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
       return;
     }
@@ -1191,8 +1201,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this.hasUncoveredChildVariableAssignmentSurface();
   }
 
-  private hasUncoveredChildVariableAssignmentSurface(): boolean {
-    const childEntries = this.collectDirectDeclarationChildEntries();
+  private hasUncoveredChildVariableAssignmentSurface(
+    childEntries: Array<RulesEntryLike> | null | undefined = this.collectDirectDeclarationChildEntries()
+  ): boolean {
     if (!childEntries?.length) {
       return false;
     }
@@ -1698,12 +1709,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return out;
   }
 
-  collectDirectDeclarationChildEntries(): Array<RulesEntryLike> | undefined {
+  collectDirectDeclarationChildEntries(value = this.rules): Array<RulesEntryLike> | undefined {
     if (this.directDeclarationChildEntries !== undefined) {
       return this.directDeclarationChildEntries ?? undefined;
     }
     let out: Array<RulesEntryLike> | undefined;
-    const value = this.rules;
     for (let i = 0; i < value.length; i++) {
       const child = childRulesOf(value[i]!);
       if (!child) {
@@ -3662,8 +3672,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rulesVisibility.Mixin ??= 'public';
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
-    super(value ?? [], mergedOptions, location);
-    this.rules = value;
+    super(NO_VALUE, mergedOptions, location);
+    this.rules = this._processNodes(value ?? []);
     this._sourceRoot = this;
     this._treeContext = treeContext;
   }

@@ -114,7 +114,7 @@ describe('Rules', () => {
     const child = decl({ name: 'color', value: any('red') });
     const node = rules([child]);
 
-    expect(node.rules).toBe(node.value);
+    expect(Object.prototype.hasOwnProperty.call(node, "value")).toBe(false);
     expect(node.rules[0]).toBe(child);
     expect(node.constructor.childKeys).toEqual(['rules']);
   });
@@ -306,7 +306,7 @@ describe('Rules', () => {
     await node.eval(context);
 
     expect(context.currentCharset).toBe(charset);
-    expect(node.value[0]?.type).toBe('Nil');
+    expect(node.rules[0]?.type).toBe('Nil');
     expect(node.render(context)).toBe('@charset "utf-8";\ncolor: red;\n');
   });
 
@@ -1018,7 +1018,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'third');
+        const thirdVar = node.rules.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1102,7 +1102,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'root-third');
+        const thirdVar = node.rules.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1483,7 +1483,7 @@ describe('Rules', () => {
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
-        // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
+        // Rules owns a rules array, so use .rules.length or check if it's a Rules node
         if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
         }
@@ -1504,7 +1504,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
-        expect(boxMixinRules.value.length).toBeGreaterThan(0);
+        expect(boxMixinRules.rules.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
         expect(boxMixinDecl.toTrimmedString()).toBe('color: red');
 
@@ -1536,7 +1536,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;
-        expect(box3MixinRules.value.length).toBeGreaterThan(0);
+        expect(box3MixinRules.rules.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With explicit live-binding syntax, the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
@@ -1629,19 +1629,19 @@ describe('Rules', () => {
         setScopeFrameLiveBinding(frame, 'one', {
           value: any('one')
         });
-        const originalValue = node.value;
+        const originalValue = node.rules;
 
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           get() {
-            throw new Error('setDefined current-cell path should not crawl Rules.value');
+            throw new Error('setDefined current-cell path should not crawl Rules.rules');
           }
         });
 
         try {
           node.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalValue
@@ -1662,19 +1662,19 @@ describe('Rules', () => {
           assignment
         ]);
         const frame = node.getScopeFrame(undefined, false);
-        const originalValue = node.value;
+        const originalValue = node.rules;
 
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           get() {
-            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.value');
+            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.rules');
           }
         });
 
         try {
           node.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalValue
@@ -1699,22 +1699,22 @@ describe('Rules', () => {
         const parentFrame = node.getScopeFrame(undefined, false);
         const childFrame = child.getScopeFrame(parentFrame, false);
         child.scopeFrame = childFrame;
-        const originalParentValue = node.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.value');
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.value');
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.rules');
             }
           }
         });
@@ -1722,12 +1722,12 @@ describe('Rules', () => {
         try {
           child.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -1745,19 +1745,19 @@ describe('Rules', () => {
         );
         const node = rules([assignment]);
         node.getScopeFrame(undefined, false);
-        const originalValue = node.value;
+        const originalValue = node.rules;
 
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           get() {
-            throw new Error('covered setDefined variable miss should not crawl Rules.value');
+            throw new Error('covered setDefined variable miss should not crawl Rules.rules');
           }
         });
 
         try {
           expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"missing" is not defined');
         } finally {
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalValue
@@ -1799,31 +1799,31 @@ describe('Rules', () => {
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.value;
-        const originalImportedValue = imported.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalImportedValue = imported.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl parent Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(imported, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl imported Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl imported Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('readonly imported setDefined path should not crawl child Rules.value');
+              throw new Error('readonly imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -1831,17 +1831,17 @@ describe('Rules', () => {
         try {
           expect(() => child.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(imported, 'value', {
+          Object.defineProperty(imported, 'rules', {
             configurable: true,
             writable: true,
             value: originalImportedValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -1867,31 +1867,31 @@ describe('Rules', () => {
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.value;
-        const originalImportedValue = imported.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalImportedValue = imported.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl parent Rules.value');
+              throw new Error('writable imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(imported, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl imported Rules.value');
+              throw new Error('writable imported setDefined path should not crawl imported Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('writable imported setDefined path should not crawl child Rules.value');
+              throw new Error('writable imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -1899,17 +1899,17 @@ describe('Rules', () => {
         try {
           child.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(imported, 'value', {
+          Object.defineProperty(imported, 'rules', {
             configurable: true,
             writable: true,
             value: originalImportedValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -1984,40 +1984,40 @@ describe('Rules', () => {
         const parentFrame = node.getScopeFrame(undefined, false);
         const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.value;
-        const originalOptionalValue = optional.value;
-        const originalPublicValue = publicRules.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalOptionalValue = optional.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl parent Rules.value');
+              throw new Error('public imported setDefined path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(optional, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl optional Rules.value');
+              throw new Error('public imported setDefined path should not crawl optional Rules.rules');
             }
           }
         });
         Object.defineProperties(publicRules, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl public Rules.value');
+              throw new Error('public imported setDefined path should not crawl public Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('public imported setDefined path should not crawl child Rules.value');
+              throw new Error('public imported setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2025,22 +2025,22 @@ describe('Rules', () => {
         try {
           child.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(publicRules, 'value', {
+          Object.defineProperty(publicRules, 'rules', {
             configurable: true,
             writable: true,
             value: originalPublicValue
           });
-          Object.defineProperty(optional, 'value', {
+          Object.defineProperty(optional, 'rules', {
             configurable: true,
             writable: true,
             value: originalOptionalValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -2074,31 +2074,31 @@ describe('Rules', () => {
         const parentFrame = node.getScopeFrame(undefined, false);
         const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.value;
-        const originalPublicValue = publicRules.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl parent Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(publicRules, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl public Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl public Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('duplicate public setDefined path should not crawl child Rules.value');
+              throw new Error('duplicate public setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2106,17 +2106,17 @@ describe('Rules', () => {
         try {
           child.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(publicRules, 'value', {
+          Object.defineProperty(publicRules, 'rules', {
             configurable: true,
             writable: true,
             value: originalPublicValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -2144,21 +2144,21 @@ describe('Rules', () => {
         ]);
         const parentFrame = node.getScopeFrame(undefined, false);
         const publicDecl = vardecl({ name: 'one', value: any('one') });
-        const originalPublicRegistrationValue = publicRules.value;
+        const originalPublicRegistrationValue = publicRules.rules;
         publicRules.adopt(publicDecl);
         publicRules.rules.push(publicDecl);
         Object.defineProperties(publicRules, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('late child registration should not rebuild public Rules.value');
+              throw new Error('late child registration should not rebuild public Rules.rules');
             }
           }
         });
         try {
           publicRules.registerNode(publicDecl);
         } finally {
-          Object.defineProperty(publicRules, 'value', {
+          Object.defineProperty(publicRules, 'rules', {
             configurable: true,
             writable: true,
             value: originalPublicRegistrationValue
@@ -2166,31 +2166,31 @@ describe('Rules', () => {
         }
         const publicFrame = publicRules.getScopeFrame(parentFrame, false);
         child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.value;
-        const originalPublicValue = publicRules.value;
-        const originalChildValue = child.value;
+        const originalParentValue = node.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
 
         Object.defineProperties(node, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl parent Rules.value');
+              throw new Error('late carried setDefined path should not crawl parent Rules.rules');
             }
           }
         });
         Object.defineProperties(publicRules, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl public Rules.value');
+              throw new Error('late carried setDefined path should not crawl public Rules.rules');
             }
           }
         });
         Object.defineProperties(child, {
-          value: {
+          rules: {
             configurable: true,
             get() {
-              throw new Error('late carried setDefined path should not crawl child Rules.value');
+              throw new Error('late carried setDefined path should not crawl child Rules.rules');
             }
           }
         });
@@ -2198,17 +2198,17 @@ describe('Rules', () => {
         try {
           child.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(child, 'value', {
+          Object.defineProperty(child, 'rules', {
             configurable: true,
             writable: true,
             value: originalChildValue
           });
-          Object.defineProperty(publicRules, 'value', {
+          Object.defineProperty(publicRules, 'rules', {
             configurable: true,
             writable: true,
             value: originalPublicValue
           });
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalParentValue
@@ -2296,7 +2296,7 @@ describe('Rules', () => {
         node.getScopeFrame(undefined, false);
         node.registerNode(assignment, undefined, context);
 
-        expect(node.value.map(child => child.toTrimmedString())).toEqual([
+        expect(node.rules.map(child => child.toTrimmedString())).toEqual([
           'color: red',
           'color: blue',
           'color := blue'
@@ -2322,19 +2322,19 @@ describe('Rules', () => {
           value: any('one'),
           readonly: true
         });
-        const originalValue = node.value;
+        const originalValue = node.rules;
 
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           get() {
-            throw new Error('readonly setDefined live-cell path should not crawl Rules.value');
+            throw new Error('readonly setDefined live-cell path should not crawl Rules.rules');
           }
         });
 
         try {
           expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
         } finally {
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalValue

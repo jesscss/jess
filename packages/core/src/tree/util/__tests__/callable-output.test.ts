@@ -49,7 +49,7 @@ describe('callable output helpers', () => {
     });
 
     expect(seenSource).toBe(sourceRules);
-    expect(output.value).toEqual([]);
+    expect(output.rules).toEqual([]);
   });
 
   it('finalizes a single output rule with placement state', () => {
@@ -103,7 +103,7 @@ describe('callable output helpers', () => {
       isIndexedRuleChild: () => true
     });
 
-    expect(output.value).toEqual([outputA, outputB]);
+    expect(output.rules).toEqual([outputA, outputB]);
     expect(outputA.frozen).toBe(false);
     expect(outputB.frozen).toBe(false);
     expect(outputA.parent).toBe(output);
@@ -157,10 +157,10 @@ describe('callable output helpers', () => {
     });
 
     expect(defaultState.pendingCandidates).toHaveLength(1);
-    expect(output.value).toHaveLength(2);
-    expect(output.value[0]?.index).toBe(0);
-    expect(output.value[1]?.index).toBe(1);
-    const renderedChildren = output.value.map(rule => rule?.toString?.() ?? '');
+    expect(output.rules).toHaveLength(2);
+    expect(output.rules[0]?.index).toBe(0);
+    expect(output.rules[1]?.index).toBe(1);
+    const renderedChildren = output.rules.map(rule => rule?.toString?.() ?? '');
     expect(renderedChildren).toContain('color: red;\n');
     expect(renderedChildren).toContain('background: blue;\n');
   });

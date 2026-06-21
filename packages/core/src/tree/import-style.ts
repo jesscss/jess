@@ -102,8 +102,18 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
   if (isNode(value, N.Ruleset)) {
     cb(value as Ruleset);
   }
+  if (isNode(value, N.Rules)) {
+    visitDescendantRulesets((value as Rules).rules, cb);
+    return;
+  }
   if (value instanceof Node) {
-    visitDescendantRulesets(value.value, cb);
+    const childKeys = (value.constructor as typeof Node).childKeys;
+    if (childKeys) {
+      const fields = value as unknown as Record<string, unknown>;
+      for (let i = 0; i < childKeys.length; i++) {
+        visitDescendantRulesets(fields[childKeys[i]!], cb);
+      }
+    }
     return;
   }
   if (Array.isArray(value)) {

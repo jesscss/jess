@@ -210,7 +210,7 @@ function getDirectDeclarationBucket(
   }
 
   let bucket: Declaration[] | undefined;
-  const value = scope.value;
+  const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
     if (!isNode(node, N.Declaration | N.VarDeclaration)) {

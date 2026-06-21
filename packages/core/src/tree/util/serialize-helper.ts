@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import { F_EXTENDED, type Node } from '../node.js';
+import { F_EXTENDED, Node } from '../node.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
@@ -161,15 +161,26 @@ function containsNodeType(value: unknown, type: string): boolean {
   if (!value || typeof value !== 'object') {
     return false;
   }
-  const node = value as { type?: unknown; value?: unknown };
-  if (node.type === type) {
+  if (Array.isArray(value)) {
+    return value.some(child => containsNodeType(child, type));
+  }
+  if (!(value instanceof Node)) {
+    return false;
+  }
+  if (value.type === type) {
     return true;
   }
-  const childValue = node.value;
-  if (Array.isArray(childValue)) {
-    return childValue.some(child => containsNodeType(child, type));
+  const childKeys = (value.constructor as typeof Node).childKeys;
+  if (!childKeys) {
+    return false;
   }
-  return containsNodeType(childValue, type);
+  const fields = value as unknown as Record<string, unknown>;
+  for (let i = 0; i < childKeys.length; i++) {
+    if (containsNodeType(fields[childKeys[i]!], type)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function canMergeSameHeaderRuleset(

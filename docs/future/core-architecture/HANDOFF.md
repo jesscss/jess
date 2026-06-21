@@ -103,6 +103,43 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `Rules.value` payload deletion.
+- Verdict: accepted as an AST ownership correction and hot-path source-of-truth
+  cleanup, not a measured performance pass. `Rules` now owns only `.rules`;
+  real value nodes keep `.value`.
+- New traversal: `Rules.clone(...)` uses one direct indexed loop over
+  `this.rules` when cloning children. Generic descendant checks in import and
+  serialization helpers now walk `static childKeys` instead of assuming every
+  node has a `.value` payload. The at-rule layer check keeps its existing
+  frame-child scan but reads `frame.rules.rules` directly.
+- New node/materialization: no new node family was added. `Rules` calls
+  `super(NO_VALUE, ...)` and processes its constructor body directly into
+  `.rules`, removing the duplicate base payload. `Rules.clone(...)` still
+  creates a cloned body only for explicit clone callers.
+- Render/eval path: no render-only materialization was added. Scope-frame prep
+  now carries the already-read rules array through declaration and assignment
+  indexing so it does not reread the child surface just to prepare binding
+  state.
+- Helper/API surface: no compatibility alias was added. Test traps moved from
+  `.value` to `.rules` to keep proving that prepared lookup paths do not
+  rediscover child bodies. The flagged `throw new Error(...)` lines are those
+  test traps, not production miss control flow. The flagged `hasOwnProperty`
+  read is the constructor contract assertion proving `Rules` no longer owns a
+  `.value` payload.
+- Metadata mutations: no new parent/source mutation path was added. The
+  source-node comparisons flagged in the diff are the existing at-rule layer
+  placement identity check after changing the body read from `.value` to
+  `.rules`.
+- Flagged array helpers: the `.map(...)` calls are test expectations over
+  output/source placement arrays. The production `Array.some(...)` in
+  `containsNodeType(...)` is a cold serialization merge check over an already
+  provided child array; it replaces an invalid generic `.value` descent rather
+  than adding a new render/eval walk.
+- Evidence: `@jesscss/css-parser` build, `@jesscss/core` build, focused
+  reference/declaration tests, and the touched core test slice passed. The
+  touched slice covered `10` files, `957` passing tests, and `6` skipped. No
+  speed claim is made without benchmark/profile evidence.
+
 - Latest pass: shared cheap at-rule prelude helper and CSS block at-rules.
 - Verdict: accepted as a CSS/Less parser-shape DRY pass, not a measured
   performance pass. The cheap prelude tokenizer now lives in `@jesscss/css-parser`

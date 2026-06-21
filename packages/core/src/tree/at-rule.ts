@@ -1280,20 +1280,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             ) {
               continue;
             }
-            const children = frame.rules?.value;
+            const children = frame.rules.rules;
             let frameContainsNode = false;
-            if (children) {
-              for (let childIndex = 0; childIndex < children.length; childIndex++) {
-                const child = children[childIndex]!;
-                if (
-                  child === node
-                  || child === node.sourceNode
-                  || child.sourceNode === node
-                  || child.sourceNode === node.sourceNode
-                ) {
-                  frameContainsNode = true;
-                  break;
-                }
+            for (let childIndex = 0; childIndex < children.length; childIndex++) {
+              const child = children[childIndex]!;
+              if (
+                child === node
+                || child === node.sourceNode
+                || child.sourceNode === node
+                || child.sourceNode === node.sourceNode
+              ) {
+                frameContainsNode = true;
+                break;
               }
             }
             const recordLayerName = record.layerName;

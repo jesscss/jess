@@ -504,7 +504,7 @@ describe('reference', () => {
         runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
         context.rulesContext = runtimeScope;
 
-        Object.defineProperty(fallbackParent, 'value', {
+        Object.defineProperty(fallbackParent, 'rules', {
           configurable: true,
           get() {
             throw new Error('covered fallback-frame miss should not rediscover fallback parent declarations');
@@ -520,7 +520,7 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('fallback');
       } finally {
-        Object.defineProperty(fallbackParent, 'value', {
+        Object.defineProperty(fallbackParent, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -1866,8 +1866,8 @@ describe('reference', () => {
         }
         expect(clonedRules).toBe(0);
         expect(inheritedRules).toBe(0);
-        expect(resolved.value[0]).toBe(resolvedSource.value[0]);
-        expect(resolved.value[0]?.parent).toBe(resolvedSource);
+        expect(resolved.rules[0]).toBe(resolvedSource.rules[0]);
+        expect(resolved.rules[0]?.parent).toBe(resolvedSource);
         expect(sourceDecl.parent).toBe(sourceValue);
         expect(context.referenceStack).toBe(0);
       } finally {
@@ -1903,7 +1903,7 @@ describe('reference', () => {
 
         expect(rendered).toContain('color: blue');
         expect(clonedRules).toBe(0);
-        expect(sourceValue.value[0]).toBe(sourceDecl);
+        expect(sourceValue.rules[0]).toBe(sourceDecl);
         expect(sourceValue.parent).toBe(sourceBinding);
         expect(context.referenceStack).toBe(0);
       } finally {
@@ -2665,7 +2665,7 @@ describe('reference', () => {
           })
         ])
       ]);
-      const child = node.value[2]!;
+      const child = node.rules[2]!;
       child.parent = node;
       let evald = await node.eval(context);
       expect(evald.toTrimmedString()).toBeString(`
@@ -2708,7 +2708,7 @@ describe('reference', () => {
       };
       try {
         const evald = setRulesContext(await node.eval(context));
-        const evaluatedDecl = evald.value[0];
+        const evaluatedDecl = evald.rules[0];
         expect(evaluatedDecl?.type).toBe('Declaration');
         if (evaluatedDecl?.type !== 'Declaration') {
           return;
@@ -3627,19 +3627,19 @@ describe('reference', () => {
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
-        if (entry.publicMatch?.node === childRules.value[0]) {
+        if (entry.publicMatch?.node === childRules.rules[0]) {
           cachedMatch = entry;
           break;
         }
       }
       expect(cachedMatch?.publicMatch).toMatchObject({
-        node: childRules.value[0],
+        node: childRules.rules[0],
         ownerRules: childRules,
         index: 0
       });
 
       const originalValue = root.rules;
-      Object.defineProperty(root, 'value', {
+      Object.defineProperty(root, 'rules', {
         configurable: true,
         get() {
           throw new Error('direct declaration lookup should reuse carried child entries');
@@ -3650,7 +3650,7 @@ describe('reference', () => {
         const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found?.value.valueOf()).toBe('blue');
       } finally {
-        Object.defineProperty(root, 'value', {
+        Object.defineProperty(root, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3678,8 +3678,8 @@ describe('reference', () => {
         hasVarDeclarationSurface: true
       });
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('property lookup should skip variable-only child surfaces');
@@ -3690,7 +3690,7 @@ describe('reference', () => {
         const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3717,8 +3717,8 @@ describe('reference', () => {
         hasVarDeclarationSurface: false
       });
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('variable lookup should skip property-only child surfaces');
@@ -3729,7 +3729,7 @@ describe('reference', () => {
         const found = findVariableDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3814,16 +3814,16 @@ describe('reference', () => {
         hasReferenceImportSurface: true
       });
 
-      const ordinaryValue = ordinaryChild.value;
-      const referenceValue = referenceChild.value;
+      const ordinaryValue = ordinaryChild.rules;
+      const referenceValue = referenceChild.rules;
       let referenceReads = 0;
-      Object.defineProperty(ordinaryChild, 'value', {
+      Object.defineProperty(ordinaryChild, 'rules', {
         configurable: true,
         get() {
           throw new Error('variable lookup should not widen property-only child scans');
         }
       });
-      Object.defineProperty(referenceChild, 'value', {
+      Object.defineProperty(referenceChild, 'rules', {
         configurable: true,
         get() {
           referenceReads++;
@@ -3836,12 +3836,12 @@ describe('reference', () => {
         expect(found).toBeUndefined();
         expect(referenceReads).toBeGreaterThan(0);
       } finally {
-        Object.defineProperty(ordinaryChild, 'value', {
+        Object.defineProperty(ordinaryChild, 'rules', {
           configurable: true,
           writable: true,
           value: ordinaryValue
         });
-        Object.defineProperty(referenceChild, 'value', {
+        Object.defineProperty(referenceChild, 'rules', {
           configurable: true,
           writable: true,
           value: referenceValue
@@ -3874,18 +3874,18 @@ describe('reference', () => {
         hasReferenceImportSurface: true
       });
 
-      const ordinaryValue = ordinaryChild.value;
-      const referenceValue = referenceChild.value;
+      const ordinaryValue = ordinaryChild.rules;
+      const referenceValue = referenceChild.rules;
       let ordinaryReads = 0;
       let referenceReads = 0;
-      Object.defineProperty(ordinaryChild, 'value', {
+      Object.defineProperty(ordinaryChild, 'rules', {
         configurable: true,
         get() {
           ordinaryReads++;
           return ordinaryValue;
         }
       });
-      Object.defineProperty(referenceChild, 'value', {
+      Object.defineProperty(referenceChild, 'rules', {
         configurable: true,
         get() {
           referenceReads++;
@@ -3899,12 +3899,12 @@ describe('reference', () => {
         expect(ordinaryReads).toBe(0);
         expect(referenceReads).toBeGreaterThan(0);
       } finally {
-        Object.defineProperty(ordinaryChild, 'value', {
+        Object.defineProperty(ordinaryChild, 'rules', {
           configurable: true,
           writable: true,
           value: ordinaryValue
         });
-        Object.defineProperty(referenceChild, 'value', {
+        Object.defineProperty(referenceChild, 'rules', {
           configurable: true,
           writable: true,
           value: referenceValue
@@ -3933,8 +3933,8 @@ describe('reference', () => {
       entry.hasVarDeclarationSurface = false;
       entry.hasReferenceImportSurface = false;
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('variable lookup should skip non-variable non-reference-import child surfaces');
@@ -3945,7 +3945,7 @@ describe('reference', () => {
         const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3971,9 +3971,9 @@ describe('reference', () => {
       entry!.hasDeclarationSurface = false;
       entry!.hasReferenceImportSurface = false;
 
-      const originalValue = childRules.value;
+      const originalValue = childRules.rules;
       let reads = 0;
-      Object.defineProperty(childRules, 'value', {
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           reads++;
@@ -3986,7 +3986,7 @@ describe('reference', () => {
         expect(found).toBeUndefined();
         expect(reads).toBe(0);
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -4235,9 +4235,9 @@ describe('reference', () => {
           value: any('blue')
         })
       ]);
-      const originalValue = node.value;
+      const originalValue = node.rules;
       let reads = 0;
-      Object.defineProperty(node, 'value', {
+      Object.defineProperty(node, 'rules', {
         configurable: true,
         get() {
           reads++;
@@ -4254,7 +4254,7 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames[0]).toBe(originalValue[0]);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(originalValue[1]);
       } finally {
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -4449,7 +4449,7 @@ describe('reference', () => {
         expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         await Promise.resolve(node.prepareRegistration(context));
         setRulesContext(node);
-        const dynamicDecl = node.value.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
+        const dynamicDecl = node.rules.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
 
         expect(declarationHits).toHaveLength(0);
         expect(node.directDeclarationsByName?.get('x')).toBeUndefined();

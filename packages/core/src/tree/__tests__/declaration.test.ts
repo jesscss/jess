@@ -1333,8 +1333,8 @@ describe('Declaration', () => {
       ])
     ]);
 
-    const parent = node.value[0]!;
-    const child = parent.value[2]!;
+    const parent = node.rules[0]!;
+    const child = parent.rules[2]!;
     child.parent = parent;
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -1475,7 +1475,7 @@ describe('Declaration', () => {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1) !important;
       }
     `);
-    const elevated = node.value[1];
+    const elevated = node.rules[1];
     expect(elevated).toBeInstanceOf(Ruleset);
     if (!(elevated instanceof Ruleset)) {
       throw new TypeError('Expected ruleset output');

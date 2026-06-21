@@ -336,7 +336,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     return;
   }
   if (isNode(input, N.Rules)) {
-    const rules = input.value;
+    const rules = input.rules;
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;

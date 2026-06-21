@@ -818,7 +818,7 @@ describe('Control Nodes', () => {
       this: Rules,
       ...args: Parameters<typeof originalClone>
     ): ReturnType<typeof originalClone> {
-      if (this.value.some(node => (
+      if (this.rules.some(node => (
         node.type === 'Declaration'
         && node.name?.valueOf?.() === 'tick'
       ))) {
@@ -1245,7 +1245,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput).not.toBe(loopRules);
-    expect(loopOutput.value).toEqual([]);
+    expect(loopOutput.rules).toEqual([]);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
@@ -1303,7 +1303,7 @@ describe('Control Nodes', () => {
       const [deep] = args;
       if (
         deep === false
-        && this.value.some(node => (
+        && this.rules.some(node => (
           node.type === 'Declaration'
           && node.name?.valueOf?.() === 'marker'
         ))
@@ -1337,7 +1337,7 @@ describe('Control Nodes', () => {
 
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
-    const firstChild = loopOutput instanceof Rules ? loopOutput.value[0] : undefined;
+    const firstChild = loopOutput instanceof Rules ? loopOutput.rules[0] : undefined;
 
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
@@ -1356,7 +1356,7 @@ describe('Control Nodes', () => {
       this: Rules,
       ...args: Parameters<typeof originalClone>
     ): ReturnType<typeof originalClone> {
-      if (this.value.some(node => (
+      if (this.rules.some(node => (
         node.type === 'Declaration'
         && node.name?.valueOf?.() === 'item'
       ))) {
@@ -1397,7 +1397,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput).not.toBe(loopRules);
-    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.rules).toHaveLength(2);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
@@ -1425,7 +1425,7 @@ describe('Control Nodes', () => {
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.rules).toHaveLength(2);
     expect(loopOutput.functionsByName).toBeUndefined();
   });
 

@@ -222,8 +222,8 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ruleset = evald.value[0];
-      const nestedRuleset = ext8Ruleset?.rules?.value?.[0];
+      const ext8Ruleset = evald.rules[0];
+      const nestedRuleset = ext8Ruleset?.rules?.rules?.[0];
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
@@ -249,7 +249,7 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ext9Ruleset = evald.value[0];
+      const ext8Ext9Ruleset = evald.rules[0];
       const selectorStr = ext8Ext9Ruleset?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
       expect(selectorStr).not.toContain('.zoo');
@@ -296,8 +296,8 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      const nested = evald.value[1]?.rules?.value?.[0];
+      const firstRuleset = evald.rules[0];
+      const nested = evald.rules[1]?.rules?.rules?.[0];
       expect(firstRuleset?.selector?.valueOf()).toContain('.zap');
       const nestedSel = nested?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');

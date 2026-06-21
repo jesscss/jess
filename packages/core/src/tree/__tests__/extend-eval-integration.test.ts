@@ -443,7 +443,7 @@ describe('extend integration (eval -> toString)', () => {
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const outerBb = evald.value.find(
+    const outerBb = evald.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
         && node.rules.rules.some(rule => isDeclarationNamed(rule, 'background'))

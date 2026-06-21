@@ -73,7 +73,7 @@ function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
-    output.value.push(source[i]!);
+    output.rules.push(source[i]!);
   }
   return output;
 }
