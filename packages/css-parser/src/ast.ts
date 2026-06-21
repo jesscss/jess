@@ -1,10 +1,15 @@
 import {
   atrulestatement,
+  co,
+  compound,
   decl,
+  el,
   rules,
   ruleset,
+  sel,
   stylesheet,
   type Node,
+  type Selector,
   type Stylesheet
 } from '@jesscss/core';
 import {
@@ -21,6 +26,13 @@ import {
 export type FlatCssDeclarationStylesheetResult = ScannerParseResult<Stylesheet>;
 
 const EMPTY_DIAGNOSTICS: readonly ParserDiagnostic[] = [];
+
+type CheapSelectorComponent =
+  | string[]
+  | ' '
+  | '>'
+  | '+'
+  | '~';
 
 function findImportantStart(value: string): number {
   const trimmed = value.trimEnd();
@@ -98,6 +110,150 @@ function parseDeclarationNodes(
 
 function canParseFlatQualifiedRule(source: string, selector: string, bodyStart: number, bodyEnd: number): boolean {
   return selector[0] !== '@' && findTopLevelBlockStart(source, bodyStart, bodyEnd) === -1;
+}
+
+function isSelectorNameCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 95
+  );
+}
+
+function isSelectorNameStartCode(code: number, allowUppercase: boolean): boolean {
+  return (
+    (code >= 97 && code <= 122)
+    || (allowUppercase && code >= 65 && code <= 90)
+    || code === 95
+    || code === 45
+  );
+}
+
+function isTypeSelectorStartCode(code: number): boolean {
+  return (code >= 97 && code <= 122) || code === 95;
+}
+
+function scanBasicSelectorAtom(source: string, start: number): number {
+  const first = source[start];
+  if (first === '*') {
+    return start + 1;
+  }
+  let cursor = start;
+  if (first === '.' || first === '#') {
+    cursor++;
+    if (cursor >= source.length || !isSelectorNameStartCode(source.charCodeAt(cursor), true)) {
+      return -1;
+    }
+    if (source[cursor] === '-' && (cursor + 1 >= source.length || !isSelectorNameCode(source.charCodeAt(cursor + 1)))) {
+      return -1;
+    }
+  } else if (!isTypeSelectorStartCode(source.charCodeAt(cursor))) {
+    return -1;
+  }
+  while (cursor < source.length && isSelectorNameCode(source.charCodeAt(cursor))) {
+    const code = source.charCodeAt(cursor);
+    if (first !== '.' && first !== '#' && code >= 65 && code <= 90) {
+      return -1;
+    }
+    cursor++;
+  }
+  return cursor;
+}
+
+function scanCompoundSelector(source: string, start: number): { component: string[]; end: number } | undefined {
+  const atoms: string[] = [];
+  let cursor = start;
+  while (cursor < source.length) {
+    const end = scanBasicSelectorAtom(source, cursor);
+    if (end === -1) {
+      break;
+    }
+    atoms.push(source.slice(cursor, end));
+    cursor = end;
+  }
+  if (atoms.length === 0) {
+    return undefined;
+  }
+  return {
+    component: atoms,
+    end: cursor
+  };
+}
+
+function materializeCheapCompound(component: string[]): Selector {
+  return component.length === 1
+    ? el(component[0]!)
+    : compound(component.map(atom => el(atom)));
+}
+
+function materializeCheapSelector(components: CheapSelectorComponent[]): Selector {
+  if (components.length === 1) {
+    const only = components[0]!;
+    if (Array.isArray(only)) {
+      return materializeCheapCompound(only);
+    }
+  }
+  return sel(components.map((component) => {
+    if (typeof component === 'string') {
+      return co(component);
+    }
+    return materializeCheapCompound(component);
+  }));
+}
+
+function parseCheapSelector(selector: string): string | Selector {
+  const source = selector.trim();
+  if (!source) {
+    return selector;
+  }
+  const components: CheapSelectorComponent[] = [];
+  let cursor = 0;
+  let sawWhitespace = false;
+  let lastWasCombinator = false;
+  while (cursor < source.length) {
+    const code = source.charCodeAt(cursor);
+    if (isSourceSelectorWhitespace(code)) {
+      sawWhitespace = components.length > 0 && !lastWasCombinator;
+      cursor++;
+      continue;
+    }
+    const char = source[cursor];
+    if (char === '>' || char === '+' || char === '~') {
+      if (components.length === 0 || lastWasCombinator) {
+        return selector;
+      }
+      components.push(char);
+      cursor++;
+      sawWhitespace = false;
+      lastWasCombinator = true;
+      continue;
+    }
+    if (sawWhitespace) {
+      components.push(' ');
+      sawWhitespace = false;
+    }
+    const compoundResult = scanCompoundSelector(source, cursor);
+    if (!compoundResult) {
+      return selector;
+    }
+    components.push(compoundResult.component);
+    cursor = compoundResult.end;
+    lastWasCombinator = false;
+  }
+  if (components.length === 0 || lastWasCombinator) {
+    return selector;
+  }
+  if (components.length === 1) {
+    const only = components[0]!;
+    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
+  }
+  return materializeCheapSelector(components);
+}
+
+function isSourceSelectorWhitespace(code: number): boolean {
+  return code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
 }
 
 function parseStatementNode(
@@ -228,7 +384,7 @@ export function parseFlatCssDeclarationStylesheet(
     const selector = source.slice(cursor, blockStart).trim();
     if (selector && canParseFlatQualifiedRule(source, selector, blockStart + 1, blockEnd)) {
       children.push(ruleset({
-        selector,
+        selector: parseCheapSelector(selector),
         rules: rules(parseDeclarationNodes(source, blockStart + 1, blockEnd, addDiagnostic))
       }));
     } else if (selector) {

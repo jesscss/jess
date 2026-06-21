@@ -1,5 +1,5 @@
 import { parseFlatCssDeclarationStylesheet } from '../src/index.js';
-import { N, isNode } from '@jesscss/core';
+import { N, isNode, serializeTypes } from '@jesscss/core';
 import { SourceText } from '@jesscss/parser';
 
 describe('parseFlatCssDeclarationStylesheet', () => {
@@ -63,6 +63,75 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+  });
+
+  test('materializes only cheap structured selectors', () => {
+    const result = parseFlatCssDeclarationStylesheet('selectors.css', `
+      .simple { color: red; }
+      #id.card { color: blue; }
+      .a > .b + div { color: green; }
+      [data-x] { color: black; }
+      .a > DIV { color: white; }
+      .a > { color: yellow; }
+      .a > + .b { color: cyan; }
+      #id.1bad { color: pink; }
+      123.foo { color: orange; }
+      -.foo { color: purple; }
+      --.foo { color: brown; }
+      #id.- { color: lime; }
+      .a.#- { color: navy; }
+    `);
+    const [
+      simpleRule,
+      compoundRule,
+      complexRule,
+      attributeRule,
+      uppercaseTypeRule,
+      danglingCombinatorRule,
+      consecutiveCombinatorRule,
+      invalidClassRule,
+      invalidTypeRule,
+      bareHyphenTypeRule,
+      doubleHyphenTypeRule,
+      invalidClassHyphenRule,
+      invalidIdHyphenRule
+    ] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(simpleRule, N.Ruleset) && simpleRule.selector).toBe('.simple');
+    expect(isNode(attributeRule, N.Ruleset) && attributeRule.selector).toBe('[data-x]');
+    expect(isNode(uppercaseTypeRule, N.Ruleset) && uppercaseTypeRule.selector).toBe('.a > DIV');
+    expect(isNode(danglingCombinatorRule, N.Ruleset) && danglingCombinatorRule.selector).toBe('.a >');
+    expect(isNode(consecutiveCombinatorRule, N.Ruleset) && consecutiveCombinatorRule.selector).toBe('.a > + .b');
+    expect(isNode(invalidClassRule, N.Ruleset) && invalidClassRule.selector).toBe('#id.1bad');
+    expect(isNode(invalidTypeRule, N.Ruleset) && invalidTypeRule.selector).toBe('123.foo');
+    expect(isNode(bareHyphenTypeRule, N.Ruleset) && bareHyphenTypeRule.selector).toBe('-.foo');
+    expect(isNode(doubleHyphenTypeRule, N.Ruleset) && doubleHyphenTypeRule.selector).toBe('--.foo');
+    expect(isNode(invalidClassHyphenRule, N.Ruleset) && invalidClassHyphenRule.selector).toBe('#id.-');
+    expect(isNode(invalidIdHyphenRule, N.Ruleset) && invalidIdHyphenRule.selector).toBe('.a.#-');
+    expect(serializeTypes(compoundRule)).toContainString(`
+      selector:
+        (CompoundSelector
+          value:
+            [
+              (BasicSelector '#id')
+              (BasicSelector '.card')
+            ]
+        )
+    `);
+    expect(serializeTypes(complexRule)).toContainString(`
+      selector:
+        (ComplexSelector
+          value:
+            [
+              (BasicSelector '.a')
+              (Combinator '>')
+              (BasicSelector '.b')
+              (Combinator '+')
+              (BasicSelector 'div')
+            ]
+        )
+    `);
   });
 
   test('does not turn unsupported at-rules or nested blocks into fake flat rulesets', () => {
