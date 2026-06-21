@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "allowJs": false,
     "types": ["node"],
-    "noEmit": false
+    "noEmit": false,
+    "composite": false
   },
   "include": ["src/**/*.ts"],
   "exclude": [

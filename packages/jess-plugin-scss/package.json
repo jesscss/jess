@@ -14,12 +14,6 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "source": "./src/*.ts",
-      "import": "./lib/*.js",
-      "require": "./lib/*.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

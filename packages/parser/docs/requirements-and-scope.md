@@ -297,18 +297,13 @@ This schema is intentionally field-first:
   valid hydration strategies that cannot be inferred from node type, field name,
   source text, or parser mode
 
-Target language activation names should follow the same terminology:
+If a provider registry survives, it should be named around deferred fields and
+owned by the language parser or plugin that needs it. `@jesscss/parser` should
+not define a public `LanguageActivation` / `LanguageProfile` layer unless a real
+third-party language integration proves that a package-level abstraction is
+cheaper and clearer than direct parser/plugin registration.
 
-```ts
-type LanguageActivation = {
-  name: string;
-  profile: LanguageProfile;
-  supportedExtensions: readonly string[];
-  configureDeferredFieldParsers?(registry: DeferredFieldParserRegistry): void;
-};
-```
-
-If a provider registry survives, it should be named around deferred fields:
+Acceptable target terminology:
 
 ```ts
 type DeferredFieldParserKey = {
@@ -327,6 +322,11 @@ type DeferredFieldParseRequest = {
   sourceVersion: string | number;
 };
 ```
+
+For CSS/Less replacement work, start with direct AST construction and
+node-owned deferred fields. Add a registry only when a concrete caller needs to
+hydrate a field without coupling to the language parser instance that created
+the node.
 
 Names to avoid in target APIs:
 
