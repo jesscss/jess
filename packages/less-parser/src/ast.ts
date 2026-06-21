@@ -311,6 +311,14 @@ function parseDeferredLessSelector(selector: string): string | undefined {
   return isBalancedLessDeferredText(source, { requireInterpolation: true }) ? source : undefined;
 }
 
+function parseDeferredLessAmpersandSelector(selector: string): string | undefined {
+  const source = selector.trim();
+  if (source === '&' || source[0] !== '&' || source.includes('(') || source.includes(')')) {
+    return undefined;
+  }
+  return isBalancedLessDeferredText(source) ? source : undefined;
+}
+
 function parseLessVariableDeclaration(
   source: string,
   start: number,
@@ -972,6 +980,14 @@ function parseLessBlockNode(
       });
     }
     return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic));
+  }
+  const deferredAmpersandSelector = parseDeferredLessAmpersandSelector(selector);
+  if (deferredAmpersandSelector !== undefined) {
+    return ruleset({
+      selector: deferredAmpersandSelector,
+      ...(guard && { guard }),
+      rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+    });
   }
   const variableName = parseLessVariableBlockName(source, start, blockStart);
   if (variableName) {

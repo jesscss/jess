@@ -279,6 +279,35 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(result.tree)).not.toContain('selector: \'&\'');
   });
 
+  test('keeps ampersand suffix selector headers deferred as strings', () => {
+    const result = parseLessAstStylesheet('ampersand-suffix.less', `
+      .host {
+        &1 { width: 1px; }
+        &:focus { color: red; }
+        &-item { height: 2px; }
+      }
+    `);
+    const [host] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(host, N.Ruleset)).toBe(true);
+    if (!isNode(host, N.Ruleset)) {
+      throw new Error('Expected host ruleset');
+    }
+    const [numbered, focus, item] = host.rules.rules;
+    expect(isNode(numbered, N.Ruleset)).toBe(true);
+    expect(isNode(focus, N.Ruleset)).toBe(true);
+    expect(isNode(item, N.Ruleset)).toBe(true);
+    expect(isNode(numbered, N.Ruleset) && numbered.selector).toBe('&1');
+    expect(isNode(focus, N.Ruleset) && focus.selector).toBe('&:focus');
+    expect(isNode(item, N.Ruleset) && item.selector).toBe('&-item');
+    const serialized = serializeTypes(host);
+    expect(serialized).toContain('selector: \'&1\'');
+    expect(serialized).toContain('selector: \'&:focus\'');
+    expect(serialized).toContain('selector: \'&-item\'');
+    expect(serialized).not.toContain('(Ampersand');
+  });
+
   test('parses cheap guarded Less blocks as string-backed guards without fallback parsing', () => {
     const result = parseLessAstStylesheet('guarded.less', `
       .enabled when (@enabled = true) {

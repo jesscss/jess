@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less ampersand suffix selectors.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block headers such as `&1`, `&:focus`, and `&-item` now become
+  string-backed `Ruleset.selector` fields after exact `& { ... }` scope blocks
+  have already been handled. Parenthesized ampersand pseudo-functions still
+  wait for a later selector-hydration slice.
+- New traversal: no tree traversal. The existing Less-local deferred-text scan
+  validates the already-sliced ampersand header for balanced text; this does
+  not walk parent/source chains, side maps, or Chevrotain productions.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Accepted headers reuse existing `Ruleset` nodes and store
+  `selector` as a string.
+- Render path: parse-only slice. String selectors render through existing
+  string-backed ruleset header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred selector strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1338 parsed top-level rules and
+  moved from 282 warnings to 210 warnings with zero errors/thrown failures.
+  Remaining warning counts are 140 unsupported block headers, 69 unsupported
+  statements, and 1 empty declaration name. The statement count rose because
+  newly parsed ampersand-suffix blocks expose unsupported inner statements that
+  were previously hidden behind a skipped outer block. No speed claim is made.
+
 - Latest pass: scanner-first Less interpolated selector headers.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Less block headers containing `@{...}` interpolation now become
