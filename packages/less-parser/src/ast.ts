@@ -1,5 +1,6 @@
 import {
   VarDeclaration,
+  any,
   atrule,
   atrulestatement,
   compound,
@@ -145,6 +146,49 @@ function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclarati
   });
 }
 
+function parseParameterlessMixinName(header: string): string | undefined {
+  const source = header.trim();
+  const first = source[0];
+  if (first !== '.' && first !== '#') {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < source.length && isLessNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  if (nameEnd === 1) {
+    return undefined;
+  }
+  let cursor = nameEnd;
+  cursor = skipSourceTrivia(source, cursor, source.length, LESS_SCANNER_OPTIONS);
+  if (source[cursor] !== '(') {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(source, cursor + 1, source.length, LESS_SCANNER_OPTIONS);
+  if (source[cursor] !== ')') {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(source, cursor + 1, source.length, LESS_SCANNER_OPTIONS);
+  return cursor === source.length ? source.slice(0, nameEnd) : undefined;
+}
+
+function parseParameterlessMixinBlock(
+  source: string,
+  start: number,
+  blockStart: number,
+  blockEnd: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  const name = parseParameterlessMixinName(source.slice(start, blockStart));
+  if (!name) {
+    return undefined;
+  }
+  return mixin({
+    name: any(name, { role: 'name' }),
+    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+  });
+}
+
 function parseAtRuleBlock(
   source: string,
   start: number,
@@ -206,6 +250,10 @@ function parseLessBlockNode(
       blockEnd + 1
     );
     return undefined;
+  }
+  const mixinDefinition = parseParameterlessMixinBlock(source, start, blockStart, blockEnd, addDiagnostic);
+  if (mixinDefinition) {
+    return mixinDefinition;
   }
   const parsedSelector = parseCheapLessSelector(selector);
   if (parsedSelector === undefined) {

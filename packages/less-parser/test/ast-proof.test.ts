@@ -147,6 +147,42 @@ describe('parseLessAstStylesheet', () => {
     ].join('\n'));
   });
 
+  test('parses parameterless Less mixin definitions without fallback parsing', () => {
+    const result = parseLessAstStylesheet('mixin-definition.less', `
+      .paint() {
+        color: red;
+        .nested { width: @size; }
+      }
+
+      #theme() {
+        background: blue;
+      }
+    `);
+    const [paint, theme] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(paint, N.Mixin)).toBe(true);
+    expect(isNode(theme, N.Mixin)).toBe(true);
+    if (!isNode(paint, N.Mixin) || !isNode(theme, N.Mixin)) {
+      throw new Error('Expected parameterless Less mixin definitions');
+    }
+    expect(paint.name?.valueOf()).toBe('.paint');
+    expect(paint.params).toBeUndefined();
+    expect(paint.rules.rules[0]?.toTrimmedString()).toBe('color: red');
+    expect(paint.rules.rules[1]?.toTrimmedString()).toBe([
+      '.nested {',
+      '  width: @size;',
+      '}',
+      ''
+    ].join('\n'));
+    expect(theme.name?.valueOf()).toBe('#theme');
+    expect(theme.rules.rules[0]?.toTrimmedString()).toBe('background: blue');
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Mixin
+        name: (Any [role=name] '.paint')
+    `);
+  });
+
   test('diagnoses malformed Less at-rule blocks without fallback parsing', () => {
     const result = parseLessAstStylesheet('unsupported.less', `
       @ {
