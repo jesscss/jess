@@ -49,10 +49,13 @@ function registerInnerExtendRootIfHoisted(
   context.extendRoots.registerRoot(innerRules, wrapperRules, { layerName });
 }
 
+export type AtRuleName = string | Any | Interpolated;
+export type AtRulePrelude = string | Node;
+
 export type AtRuleValue = {
-  name: Any | Interpolated;
+  name: AtRuleName;
   /** The prelude */
-  prelude?: Node;
+  prelude?: AtRulePrelude;
   rules?: Rules;
 };
 
@@ -75,7 +78,7 @@ type AtRuleBodyEvalRecord = {
   clearRulesetFrames: boolean;
   restoreRulesetFrames: () => void;
   registration?: AtRuleBodyRegistrationState;
-  evaluatedPrelude?: Node;
+  evaluatedPrelude?: AtRulePrelude;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
   visible?: boolean;
@@ -109,9 +112,40 @@ function atRuleScalarTokenText(node: Node): string | undefined {
     : undefined;
 }
 
-function getAtRuleSourceIdentityText(node: Node | undefined): string {
+function renderAtRuleFieldText(
+  field: AtRuleName | AtRulePrelude,
+  printOptions: FinalPrintOptions,
+  withoutComments?: boolean
+): string {
+  if (typeof field === 'string') {
+    return field;
+  }
+  const scalarText = atRuleScalarTokenText(field);
+  if (scalarText !== undefined) {
+    return scalarText;
+  }
+  const savedTrivia = printOptions.trivia;
+  if (withoutComments) {
+    printOptions.trivia = createTriviaMap();
+  }
+  try {
+    const writer = new OutputWriter(printOptions.compress);
+    emitNodeSourceSyntaxWithTrivia(field, {
+      ...printOptions,
+      writer
+    });
+    return writer.toString();
+  } finally {
+    printOptions.trivia = savedTrivia;
+  }
+}
+
+function getAtRuleSourceIdentityText(node: AtRulePrelude | undefined): string {
   if (!node) {
     return '';
+  }
+  if (typeof node === 'string') {
+    return node;
   }
   const scalarText = atRuleScalarTokenText(node);
   if (scalarText !== undefined) {
@@ -127,9 +161,12 @@ function normalizeAtRuleIdentityText(text: string): string {
 }
 
 function renderAtRuleLeafNodeSyntax(
-  node: Node,
+  node: AtRuleName | AtRulePrelude,
   printOptions: FinalPrintOptions
 ): string {
+  if (typeof node === 'string') {
+    return node;
+  }
   const writer = new OutputWriter(printOptions.compress);
   emitNodeSourceSyntaxWithTrivia(node, {
     ...printOptions,
@@ -149,22 +186,16 @@ function writeDirectLeafAtRuleHeader(
     return false;
   }
   const w = options.writer;
-  const readNodeText = (node: Node): string | undefined => {
-    const scalarText = atRuleScalarTokenText(node);
-    if (scalarText !== undefined) {
-      return scalarText;
+  const readNodeText = (node: AtRuleName | AtRulePrelude): string => {
+    if (typeof node === 'string') {
+      return node;
     }
-    return renderAtRuleLeafNodeSyntax(node, options);
+    const scalarText = atRuleScalarTokenText(node);
+    return scalarText ?? renderAtRuleLeafNodeSyntax(node, options);
   };
   const nameText = readNodeText(parts.name);
-  if (nameText === undefined) {
-    return false;
-  }
   const prelude = parts.prelude;
   const preludeText = prelude ? readNodeText(prelude) : '';
-  if (prelude && preludeText === undefined) {
-    return false;
-  }
   const idt = indent(options.depth);
   if (idt) {
     w.add(idt);
@@ -188,34 +219,20 @@ function writeDirectLeafAtRuleHeader(
 }
 
 function renderAtRuleHeaderNodeSyntax(
-  node: Node,
+  node: AtRuleName | AtRulePrelude,
   printOptions: FinalPrintOptions,
   withoutComments?: boolean
 ): string {
-  const scalarText = atRuleScalarTokenText(node);
-  if (scalarText !== undefined) {
-    return scalarText;
-  }
-  const savedTrivia = printOptions.trivia;
-  if (withoutComments) {
-    printOptions.trivia = createTriviaMap();
-  }
-  try {
-    const writer = new OutputWriter(printOptions.compress);
-    emitNodeSourceSyntaxWithTrivia(node, {
-      ...printOptions,
-      writer
-    });
-    return writer.toString();
-  } finally {
-    printOptions.trivia = savedTrivia;
-  }
+  return renderAtRuleFieldText(node, printOptions, withoutComments);
 }
 
 function renderAtRulePostPreludeTrivia(
-  prelude: Node,
+  prelude: AtRulePrelude,
   printOptions: FinalPrintOptions
 ): string {
+  if (typeof prelude === 'string') {
+    return '';
+  }
   const writer = new OutputWriter(printOptions.compress);
   emitCommentTriviaAfterNode(prelude, {
     ...printOptions,
@@ -225,10 +242,13 @@ function renderAtRulePostPreludeTrivia(
 }
 
 function renderAtRuleBetweenNameAndPreludeTrivia(
-  name: Node,
-  prelude: Node,
+  name: AtRuleName,
+  prelude: AtRulePrelude,
   printOptions: FinalPrintOptions
 ): string {
+  if (typeof name === 'string' || typeof prelude === 'string') {
+    return '';
+  }
   const writer = new OutputWriter(printOptions.compress);
   emitCommentTriviaBetweenNodes(name, prelude, {
     ...printOptions,
@@ -358,7 +378,7 @@ function clearRulesetFramesForAtRuleBody(
 function createAtRuleBodyEvalRecordState(
   context: Context,
   options: {
-    evaluatedPrelude?: Node;
+    evaluatedPrelude?: AtRulePrelude;
     output?: AtRuleBodyOutputState;
     writeEvaluatedPrelude?: boolean;
     writeVisibility?: boolean;
@@ -423,11 +443,13 @@ function setAtRuleBodyEvalOutput(
 
 function setAtRuleBodyEvalPrelude(
   record: AtRuleBodyEvalRecord,
-  prelude: Node
+  prelude: AtRulePrelude
 ): void {
   record.evaluatedPrelude = prelude;
   if (record.writeEvaluatedPrelude) {
-    record.evalFrame.adopt(prelude);
+    if (prelude instanceof Node) {
+      record.evalFrame.adopt(prelude);
+    }
     record.evalFrame.prelude = prelude;
     record.evalFrame._valueOf = undefined;
   }
@@ -565,7 +587,9 @@ function applyAtRuleBodyPublicResultState(
   evaluatedBody: Rules | undefined = record.evaluatedBody
 ): AtRule {
   if (record.evaluatedPrelude && record.evaluatedPrelude !== node.prelude) {
-    node.adopt(record.evaluatedPrelude);
+    if (record.evaluatedPrelude instanceof Node) {
+      node.adopt(record.evaluatedPrelude);
+    }
     node.prelude = record.evaluatedPrelude;
     node._valueOf = undefined;
   }
@@ -625,6 +649,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
+    if (typeof name === 'string') {
+      return name;
+    }
     const owned = name.canReuseAsLeaf() ? name.reuseAsLeaf() : name.cloneForPlacement();
     if (!(owned instanceof Any) && !(owned instanceof Interpolated)) {
       throw new TypeError('Expected at-rule name copy');
@@ -632,7 +659,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return owned;
   }
 
-  private ownNode(node: Node): Node {
+  private ownNode(node: AtRulePrelude): AtRulePrelude {
+    if (typeof node === 'string') {
+      return node;
+    }
     return node.canReuseAsLeaf() ? node.reuseAsLeaf() : node.cloneForPlacement();
   }
 
@@ -668,22 +698,39 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return this.applyDerivedMetadata(node);
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): AtRule {
     cloneFn ??= n => n.clone(deep);
-    const clonePart = <T extends Node | undefined>(part: T): T => (
-      deep && part instanceof Node ? cloneFn(part) as T : part
-    );
+    let name = this.name;
+    if (deep && name instanceof Node) {
+      const clonedName = cloneFn(name);
+      if (!(clonedName instanceof Any) && !(clonedName instanceof Interpolated)) {
+        throw new TypeError('Expected cloned at-rule name');
+      }
+      name = clonedName;
+    }
+    let prelude = this.prelude;
+    if (deep && prelude instanceof Node) {
+      prelude = cloneFn(prelude);
+    }
+    let clonedRules = this.rules;
+    if (deep && clonedRules instanceof Node) {
+      const nextRules = cloneFn(clonedRules);
+      if (!(nextRules instanceof Rules)) {
+        throw new TypeError('Expected cloned at-rule rules');
+      }
+      clonedRules = nextRules;
+    }
     const node = new AtRule(
       {
-        name: clonePart(this.name),
-        prelude: clonePart(this.prelude),
-        rules: clonePart(this.rules)
+        name,
+        prelude,
+        rules: clonedRules
       },
       this._options ? { ...this._options } : undefined,
       this._location?.length ? this._location : undefined,
       this._treeContext
-    ).inherit(this) as this;
-    return this.applyDerivedMetadata(node) as this;
+    ).inherit(this);
+    return this.applyDerivedMetadata(node);
   }
 
   /** Used for equality comparison with other at-rules */
@@ -780,7 +827,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       writeVisibility?: boolean;
     } = {}
   ): MaybePromise<AtRuleBodyEvalRecord> {
-    const finishPrelude = (evaluatedPrelude: Node | undefined): MaybePromise<AtRuleBodyEvalRecord> => {
+    const finishPrelude = (evaluatedPrelude: AtRulePrelude | undefined): MaybePromise<AtRuleBodyEvalRecord> => {
       const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
       const evaluated = this.evalBodyNode(context, record);
       const finish = (node: Node): AtRuleBodyEvalRecord => {
@@ -801,7 +848,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private createBodyEvalRecord(
     context: Context,
-    evaluatedPrelude: Node | undefined,
+    evaluatedPrelude: AtRulePrelude | undefined,
     options: {
       writeEvaluatedPrelude?: boolean;
       writeVisibility?: boolean;
@@ -840,7 +887,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     };
   }
 
-  private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
+  private evalBodyPreludeState(context: Context): MaybePromise<AtRulePrelude | undefined> {
     const { prelude } = this;
     if (!prelude) {
       return undefined;
@@ -849,8 +896,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private evalLeafValue(context: Context): MaybePromise<AtRuleValue> {
-    const finishName = (name: Node): MaybePromise<AtRuleValue> => {
-      if (!(name instanceof Any) && !(name instanceof Interpolated)) {
+    const finishName = (name: AtRuleName): MaybePromise<AtRuleValue> => {
+      if (typeof name !== 'string' && !(name instanceof Any) && !(name instanceof Interpolated)) {
         throw new TypeError('Expected at-rule name to resolve to Any or Interpolated');
       }
       const { prelude } = this;
@@ -861,10 +908,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (isThenable(resolvedPrelude)) {
         return resolvedPrelude.then(resolved => ({ name, prelude: resolved }));
       }
-      return {
-        name,
-        prelude: resolvedPrelude as Node
-      };
+      return { name, prelude: resolvedPrelude };
     };
     const name = this.name;
     const evaluatedName = name instanceof Interpolated ? name.eval(context) : name;
@@ -873,7 +917,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       : finishName(evaluatedName);
   }
 
-  private evalPreludeValue(prelude: Node, context: Context): MaybePromise<Node> {
+  private evalPreludeValue(prelude: AtRulePrelude, context: Context): MaybePromise<AtRulePrelude> {
+    if (typeof prelude === 'string') {
+      return prelude;
+    }
     return withRulesContext(
       context,
       liftedAtRulePreludeRulesContext(context.rulesContext),
@@ -939,7 +986,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions,
-    evaluatedPrelude?: Node,
+    evaluatedPrelude?: AtRulePrelude,
     evaluatedBody?: Rules,
     runtimeHoist?: boolean,
     runtimeFrames?: (Ruleset | AtRule)[]
@@ -1214,7 +1261,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   private _extractAndStoreLayerName(
     node: AtRule,
     context: Context,
-    evaluatedPrelude?: Node
+    evaluatedPrelude?: AtRulePrelude
   ): string | undefined {
     const atRuleName = normalizeAtRuleIdentityText(getAtRuleSourceIdentityText(node.name));
     const prelude = evaluatedPrelude ?? node.prelude;

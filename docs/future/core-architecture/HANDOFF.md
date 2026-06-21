@@ -103,6 +103,40 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first string-backed block `AtRule` headers.
+- Verdict: accepted as a parser-shape reduction, not a measured performance
+  pass. The scanner-first Less proof can now construct real `AtRule` nodes with
+  string `name`/`prelude` fields for cheap block at-rules such as
+  `@media screen { ... }`, avoiding `Any` wrapper nodes for header text.
+- New traversal: no new tree traversal was added. The Less parser reuses the
+  existing recursive `parseLessNodes(...)` body path when a block header is
+  positively classified as an at-rule.
+- New node/materialization: one existing core node shape was widened. No new
+  node family, structural facade, or Chevrotain fallback was added. Parser
+  object creation maps directly to existing `AtRule` plus recursive `Rules`.
+- Render/eval path: string at-rule headers stringify directly and stay static
+  during eval. Node-backed headers still use the previous trivia-aware render
+  and lifted-context eval paths. The verifier flags an `OutputWriter`
+  allocation because the old Node-header render capture was moved behind the
+  widened file-local helper; the new string-header path returns before that
+  allocation.
+- Helper/API surface: one file-local render helper was widened to accept string
+  fields; `AtRule.clone(...)` now validates name/prelude/rules fields
+  explicitly instead of using a generic cast helper. The clone `TypeError`
+  guards are cold-path validation for caller-provided `cloneFn` output; they are
+  not lookup/render/eval miss control flow.
+- Metadata mutations: existing `inherit(...)` and `adopt(...)` calls remain.
+  `adopt(...)` is now guarded so string preludes are not treated as child nodes;
+  `inherit(...)` remains the existing AtRule clone/derive metadata path, not a
+  new parser-owned wrapper.
+- Test-only helpers: the string-array `join('\n')` flagged by the verifier is
+  fixture formatting in the AtRule unit test, not production allocation.
+- Evidence: focused `@jesscss/core` `at-rule.test.ts`, `@jesscss/core` build,
+  focused `@jesscss/less-parser` AST/source-scanner tests, `@jesscss/less-parser`
+  build, package export/public package checks, and
+  `verify:aggressive-cutting-review` completed with the above danger-token
+  prosecution. No speed claim is made.
+
 - Latest pass: base `Node.value` contract cut for direct-field nodes.
 - Verdict: accepted as an AST ownership correction and prerequisite cleanup for
   parser AST-shape work, not a measured performance pass. Base `Node` no longer

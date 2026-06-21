@@ -74,6 +74,60 @@ describe('AtRule', () => {
     context = new Context();
   });
 
+  it('renders string-backed block headers without scalar wrapper nodes', () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: rules([
+        ruleset({
+          selector: sel([el('.inside')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+
+    expect(node.name).toBe('@media');
+    expect(node.prelude).toBe('screen');
+    expect(node.toTrimmedString()).toBe([
+      '@media screen {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(node)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude: 'screen'
+    `);
+  });
+
+  it('evaluates string-backed block headers as static text', async () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: rules([
+        ruleset({
+          selector: sel([el('.inside')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+    const evaluated = await node.eval(context);
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (evaluated instanceof AtRule) {
+      expect(evaluated.name).toBe('@media');
+      expect(evaluated.prelude).toBe('screen');
+      expect(evaluated.toString({ context })).toContain('@media screen');
+    }
+  });
+
   it('keeps static leaf at-rules canonical in registration prep', async () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),

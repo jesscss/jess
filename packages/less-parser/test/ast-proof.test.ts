@@ -162,9 +162,9 @@ describe('parseLessAstStylesheet', () => {
     ].join('\n'));
   });
 
-  test('diagnoses unsupported Less at-rule blocks without fallback parsing', () => {
+  test('diagnoses malformed Less at-rule blocks without fallback parsing', () => {
     const result = parseLessAstStylesheet('unsupported.less', `
-      @media (min-width: 1px) {
+      @ {
         .inside { color: red; }
       }
 
@@ -195,6 +195,37 @@ describe('parseLessAstStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+  });
+
+  test('parses cheap block at-rules with string-backed headers', () => {
+    const result = parseLessAstStylesheet('at-rule.less', `
+      @media screen {
+        .inside { color: red; }
+      }
+    `);
+    const [media] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected string-backed AtRule');
+    }
+    expect(media.name).toBe('@media');
+    expect(media.prelude).toBe('screen');
+    expect(media.toTrimmedString()).toBe([
+      '@media screen {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(media)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude: 'screen'
+    `);
+    expect(serializeTypes(media)).not.toContain('(Any [role=atkeyword]');
   });
 
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {

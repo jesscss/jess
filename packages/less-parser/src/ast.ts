@@ -1,5 +1,6 @@
 import {
   VarDeclaration,
+  atrule,
   atrulestatement,
   co,
   compound,
@@ -144,6 +145,32 @@ function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclarati
   });
 }
 
+function parseAtRuleBlock(
+  source: string,
+  start: number,
+  blockStart: number,
+  blockEnd: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  if (source[start] !== '@') {
+    return undefined;
+  }
+  let nameEnd = start + 1;
+  while (nameEnd < blockStart && isLessNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  const name = source.slice(start, nameEnd);
+  if (name.length === 1) {
+    return undefined;
+  }
+  const prelude = source.slice(nameEnd, blockStart).trim();
+  return atrule({
+    name,
+    ...(prelude && { prelude }),
+    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+  });
+}
+
 function parseLessBlockNode(
   source: string,
   start: number,
@@ -163,6 +190,10 @@ function parseLessBlockNode(
     );
   }
   if (selector[0] === '@') {
+    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic);
+    if (atRule) {
+      return atRule;
+    }
     addDiagnostic(
       'warning',
       'less-ast-unsupported-at-rule',

@@ -1,8 +1,7 @@
 import type { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
-import type { AtRule } from '../at-rule.js';
-import type { Node } from '../node.js';
+import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -34,7 +33,7 @@ export type PrintOptions = {
   composedSelectorCache?: WeakMap<Ruleset, Selector>;
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
-  atRuleHeaderPrelude?: Node;
+  atRuleHeaderPrelude?: AtRulePrelude;
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;
