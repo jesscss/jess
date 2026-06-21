@@ -905,6 +905,12 @@ function readCheapMixinName(source: string, offset = 0): CheapMixinName | undefi
   return isCheapMixinName(name) ? { name, end: nameEnd } : undefined;
 }
 
+/**
+ * Read Less namespace mixin references without materializing selector nodes.
+ *
+ * Less treats `#ns.mixin()`, `#ns .mixin()`, and `#ns > .mixin()` as the same
+ * lookup path shape, so the scanner-first path stores only the reference keys.
+ */
 function readCheapMixinReferenceName(source: string): CheapMixinReferenceName | undefined {
   const keys: string[] = [];
   let cursor = 0;
@@ -915,9 +921,17 @@ function readCheapMixinReferenceName(source: string): CheapMixinReferenceName | 
     }
     keys.push(segment.name);
     cursor = segment.end;
-    if (source[cursor] !== '.' && source[cursor] !== '#') {
+    if (source[cursor] === '.' || source[cursor] === '#') {
+      continue;
+    }
+    const separator = skipSourceTrivia(source, cursor, source.length, LESS_SCANNER_OPTIONS);
+    const next = source[separator] === '>'
+      ? skipSourceTrivia(source, separator + 1, source.length, LESS_SCANNER_OPTIONS)
+      : separator;
+    if (next === cursor || (source[next] !== '.' && source[next] !== '#')) {
       break;
     }
+    cursor = next;
   }
   if (!keys.length) {
     return undefined;

@@ -669,22 +669,29 @@ describe('parseLessAstStylesheet', () => {
       #ns.mixin(1);
       #library.core.colors();
       #theme.dark.navbar() !important;
+      #theme > .mixin();
+      #namespace .borders();
 
       .a {
         #theme.dark.navbar.colors(dark);
+        #guarded > #deeper > .mixin(1);
       }
     `);
-    const [namespaceCall, libraryCall, themedCall, rule] = result.tree.rules;
+    const [namespaceCall, libraryCall, themedCall, childCall, descendantCall, rule] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(namespaceCall, N.Call)).toBe(true);
     expect(isNode(libraryCall, N.Call)).toBe(true);
     expect(isNode(themedCall, N.Call)).toBe(true);
+    expect(isNode(childCall, N.Call)).toBe(true);
+    expect(isNode(descendantCall, N.Call)).toBe(true);
     expect(isNode(rule, N.Ruleset)).toBe(true);
     if (
       !isNode(namespaceCall, N.Call)
       || !isNode(libraryCall, N.Call)
       || !isNode(themedCall, N.Call)
+      || !isNode(childCall, N.Call)
+      || !isNode(descendantCall, N.Call)
       || !isNode(rule, N.Ruleset)
     ) {
       throw new Error('Expected namespaced Less mixin calls');
@@ -692,24 +699,37 @@ describe('parseLessAstStylesheet', () => {
     expect(isNode(namespaceCall.name, N.Reference)).toBe(true);
     expect(isNode(libraryCall.name, N.Reference)).toBe(true);
     expect(isNode(themedCall.name, N.Reference)).toBe(true);
+    expect(isNode(childCall.name, N.Reference)).toBe(true);
+    expect(isNode(descendantCall.name, N.Reference)).toBe(true);
     if (
       !isNode(namespaceCall.name, N.Reference)
       || !isNode(libraryCall.name, N.Reference)
       || !isNode(themedCall.name, N.Reference)
+      || !isNode(childCall.name, N.Reference)
+      || !isNode(descendantCall.name, N.Reference)
     ) {
       throw new Error('Expected namespaced Less mixin call references');
     }
     expect(namespaceCall.name.key).toEqual(['#ns', '.mixin']);
     expect(libraryCall.name.key).toEqual(['#library', '.core', '.colors']);
     expect(themedCall.name.key).toEqual(['#theme', '.dark', '.navbar']);
+    expect(childCall.name.key).toEqual(['#theme', '.mixin']);
+    expect(descendantCall.name.key).toEqual(['#namespace', '.borders']);
     expect(themedCall.options.markImportant).toBe(true);
 
-    const [nested] = rule.rules.rules;
+    const [nested, nestedChild] = rule.rules.rules;
     expect(isNode(nested, N.Call)).toBe(true);
-    if (!isNode(nested, N.Call) || !isNode(nested.name, N.Reference)) {
+    expect(isNode(nestedChild, N.Call)).toBe(true);
+    if (
+      !isNode(nested, N.Call)
+      || !isNode(nested.name, N.Reference)
+      || !isNode(nestedChild, N.Call)
+      || !isNode(nestedChild.name, N.Reference)
+    ) {
       throw new Error('Expected nested namespaced Less mixin call');
     }
     expect(nested.name.key).toEqual(['#theme', '.dark', '.navbar', '.colors']);
+    expect(nestedChild.name.key).toEqual(['#guarded', '#deeper', '.mixin']);
     expect(serializeTypes(result.tree)).toContainString(`
       (Call
         name:
@@ -732,7 +752,6 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
       .empty(,);
       .suffix(a) b;
-      #ns .spaced();
       #ns.mixin extra;
       .emptySemiComma(a; ,);
       .trailingSemiComma(a; b,);
@@ -740,6 +759,7 @@ describe('parseLessAstStylesheet', () => {
       .rest(@items...);
       .bad([oops)]);
       .deprecated;
+      #theme > .mixin;
       .1();
       .-();
     `);

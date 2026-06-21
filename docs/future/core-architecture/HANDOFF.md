@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less namespace-combinator mixin calls.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less mixin call statements such as `#theme > .mixin()` and
+  `#namespace .borders()` now normalize to the existing `Call` plus
+  `Reference(type=mixin-ruleset, role=name)` key-array shape. Deprecated
+  no-paren namespace calls remain unsupported.
+- New traversal: no tree traversal. The existing mixin-reference scanner now
+  skips trivia and optional `>` separators between already-cheap `.` / `#`
+  name segments.
+- New node/materialization: no new node family, selector node, combinator node,
+  or namespace wrapper. Accepted statements create the same `Call`,
+  `Reference`, and optional argument `List` nodes as earlier contiguous
+  namespace calls.
+- Render path: parse-only slice. No evaluation, callable lookup, or render path
+  work was added.
+- Helper/API surface: private Less AST helper behavior only; no public parser
+  API, plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String reference keys have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1338 parsed top-level rules /
+  200 warnings to 1341 parsed top-level rules / 183 warnings with zero
+  errors/thrown failures. Remaining warning counts are 130 unsupported block
+  headers, 52 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
 - Latest pass: scanner-first Less keyframe selector headers.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. `from`, `to`, numeric percentages, and comma-lists of numeric
