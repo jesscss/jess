@@ -94,7 +94,8 @@ This is the concrete direction implied by the review above.
    - parse a small CSS/Less subset directly into existing AST node classes
    - current CSS proof: `@jesscss/css-parser` exposes
      `parseFlatCssDeclarationStylesheet(filePath, source)`, which returns a
-     core `Stylesheet` with string-backed `Ruleset.selector`,
+     scanner parse result containing a core `Stylesheet`, `SourceText`, and
+     offset-only diagnostics. The tree uses string-backed `Ruleset.selector`,
      `Declaration.name`, and declaration value fields for a flat qualified-rule
      declaration subset. `Declaration.value` is the semantic declaration value;
      parser code should not introduce parallel payload names for it.
@@ -918,7 +919,7 @@ In the scanner-first prototype branch, calling
 | root `StructuralContainerNode` | `src/structure/parse.ts` | R2 | Document container. | Required. |
 | one structural node per detected container/statement/error | `src/structure/types.ts` | R2, R6 | Captures containment and source ranges. | Provisional; direct existing AST nodes with deferred-capable fields may be cheaper. |
 | `StructuralDocument` facade | `src/structure/document.ts` | R2 | Exposes root, diagnostics, trivia, field ranges, islands, and cold queries. | Provisional broad-scan facade. Keep out of compile hot path; direct AST nodes with deferred fields are the preferred CSS/Less parser proof. |
-| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks source-scanner boundaries into a real core `Stylesheet` for a tiny flat CSS qualified-rule declaration subset. It skips at-rules and nested blocks rather than manufacturing empty rulesets for unsupported syntax. Selector/name/value payloads remain strings; no island plan, structural node, or Chevrotain parse is required. Current `Ruleset.rules: Rules` is inherited core debt, not a parser-owned structural object. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
+| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5, R6 | Walks source-scanner boundaries into a real core `Stylesheet` for a tiny flat CSS qualified-rule declaration subset. It reports unsupported at-rules/nested blocks and malformed unclosed blocks as offset-only diagnostics instead of silently swallowing them. Selector/name/value payloads remain strings; no island plan, structural node, or Chevrotain parse is required. Current `Ruleset.rules: Rules` is inherited core debt, not a parser-owned structural object. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
 
 The prototype generic `parseStructure(input, profile, options)` allocation
 accounting has zero allocations for:

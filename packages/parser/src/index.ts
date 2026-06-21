@@ -17,6 +17,14 @@ export {
 } from './source-scanner.js';
 
 export {
+  LineMap,
+  SourceText,
+  type ParserDiagnostic,
+  type ScannerParseResult,
+  type SourcePosition
+} from './source-text.js';
+
+export {
   buildTokenMatchBitsets,
   buildTokenTypeSet,
   tokenMatches,

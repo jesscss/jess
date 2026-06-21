@@ -25,6 +25,8 @@ Today, `@jesscss/parser` owns:
 - Chevrotain-compatible token/error/location types used by the existing parser
   packages
 - token matching helpers and recovery/content-assist primitives
+- a tiny `SourceText` / `LineMap` pair for source ownership and lazy
+  line/column conversion
 - low-level offset scanners for source trivia, quoted strings, balanced blocks,
   and single-character top-level delimiters
 
@@ -118,10 +120,12 @@ targets, not final requirements, and should not be treated as package API until
 they are defended against the requirements below.
 
 The current public scanner helpers are lower-level than that flow: they return
-only offsets and never allocate AST, structural nodes, diagnostics, profiles, or
-field records. Language packages remain responsible for deciding whether a span
-is immediately represented as a core AST node field, skipped as unsupported for
-the current slice, or parsed later by a language-owned parser.
+only offsets and never allocate AST, structural nodes, profiles, or field
+records. `SourceText` owns the source string and builds its `LineMap` only when
+a caller asks for a position. Language packages remain responsible for deciding
+whether a span is immediately represented as a core AST node field, skipped as
+unsupported for the current slice, diagnosed as malformed, or parsed later by a
+language-owned parser.
 
 ### Deferred Field Parsing
 

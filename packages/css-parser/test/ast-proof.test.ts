@@ -1,16 +1,20 @@
 import { parseFlatCssDeclarationStylesheet } from '../src/index.js';
 import { N, isNode } from '@jesscss/core';
+import { SourceText } from '@jesscss/parser';
 
 describe('parseFlatCssDeclarationStylesheet', () => {
   test('returns a string-backed core Stylesheet for cheap qualified rules', () => {
-    const root = parseFlatCssDeclarationStylesheet('inline.css', `
+    const result = parseFlatCssDeclarationStylesheet('inline.css', `
       .a {
         color: red;
         background: blue !important;
         --gap:  1px 2px;
       }
     `);
+    const { tree: root } = result;
 
+    expect(result.diagnostics).toEqual([]);
+    expect(result.source.filePath).toBe('inline.css');
     expect(root.type).toBe('Stylesheet');
     expect(isNode(root, N.Rules)).toBe(true);
 
@@ -44,8 +48,25 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
+  test('reuses caller-owned source text and recovers after at-rule statements', () => {
+    const source = new SourceText('@import "x.css";\n.kept { color: green; }', 'reuse.css', 7);
+    const result = parseFlatCssDeclarationStylesheet('ignored.css', source);
+
+    expect(result.source).toBe(source);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule'
+    ]);
+    expect(result.tree.rules).toHaveLength(1);
+    expect(result.tree.rules[0]?.toTrimmedString()).toBe([
+      '.kept {',
+      '  color: green;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
   test('does not turn unsupported at-rules or nested blocks into fake flat rulesets', () => {
-    const root = parseFlatCssDeclarationStylesheet('inline.css', `
+    const result = parseFlatCssDeclarationStylesheet('inline.css', `
       @media (min-width: 1px) {
         .inside { color: red; }
       }
@@ -58,7 +79,12 @@ describe('parseFlatCssDeclarationStylesheet', () => {
         color: green;
       }
     `);
+    const { tree: root } = result;
 
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-nested-block'
+    ]);
     expect(root.rules).toHaveLength(1);
     const [kept] = root.rules;
     expect(isNode(kept, N.Ruleset)).toBe(true);
@@ -72,5 +98,22 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+  });
+
+  test('records offset-only diagnostics and maps positions lazily', () => {
+    const result = parseFlatCssDeclarationStylesheet('broken.css', '.a { color: red;');
+
+    expect(result.tree.rules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([{
+      severity: 'error',
+      code: 'css-flat-unclosed-block',
+      message: 'Flat CSS declaration parser reached the end of source before the block closed.',
+      start: 3,
+      end: 16
+    }]);
+    expect(result.source.offsetToPosition(result.diagnostics[0]!.start)).toEqual({
+      line: 1,
+      column: 4
+    });
   });
 });
