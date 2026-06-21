@@ -103,28 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: frame-owned array-path mixin namespace broad-start fallback deletion.
-- Verdict: accepted as a narrow second-producer cut. When `findMixin(array)`
-  has a current `ScopeFrame`, namespace mixin starts no longer reopen
-  `this.findMixinsFast(keys[0]!, ...)` as a broad start-key crawl after frame
-  lookup and the narrow uncovered child/reference-import helpers fail to
-  produce a modeled result. The broad fallback remains only for no-frame,
-  targeted, or local callers. No speed claim.
-- New traversal: none. The pass deletes one broad crawl branch for framed
-  namespace starts and keeps existing frame/narrow-helper traversal unchanged.
+- Latest pass: local namespace-start broad fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. `local: true` no longer
+  disables frame-owned callable namespace-start lookup. The narrow uncovered
+  child helper already applies the local child-surface skip, and policy-skipped
+  local children now count as modeled misses so a covered empty namespace start
+  does not reopen the broad ruleset/mixin crawl. The broad start fallback
+  remains only for no-frame or targeted callers. No speed claim.
+- New traversal: none. The pass removes the local frame bypass and prevents a
+  covered empty namespace start from entering the ruleset fallback.
 - Review-flagged allocations: none added.
 - New node/materialization: none.
 - Render path: unchanged. This pass only changes callable namespace lookup
   routing.
 - Helper/API surface: none added.
 - Metadata mutations: none.
-- Routine error control: none added.
-- Allocation changes: no new arrays or objects.
+- Routine error control: production none. Tests add `try/finally` only to
+  restore the temporary `findMixinsFast` spy.
+- Allocation changes: no new production arrays or objects; tests add spy
+  arrays only.
 - Evidence: focused
-  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "stable namespaces avoid direct-crawl|reference-import namespace-start misses avoid broad|fallback namespace reference-import offset|guarded namespace|namespace path|compound-prefix|selector-list prefix|mixin-ruleset calls with args|namespace fast path"`
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "local namespace-start|selector-list prefix|static miss skips Rules.findMixinsFast"`
   passed, and full
   `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
-  passed (`195/195`).
+  passed (`197/197`).
+
+- Previous pass: frame-owned array-path mixin namespace broad-start fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. When `findMixin(array)`
+  has a current `ScopeFrame`, namespace mixin starts no longer reopen
+  `this.findMixinsFast(keys[0]!, ...)` as a broad start-key crawl after frame
+  lookup and the narrow uncovered child/reference-import helpers fail to
+  produce a modeled result. At the time of that pass, the broad fallback
+  remained for no-frame, targeted, or local callers; the latest pass above
+  removes the local branch. No speed claim.
 
 - Latest pass: frame-owned exact ruleset namespace direct-bucket fallback deletion.
 - Verdict: accepted as a narrow second-producer cut. `findRulesetNamespacePathFast(...)`

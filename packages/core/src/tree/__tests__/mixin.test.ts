@@ -3912,6 +3912,83 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame callable buckets: local namespace-start misses do not reopen broad direct crawl', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const localChild = rules([
+        mixin({
+          name: any('#local'),
+          rules: rules([
+            mixin({
+              name: any('.leaf'),
+              rules: rules([decl({ name: 'color', value: any('red') })])
+            })
+          ])
+        })
+      ], { local: true });
+      const root = rules([localChild]);
+      const broadFastStarts: string[] = [];
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && (key === '#local' || key === '.leaf')) {
+          broadFastStarts.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        localChild.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+
+        expect(root.findMixin(['#local', '.leaf'], undefined, {
+          local: true,
+          searchParents: false
+        })).toBeUndefined();
+        expect(broadFastStarts).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: local namespace-start hits stay on narrow child frames', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const leaf = mixin({
+        name: any('.leaf'),
+        rules: rules([decl({ name: 'color', value: any('blue') })])
+      });
+      const child = rules([
+        mixin({
+          name: any('#visible'),
+          rules: rules([leaf])
+        })
+      ]);
+      const root = rules([child]);
+      const broadFastStarts: string[] = [];
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && (key === '#visible' || key === '.leaf')) {
+          broadFastStarts.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        root.getScopeFrame();
+        child.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+
+        expect(root.findMixin(['#visible', '.leaf'], undefined, {
+          local: true,
+          searchParents: false
+        })).toEqual([leaf]);
+        expect(broadFastStarts).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const fastPathHits: string[] = [];

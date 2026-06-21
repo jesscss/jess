@@ -82,6 +82,11 @@ guarded namespace starts avoid broad crawl, reference-import namespace-start
 misses avoid broad array fallback, compound-prefix and selector-list
 reference-import hit/miss paths avoid generated array fallback, and child
 uncovered misses respect `searchParents: false` after the narrow bridge.
+Local array-path namespace starts now also use frame/narrow-helper lookup:
+`local: true` skips local child surfaces as modeled misses without reopening
+the broad root `findMixinsFast(...)` or ruleset fallback, while non-local child
+namespace hits still resolve through child frames. The remaining broad
+namespace-start fallback is limited to no-frame and targeted callers.
 
 3. [x] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family

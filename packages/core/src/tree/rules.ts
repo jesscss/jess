@@ -1423,14 +1423,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       ) {
         continue;
       }
+      if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
+        modeledChildSurface = true;
+      }
       if (entry.node.options?.forward) {
         continue;
       }
       if (options.local && entry.node.options?.local) {
         continue;
-      }
-      if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
-        modeledChildSurface = true;
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, key, includeRulesets);
@@ -2140,7 +2140,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const includeRulesets = filterType !== 'Mixin' && (restLength > 0 || options.terminalMixinOnly !== true);
       let matches: MixinEntry[] | undefined;
-      if (scope._scopeFrame && !options.hasTarget && !options.local) {
+      if (scope._scopeFrame && !options.hasTarget) {
         scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
         const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
           includeRulesets,
@@ -3389,7 +3389,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         let namespaceMixins: MixinEntry[] | undefined;
         let namespaceMixinMissCovered = false;
-        if (this._scopeFrame && !options.hasTarget && !options.local) {
+        if (this._scopeFrame && !options.hasTarget) {
           const namespaceKey = keys[0]!;
           this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
           const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
@@ -3434,7 +3434,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (
           namespaceMixins === undefined
           && !namespaceMixinMissCovered
-          && (!this._scopeFrame || options.hasTarget || options.local)
+          && (!this._scopeFrame || options.hasTarget)
         ) {
           namespaceMixins = this.findMixinsFast(keys[0]!, {
             hasTarget: options.hasTarget,
@@ -3443,7 +3443,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         if (!namespaceMixins || namespaceMixins.length === 0) {
-          if (options.terminalMixinOnly !== true) {
+          if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
             const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
               hasTarget: options.hasTarget,
               local: options.local
