@@ -498,7 +498,7 @@ function findCheapCallCloseParen(source: string, open: number): number {
   return -1;
 }
 
-function hasBalancedCheapArgumentText(source: string): boolean {
+function hasBalancedCheapDelimitedText(source: string, allowBlocks: boolean): boolean {
   let cursor = 0;
   let expectedClose = '';
   while (cursor < source.length) {
@@ -535,6 +535,9 @@ function hasBalancedCheapArgumentText(source: string): boolean {
     } else if (char === '[') {
       expectedClose += ']';
     } else if (char === '{') {
+      if (!allowBlocks) {
+        return false;
+      }
       expectedClose += '}';
     } else if (char === ')' || char === ']' || char === '}') {
       if (!expectedClose || expectedClose[expectedClose.length - 1] !== char) {
@@ -545,6 +548,14 @@ function hasBalancedCheapArgumentText(source: string): boolean {
     cursor++;
   }
   return expectedClose.length === 0;
+}
+
+function hasBalancedCheapArgumentText(source: string): boolean {
+  return hasBalancedCheapDelimitedText(source, true);
+}
+
+function hasBalancedCheapFunctionArgumentText(source: string): boolean {
+  return hasBalancedCheapDelimitedText(source, false);
 }
 
 function findTopLevelWhen(source: string): number {
@@ -1213,6 +1224,89 @@ function parseCheapMixinCallStatement(source: string, start: number, end: number
   }, importantStart === -1 ? undefined : { markImportant: true });
 }
 
+function readCheapFunctionName(source: string): CheapMixinName | undefined {
+  const first = source.charCodeAt(0);
+  if (
+    !((first >= 65 && first <= 90) || (first >= 97 && first <= 122) || first === 95)
+  ) {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < source.length && isLessNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  return { name: source.slice(0, nameEnd), end: nameEnd };
+}
+
+function parseCheapFunctionCallArgs(source: string): ReturnType<typeof list> | undefined {
+  const text = source.trim();
+  if (!text) {
+    return undefined;
+  }
+  const semi = findTopLevelDelimiter(text, ';', 0, text.length, LESS_SCANNER_OPTIONS);
+  const comma = findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS);
+  const separator = semi !== -1
+    ? ';'
+    : comma !== -1
+      ? ','
+      : undefined;
+  const args: Node[] = [];
+  let cursor = 0;
+  while (cursor <= text.length) {
+    const end = separator
+      ? findTopLevelDelimiter(text, separator, cursor, text.length, LESS_SCANNER_OPTIONS)
+      : -1;
+    const partEnd = end === -1 ? text.length : end;
+    const arg = text.slice(cursor, partEnd).trim();
+    if (
+      !arg
+      || !hasBalancedCheapFunctionArgumentText(arg)
+      || (separator === ';' && !hasNoEmptyTopLevelCommaArms(arg))
+    ) {
+      return undefined;
+    }
+    args.push(any(arg, { role: 'ident' }));
+    if (!separator || end === -1) {
+      break;
+    }
+    cursor = end + 1;
+    if (cursor >= text.length) {
+      return undefined;
+    }
+  }
+  return list(args, separator ? { sep: separator } : undefined);
+}
+
+function parseCheapFunctionCallStatement(source: string, start: number, end: number): Node | undefined {
+  const text = source.slice(start, end).trim();
+  const callee = readCheapFunctionName(text);
+  if (!callee) {
+    return undefined;
+  }
+  let cursor = skipSourceTrivia(text, callee.end, text.length, LESS_SCANNER_OPTIONS);
+  if (text[cursor] !== '(') {
+    return undefined;
+  }
+  const argsStart = cursor + 1;
+  const argsEnd = findCheapCallCloseParen(text, cursor);
+  if (argsEnd === -1) {
+    return undefined;
+  }
+  const argsText = text.slice(argsStart, argsEnd);
+  const args = parseCheapFunctionCallArgs(argsText);
+  if (argsText.trim() && !args) {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(text, argsEnd + 1, text.length, LESS_SCANNER_OPTIONS);
+  if (cursor !== text.length) {
+    return undefined;
+  }
+  return call({
+    name: ref(callee.name, { type: 'function', fallbackValue: true }),
+    ...(args && { args })
+  }, { silentFail: true });
+}
+
 function parseLessStatementNode(
   source: string,
   start: number,
@@ -1228,6 +1322,10 @@ function parseLessStatementNode(
     const mixinCall = parseCheapMixinCallStatement(source, start, end);
     if (mixinCall) {
       return mixinCall;
+    }
+    const functionCall = parseCheapFunctionCallStatement(source, start, end);
+    if (functionCall) {
+      return functionCall;
     }
     if (source.slice(start, end).trim()) {
       const isMalformedAtRule = source[skipSourceTrivia(source, start, end, LESS_SCANNER_OPTIONS)] === '@';

@@ -103,6 +103,34 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less root function-call statements.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Root statements such as `test-collapse()`, `store(@var)`,
+  `test-atrule("@charset"; '"utf-8"')`, and `e('...')` now become existing
+  `Call` nodes with `Reference(type=function, fallbackValue=true)` names and
+  `silentFail` call options, matching the current Less function-call AST
+  contract.
+- New traversal: no tree traversal. The statement parser checks the already
+  sliced statement text only after at-rule and mixin-call statement parsing
+  miss.
+- New node/materialization: no new node family. Accepted root function
+  statements create existing `Call`, `Reference`, and optional `List`/`Any`
+  argument nodes. Block-valued arguments are explicitly rejected in this slice
+  so `each(..., { ... })` and `if(..., { ... })` do not sneak structured code
+  through an `Any` string.
+- Render path: parse-only slice. No function evaluation, fallback rendering,
+  callable lookup, or output work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String names and cheap argument text have no
+  source/parent metadata beyond normal core-node construction.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1341 parsed top-level rules /
+  161 warnings to 1344 parsed top-level rules / 154 warnings with zero
+  errors/thrown failures. Remaining warning counts are 130 unsupported block
+  headers, 23 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
 - Latest pass: scanner-first Less spread mixin call arguments.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Mixin call arguments `@name...` and bare `...` now become existing

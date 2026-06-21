@@ -786,6 +786,82 @@ describe('parseLessAstStylesheet', () => {
     `);
   });
 
+  test('parses root Less function calls as fallback function references', () => {
+    const result = parseLessAstStylesheet('root-functions.less', `
+      test-collapse();
+      store(@var);
+      store(5);
+      store("bird");
+      test-atrule("@charset"; '"utf-8"');
+      e('/* anything to unquote */');
+    `);
+    const [collapse, storeVar, storeNumber, storeString, atRule, escape] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    for (const node of [collapse, storeVar, storeNumber, storeString, atRule, escape]) {
+      expect(isNode(node, N.Call)).toBe(true);
+      if (!isNode(node, N.Call) || !isNode(node.name, N.Reference)) {
+        throw new Error('Expected root function call with reference name');
+      }
+      expect(node.name.options.type).toBe('function');
+      expect(node.name.options.fallbackValue).toBe(true);
+      expect(node.options.silentFail).toBe(true);
+    }
+    if (
+      !isNode(collapse, N.Call)
+      || !isNode(storeVar, N.Call)
+      || !isNode(storeNumber, N.Call)
+      || !isNode(storeString, N.Call)
+      || !isNode(atRule, N.Call)
+      || !isNode(escape, N.Call)
+      || !isNode(collapse.name, N.Reference)
+      || !isNode(storeVar.name, N.Reference)
+      || !isNode(storeNumber.name, N.Reference)
+      || !isNode(storeString.name, N.Reference)
+      || !isNode(atRule.name, N.Reference)
+      || !isNode(escape.name, N.Reference)
+      || !isNode(storeVar.args, N.List)
+      || !isNode(storeNumber.args, N.List)
+      || !isNode(storeString.args, N.List)
+      || !isNode(atRule.args, N.List)
+      || !isNode(escape.args, N.List)
+    ) {
+      throw new Error('Expected concrete root function call shapes');
+    }
+
+    expect(collapse.name.key).toBe('test-collapse');
+    expect(collapse.args).toBeUndefined();
+    expect(storeVar.name.key).toBe('store');
+    expect(storeVar.args.items.map(item => item.valueOf())).toEqual(['@var']);
+    expect(storeNumber.args.items.map(item => item.valueOf())).toEqual(['5']);
+    expect(storeString.args.items.map(item => item.valueOf())).toEqual(['"bird"']);
+    expect(atRule.name.key).toBe('test-atrule');
+    expect(atRule.args.sep).toBe(';');
+    expect(atRule.args.items.map(item => item.valueOf())).toEqual(['"@charset"', '\'"utf-8"\'']);
+    expect(escape.name.key).toBe('e');
+    expect(escape.args.items.map(item => item.valueOf())).toEqual(['\'/* anything to unquote */\'']);
+
+    const serialized = serializeTypes(result.tree, { showOptions: true });
+    expect(serialized).toContain('type: \'function\'');
+    expect(serialized).toContain('fallbackValue: true');
+    expect(serialized).toContain('silentFail: true');
+    expect(serialized).not.toContain('(Declaration');
+    expect(serialized).not.toContain('raw');
+  });
+
+  test('keeps block-valued function statements out of the cheap function path', () => {
+    const result = parseLessAstStylesheet('function-blocks.less', `
+      each(@list, { color: @value; });
+      if((false), {g: 7});
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
+      'less-ast-unsupported-statement'
+    ]);
+  });
+
   test('keeps unsupported Less mixin call forms out of the cheap AST path', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
       .empty(,);
