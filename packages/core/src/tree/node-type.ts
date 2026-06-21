@@ -2,8 +2,8 @@
  * Bitmask-based node type system.
  *
  * Each concrete node type gets a single bit. Abstract parent types
- * (Selector, SimpleSelector, RuleContainer) are masks combining their
- * children's bits.
+ * (Selector, SimpleSelector) are masks combining their children's bits.
+ * A node's `nodeType` field is the OR of its own bit and all ancestor bits.
  *
  * isNode(x, N.Foo) compiles to: x.nodeType & Foo (one bitwise AND)
  */
@@ -55,17 +55,14 @@ export enum N {
   Comment           = 1 << 28,
   JsFunction        = 1 << 29,
   JsObject          = 1 << 30,
-  // Note: 1 << 31 is negative in JS (sign bit), so we use it carefully.
-  // JsArray is checked by class identity rather than isNode(..., N.JsArray).
-  AtRuleStatement   = 1 << 31,
-  JsArray           = 0,
+  // Note: 1 << 31 is negative in JS (sign bit), so we use it carefully
+  JsArray           = 1 << 31,
 
   // ── Abstract / parent masks ──────────────────────────────────────
   // These combine child bits so isNode(x, N.Selector) matches any selector.
 
   SimpleSelector    = BasicSelector | Ampersand | PseudoSelector,
-  Selector          = SimpleSelector | CompoundSelector | ComplexSelector | SelectorList | Combinator,
-  RuleContainer     = Rules | Ruleset | AtRule | Mixin
+  Selector          = SimpleSelector | CompoundSelector | ComplexSelector | SelectorList | Combinator
 }
 
 /**
@@ -105,20 +102,14 @@ export const nodeTypeBits: Record<string, number> = {
   Nil: N.Nil,
   Call: N.Call,
   Func: N.Func,
-  Mixin: N.Mixin | N.Rules,
+  Mixin: N.Mixin,
   Declaration: N.Declaration,
   VarDeclaration: N.VarDeclaration,
   Rules: N.Rules,
-  // Concrete root identity is `type === 'Stylesheet'`; the 32-bit mask has no
-  // spare concrete bit, so Stylesheet participates in rules checks only.
   Stylesheet: N.Rules,
   Collection: N.Collection,
-  Ruleset: N.Ruleset | N.Rules,
-  AtRule: N.AtRule | N.Rules,
-  AtRuleStatement: N.AtRuleStatement,
-  If: N.Rules,
-  For: N.Rules,
-  While: N.Rules,
+  Ruleset: N.Ruleset,
+  AtRule: N.AtRule,
   Reference: N.Reference,
   Comment: N.Comment,
   JsFunction: N.JsFunction,

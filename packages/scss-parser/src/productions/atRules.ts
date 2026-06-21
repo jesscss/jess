@@ -400,7 +400,7 @@ function validateExtendTarget($: P, target: any): void {
   if (!disallowed) {
     return;
   }
-  const kindList = allowed.length === 1 ? `${allowed[0]} selectors` : allowed.join(', ');
+  const kindList = allowed.length === 1 ? `${allowed[0]} value` : allowed.join(', ');
   $.SAVE_ERROR(new NoViableAltException(
     `@extend only allows ${kindList}, but found ${disallowed.kind} selector "${disallowed.selector.valueOf()}".`,
     $.LA(1),
@@ -2098,7 +2098,7 @@ export function scssDiagnosticAtRule(this: P, T: TokenMap): ProductionRule {
 /**
  * SCSS: `@at-root [selector] { ... }` or `@at-root (without: media) { ... }`
  *
- * Plain `@at-root { ... }` is lowered by prefixing contained selectors with a
+ * Plain `@at-root { ... }` is lowered by prefixing contained value with a
  * null-parent ampersand template so they hoist naturally during selector
  * composition. Prelude/filter forms remain preserved as unsupported at-rules.
  */

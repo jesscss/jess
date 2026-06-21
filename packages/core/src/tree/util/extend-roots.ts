@@ -7,14 +7,10 @@ import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
+import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import {
-  wouldExtendChange,
-  canUseWalkAndConsume,
-  classifyExtendMatch,
-  classifyExtendTargetPresence
-} from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
@@ -44,6 +40,10 @@ function selectorOrUndefined(value: Selector | Nil | undefined): Selector | unde
   return value instanceof Nil ? undefined : value;
 }
 
+function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
 function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
   const ownSelector: unknown = ruleset.options?.ownSelector;
   return isSelectorValue(ownSelector) ? ownSelector : undefined;
@@ -68,9 +68,6 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.parent;
-  if (isRulesetValue(parentRules)) {
-    return parentRules;
-  }
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
@@ -107,7 +104,7 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
   }
 }
 
-/** Snapshot of eval'd selectors before any extend modifications */
+/** Snapshot of eval'd value before any extend modifications */
 let preExtendSelectors = new WeakMap<Ruleset, Selector>();
 
 function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Array<Selector | undefined>): T {
@@ -185,7 +182,7 @@ function composeExtendWithRelativeToTarget(
   if (!extendingLocal) {
     return undefined;
   }
-  // Walk up from extending ruleset, collecting local selectors, until we
+  // Walk up from extending ruleset, collecting local value, until we
   // reach a ruleset that is also an ancestor of the target (or root).
   const targetAncestors = targetRuleset
     ? new Set<Ruleset>([targetRuleset, ...getRulesetAncestors(targetRuleset)])
@@ -288,7 +285,7 @@ function classifyInstructionMatch(
       return false;
     }
   }
-  // Fallback for selectors that do not need parent-context matching.
+  // Fallback for value that do not need parent-context matching.
   const after = applyExtendsToSelector(selector, [instruction]);
   return after.valueOf() !== selector.valueOf() ? 'local' : false;
 }
@@ -312,7 +309,7 @@ function analyzeNonPartialExtends(
     const parentHasTargetMatch = Boolean(
       parentSelector
       && !(parentSelector instanceof Nil)
-      && classifyExtendTargetPresence(parentSelector, instruction.target, instruction.partial)
+      && findExtendableLocations(parentSelector, instruction.target).hasMatches
     );
     return { instruction, ownChangedSingle, fullChangedSingle, parentHasTargetMatch };
   });
@@ -523,23 +520,13 @@ function isInstructionVisibleForRoot(
   if (!instruction.extendRoot) {
     return false;
   }
-  const sameRootSurface = (
-    instruction.extendRoot === rootRules
-    || instruction.extendRoot.sourceNode === rootRules
-    || rootRules.sourceNode === instruction.extendRoot
-    || (
-      instruction.extendRoot.sourceNode !== instruction.extendRoot
-      && instruction.extendRoot.sourceNode === rootRules.sourceNode
-    )
-    || haveSameRuleChildSources(instruction.extendRoot, rootRules)
-  );
   if (instruction.fromReferenceScope === true) {
     return false;
   }
-  if (context.extendRoots.isProtectedRoot(rootRules) && !sameRootSurface) {
+  if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
     return false;
   }
-  if (sameRootSurface) {
+  if (instruction.extendRoot === rootRules) {
     return true;
   }
   if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
@@ -551,29 +538,10 @@ function isInstructionVisibleForRoot(
   return visibleRoots.has(rootRules);
 }
 
-function haveSameRuleChildSources(left: Rules, right: Rules): boolean {
-  if (left.rules.length !== right.rules.length || left.rules.length === 0) {
-    return false;
-  }
-  for (let i = 0; i < left.rules.length; i++) {
-    const leftChild = left.rules[i]!;
-    const rightChild = right.rules[i]!;
-    if (
-      leftChild !== rightChild
-      && leftChild.sourceNode !== rightChild
-      && rightChild.sourceNode !== leftChild
-      && leftChild.sourceNode !== rightChild.sourceNode
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export function processExtends(context: Context): void {
   try {
-    // Snapshot eval'd selectors before any extend modifications.
-    // This ensures getEffectiveSelector composes with original selectors,
+    // Snapshot eval'd value before any extend modifications.
+    // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
     preExtendSelectors = new WeakMap<Ruleset, Selector>();
     for (const [, rulesetSet] of rulesetsByRoot) {
@@ -608,13 +576,16 @@ export function processExtends(context: Context): void {
         fromReferenceScope: fromReferenceScope === true
       };
       if (!partial && isNode(target, N.SelectorList)) {
-        return target.value.map((item) => {
+        const expanded: RootExtendInstruction[] = [];
+        for (const value of target.value) {
+          const item = selectorListItemForRootExtend(value);
           item.keySetLibrary ??= context.selectorBits;
-          return {
+          expanded.push({
             ...base,
             target: item
-          };
-        });
+          });
+        }
+        return expanded;
       }
       target.keySetLibrary ??= context.selectorBits;
       return [{
@@ -622,9 +593,11 @@ export function processExtends(context: Context): void {
         target
       }];
     });
+
     if (!instructions.length) {
       return;
     }
+
     const instructionMatched = new Set<typeof instructions[0]>();
 
     const visibleRootsCache = new Map<Rules, Set<Rules>>();
@@ -675,7 +648,7 @@ export function processExtends(context: Context): void {
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
-            const selfMatches = classifyExtendTargetPresence(selector, instruction.target, instruction.partial);
+            const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
             classifications.set(instruction, selfMatches ? 'local' : false);
           } else {
             classifications.set(instruction, classifyInstructionMatch(selector, instruction, parentSel));
@@ -783,7 +756,9 @@ export function processExtends(context: Context): void {
           // distinguish "original, untouched" from "added by extend".
           if (selector instanceof SelectorList) {
             for (const item of selector.value) {
-              item.addFlag(F_VISIBLE);
+              if (typeof item !== 'string') {
+                item.addFlag(F_VISIBLE);
+              }
             }
           } else {
             selector.addFlag(F_VISIBLE);

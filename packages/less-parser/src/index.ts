@@ -1,4 +1,5 @@
 export * from './lessTokens.js';
+export * from './ast.js';
 export * from './lessRecursiveParser.js';
 export * from './lessParser.js';
 export * from './island-providers.js';

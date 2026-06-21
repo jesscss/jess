@@ -21,6 +21,13 @@ describe('selectorCompare', () => {
     expect(result.hasPartialMatch).toBe(false);
   });
 
+  it('compares single-item string-backed selector lists without leaking raw strings', () => {
+    const result = selectorCompare(sellist(['.a']), sellist([el('.a')]));
+
+    expect(result.isEquivalent).toBe(true);
+    expect(result.hasWholeMatch).toBe(true);
+  });
+
   it('exposes partial match metadata when selectors differ by a suffix', () => {
     const target = sel([el('.foo'), co('>'), el('.bar')]);
     const shorter = el('.bar');

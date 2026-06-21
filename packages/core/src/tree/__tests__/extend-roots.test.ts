@@ -92,6 +92,33 @@ describe('Extend Roots Registry', () => {
 
       expect(targetRuleset.valueOf()).toBe('.base,.ext');
     });
+
+    it('materializes string-backed selector-list extend targets before root processing', async () => {
+      const node = rules([
+        ruleset({
+          selector: sellist(['.base']),
+          rules: rules([
+            decl({ name: 'color', value: spaced([any('red')]) })
+          ])
+        }),
+        ruleset({
+          selector: sellist(['.child']),
+          rules: rules([
+            extend({
+              target: sellist(['.base']),
+              flag: ExtendFlag.Exact
+            })
+          ])
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+      expect(css).toBeString(`
+        .base {
+          color: red;
+        }
+      `);
+    });
   });
 
   describe('@import type roots', () => {

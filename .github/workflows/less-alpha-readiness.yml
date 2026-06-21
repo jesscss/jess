@@ -1,0 +1,34 @@
+name: Less alpha readiness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - alpha
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  less-alpha-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Less alpha readiness
+        run: pnpm run verify:less-alpha

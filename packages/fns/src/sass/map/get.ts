@@ -7,9 +7,13 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { defineFunction, Collection, Node, Nil, Declaration, type Context } from '@jesscss/core';
+import { defineFunction, Collection, Node, Nil, Declaration, Any, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
 import { isNode, N } from '@jesscss/core';
+
+function declarationValueNode(value: Declaration['value']): Node {
+  return typeof value === 'string' ? new Any(value) : value;
+}
 
 const get = defineFunction(
   'get',
@@ -69,7 +73,7 @@ const get = defineFunction(
       return new Nil();
     }
 
-    return decl.value;
+    return declarationValueNode(decl.value);
   },
   {
     params: [

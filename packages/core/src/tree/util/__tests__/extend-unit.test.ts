@@ -55,7 +55,7 @@ describe('applyExtendsToSelector', () => {
     expect(val).toContain('.c3');
   });
 
-  it('applies instructions targeting different selectors', () => {
+  it('applies instructions targeting different value', () => {
     const target = sellist([el('.a'), el('.b')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.a'), extendWith: el('.x'), partial: false },
@@ -127,7 +127,7 @@ describe('tryExtendSelector', () => {
 // createProcessedSelector
 // ─────────────────────────────────────────────────
 describe('createProcessedSelector', () => {
-  it('deduplicates selectors at root level', () => {
+  it('deduplicates value at root level', () => {
     const result = createProcessedSelector([el('.a'), el('.a'), el('.b')], true);
     const arr = Array.isArray(result) ? result : [result];
     expect(arr).toHaveLength(2);
@@ -136,8 +136,8 @@ describe('createProcessedSelector', () => {
     expect(values).toContain('.b');
   });
 
-  it('does NOT deduplicate compound components (non-root)', () => {
-    // .a.a.b should keep both .a components
+  it('does NOT deduplicate compound value (non-root)', () => {
+    // .a.a.b should keep both .a value
     const result = createProcessedSelector([el('.a'), el('.a'), el('.b')], false);
     const arr = Array.isArray(result) ? result : [result];
     expect(arr).toHaveLength(3);
@@ -153,7 +153,7 @@ describe('createProcessedSelector', () => {
     expect(arr[0]!.valueOf()).toBe('.a');
   });
 
-  it('passes through simple selectors unchanged', () => {
+  it('passes through simple value unchanged', () => {
     const result = createProcessedSelector([el('.x')], true);
     const arr = Array.isArray(result) ? result : [result];
     expect(arr).toHaveLength(1);
@@ -174,7 +174,7 @@ describe('findChainedExtends', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('finds chained extends from newly added selectors', () => {
+  it('finds chained extends from newly added value', () => {
     // Original: .base
     // After extending .base with .middle → SelectorList([.base, .middle])
     // Another extend targets .middle → should chain
@@ -189,7 +189,7 @@ describe('findChainedExtends', () => {
     expect(result[0]![1].valueOf()).toBe('.src2');
   });
 
-  it('does NOT chain on selectors that were in the original', () => {
+  it('does NOT chain on value that were in the original', () => {
     // Original: SelectorList([.base, .existing])
     // After extending .base with .child → SelectorList([.base, .existing, .child])
     // Another extend targets .existing → should NOT chain (it was original)

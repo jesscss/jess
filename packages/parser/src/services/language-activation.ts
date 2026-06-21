@@ -5,7 +5,8 @@ import { IslandParsePlan } from './island-parse-plan.js';
 import { IslandParserRegistry } from './registry.js';
 
 /**
- * Activation record for a language profile and its optional island providers.
+ * Activation record for a language profile and its optional deferred-field
+ * parser providers.
  *
  * Extension matching selects the structural profile first; provider setup runs
  * only when a caller asks for a parse plan.
@@ -48,8 +49,8 @@ export class LanguageActivationRegistry {
   /**
    * Runs only the structural stage for a file extension.
    *
-   * This is useful for editor/index consumers that need spans and raw islands
-   * without paying to configure or execute island providers.
+   * This is useful for editor/index consumers that need spans and deferred-field
+   * metadata without paying to configure or execute provider machinery.
    */
   parseStructureForExtension(
     extension: string,

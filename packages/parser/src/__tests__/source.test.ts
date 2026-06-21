@@ -3,18 +3,19 @@ import {
   LineMap,
   ScannerCursor,
   SourceText,
+  createPackedFieldSpans,
+  createPackedSegmentSpans,
   delimitedSpan,
   scanTriviaInto,
+  setPackedFieldSpan,
+  setPackedSegmentSpan,
   sourceSpan,
   type TriviaRun
 } from '../index.js';
 
 describe('SourceText', () => {
   test('stores text metadata and slices validated ranges', () => {
-    const source = new SourceText('a { color: red; }', {
-      filePath: 'style.less',
-      version: 7
-    });
+    const source = new SourceText('a { color: red; }', 'style.less', 7);
 
     expect(source.length).toBe(17);
     expect(source.filePath).toBe('style.less');
@@ -33,7 +34,7 @@ describe('SourceText', () => {
       lineMapMaterialized: false,
       lineMapEntries: undefined
     });
-    expect(source.offsetToLineColumn(2)).toEqual({ line: 2, column: 1 });
+    expect(source.offsetToPosition(2)).toEqual({ line: 2, column: 1 });
     expect(source.hasLineMap).toBe(true);
     expect(source.stats()).toEqual({
       sourceBytes: 3,
@@ -60,27 +61,39 @@ describe('LineMap', () => {
     const map = new LineMap(text);
 
     expect(map.lineStarts).toEqual([0, 2, 5, 7, 9]);
-    expect(map.offsetToLineColumn(0)).toEqual({ line: 1, column: 1 });
-    expect(map.offsetToLineColumn(2)).toEqual({ line: 2, column: 1 });
-    expect(map.offsetToLineColumn(5)).toEqual({ line: 3, column: 1 });
-    expect(map.offsetToLineColumn(7)).toEqual({ line: 4, column: 1 });
-    expect(map.offsetToLineColumn(9)).toEqual({ line: 5, column: 1 });
-    expect(map.lineColumnToOffset(5, 1)).toBe(9);
+    expect(map.offsetToPosition(0)).toEqual({ line: 1, column: 1 });
+    expect(map.offsetToPosition(2)).toEqual({ line: 2, column: 1 });
+    expect(map.offsetToPosition(5)).toEqual({ line: 3, column: 1 });
+    expect(map.offsetToPosition(7)).toEqual({ line: 4, column: 1 });
+    expect(map.offsetToPosition(9)).toEqual({ line: 5, column: 1 });
+    expect(map.positionToOffset(5, 1)).toBe(9);
   });
 
   test('allows the EOF offset and rejects out-of-range locations', () => {
     const map = new LineMap('a\nbc');
 
-    expect(map.offsetToLineColumn(4)).toEqual({ line: 2, column: 3 });
-    expect(() => map.offsetToLineColumn(5)).toThrow(RangeError);
-    expect(() => map.lineColumnToOffset(3, 1)).toThrow(RangeError);
-    expect(() => map.lineColumnToOffset(1, 3)).toThrow(RangeError);
+    expect(map.offsetToPosition(4)).toEqual({ line: 2, column: 3 });
+    expect(() => map.offsetToPosition(5)).toThrow(RangeError);
+    expect(() => map.positionToOffset(3, 1)).toThrow(RangeError);
+    expect(() => map.positionToOffset(1, 3)).toThrow(RangeError);
   });
 });
 
 describe('span helpers', () => {
   test('creates source span views from numeric offsets', () => {
     expect(sourceSpan(1, 4)).toEqual({ start: 1, end: 4 });
+  });
+
+  test('keeps direct field spans separate from array segment spans', () => {
+    const fieldSpans = createPackedFieldSpans(3);
+    const valueSpans = createPackedSegmentSpans(2);
+
+    setPackedFieldSpan(fieldSpans, 1, 10, 20, 4);
+    setPackedSegmentSpan(valueSpans, 0, 12, 15);
+    setPackedSegmentSpan(valueSpans, 1, 16, 19, 2);
+
+    expect(fieldSpans).toEqual([-1, -1, 0, 10, 20, 4, -1, -1, 0]);
+    expect(valueSpans).toEqual([12, 15, 0, 16, 19, 2]);
   });
 
   test('creates delimited span views from numeric offsets', () => {

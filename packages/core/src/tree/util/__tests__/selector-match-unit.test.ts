@@ -31,21 +31,21 @@ import {
 // componentsMatch
 // ─────────────────────────────────────────────────
 describe('componentsMatch', () => {
-  it('matches identical simple selectors', () => {
+  it('matches identical simple value', () => {
     expect(componentsMatch(el('.a'), el('.a'))).toBe(true);
   });
 
-  it('rejects different simple selectors', () => {
+  it('rejects different simple value', () => {
     expect(componentsMatch(el('.a'), el('.b'))).toBe(false);
   });
 
-  it('matches compound selectors in any order', () => {
+  it('matches compound value in any order', () => {
     const a = compound([el('.x'), el('.y')]);
     const b = compound([el('.y'), el('.x')]);
     expect(componentsMatch(a, b)).toBe(true);
   });
 
-  it('rejects compound selectors with different components', () => {
+  it('rejects compound value with different value', () => {
     const a = compound([el('.x'), el('.y')]);
     const b = compound([el('.x'), el('.z')]);
     expect(componentsMatch(a, b)).toBe(false);
@@ -74,13 +74,13 @@ describe('componentsMatch', () => {
     expect(componentsMatch(a, b)).toBe(false);
   });
 
-  it('matches equivalent pseudo-selectors', () => {
+  it('matches equivalent pseudo-value', () => {
     const a = pseudo({ name: ':where', arg: el('.a') });
     const b = pseudo({ name: ':where', arg: el('.a') });
     expect(componentsMatch(a, b)).toBe(true);
   });
 
-  it('rejects pseudo-selectors with different names', () => {
+  it('rejects pseudo-value with different names', () => {
     const a = pseudo({ name: ':where', arg: el('.a') });
     const b = pseudo({ name: ':not', arg: el('.a') });
     expect(componentsMatch(a, b)).toBe(false);
@@ -91,11 +91,11 @@ describe('componentsMatch', () => {
 // compoundComponentMatches
 // ─────────────────────────────────────────────────
 describe('compoundComponentMatches', () => {
-  it('matches identical simple selectors', () => {
+  it('matches identical simple value', () => {
     expect(compoundComponentMatches(el('.a'), el('.a'))).toBe(true);
   });
 
-  it('rejects different simple selectors', () => {
+  it('rejects different simple value', () => {
     expect(compoundComponentMatches(el('.a'), el('.b'))).toBe(false);
   });
 
@@ -143,7 +143,7 @@ describe('compoundComponentMatches', () => {
     expect(compoundComponentMatches(find, el('.y'))).toBe(false);
   });
 
-  it('matches non-:is() pseudo-selectors with equivalent args', () => {
+  it('matches non-:is() pseudo-value with equivalent args', () => {
     const find = pseudo({ name: ':where', arg: el('.a') });
     const target = pseudo({ name: ':where', arg: el('.a') });
     expect(compoundComponentMatches(find, target)).toBe(true);
@@ -154,17 +154,17 @@ describe('compoundComponentMatches', () => {
 // arePseudoSelectorsEquivalent
 // ─────────────────────────────────────────────────
 describe('arePseudoSelectorsEquivalent', () => {
-  it('returns false for non-pseudo-selectors', () => {
+  it('returns false for non-pseudo-value', () => {
     expect(arePseudoSelectorsEquivalent(el('.a'), el('.a'))).toBe(false);
   });
 
-  it('matches pseudo-selectors with same name and no args', () => {
+  it('matches pseudo-value with same name and no args', () => {
     const a = pseudo({ name: ':hover' });
     const b = pseudo({ name: ':hover' });
     expect(arePseudoSelectorsEquivalent(a, b)).toBe(true);
   });
 
-  it('rejects pseudo-selectors with different names', () => {
+  it('rejects pseudo-value with different names', () => {
     const a = pseudo({ name: ':hover' });
     const b = pseudo({ name: ':focus' });
     expect(arePseudoSelectorsEquivalent(a, b)).toBe(false);
@@ -193,7 +193,7 @@ describe('arePseudoSelectorsEquivalent', () => {
 // areSelectorArgumentsEquivalent
 // ─────────────────────────────────────────────────
 describe('areSelectorArgumentsEquivalent', () => {
-  it('matches identical simple selectors', () => {
+  it('matches identical simple value', () => {
     expect(areSelectorArgumentsEquivalent(el('.a'), el('.a'))).toBe(true);
   });
 
@@ -209,7 +209,7 @@ describe('areSelectorArgumentsEquivalent', () => {
     expect(areSelectorArgumentsEquivalent(a, b)).toBe(false);
   });
 
-  it('matches compound selectors', () => {
+  it('matches compound value', () => {
     const a = compound([el('.a'), el('.b')]);
     const b = compound([el('.b'), el('.a')]);
     expect(areSelectorArgumentsEquivalent(a, b)).toBe(true);
@@ -245,7 +245,7 @@ describe('areCompoundSelectorsEquivalent', () => {
     expect(areCompoundSelectorsEquivalent(a, b)).toBe(false);
   });
 
-  it('matches compounds with :is() components via compoundComponentMatches', () => {
+  it('matches compounds with :is() value via compoundComponentMatches', () => {
     // :is(.a).b should match .a.b
     const a = compound([is(sellist([el('.a')])), el('.b')]);
     const b = compound([el('.a'), el('.b')]);
@@ -307,18 +307,18 @@ describe('expandComplexSelectorWithIs', () => {
 // expandSelectorWithIs
 // ─────────────────────────────────────────────────
 describe('expandSelectorWithIs', () => {
-  it('passes through simple selectors unchanged', () => {
+  it('passes through simple value unchanged', () => {
     const s = el('.a');
     expect(expandSelectorWithIs(s)).toHaveLength(1);
   });
 
-  it('delegates to expandComplexSelectorWithIs for complex selectors', () => {
+  it('delegates to expandComplexSelectorWithIs for complex value', () => {
     const s = sel([is(sellist([el('.x'), el('.y')])), co(' '), el('.a')]) as ComplexSelector;
     const result = expandSelectorWithIs(s);
     expect(result).toHaveLength(2);
   });
 
-  it('delegates to expandCompoundWithPseudoSelectors for compound selectors', () => {
+  it('delegates to expandCompoundWithPseudoSelectors for compound value', () => {
     const c = compound([el('.a'), is(sellist([el('.x'), el('.y')]))]);
     const result = expandSelectorWithIs(c);
     expect(result.length).toBeGreaterThanOrEqual(3);
@@ -329,25 +329,25 @@ describe('expandSelectorWithIs', () => {
 // areComplexSelectorsEquivalent
 // ─────────────────────────────────────────────────
 describe('areComplexSelectorsEquivalent', () => {
-  it('matches identical complex selectors', () => {
+  it('matches identical complex value', () => {
     const a = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
     const b = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
     expect(areComplexSelectorsEquivalent(a, b)).toBe(true);
   });
 
-  it('rejects complex selectors of different length', () => {
+  it('rejects complex value of different length', () => {
     const a = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
     const b = sel([el('.a')]) as ComplexSelector;
     expect(areComplexSelectorsEquivalent(a, b)).toBe(false);
   });
 
-  it('rejects complex selectors with different combinators', () => {
+  it('rejects complex value with different combinators', () => {
     const a = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
     const b = sel([el('.a'), co('+'), el('.b')]) as ComplexSelector;
     expect(areComplexSelectorsEquivalent(a, b)).toBe(false);
   });
 
-  it('matches complex selectors with compound components in any order', () => {
+  it('matches complex value with compound value in any order', () => {
     const a = sel([compound([el('.x'), el('.y')]), co('>'), el('.b')]) as ComplexSelector;
     const b = sel([compound([el('.y'), el('.x')]), co('>'), el('.b')]) as ComplexSelector;
     expect(areComplexSelectorsEquivalent(a, b)).toBe(true);
@@ -376,39 +376,39 @@ describe('areComplexSelectorsEquivalent', () => {
 // isStructurallyEqual
 // ─────────────────────────────────────────────────
 describe('isStructurallyEqual', () => {
-  it('matches identical simple selectors', () => {
+  it('matches identical simple value', () => {
     expect(isStructurallyEqual(el('.a'), el('.a'))).toBe(true);
   });
 
-  it('rejects different simple selectors', () => {
+  it('rejects different simple value', () => {
     expect(isStructurallyEqual(el('.a'), el('.b'))).toBe(false);
   });
 
-  it('matches equivalent pseudo-selectors', () => {
+  it('matches equivalent pseudo-value', () => {
     const a = pseudo({ name: ':hover' });
     const b = pseudo({ name: ':hover' });
     expect(isStructurallyEqual(a, b)).toBe(true);
   });
 
-  it('rejects pseudo-selectors with different names', () => {
+  it('rejects pseudo-value with different names', () => {
     const a = pseudo({ name: ':hover' });
     const b = pseudo({ name: ':focus' });
     expect(isStructurallyEqual(a, b)).toBe(false);
   });
 
-  it('matches complex selectors component-by-component', () => {
+  it('matches complex value component-by-component', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.b')]);
     expect(isStructurallyEqual(a, b)).toBe(true);
   });
 
-  it('rejects complex selectors with different components', () => {
+  it('rejects complex value with different value', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.c')]);
     expect(isStructurallyEqual(a, b)).toBe(false);
   });
 
-  it('matches compound selectors with same components in same order', () => {
+  it('matches compound value with same value in same order', () => {
     const a = compound([el('.x'), el('.y')]);
     const b = compound([el('.x'), el('.y')]);
     expect(isStructurallyEqual(a, b)).toBe(true);
@@ -419,11 +419,11 @@ describe('isStructurallyEqual', () => {
 // selectorMatchesExtendTarget
 // ─────────────────────────────────────────────────
 describe('selectorMatchesExtendTarget', () => {
-  it('matches identical simple selectors (non-partial)', () => {
+  it('matches identical simple value (non-partial)', () => {
     expect(selectorMatchesExtendTarget(el('.a'), el('.a'), false)).toBe(true);
   });
 
-  it('rejects different simple selectors (non-partial)', () => {
+  it('rejects different simple value (non-partial)', () => {
     expect(selectorMatchesExtendTarget(el('.a'), el('.b'), false)).toBe(false);
   });
 
@@ -432,7 +432,7 @@ describe('selectorMatchesExtendTarget', () => {
     expect(selectorMatchesExtendTarget(target, el('.a'), false)).toBe(true);
   });
 
-  it('matches complex selectors (non-partial)', () => {
+  it('matches complex value (non-partial)', () => {
     const a = sel([el('.a'), co('>'), el('.b')]);
     const b = sel([el('.a'), co('>'), el('.b')]);
     expect(selectorMatchesExtendTarget(a, b, false)).toBe(true);
@@ -448,7 +448,7 @@ describe('selectorMatchesExtendTarget', () => {
 // normalizeSelectorForExtend
 // ─────────────────────────────────────────────────
 describe('normalizeSelectorForExtend', () => {
-  it('passes through simple selectors unchanged', () => {
+  it('passes through simple value unchanged', () => {
     const s = el('.a');
     const result = normalizeSelectorForExtend(s);
     expect(result.valueOf()).toBe('.a');
@@ -467,13 +467,13 @@ describe('normalizeSelectorForExtend', () => {
 // selectorCompare — additional edge cases
 // ─────────────────────────────────────────────────
 describe('selectorCompare edge cases', () => {
-  it('reports whole match for identical simple selectors', () => {
+  it('reports whole match for identical simple value', () => {
     const result = selectorCompare(el('.a'), el('.a'));
     expect(result.isEquivalent).toBe(true);
     expect(result.hasWholeMatch).toBe(true);
   });
 
-  it('reports no match for different simple selectors', () => {
+  it('reports no match for different simple value', () => {
     const result = selectorCompare(el('.a'), el('.b'));
     expect(result.isEquivalent).toBe(false);
     expect(result.hasWholeMatch).toBe(false);

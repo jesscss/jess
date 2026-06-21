@@ -6,7 +6,7 @@ import { assertValidTree } from './assert-valid-tree.js';
 const parser = new Parser();
 
 function firstRuleDeclValue(tree: any) {
-  return tree?.rules?.[0]?.rules?.[0]?.value;
+  return tree?.rules?.[0]?.rules?.rules?.[0]?.value;
 }
 
 describe('scss-parser (ast serialize)', () => {
@@ -20,10 +20,12 @@ describe('scss-parser (ast serialize)', () => {
         selector:
           (BasicSelector '.a')
         rules:
-          [
-            (Declaration
-              name:
-                (Any [role=property] 'color')
+          (Rules
+            rules:
+              [
+                (Declaration
+                  name:
+                    (Any [role=property] 'color')
       `);
   });
 
@@ -36,19 +38,19 @@ describe('scss-parser (ast serialize)', () => {
       (Collection
         rules:
           [
-          (Declaration
-            name:
-              (Any [role=property] 'regular')
-            value:
-              (Num 400)
-          )
-          (Declaration
-            name:
-              (Any [role=property] 'medium')
-            value:
-              (Num 500)
-          )
-        ]
+            (Declaration
+              name:
+                (Any [role=property] 'regular')
+              value:
+                (Num 400)
+            )
+            (Declaration
+              name:
+                (Any [role=property] 'medium')
+              value:
+                (Num 500)
+            )
+          ]
       )
     `);
   });
@@ -74,7 +76,7 @@ describe('scss-parser (ast serialize)', () => {
         node:
           (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('+');
+    expect(firstRuleDeclValue(tree)?.node?.operator).toBe('+');
   });
 
   it('serializes isolated parenthesized slash division as Expression(Operation)', () => {
@@ -87,7 +89,7 @@ describe('scss-parser (ast serialize)', () => {
         node:
           (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('/');
+    expect(firstRuleDeclValue(tree)?.node?.operator).toBe('/');
   });
 
   it('keeps paren list slash forms as grouped values, not arithmetic expressions', () => {
@@ -405,7 +407,7 @@ describe('scss-parser (ast serialize)', () => {
       (Ruleset
         selector:
           (ComplexSelector
-            value:
+            components:
               [
                 (Ampersand
     `);
@@ -491,12 +493,12 @@ describe('scss-parser (ast serialize)', () => {
           )
         args:
           (List
-            value:
+            items:
               [
-              (Reference
-                key: 'x'
-              )
-            ]
+                (Reference
+                  key: 'x'
+                )
+              ]
           )
       )
     `);

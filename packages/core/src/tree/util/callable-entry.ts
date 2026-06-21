@@ -10,7 +10,7 @@ type CallableEntryValue = {
   name?: unknown;
   params?: List<Node>;
   rules: Rules;
-  guard?: Node;
+  guard?: Node | string;
 };
 
 export type CallableRulesEntry = {
@@ -27,10 +27,6 @@ export type CallableLookupEntry = {
   value: MixinEntry;
   match: string[];
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
 
 export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<Node>): boolean {
   if (!node) {
@@ -50,36 +46,19 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
       return true;
     }
   }
-  const value = node.value;
-  if (isNode(value)) {
-    return callableGuardContainsDefault(value, seen);
-  }
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      const item = value[i];
-      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  if (isRecord(value)) {
-    for (const key in value) {
-      const item = value[key];
-      if (isNode(item) && callableGuardContainsDefault(item, seen)) {
-        return true;
-      }
-      if (Array.isArray(item)) {
-        for (let i = 0; i < item.length; i++) {
-          const child = item[i];
-          if (isNode(child) && callableGuardContainsDefault(child, seen)) {
-            return true;
-          }
-        }
-      }
+  for (const child of node.children()) {
+    if (callableGuardContainsDefault(child, seen)) {
+      return true;
     }
   }
   return false;
+}
+
+function requireHydratedCallableGuard(guard: Node | string | undefined): Node | undefined {
+  if (typeof guard === 'string') {
+    throw new TypeError('String-backed mixin guards must be hydrated before evaluation');
+  }
+  return guard;
 }
 
 export function callableRulesEntry(
@@ -87,7 +66,7 @@ export function callableRulesEntry(
   parent?: Node,
   index?: number
 ): CallableRulesEntry {
-  const hasDefault = callableGuardContainsDefault(value.guard);
+  const hasDefault = isNode(value.guard) && callableGuardContainsDefault(value.guard);
   return {
     kind: 'callable-rules',
     value,
@@ -124,7 +103,7 @@ export function getCallableEntryParams(entry: CallableEntry): List<Node> | undef
 }
 
 export function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
-  return isNode(entry, N.Mixin)
+  return requireHydratedCallableGuard(isNode(entry, N.Mixin)
     ? entry.guard
-    : entry.value.guard;
+    : entry.value.guard);
 }

@@ -2,6 +2,7 @@ import {
   Node,
   F_STATIC,
   defineType,
+  NO_VALUE,
   type LocationInfo
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -11,7 +12,7 @@ import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
-import { spaced } from './sequence.js';
+import { Sequence, spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
@@ -29,10 +30,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitCommentTriviaAfterNode } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
-
-// AUDIT: This file is also huge. I bet at least 50% could be cut. Not just moved but cut, but maybe I'm wrong. Still, worth investigating.
+import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -48,40 +46,6 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
     out += chunks[i] ?? '';
   }
   return out;
-}
-
-function declarationLeadingMultilineIndent(value: string | Array<string | Node>): string | undefined {
-  if (typeof value === 'string') {
-    const sourceIndent = /\n([ \t]*)\S/u.exec(value)?.[1];
-    if (sourceIndent !== undefined) {
-      return sourceIndent.startsWith('  ') ? sourceIndent.slice(2) : sourceIndent;
-    }
-    return value.includes('\n') ? '' : undefined;
-  }
-  for (const segment of value) {
-    if (typeof segment !== 'string') {
-      return undefined;
-    }
-    const sourceIndent = /\n([ \t]*)\S/u.exec(segment)?.[1];
-    if (sourceIndent !== undefined) {
-      return sourceIndent.startsWith('  ') ? sourceIndent.slice(2) : sourceIndent;
-    }
-    if (segment.includes('\n')) {
-      return '';
-    }
-  }
-  return undefined;
-}
-
-function declarationMultilineSegmentText(segment: string): string {
-  return segment.replace(/\n {2}/gu, '\n');
-}
-
-function multilineValueIndent(text: string | undefined): string | undefined {
-  if (!text?.includes('\n')) {
-    return undefined;
-  }
-  return /\n([ \t]*)\S/u.exec(text)?.[1] ?? '';
 }
 
 export const enum AssignmentType {
@@ -103,8 +67,6 @@ export const enum AssignmentType {
 
 export type DeclarationOptions = {
   assign?: AssignmentType;
-  /** Internal scanner-first hint: this declaration began as source-backed fields. */
-  sourceBacked?: boolean;
   /** Tracks that this declaration was created via assignment normalization (e.g. +:, +_:). */
   normalizedFromAssign?: AssignmentType;
   semi?: boolean;
@@ -137,28 +99,18 @@ export type DeclarationOptions = {
 /** Should be Any<'property'> | Interpolated<'property'> */
 type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
 
-export type MaterializedDeclarationValue<T extends AnyRole = 'property'> = {
-  name: NameValue<T>;
-  value: Node;
-  /** The actual string representation of important, if it exists */
-  important?: Any<'flag'>;
-};
-
-export type DeclarationName<T extends AnyRole = 'property'> = string | NameValue<T>;
-export type DeclarationFieldValue = string | Node | Array<string | Node>;
-export type DeclarationImportant = boolean | string | Any<'flag'> | undefined;
-
 export type DeclarationValue<T extends AnyRole = 'property'> = {
-  name: DeclarationName<T>;
-  value: DeclarationFieldValue;
-  important?: DeclarationImportant;
+  name: NameValue<T> | string;
+  value: Node | string;
+  /** The actual string representation of important, if it exists */
+  important?: Any<'flag'> | string;
 };
 
 type DeclarationEvalState = {
   output: Node;
-  name?: MaterializedDeclarationValue['name'];
+  name?: DeclarationValue['name'];
   value?: Node;
-  important?: MaterializedDeclarationValue['important'];
+  important?: Any<'flag'>;
   nil: boolean;
 };
 
@@ -168,7 +120,7 @@ type CustomInterpolatedRenderValue = {
 };
 
 type DeclarationRenderState = {
-  name: MaterializedDeclarationValue['name'];
+  name: DeclarationValue['name'];
   value: Node;
   customInterpolatedValue?: CustomInterpolatedRenderValue;
   mergeAdapter?: DeclarationMergeAdapterState;
@@ -207,7 +159,7 @@ export function finalizeContextualImportantState(
 export function finalizeContextualImportantPublicState(
   context: Context,
   important: Any<'flag'> | undefined
-): { important?: MaterializedDeclarationValue['important']; importantText?: string } {
+): { important?: Any<'flag'>; importantText?: string } {
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
@@ -227,7 +179,7 @@ export function collectDeclarationMergeAdapterItems(
   const mergedItems: Node[] = [];
   const collect = (child: Node) => {
     if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
-      for (const item of child.value) {
+      for (const item of child.items) {
         collect(item);
       }
       return;
@@ -244,7 +196,7 @@ export function collectDeclarationMergeAdapterItems(
 
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
-  value: Node[];
+  items: Node[];
 };
 
 export type DeclarationMergeAdapterState = DeclarationMergeAdapterItemsState;
@@ -269,24 +221,24 @@ export function createDeclarationMergeAdapterState(
   if (mergedItems.length === 1) {
     return mergedItems[0]!;
   }
-  return { kind: mode, value: mergedItems };
+  return { kind: mode, items: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
-  important?: MaterializedDeclarationValue['important'];
+  important?: Any<'flag'>;
   changed: boolean;
 };
 
 type DeclarationRegistrationState = {
-  name: MaterializedDeclarationValue['name'];
+  name: DeclarationValue['name'];
   value: Node;
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
   renderAssignment?: {
-    value: Node[];
+    items: Node[];
     sep: ',' | ' ';
   };
   bindOutput?: (node: Declaration) => void;
@@ -303,6 +255,45 @@ const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value i
   && !Array.isArray(value)
   && value.source instanceof Interpolated
 );
+
+const getSingleInterpolatedCustomValue = (node: Node): Interpolated | undefined => (
+  node instanceof Interpolated
+    ? node
+    : node instanceof Sequence && node.items.length === 1 && node.items[0] instanceof Interpolated
+      ? node.items[0]
+      : undefined
+);
+
+const emitLeadingTriviaForSingleInterpolatedCustomValue = (
+  value: Node,
+  source: Interpolated,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  if (!(value instanceof Sequence) || value.items[0] !== source) {
+    return;
+  }
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, source.location[0], 'before', options), options);
+};
+
+const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
+  const source = getSingleInterpolatedCustomValue(sourceValue);
+  return source ? evaluatedValue.inherit(source) : evaluatedValue;
+};
+
+const emitLeadingTriviaForCustomValue = (
+  value: Node,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, value.location[0], 'before', options), options);
+};
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
@@ -337,11 +328,11 @@ const valueShouldResolveCustomProperty = (value: unknown): boolean => {
 };
 
 const unwrapAtomicCustomValue = (node: Node): Node => {
-  if (isNode(node, N.List) && node.value.length === 1) {
-    return unwrapAtomicCustomValue(node.value[0]!);
+  if (isNode(node, N.List) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
   }
-  if (isNode(node, N.Sequence) && node.value.length === 1) {
-    return unwrapAtomicCustomValue(node.value[0]!);
+  if (isNode(node, N.Sequence) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
   }
   return node;
 };
@@ -353,9 +344,9 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  for (let i = 0; i < node.value.length; i++) {
-    const child = node.value[i];
-    if (!(child instanceof Node) || !canReuseLeaf(child)) {
+  for (let i = 0; i < node.items.length; i++) {
+    const child = node.items[i];
+    if (!(child instanceof Node) || !child.canReuseAsLeaf()) {
       return false;
     }
   }
@@ -429,14 +420,17 @@ const trimCustomTrailingNewline = (text: string): string => {
   return text.slice(0, index + 1);
 };
 
-const nodeValueText = (node: Node): string | undefined => {
+const nodeValueText = (node: Node | string): string | undefined => {
+  if (typeof node === 'string') {
+    return node;
+  }
   const value = node.valueOf();
   return typeof value === 'string' || typeof value === 'number'
     ? String(value)
     : undefined;
 };
 
-const maybeTrimmedScalarText = (node: Node): string | undefined => {
+const maybeTrimmedScalarText = (node: Node | string): string | undefined => {
   const text = nodeValueText(node);
   if (text === undefined || text.length === 0) {
     return text;
@@ -451,7 +445,10 @@ const maybeTrimmedScalarText = (node: Node): string | undefined => {
     : text;
 };
 
-const maybeDirectSyntheticDeclarationLeafText = (node: Node): string | undefined => {
+const maybeDirectSyntheticDeclarationLeafText = (node: Node | string): string | undefined => {
+  if (typeof node === 'string') {
+    return maybeTrimmedScalarText(node);
+  }
   if (
     node.type !== 'Any'
     && node.type !== 'Anonymous'
@@ -503,60 +500,70 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
   return `${nameText}(${argText})`;
 };
 
-
-// AUDIT: This class and file is egregiously long. Cut aggressively.
 /**
  * A continuous collection of nodes.
  *
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationFieldValue | undefined, Opts> {
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue['value'], Opts> {
   static override childKeys = ['name', 'value', 'important'];
 
-  name: DeclarationName;
-  declare override value: DeclarationFieldValue;
-  important: DeclarationImportant;
+  declare override value: DeclarationValue['value'];
+  name: DeclarationValue['name'];
+  important: DeclarationValue['important'];
 
   override allowRuleRoot = true;
 
   constructor(
-    value: MaterializedDeclarationValue | DeclarationValue,
+    value: DeclarationValue,
     options?: Opts,
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(undefined, options, location);
+    super(NO_VALUE, options, location);
+    this.name = this._processNodes(value.name);
+    this.value = this._processNodes(value.value);
+    this.important = this._processNodes(value.important);
     this._treeContext = treeContext;
-    this.name = value.name;
-    this.value = value.value;
-    this.important = value.important;
-    this.adoptDeclarationParts();
   }
 
-  private adoptDeclarationParts(): void {
-    if (isNode(this.name)) {
-      this.adopt(this.name);
-    }
-    if (isNode(this.value)) {
-      this.adopt(this.value);
-    } else if (Array.isArray(this.value)) {
-      for (const segment of this.value) {
-        if (isNode(segment)) {
-          this.adopt(segment);
+  override* children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    const childValues = reverse
+      ? [this.important, this.value, this.name]
+      : [this.name, this.value, this.important];
+    for (let i = 0; i < childValues.length; i++) {
+      const child = childValues[i];
+      if (child instanceof Node) {
+        yield child;
+        if (deep) {
+          yield* child.children(deep, reverse);
         }
       }
     }
-    if (isNode(this.important)) {
-      this.adopt(this.important);
-    }
   }
 
-  private copyNameForDerived(node: MaterializedDeclarationValue['name']): MaterializedDeclarationValue['name'] {
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    cloneFn ??= n => n.clone(deep);
+    const clonePart = <T extends Node | string | undefined>(part: T): T => (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete node field type supplied by this declaration part.
+      deep && part instanceof Node ? cloneFn(part) as T : part
+    );
+    return this.withParts({
+      name: clonePart(this.name),
+      value: clonePart(this.value),
+      important: clonePart(this.important)
+    });
+  }
+
+  private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
+    if (typeof node === 'string') {
+      return node;
     }
-    const copy = copyWithReusableLeaves(node);
+    if (node.canReuseAsLeaf()) {
+      return node.reuseAsLeaf();
+    }
+    const copy = node.cloneForPlacement();
     if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
       throw new TypeError('Copied declaration name must remain a declaration name');
     }
@@ -564,68 +571,36 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return copy;
   }
 
-  private copyValueForDerived(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
-  }
-
-  private cloneDeclarationField<T>(value: T, deep: boolean | undefined, cloneFn: ((n: Node) => Node) | undefined): T {
-    if (isNode(value)) {
-      return (deep ? (cloneFn ?? ((node: Node) => node.clone(deep)))(value) : value) as T;
+  private copyValueForDerived(node: DeclarationValue['value']): DeclarationValue['value'] {
+    if (typeof node === 'string') {
+      return node;
     }
-    if (Array.isArray(value)) {
-      const out = new Array<unknown>(value.length);
-      for (let i = 0; i < value.length; i++) {
-        out[i] = this.cloneDeclarationField(value[i], deep, cloneFn);
-      }
-      return out as T;
-    }
-    if (isRecord(value)) {
-      const out: Record<string, unknown> = {};
-      for (const key in value) {
-        out[key] = this.cloneDeclarationField(value[key], deep, cloneFn);
-      }
-      return out as T;
-    }
-    return value;
-  }
-
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const value: DeclarationValue = {
-      name: this.cloneDeclarationField(this.name, deep, cloneFn),
-      value: this.cloneDeclarationField(this.value, deep, cloneFn),
-      ...(this.important !== undefined && {
-        important: this.cloneDeclarationField(this.important, deep, cloneFn)
-      })
-    };
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        value,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
-    );
-    return node.inherit(this);
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
+      : node.cloneForPlacement();
   }
 
   private ownRenderAssignmentInput(node: Node): Node {
-    return canReuseLeaf(node) || canReuseSourceFreeAssignmentInput(node)
-      ? reuseLeaf(node)
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
       : this.copyValueForDerived(node);
   }
 
   private ownMergedAssignmentOutputItem(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+    return node.canReuseAsLeaf() ? node.reuseAsLeaf() : this.copyValueForDerived(node);
   }
 
-  private copyImportantForDerived(node: MaterializedDeclarationValue['important']): MaterializedDeclarationValue['important'] {
+  private copyImportantForDerived(node: DeclarationValue['important']): DeclarationValue['important'] {
     if (!node) {
       return undefined;
     }
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+    if (typeof node === 'string') {
+      return node;
     }
-    const copy = copyWithReusableLeaves(node);
+    if (node.canReuseAsLeaf() || node instanceof Any) {
+      return node.reuseAsLeaf();
+    }
+    const copy = node.cloneForPlacement();
     if (!(copy instanceof Any)) {
       throw new TypeError('Copied important flag must remain an Any node');
     }
@@ -637,20 +612,24 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node.inherit(this);
   }
 
-  private withParts(value: MaterializedDeclarationValue): this {
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        value,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+  private withParts(value: DeclarationValue): this {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Derived declarations must preserve concrete subclasses such as VarDeclaration and CustomDeclaration.
+    const Ctor = this.constructor as unknown as new (
+      value: DeclarationValue,
+      options?: Opts,
+      location?: LocationInfo,
+      treeContext?: Context['treeContext']
+    ) => this;
+    const node = new Ctor(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
     );
     return this.applyDerivedMetadata(node);
   }
 
   private derive(): this {
-    this.materializeDeclarationParts();
     return this.withParts({
       name: this.copyNameForDerived(this.name),
       value: this.copyValueForDerived(this.value),
@@ -664,8 +643,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  deriveWithParts(parts: Partial<MaterializedDeclarationValue>): this {
-    this.materializeDeclarationParts();
+  deriveWithParts(parts: Partial<DeclarationValue>): this {
     const node = this.withParts({
       name: parts.name === undefined
         ? this.copyNameForDerived(this.name)
@@ -681,11 +659,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  private formatNonCustomValue(
-    valOut: string,
-    _options: PrintOptions,
-    colonLineBreakIndent?: string
-  ) {
+  private formatNonCustomValue(valOut: string, _options: PrintOptions) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -699,21 +673,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let out = '';
     const [firstLine = '', ...restLines] = lines;
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
-
-    if (colonLineBreakIndent !== undefined) {
-      const firstIndent = ' '.repeat(Math.max(0, colonLineBreakIndent.length - 2));
-      const restIndent = ' '.repeat(Math.max(0, colonLineBreakIndent.length - 2));
-      out = firstContent ? `${firstIndent}${firstContent}` : '';
-      for (const line of restLines) {
-        if (!line.trim()) {
-          out += '\n';
-          continue;
-        }
-        const content = line.replace(/^[ \t]+/g, '').trimEnd();
-        out += `\n${restIndent}${content}`;
-      }
-      return out || `\n${restIndent}`;
-    }
 
     if (firstContent) {
       out = ` ${firstContent}`;
@@ -739,19 +698,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    if (this.hasTextualDeclarationParts()) {
-      return true;
-    }
-    this.materializeDeclarationParts();
     return this.valueRequiresSemi(this.value);
   }
 
-  private valueRequiresSemi(value: Node): boolean {
+  private valueRequiresSemi(value: DeclarationValue['value']): boolean {
+    if (typeof value === 'string') {
+      return true;
+    }
     return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
-    this.materializeDeclarationParts();
     return this.declValueTrimmedString({
       name: this.name,
       value: this.value,
@@ -760,7 +717,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private declValueTrimmedString(
-    valueParts: MaterializedDeclarationValue,
+    valueParts: DeclarationValue,
     options?: PrintOptions,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
@@ -777,7 +734,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private writeDeclarationValueSyntax(
-    valueParts: MaterializedDeclarationValue,
+    valueParts: DeclarationValue,
     options: ReturnType<typeof getPrintOptions>,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
@@ -789,6 +746,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
+    const customInterpolatedSource = renderState?.customInterpolatedValue?.source;
+    const hasCustomInterpolatedRender = Boolean(
+      customInterpolatedSource
+      && getSingleInterpolatedCustomValue(value) === customInterpolatedSource
+    );
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
@@ -798,17 +760,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
-    if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
+    if (typeof name === 'string') {
+      w.add(hasTrailingWhitespace(name) ? name.trimEnd() : name, this);
+    } else if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
       name.writeSyntax(options);
     } else {
       const nameMark = w.mark();
       name.writeSyntax(options);
       w.trimEndSince(nameMark);
     }
-    emitCommentTriviaAfterNode(name, options);
+    if (name instanceof Node) {
+      emitCommentTriviaAfterNode(name, options);
+    }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
-    const isCustomProperty = name.valueOf().startsWith('--');
+    const isCustomProperty = nameText?.startsWith('--') === true;
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
@@ -816,30 +782,44 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
       const customValueText = nodeValueText(value);
-      const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
-      if (this._options?.sourceBacked && (customValueText === undefined || !/^[\s]/u.test(customValueText))) {
-        w.add(' ');
-      }
+      const fallbackOut = typeof value === 'string'
+        ? undefined
+        : stringifyCustomFallbackFunctionCall(value, options);
       if (
-        renderState?.customInterpolatedValue?.source !== value
+        !hasCustomInterpolatedRender
         && fallbackOut === undefined
         && customValueText !== undefined
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
-        value.writeSyntax(options);
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          emitLeadingTriviaForCustomValue(value, options);
+          value.writeSyntax(options);
+        }
       } else if (fallbackOut !== undefined) {
         const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
-      } else if (renderState?.customInterpolatedValue?.source === value) {
+      } else if (hasCustomInterpolatedRender) {
         const valueMark = w.mark();
-        renderState.customInterpolatedValue.source.writeWithReplacements(
-          renderState.customInterpolatedValue.replacements,
+        emitLeadingTriviaForSingleInterpolatedCustomValue(
+          value,
+          customInterpolatedSource!,
+          options
+        );
+        customInterpolatedSource!.writeWithReplacements(
+          renderState!.customInterpolatedValue!.replacements,
           options
         );
         w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
         const valueMark = w.mark();
-        value.writeSyntax(options);
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          emitLeadingTriviaForCustomValue(value, options);
+          value.writeSyntax(options);
+        }
         w.replaceSince(valueMark, (valueOut) => {
           const customOut = fallbackOut === undefined
             ? valueOut
@@ -850,35 +830,34 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       restorePrintState(options, saved);
     } else {
       if (mergeAdapter?.kind === 'space') {
-        this.renderSpaceValueSyntax(mergeAdapter.value, options);
+        this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else if (mergeAdapter?.kind === 'list') {
-        this.renderCommaValueSyntax(mergeAdapter.value, options);
+        this.renderCommaValueSyntax(mergeAdapter.items, options);
       } else {
-        const sourceBackedValueText = this._options?.sourceBacked ? nodeValueText(value) : undefined;
-        const multilineIndent = multilineValueIndent(sourceBackedValueText);
-        if (multilineIndent !== undefined) {
-          w.add('\n');
-        }
         const valueMark = w.mark();
-        value.writeSyntax(options);
-        w.replaceSince(
-          valueMark,
-          valOut => this.formatNonCustomValue(valOut, options, multilineIndent),
-          value
-        );
+        if (typeof value === 'string') {
+          w.add(value, this);
+        } else {
+          value.writeSyntax(options);
+        }
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
-      if (!isNode(value, N.Collection)) {
+      if (typeof value === 'string' || !isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantText = maybeTrimmedScalarText(important);
-            if (importantText !== undefined) {
-              w.add(importantText, important);
+            if (typeof important === 'string') {
+              w.add(important, this);
             } else {
-              const importantMark = w.mark();
-              important.writeSyntax(options);
-              w.trimStartSince(importantMark);
-              w.trimEndSince(importantMark);
+              const importantText = maybeTrimmedScalarText(important);
+              if (importantText !== undefined) {
+                w.add(importantText, important);
+              } else {
+                const importantMark = w.mark();
+                important.writeSyntax(options);
+                w.trimStartSince(importantMark);
+                w.trimEndSince(importantMark);
+              }
             }
           } else {
             w.add(importantText!, value);
@@ -888,13 +867,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     if (this.valueRequiresSemi(value)) {
       const triviaSource = important ?? value;
-      if (isNode(triviaSource)) {
+      if (triviaSource instanceof Node) {
         emitCommentTriviaAfterNode(triviaSource, options);
       }
     }
   }
 
-  // AUDIT: What the shit is this? Why isn't this handled by a regular array or sequence handling?
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
@@ -905,7 +883,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  // AUDIT: What the shit is this? Why isn't this handled by a List node?
   private renderCommaValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
@@ -920,99 +897,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    if (this.hasTextualDeclarationParts()) {
-      options = getPrintOptions(options);
-      const w = options.writer!;
-      const position = w.position();
-      this.writeTextualDeclarationSyntax(options);
-      return getWriterTextSincePosition(w, position);
-    }
     return this.declTrimmedString(options);
-  }
-
-  private hasTextualDeclarationParts(): boolean {
-    return typeof this.name === 'string'
-      || typeof this.value === 'string'
-      || Array.isArray(this.value)
-      || typeof this.important === 'string';
-  }
-
-  private materializeDeclarationParts(): void {
-    if (typeof this.name === 'string') {
-      this.name = any(this.name, { role: 'property' });
-      this.adopt(this.name);
-    }
-    if (!isNode(this.value)) {
-      const parts = typeof this.value === 'string' ? [this.value] : this.value;
-      if (!Array.isArray(parts)) {
-        const value = parts as unknown as { type?: unknown; constructor?: { name?: string } };
-        const keys = parts && typeof parts === 'object' ? Object.keys(parts as object).join(',') : '';
-        throw new TypeError(
-          `Declaration value must be a string, node, or segment array before materialization; got ${typeof parts} ${String(value?.constructor?.name ?? '')} ${String(value?.type ?? '')} keys=${keys}`
-        );
-      }
-      let value: Node;
-      if (parts.length === 1 && isNode(parts[0])) {
-        value = parts[0];
-      } else if (parts.some(segment => isNode(segment))) {
-        value = spaced(parts.map(segment => (
-          typeof segment === 'string' ? any(segment) : segment
-        )));
-      } else {
-        let text = '';
-        for (const segment of parts) {
-          text += segment;
-        }
-        value = any(text);
-      }
-      this.value = value;
-      this.adopt(value);
-    }
-    if (typeof this.important === 'string' || typeof this.important === 'boolean') {
-      this.important = this.important === false
-        ? undefined
-        : any(this.important === true ? '!important' : this.important, { role: 'flag' });
-      if (this.important) {
-        this.adopt(this.important);
-      }
-    }
-  }
-
-  private writeTextualDeclarationSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
-    if (!this.hasTextualDeclarationParts()) {
-      return false;
-    }
-    const w = options.writer!;
-    const name = typeof this.name === 'string' ? this.name : this.name.valueOf();
-    w.add(name, this);
-    const value = this.value;
-    if (isNode(value)) {
-      w.add(': ');
-      value.writeSyntax(options);
-    } else {
-      const indent = declarationLeadingMultilineIndent(value);
-      w.add(indent === undefined ? ': ' : `:\n${indent}`);
-      if (typeof value === 'string') {
-        w.add(indent === undefined ? value : declarationMultilineSegmentText(value), this);
-      } else {
-        for (const segment of value) {
-          if (typeof segment === 'string') {
-            w.add(indent === undefined ? segment : declarationMultilineSegmentText(segment), this);
-          } else {
-            segment.writeSyntax(options);
-          }
-        }
-      }
-    }
-    if (this.important === true) {
-      w.add(' !important', this);
-    } else if (typeof this.important === 'string') {
-      w.add(` ${this.important}`, this);
-    } else if (isNode(this.important)) {
-      w.add(' ');
-      this.important.writeSyntax(options);
-    }
-    return true;
   }
 
   private writeDirectSyntheticScalarSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
@@ -1020,9 +905,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return false;
     }
     const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
-    if (!isNode(this.value)) {
-      return false;
-    }
     const valueText = maybeDirectSyntheticDeclarationLeafText(this.value);
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
       return false;
@@ -1037,20 +919,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
-    w.add(nameText, this.name);
+    w.add(nameText, this.name instanceof Node ? this.name : this);
     w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
-    w.add(valueText, this.value);
+    w.add(valueText, this.value instanceof Node ? this.value : this);
     if (importantText !== undefined) {
-      w.add(` ${importantText}`, this.important);
+      w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
     }
     return true;
   }
 
   override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
-    if (this.writeTextualDeclarationSyntax(options)) {
-      return;
-    }
-    this.materializeDeclarationParts();
     if (this.writeDirectSyntheticScalarSyntax(options)) {
       return;
     }
@@ -1079,13 +957,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (this.hasTextualDeclarationParts()) {
-      const prepared = prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-      this.writeTextualDeclarationSyntax(prepared);
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, prepared.writer.toString())
-        : prepared.writer.toString();
-    }
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
       return isThenable(state)
@@ -1217,7 +1088,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           evaluated.push(out as Node);
         }
       };
-      for (const item of state.renderAssignment?.value ?? []) {
+      for (const item of state.renderAssignment?.items ?? []) {
         if (chain) {
           chain = chain.then(() => evaluateItem(item));
           continue;
@@ -1230,7 +1101,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return chain ? chain.then(() => evaluated) : evaluated;
     };
     const evaluate = (): MaybePromise<DeclarationRenderValue> => {
-      const isCustomProperty = state.name.valueOf().startsWith('--');
+      if (typeof state.value === 'string') {
+        throw new TypeError('String-backed declaration values must be hydrated before evaluation');
+      }
+      const stateNameText = nodeValueText(state.name);
+      const isCustomProperty = stateNameText?.startsWith('--') === true;
       const previousInCustom = context.inCustom;
       if (isCustomProperty) {
         if (!shouldResolveCustomPropertyValue(state.value)) {
@@ -1240,8 +1115,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       let maybeValue: MaybePromise<DeclarationRenderValue>;
       try {
-        maybeValue = isCustomProperty && state.value instanceof Interpolated && !state.renderAssignment
-          ? this.evalCustomInterpolatedRenderValue(context, state.value)
+        const customInterpolatedValue = isCustomProperty && !state.renderAssignment
+          ? getSingleInterpolatedCustomValue(state.value)
+          : undefined;
+        maybeValue = customInterpolatedValue
+          ? this.evalCustomInterpolatedRenderValue(context, customInterpolatedValue)
           : state.renderAssignment
             ? evaluateRenderAssignment()
             : state.value.eval(context);
@@ -1286,7 +1164,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
-            value: newValue
+            items: newValue
           },
           important: state.important,
           importantText,
@@ -1379,7 +1257,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         (isListMergedAssign && isNode(child, N.List))
         || (isSpaceMergedAssign && isNode(child, N.Sequence))
       ) {
-        for (const item of child.value) {
+        for (const item of child.items) {
           collect(item);
         }
         return;
@@ -1437,7 +1315,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private createRegistrationState(
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
-    this.materializeDeclarationParts();
     if (options.reuseCanonical === true) {
       return {
         name: this.name,
@@ -1453,7 +1330,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
-    this.materializeDeclarationParts();
     return {
       name: this.name,
       value: this.value,
@@ -1511,10 +1387,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
     /** Normalize assignment types */
     let assign = this.options?.assign;
-    const sourceAssign = assign as string | undefined;
-    if (sourceAssign === '+,:') {
+    const rawAssign = assign as string | undefined;
+    if (rawAssign === '+,:') {
       assign = AssignmentType.MergeList;
-    } else if (sourceAssign === '+_:') {
+    } else if (rawAssign === '+_:') {
       assign = AssignmentType.MergeSequence;
     }
     if (!assign && this.options?.normalizedFromAssign) {
@@ -1568,7 +1444,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isMergeListAssign = assign === AssignmentType.MergeList;
           if (state.renderOnly) {
             state.renderAssignment = {
-              value: [ref, inputValue],
+              items: [ref, inputValue],
               sep: isMergeListAssign ? ',' : ' '
             };
             state.normalizedFromAssign = normalizedAssign;
@@ -1607,7 +1483,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             };
             if (state.renderOnly) {
               state.renderAssignment = {
-                value: [ref, inputValue],
+                items: [ref, inputValue],
                 sep: ','
               };
               state.normalizedFromAssign = normalizedAssign;
@@ -1670,7 +1546,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    this.materializeDeclarationParts();
+    if (typeof this.value === 'string') {
+      throw new TypeError('String-backed declaration values must be hydrated before evaluation');
+    }
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
       return {
@@ -1729,7 +1607,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         return state;
       }
       const { name, value: value } = node;
-      if (isNode(value)) {
+      if (value instanceof Node) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
           if (!shouldResolveCustomPropertyValue(value)) {
@@ -1744,6 +1622,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             if (newValue instanceof Nil) {
               return newValue.inherit(node);
             }
+            if (isCustomProperty) {
+              newValue = inheritCustomInterpolatedValuePlacement(value, newValue);
+            }
             setVal(newValue);
             normalizeMergedLeadingPlaceholder();
             const importantState = finalizeContextualImportantPublicState(context, state.important);
@@ -1757,10 +1638,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (maybeNewValue instanceof Nil) {
           return maybeNewValue.inherit(node);
         }
-        if (!isNode(maybeNewValue)) {
+        if (!(maybeNewValue instanceof Node)) {
           return node;
         }
-        setVal(maybeNewValue);
+        setVal(isCustomProperty ? inheritCustomInterpolatedValuePlacement(value, maybeNewValue) : maybeNewValue);
         normalizeMergedLeadingPlaceholder();
         const importantState = finalizeContextualImportantPublicState(context, state.important);
         if (importantState.important && importantState.important !== state.important) {
@@ -1830,16 +1711,7 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue,
   options?: DeclarationOptions,
   location?: LocationInfo
-) => {
-  if (typeof value.name === 'string' && isNode(value.value)) {
-    return new Declaration({
-      name: any(value.name, { role: 'property' }),
-      value: value.value,
-      important: value.important
-    }, options, location);
-  }
-  return new Declaration(value, options, location);
-};
+) => new Declaration(value, options, location);

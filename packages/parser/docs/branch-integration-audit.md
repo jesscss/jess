@@ -6,8 +6,9 @@ scanner-first worktree is `feature/scanner-first-parser-docs`.
 
 The purpose is not to bless the current implementation. The purpose is to stop
 silent branch drift: every parser/core commit that exists only on the alpha
-branch must be either ported, mined for tests, marked as already represented, or
-rejected.
+branch must be integrated into scanner-first history, then either kept as-is,
+reshaped to the scanner-first architecture, or used as proof coverage for a
+smaller implementation.
 
 ## Branch Facts
 
@@ -33,18 +34,16 @@ work in the scanner-first worktree directly instead of moving the main checkout.
 
 ## Decision Labels
 
-- `port`: reimplement the behavior on scanner-first.
-- `mine-tests`: do not cherry-pick the implementation, but port useful proof
-  cases or corpus gates.
+- `port`: reimplement or finish the behavior on scanner-first after the merge.
+- `mine-tests`: keep the commit history, and use the proof cases or corpus gates
+  while reshaping implementation that conflicts with scanner-first requirements.
 - `represented`: scanner-first already has a newer implementation or stronger
   documented direction.
 - `partial`: scanner-first contains part of the intent, but the remaining code
   still has source-of-truth or object-shape debt.
-- `reject-shape`: the commit points in a direction now rejected by
-  [requirements-and-scope.md](requirements-and-scope.md) or
-  [implementation-map.md](implementation-map.md).
 - `split`: the commit mixed scanner-first-relevant proof with release or alpha
-  scaffolding; inspect and port only the relevant pieces.
+  scaffolding; keep the latest branch content and inspect which pieces need
+  scanner-first reshaping.
 - `binding-audit`: classify in the binding/lookup lane, not in parser-shape
   cleanup.
 
@@ -52,8 +51,8 @@ work in the scanner-first worktree directly instead of moving the main checkout.
 
 | Commit | Subject | Decision | Notes |
 | --- | --- | --- | --- |
-| `97b947b14` | Prepare Less v5 alpha readiness guards | `split` | Mostly alpha release/API scaffolding, but it also touches parser/core tests and node files. Do not cherry-pick; inspect and port only scanner-first-relevant proof or API decisions. |
-| `1e840ab9e` | Cut duplicate ruleset namespace lookup paths | `binding-audit` | Must be checked against scanner-first binding commits and tests before port/reject. |
+| `97b947b14` | Prepare Less v5 alpha readiness guards | `split` | Mostly alpha release/API scaffolding, but it also touches parser/core tests and node files. Keep it in the experimental branch; inspect parser-relevant pieces for scanner-first reshaping. |
+| `1e840ab9e` | Cut duplicate ruleset namespace lookup paths | `binding-audit` | Must be checked against scanner-first binding commits and tests before declaring the binding lane coherent. |
 | `ab2910a81` | Cut array-path namespace union dedupe | `binding-audit` | Same binding lane. |
 | `b04e1a93d` | Cut frame-owned ruleset namespace bucket fallback | `binding-audit` | Same binding lane. |
 | `927edf3e6` | Cut framed namespace broad-start fallback | `binding-audit` | Same binding lane. |
@@ -86,7 +85,7 @@ work in the scanner-first worktree directly instead of moving the main checkout.
 | `43eb8acf8` | Move cheap prelude scanning into parser | `mine-tests` | Reevaluate after at-rule prelude storage is semantic and direct. |
 | `4a9f5ea73` | Parse parameterless Less mixin calls | `mine-tests` | Useful Less proof. |
 | `d18394d83` | Cut implicit node value child fallback | `port` | Supports the direct-field model; must be done with `childKeys`, not one-off compatibility. |
-| `4ebf1d971` | Share cheap Less mixin name parsing | `mine-tests` | Useful if it deletes duplication; reject if it creates helper ladders. |
+| `4ebf1d971` | Share cheap Less mixin name parsing | `mine-tests` | Useful if it deletes duplication; reshape if it creates helper ladders. |
 | `09feec58d` | Gate Less scanner AST corpus | `mine-tests` | Must exist as a scanner-first gate before claiming Less coverage. |
 | `95104a8ee` | Parse plain Less ampersand scopes | `mine-tests` | Useful proof; must not confuse literal `&` with plain scope-isolation blocks. |
 | `176ba12ec` | Parse cheap Less mixin call args | `mine-tests` | Useful proof. |
@@ -127,9 +126,11 @@ work in the scanner-first worktree directly instead of moving the main checkout.
 5. Verify CSS and Less scanner corpus gates on scanner-first. Add missing gates
    from alpha as tests only, not as alpha implementation shape.
 
-## Rejected Direct Ports
+## Integration Guardrails
 
-Do not directly cherry-pick alpha commits that introduce or preserve:
+The experimental scanner-first branch should carry the latest alpha branch
+content. After integration, reshape implementation details that introduce or
+preserve:
 
 - parallel `Progressive*` nodes
 - `RawIslandNode` as a durable public/parser result concept
@@ -141,9 +142,10 @@ Do not directly cherry-pick alpha commits that introduce or preserve:
   `packages/less-parser/src/ast.ts`
 
 Do not treat `feature/less-v5-alpha-readiness` as disposable. Its unique commits
-are recorded here because some contain real proof cases, tests, and binding
-cleanup intent. The rejection is against direct cherry-picking bad shapes or
-release-scaffolding into scanner-first, not against preserving useful work.
+are part of the scanner-first branch history after the merge because some contain
+real proof cases, tests, release-readiness scaffolding, package/API work, and
+binding cleanup intent. The follow-up work is to simplify and reshape, not to
+drop completed work without a record.
 
 ## Next Verification Gates
 

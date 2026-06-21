@@ -44,101 +44,6 @@ complete only when the covered simple path proves it does not enter the
 fallback bridge, direct child scan, broad invalidation lane, or public
 materialization wrapper for that semantic case.
 
-## Performance-First Cut Target
-
-Primary goal: make Jess/Less evaluation and rendering faster by reducing hot-path
-object creation, branch ladders, duplicate lookup/index ownership, recursive
-rediscovery, copied eval trees, helper call stacks, and metadata repair work.
-
-The 50% non-test `packages/core/src` line-count cut is a stretch goal and
-secondary pressure target. It is useful because duplicate runtime systems tend
-to be large, but it must never outrank runtime behavior, correctness, or the
-canonical-tree model. Current measured baseline in this worktree:
-
-```txt
-55008 packages/core/src non-test TypeScript lines
-target <= 27504 lines
-```
-
-Current measured count after `d7f33811a`:
-
-```txt
-54991 packages/core/src non-test TypeScript lines
-remaining deletion needed: 27487 lines
-```
-
-Largest current files:
-
-```txt
-5946 packages/core/src/tree/rules.ts
-4234 packages/core/src/tree/util/extend.ts
-3758 packages/core/src/tree/reference.ts
-2283 packages/core/src/tree/ruleset.ts
-2085 packages/core/src/tree/util/selector-match-core.ts
-1945 packages/core/src/tree/call.ts
-1845 packages/core/src/tree/declaration.ts
-1738 packages/core/src/tree/at-rule.ts
-1446 packages/core/src/tree/util/extend-walk.ts
-1434 packages/core/src/tree/import-style.ts
-```
-
-Rules for counting secondary line-count progress:
-
-- a smaller diff that measurably or structurally removes hot-path objects,
-  branches, traversals, or duplicated state is better than a larger textual cut
-  that preserves the same runtime work;
-- moving code from one core file to another is not a cut;
-- replacing node methods with equally large service wrappers is not a cut;
-- deleting compatibility shims, duplicate lookup paths, defensive runtime
-  checks, duplicate visitors/traversals, repeated serializer paths, and
-  parallel binding/index mechanisms counts only when tests preserve behavior and
-  the resulting runtime path is no heavier;
-- generated files, tests, snapshots, and docs do not count toward the source
-  target;
-- every cut pass should report before/after non-test `packages/core/src` lines.
-
-Performance-aligned cut lanes:
-
-1. [ ] Declaration binding/direct lookup ownership: fold direct variable and
-   property occurrence lookup into the declaration binding layer. Expected
-   first-stage cut: 900-1,500 lines across `reference.ts`,
-   `direct-rules-lookup.ts`, `rules.ts`, and `scope-frame.ts`; larger cuts
-   become possible once `directDeclarationsByName`, direct occurrence caches,
-   and separate version state stop owning the same facts as binding cells.
-2. [ ] Callable namespace traversal collapse: replace duplicated exact,
-   namespace, prefix, fallback-frame, and terminal mixin-only branches with one
-   callable namespace result model. Expected cut: 700-1,050 lines in
-   `rules.ts`, after declaration binding ownership removes related fallback
-   bridges.
-3. [ ] Extend walk-and-consume canonicalization: make `extend-walk.ts` the only
-   matcher/applicator, then delete legacy location search, selector-match
-   caches, path application, exact-mode shims, and ampersand clone/search
-   helpers. Expected cut: 3,000-5,000 lines across `extend.ts`,
-   `selector-match-core.ts`, and `extend-walk.ts`, gated by complex selector,
-   `:is()`, ampersand, chained extend, import-reference, and Less fixture
-   parity.
-4. [ ] Registration/eval/render responsibility cuts: after lookup ownership is
-   coherent, delete duplicated child-surface summaries, sync/async eval lane
-   scaffolding, public/debug render transport branches, and node-local
-   defensive machinery that only exists to repair earlier copies. Expected cut:
-   1,000-2,000 lines in `rules.ts`, `reference.ts`, and render helpers.
-
-These estimates still leave a large line-count gap. After the first two lanes,
-rerun the line map and reassess whether smaller node files contain generated
-defensive patterns that can be deleted wholesale, not polished. Do not choose
-the next lane by line savings alone; choose the lane that best reduces real
-runtime object creation, branching, and duplicated lookup/render work.
-
-Minimum proof for each performance/cut batch:
-
-- focused behavior tests for the touched semantic lane;
-- `pnpm run verify:binding-lookup-hot-paths` for lookup/binding cuts;
-- extend walk and integration tests for extend cuts;
-- `pnpm run verify:aggressive-cutting-review`;
-- `git diff --check`;
-- a fresh non-test `packages/core/src` line count;
-- benchmark/profile evidence only when claiming measured speed.
-
 ## Active Binding Queue
 
 Complete every item in this queue before committing the next binding/lookup
@@ -177,6 +82,14 @@ guarded namespace starts avoid broad crawl, reference-import namespace-start
 misses avoid broad array fallback, compound-prefix and selector-list
 reference-import hit/miss paths avoid generated array fallback, and child
 uncovered misses respect `searchParents: false` after the narrow bridge.
+Local array-path namespace starts now also use frame/narrow-helper lookup:
+`local: true` skips local child surfaces as modeled misses without reopening
+the broad root `findMixinsFast(...)` or ruleset fallback, while non-local child
+namespace hits still resolve through child frames. Target-restricted
+mixin-output namespace starts likewise stay frame-owned: ambient restricted
+output misses are modeled without broad crawl, and `hasTarget: true` positives
+resolve through child frames. The remaining broad namespace-start fallback is
+limited to no-frame callers.
 
 3. [x] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
@@ -192,19 +105,19 @@ null child entries prevent recursive rediscovery, and ruleset path misses skip
 mixin-only child surfaces.
 
 4. [x] Retry `ReferencePlan` only for source-static facts. Scope:
-reference lookup policy, key node identity, read mode, target presence, `inCall`, and
+`_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
 plus variable/property/function/callable handle tests. Current evidence:
 source-static variable/property/function/mixin reads now read an already-written
-trivial `RulesLookupHandle` before rebuilding lookup policy; contextual
+trivial `RulesLookupHandle` before rebuilding `_lookupStrategy`; contextual
 start, read mode, target/filter, leaky/search-scope, interpolated, and
 nontrivial handle shapes still fall through to normal preparation. The
 source-static read now validates the stored handle fields directly and reuses
 the shared freshness tail, so it no longer allocates a temporary
 `RulesLookupHandleShape` object just to re-read a covered handle. Focused
 reference tests prove cached variable handles avoid current-binding map rereads,
-source-static handles read before rebuilding lookup policy, unstable facts
+source-static handles read before rebuilding lookup strategy, unstable facts
 rebuild normally, and property/declaration assignment constraints still reuse
 source-static handles.
 
@@ -485,7 +398,7 @@ into the generic shape.
 21. [x] Split source-static handle readers by lookup family instead of
 branching through `lookupTypeUsesDeclarationConstraints(...)`. Scope:
 `tryReadSourceStaticRulesLookupHandle(...)`, source-static variable/property/
-declaration/function/callable reads, and lookup-policy rebuild avoidance.
+declaration/function/callable reads, and `_lookupStrategy` rebuild avoidance.
 Goal: assign the reader/checker for declaration-capable references up front so
 function/callable source-static reads do not evaluate declaration-constraint
 eligibility or helper branches. Acceptance: focused source-static handle tests
@@ -495,9 +408,8 @@ reader path. Current evidence: the old generic
 `tryReadSourceStaticRulesLookupHandle(...)` is gone. Each lookup strategy now
 owns `tryReadSourceStaticHandle`, with declaration/property/variable readers
 doing declaration-constraint checks and function/mixin/mixin-ruleset readers
-using only common handle freshness. The early read uses the computed strategy
-without storing it on `Reference`, so a source-static cache hit does not rebuild
-lookup policy.
+using only common handle freshness. The early read still uses an uncached
+strategy lookup, so a source-static cache hit does not rebuild `_lookupStrategy`.
 Focused source-static/function/callable handle tests and
 `verify:binding-lookup-hot-paths` passed.
 
@@ -627,7 +539,7 @@ the stale object-call and arg-type names. This is handle-allocation
 code-path evidence only, not a measured speed claim.
 
 30. [x] Finish source-static `ReferencePlan` retry only for stable facts after
-the strategy read/write split. Scope: reference lookup policy, source-static key
+the strategy read/write split. Scope: `_lookupStrategy`, source-static key
 identity, target/filter/read-mode/leaky/search-scope disqualifiers, handle
 shape, and source-static strategy readers. Goal: prove repeated source-static
 references can reuse only stable plan facts without caching generated or live
@@ -635,8 +547,8 @@ surface state. Acceptance: control/mixin loop matrix plus variable/property/
 function/callable handle tests showing dynamic surfaces still fall through.
 Current evidence: source-static readers are strategy-owned positional calls;
 the existing stable source-static test proves a written handle can read before
-rebuilding lookup policy, while the new unstable-facts test proves
-read-mode and semantic-filter changes still rebuild handle state rather
+rebuilding `_lookupStrategy`, while the new unstable-facts test proves
+read-mode and semantic-filter changes still rebuild the lookup strategy rather
 than reusing stale plan facts.
 
 31. [x] Split or prove handle-prep eligibility by strategy so no-handle and
@@ -1172,7 +1084,16 @@ reference-import ruleset namespace still acts as a container while
 imported terminal mixin. A second imported compound-prefix test proves an exact
 imported terminal ruleset path returns `undefined` under `terminalMixinOnly`.
 Both spy on broad root `findMixinsFast(...)`, and existing parameterized
-mixin-ruleset call tests stayed green.
+mixin-ruleset call tests stayed green. Follow-up June 2026 proof also removes
+the generic callable-result dedupe helper and the local `scope.rules` scans from
+visible exact/prefix ruleset lookup. Exact and prefix ruleset namespace matches
+now come from callable bucket / child-entry facts, including reference-imported
+compound exact paths; if those facts do not model a case, the case remains
+unfinished rather than hidden behind a same-surface rediscovery fallback.
+Arg-bearing namespace resolution now dispatches the final segment through
+`findMixin(..., 'Mixin', ...)` instead of treating the last hop as a generic
+mixin-ruleset lookup with post-filtering. The full focused `mixin.test.ts` file
+stayed green after rebuilding `@jesscss/core`.
 
 63. [x] Collapse duplicated namespace-offset fallback checks if the remaining
 fallback-frame proof matches the current-frame proof. Scope:
@@ -1286,7 +1207,7 @@ probe and avoid preparing the full `RulesLookupHandleShape`. The cached
 variable-handle test now asserts zero `currentBindingsByName.get` reads on
 reuse, while parent-frame and child-frame current-binding invalidation tests
 still pass. The existing source-static handle matrix proves variable,
-property, function, and callable handles read before rebuilding lookup policy;
+property, function, and callable handles read before rebuilding `_lookupStrategy`;
 unstable reference facts still rebuild normally.
 
 70. [x] Delete terminal namespace fallback proved redundant by the final
@@ -1455,7 +1376,7 @@ continue to use offset/remainder-entry traversal; `collectKeyRemainder(...)`
 remains a cold unsupported fallback edge.
 
 81. [x] Slim reference handle shape and prep for source-static reads. Scope:
-reference lookup policy, source-static key normalization, target/filter facts,
+`_lookupStrategy`, source-static key normalization, target/filter facts,
 handle readers/writers by family, and repeated handle access. Goal: repeated
 source-static reads use assigned strategy functions and minimal fields without
 per-lookup shape objects. Acceptance: focused variable/property/function/
@@ -1464,7 +1385,7 @@ generic wrapper-returning handle APIs. Current evidence: declaration-family
 source-static reads now delay declaration constraint snapshot creation until
 after common handle shape/version validation. The source-static matrix proves
 variable/property/function/callable reads reuse handles before rebuilding
-lookup policy, unstable facts still rebuild, and the hot-path verifier
+`_lookupStrategy`, unstable facts still rebuild, and the hot-path verifier
 continues to reject generic handle reader/writer object shapes.
 
 82. [x] Finish leaky/searchScope fallback bridge deletion or unsupported-state
@@ -1549,204 +1470,6 @@ exited `124` under `timeout 180`. No reported failure pointed at the binding
 files changed in this pass. The binding-owned queue and cluster inventory are
 closed; broad changed-baseline failures remain documented outside the binding
 lane.
-
-Worker-tail integration note: `/private/tmp/jess-binding-goal` still had
-uncommitted lookup proof when this parser branch was resumed. The useful
-reference proof was already carried into this branch by commit `4773cd95c`.
-The remaining dirty tail was checked here and rejected: the fallback-frame
-namespace tests were duplicate old-shape tests, and the matching `rules.ts`
-hunk was unnecessary because the existing branch tests pass without it. This is
-not a closure claim for item 87's cumulative `Rules` ownership lane.
-
-87. [ ] Unify cumulative `Rules` lookup/index ownership before adding more
-scanner-first parser or binding narrow cases. This is an implementation lane,
-not a read-only audit. Scope: `packages/core/src/tree/rules.ts` line-range
-responsibility map, persistent `Map`/`Set` fields, scratch maps, scope-frame
-overlap, direct declaration lookup overlap, callable lookup overlap,
-mixin-output placement state, import/reference summaries, and cache/version
-invalidation paths. Goal: decide which state genuinely belongs on the
-canonical `Rules` child container and move the rest behind package-internal
-binding/lookup/eval/render services without adding more hot-path side maps.
-Acceptance: a responsibility map records line ranges and classifies every
-persistent `Rules` map/cache field as canonical node state, scope-frame index,
-direct declaration lookup cache, callable lookup cache, render/eval
-orchestration, or cold public/debug state; each retained map has an ownership
-reason; then at least one concrete cleanup slice deletes or moves a mechanism
-with focused tests. Current evidence: `rules.ts` currently owns
-`functionsByName`, `varsByName`, `callableLookupCache`,
-`directDeclarationsByName`, `directDeclarationLookupCache`,
-`declarationLookupVersionsByName`, and `functionLookupVersionsByName`, while
-`ScopeFrame` also owns live/current binding maps, declaration buckets, callable
-buckets, assignment bindings, readonly sets, and miss-coverage flags. The
-problem is cumulative ownership fragmentation, not one isolated map. The
-existing aggressive-cutting verifier only scans the current diff and can pass
-with a self-prosecution block, so it did not prove the accumulated `Rules`
-shape was acceptable.
-
-Required sub-slices:
-
-- [ ] 87a. Source-of-truth map: classify every binding/lookup field and method
-  family in `Rules`, `ScopeFrame`, direct lookup utilities, and reference
-  handles as source AST identity, runtime binding cell, lookup index, import
-  summary, callable namespace surface, eval placement state, or render-only
-  state. Do not edit behavior in this slice except comments/docs.
-  Current map starter:
-  - `Rules.rules`: canonical source child stream. Retain on the node.
-  - `Rules.functionsByName`: static function index currently on source
-    container. Candidate for the declaration/function binding index service.
-  - `Rules.varsByName`: static variable declaration `BindingEntry[]` source
-    index. Overlaps `ScopeFrame.declarationBucketsByName` and should become
-    input to one declaration binding layer, not a separate answer surface.
-  - `Rules.directDeclarationsByName`, `directDeclarationLookupCache`,
-    `declarationLookupVersion`, and `declarationLookupVersionsByName`: direct
-    declaration/property lookup cache/version state. This overlaps variable
-    binding handles and direct occurrence lookup in
-    `util/direct-rules-lookup.ts`.
-  - `Rules.callableLookupCache` and `callableLookupVersion`: callable
-    namespace index/cache. This overlaps `ScopeFrame.callableBucketsByName`
-    and the callable traversal methods in `Rules`.
-  - `Rules.directChildRuleEntries` / `directDeclarationChildEntries` and
-    `has*ChildSurface` booleans: import/child surface summaries. These are
-    placement facts, but `Rules` also owns the traversal algorithms that use
-    them; split facts from traversal.
-  - `ScopeFrame.liveSlotsByName`, `currentBindingsByName`, `BindingCell`, and
-    `BindingEntry`: current runtime binding model. This should be the canonical
-    owner for evaluated values, readonly/live flags, and source-node identity.
-  - `ScopeFrame.assignmentBindingsByName`, `assignmentReadonlyByName`, and
-    `hasUncoveredAssignmentTargetSurface`: setDefined/import assignment model.
-    Keep the runtime cell semantics, but fold the record shape into the same
-    declaration binding layer.
-  - `ReferenceRulesLookupHandle` and `ScopeFrameVariableBindingHandle` in
-    `reference.ts`: cached read handles. They should cache binding-layer
-    identities/versions, not duplicate declaration occurrence semantics.
-  First cleanup candidate: declaration binding unification, because
-  `setDefined` already proves evaluated replacements belong in cells while
-  authored declaration nodes must remain stable.
-- [ ] 87b. Declaration binding model: specify and implement the canonical
-  declaration binding record shape: stable `sourceNode`, mutable runtime cell,
-  visibility/import/readonly metadata, and source-order facts. Variable,
-  property, and assignment reads must share this shape instead of duplicating
-  `varsByName`, direct occurrence, and scope-frame answers.
-  Target shape:
-  ```ts
-  type DeclarationBindingKind = 'variable' | 'property' | 'any';
-
-  type DeclarationBindingVisibility = 'local' | 'public' | 'optional';
-
-  interface DeclarationBinding {
-    key: string;
-    kind: DeclarationBindingKind;
-    sourceNode: Declaration | VarDeclaration;
-    ownerRules: Rules;
-    sourceIndex: number | undefined;
-    cell: BindingCell;
-    visibility: DeclarationBindingVisibility;
-    readonly: boolean;
-    assignmentTarget: boolean;
-    importBoundary?: 'reference' | 'public' | 'optional';
-  }
-  ```
-  This is a design target, not a committed public API. The same record should
-  answer ordinary variable reads, property reads, direct declaration occurrence
-  lookup, and `setDefined` assignment target updates. Direct occurrence APIs can
-  return a small public projection of this record when callers need
-  `ownerRules`, `node`, and `index`, but they should not keep an independent
-  cache/index with separate invalidation.
-- [ ] 87c. `setDefined` and live current reads: convert all modeled
-  `setDefined` paths to update binding cells or insert runtime declarations
-  when no cell exists. Evaluated replacements must not mutate authored
-  declaration fields. Focused tests must assert both rendered/read value and
-  unchanged source declaration serialization.
-  Current evidence: modeled `setDefined` paths now update only the cell returned
-  by `lookupScopeFrameVariable(...)` or `assignScopeFrameVariable(...)`; the
-  duplicate `syncVarDeclarationBindingEntry(...)` scan over `Rules.varsByName`
-  was deleted. A sub-agent review caught that `$for` iteration frames had been
-  built as declaration-uncovered, causing same-iteration reads to fall back to
-  direct occurrence lookup after the cell write. The fix marks generated `$for`
-  iteration frames declaration-covered while registration still adds real local
-  declarations, so covered misses can continue to the parent frame instead of
-  reopening the direct lookup bridge. `assignScopeFrameVariable(...)` now writes
-  the returned cell directly instead of branching separately for live and
-  declaration hits. Non-test `packages/core/src` line count moved from 55008 to
-  54991 in this slice.
-- [ ] 87d. Direct lookup consolidation: fold direct variable/property
-  occurrence lookup into the declaration binding layer, or document exact cold
-  public API boundaries where direct occurrence remains necessary. Delete
-  duplicate cache/version state when the binding index owns the same fact.
-- [ ] 87e. Callable/import surface ownership: decide whether callable namespace
-  and reference-import summaries are binding-layer indexes or separate
-  callable services. Either way, `Rules` should stop owning both summary facts
-  and traversal algorithms when a service can own one coherent pass.
-- [ ] 87f. Verification gates: run focused lookup/setDefined/import/callable
-  tests, `verify:binding-lookup-hot-paths`, `verify:aggressive-cutting-review`,
-  changed baseline where feasible, and a lookup profile. No speed claim unless
-  before/after benchmark evidence is stable.
-
-Read-only sub-agent audit result:
-
-- P1: `Rules` combines canonical child ownership, scope-frame storage, lookup
-  indexes, namespace search, registration prep, source-order eval, extend
-  orchestration, import hoisting, declaration merge normalization, and
-  render/string output. That makes narrow-case fixes likely to become permanent
-  node policy.
-- P1: lookup state and lookup algorithms are interleaved. Cache fields may
-  legitimately live on the canonical `Rules` identity, but direct child
-  surfaces, callable namespace walking, fallback direct crawls, and declaration
-  lookup should not all be embedded as node methods.
-- P2: `findVisibleExactCallableRulesetPath(...)` and
-  `findVisibleCallableRulesetPrefixMatches(...)` duplicate parent/surface
-  traversal, import-boundary behavior, `visited` handling, `local`/`forward`
-  filtering, and child-entry descent. This is the first obvious DRY cleanup
-  candidate with semantic drift risk.
-- P2: registration/eval pipeline is a service hidden inside the node.
-  Registration prep, static-name classification, pending retries,
-  source-order eval, merge coalescing, readonly import checks, extend stack
-  setup, and eval cleanup should be split only in small proof-backed phases.
-- P2: render helper/state logic is split between top-level helpers and class
-  methods, and `getWriterTextSincePosition(...)` reaches into `OutputWriter`
-  internals with `Reflect.get(...)`.
-
-Responsibility map to preserve before edits:
-
-- `1-88`: imports and broad coupling.
-- `89-145`: render/resolve state and callable lookup result types.
-- `146-286`: declaration binding sync plus at-rule/import/declaration name
-  normalization.
-- `292-464`: render-to-string/buffer helpers and context restoration.
-- `466-657`: child-rules detection, surface scans, trivia helpers, visibility
-  types.
-- `882-1035`: `Rules` fields, lookup caches, clone/derive/reset state.
-- `1036-1293`: scope-frame creation, variable assignment surfaces, lookup
-  surface flags.
-- `1294-3388`: function binding, mixin/callable/declaration lookup, namespace
-  path lookup.
-- `3425-3976`: source serialization, braced rendering, render entrypoints.
-- `3977-4380`: collection/object API, `registerNode(...)`,
-  invalidation/versioning.
-- `4427-5666`: registration prep, pending identity/name resolution, context
-  snapshots, source-order eval, declaration merge normalization.
-- `5667-5864`: eval orchestration, extend processing, error restoration.
-- `5864-end`: public resolve path.
-
-Safe cleanup order:
-
-1. Unify exact/prefix callable traversal. Replace duplicated walkers with one
-   internal traversal helper that does not allocate generator/object state per
-   step. Gates: focused mixin/namespace tests plus existing callable lookup
-   tests.
-2. Extract render helpers only. Move render state/helper functions to a
-   stateless internal helper module while keeping `Rules.render(...)` and
-   `writeSyntax(...)` as the entrypoints. Gates: focused rules/render tests,
-   core build, aggressive-cutting review.
-3. Move direct child/declaration entry indexing algorithms beside
-   `direct-rules-lookup` or a sibling service while keeping cache fields on
-   `Rules` unless measurement or code-path evidence proves a better owner.
-4. Split registration prep in small phases: static/registerable classification,
-   static invalidation-key collection, then pending declaration-name retry.
-   Leave the outer eval/registration boundary intact until each phase is
-   proven.
-5. Delete fallback lookup paths only one semantic case at a time, with focused
-   red/green proof and no compatibility shim for accidental internal APIs.
 
 ## Latest Binding Baseline
 
@@ -1833,7 +1556,7 @@ Safe cleanup order:
   fallback signal. Focused mixin tests prove positive namespace paths and
   definite miss paths avoid nested array materialization.
 - Source-static variable/property/function/mixin references now try the stored
-  rules lookup handle after reference env prep and before lookup-policy
+  rules lookup handle after reference env prep and before `_lookupStrategy`
   rebuild. The early path accepts only trivial source-static handle shapes and
   still uses the normal handle reader for version, live-binding, and occurrence
   freshness.
@@ -1877,6 +1600,24 @@ Safe cleanup order:
   calling nested `findMixin(...)`. A focused mixin test guards the covered-miss
   case; reference-import descendant positives inside namespace mixin bodies
   remain unclaimed/open.
+- Array-path callable namespace unioning no longer performs post-result identity
+  dedupe between compound-prefix ruleset results and callable namespace results.
+  Covered producers are expected to be disjoint; if future evidence finds a
+  duplicate, that is a missing ownership/frame fact, not a reason to restore
+  result dedupe.
+- Frame-owned exact ruleset namespace lookup no longer reopens the direct
+  `scope.getCallableEntriesForKey(segment)` bucket as a second producer in
+  `findRulesetNamespacePathFast(...)`. If a `ScopeFrame` exists, exact
+  remainder matches must come from the prepared callable frame or visible frame
+  collectors; the direct bucket fallback is retained only for no-frame callers.
+- Frame-owned array-path mixin namespace starts no longer reopen the broad
+  `this.findMixinsFast(keys[0]!, ...)` crawl after current frame lookup has a
+  usable `ScopeFrame`. The broad start fallback remains only for no-frame,
+  targeted, or local callers; framed namespace starts must resolve through the
+  frame hit/miss, narrow uncovered-child/reference-import helpers, or explicit
+  unsupported return. Full `mixin.test.ts` plus the focused stable namespace /
+  reference-import namespace / fallback namespace / mixin-ruleset matrix stayed
+  green.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
@@ -1928,14 +1669,21 @@ Safe cleanup order:
 
 ## Remaining Work Clusters
 
-Current audit: historical named binding / lookup / registryless architecture
-clusters above are closed or rejected with repo evidence, but item 87 reopens
-the lane for cumulative `Rules` ownership. Do not reseed declaration, property,
-scope-frame/current-cell, callable namespace, reference-import,
-leaky/searchScope, reference-handle, or simple-read tasks from older prose
-unless new code evidence contradicts the checked items. The remaining open
-binding work is the `Rules` responsibility audit, not the old registry class
-deletion queue.
+Current audit: the named binding / lookup / registryless architecture clusters
+above are closed or rejected with repo evidence. Do not reseed declaration,
+property, scope-frame/current-cell, reference-handle, simple-read, or callable
+bridge tasks from older prose unless new code evidence contradicts the checked
+items. Latest production grep still shows callable API and helper names, but the
+retained call sites are now the public callable lookup API, semantic fallback
+frame walks, no-frame starts where no frame facts exist, or named
+`findMixinsFastForUncoveredCallable(...)` uncovered states. No remaining active
+cluster is open in this inventory.
+
+Known blocker outside the latest cut: full `import-style.test.ts` currently
+fails `import-reference-issues: repeated reference/multiple imports keep
+import-site-local parent chains` even without the latest ruleset namespace
+fallback deletion. Treat that as a separate binding / import placement issue
+before using the full import-style file as a green gate.
 
 Closed cluster map:
 
@@ -1949,13 +1697,33 @@ Closed cluster map:
 - Callable, namespace, reference-import, parameterized terminal, and fallback
   frame behavior is covered by items 59-80, 82, and 83; covered callable paths
   stay off broad `findMixinsFast(...)`, with retained bridges limited to
-  uncovered callable states.
+  no-frame lookup or uncovered callable states.
 - Reference handle, source-static, leaky/searchScope, and simple-read proof is
   covered by items 81-83; stale handles clear and rebuild without resurrecting
   public registry-shaped lookup bridges.
 
 If future evidence reopens a lane, add a new checked-queue item with a specific
 proof surface rather than reviving the historical cluster list wholesale.
+
+Current completion evidence:
+
+- Active binding queue: all items checked; no new item is reseeded from this
+  inventory.
+- Stale lookup grep: production hits remain for callable API/helper names,
+  semantic fallback-frame traversal, no-frame starts, and named uncovered
+  callable states only; old public registry-shaped declaration wrappers remain
+  absent.
+- Focused gates: latest callable namespace/local/target tests, full
+  `mixin.test.ts`, focused import-style namespace tests,
+  `verify:binding-lookup-hot-paths`, core build, ESLint, `git diff --check`,
+  and `verify:aggressive-cutting-review` passed.
+- Stress profile: `node scripts/profile-less-benchmark.mjs
+  --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reports
+  empty `rulesFindByType`, `registryFindByType`, and `searchChildrenByType`.
+- Changed-baseline/import-style blockers: the known full `import-style.test.ts`
+  repeated reference/multiple-import parent-chain failure and the changed
+  baseline `call.test.ts` serialization failures are documented above as
+  non-binding blockers.
 
 ## Completion Criteria
 

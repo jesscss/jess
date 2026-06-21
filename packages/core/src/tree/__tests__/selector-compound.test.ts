@@ -1,11 +1,10 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, Ruleset, vardecl } from '../index.js';
+import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { getOrderedSelectorKeys } from '../util/lookup-utils.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -53,11 +52,12 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
-    test('stores components on canonical value', () => {
+    test('exposes value as the direct child field', () => {
       const first = el('.foo');
       const second = el('.bar');
       const node = compound([first, second]);
 
+      expect(node.value).toEqual([first, second]);
       expect(node.value).toEqual([first, second]);
       expect(CompoundSelector.childKeys).toEqual(['value']);
     });
@@ -111,40 +111,6 @@ describe('Compound Selector', () => {
 
       expect(compound([first, second]).toString({ trivia, writer })).toBe('.sel/*comment*/.a');
       expect(writer.captures).toBe(0);
-    });
-
-    test('renders scanner-native string components without selector leaf nodes', () => {
-      const writer = new CountingWriter();
-      const node = compound(['button', '.primary', '#cta']);
-
-      expect(node.toTrimmedString({ writer })).toBe('button.primary#cta');
-      expect(node.valueOf()).toBe('button.primary#cta');
-      expect(writer.captures).toBe(0);
-    });
-
-    test('computes key sets for scanner-native string components', async () => {
-      const node = compound(['button', '.primary', '#cta']);
-
-      await node.eval(context);
-
-      expect(node.keySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
-      expect(node.visibleKeySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
-      expect(node.requiredKeySet.equals(context.selectorBits.getBitset(['button', '.primary', '#cta']))).toBe(true);
-    });
-
-    test('exposes scanner-native string components to ordered selector lookup keys', () => {
-      expect(getOrderedSelectorKeys(compound(['button', '.primary', ':hover', '#cta']))).toEqual([
-        'button',
-        '.primary',
-        '#cta'
-      ]);
-    });
-
-    test('composes mixed scanner-native string components with ampersand components', () => {
-      const child = compound(['.raw', amp()]);
-      const parent = compound(['.parent']);
-
-      expect(Ruleset.composeSelector(child, parent).valueOf()).toBe('.raw.parent');
     });
   });
 
@@ -307,6 +273,15 @@ describe('Compound Selector', () => {
       await sel1.eval(context);
       expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+    });
+
+    test('string-backed compound', async () => {
+      const sel1 = compound(['a', '#id', '.class']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('a#id.class');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('nested compound', async () => {

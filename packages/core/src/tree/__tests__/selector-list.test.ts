@@ -32,11 +32,12 @@ describe('Selector list', () => {
   };
 
   describe('equality', () => {
-    test('stores selectors on canonical value', () => {
+    test('exposes value as the direct child field', () => {
       const first = el('.foo');
       const second = el('.bar');
       const node = sellist([first, second]);
 
+      expect(node.value).toEqual([first, second]);
       expect(node.value).toEqual([first, second]);
       expect(SelectorList.childKeys).toEqual(['value']);
     });

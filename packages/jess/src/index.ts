@@ -96,6 +96,12 @@ type ResolvedRenderConfig = {
   printOptions: { collapseNesting?: boolean };
 };
 
+type RootLessSourceOptions = {
+  banner?: string;
+  globalVars?: Record<string, unknown> | null;
+  modifyVars?: Record<string, unknown> | null;
+};
+
 const createBaseConfig = (): ConfigOptions => ({
   compile: {},
   output: {},
@@ -134,6 +140,55 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function isPluginInterface(value: unknown): value is PluginInterface {
   return isObjectRecord(value) && typeof value.name === 'string';
+}
+
+function normalizeLessVariableName(name: string): string {
+  return name.startsWith('@') ? name : `@${name}`;
+}
+
+function renderLessVariableOverrides(vars: Record<string, unknown> | null | undefined): string {
+  if (!vars) {
+    return '';
+  }
+  return Object.entries(vars)
+    .map(([name, value]) => `${normalizeLessVariableName(name)}: ${String(value)};`)
+    .join('\n');
+}
+
+function getLessVariableOverrides(value: unknown): Record<string, unknown> | null {
+  return isObjectRecord(value) ? value : null;
+}
+
+function prepareRootLessSource(source: string, options: RootLessSourceOptions): string {
+  const prefix = [
+    options.banner,
+    renderLessVariableOverrides(options.globalVars)
+  ].filter(Boolean).join('\n');
+  const suffix = renderLessVariableOverrides(options.modifyVars);
+
+  return [
+    prefix,
+    source,
+    suffix
+  ].filter(Boolean).join('\n');
+}
+
+function hasRootLessSourceOptions(options: RootLessSourceOptions): boolean {
+  return Boolean(
+    options.banner
+    || (options.globalVars && Object.keys(options.globalVars).length > 0)
+    || (options.modifyVars && Object.keys(options.modifyVars).length > 0)
+  );
+}
+
+function getSearchPaths(options: Record<string, unknown>): string[] | undefined {
+  if (Array.isArray(options.searchPaths)) {
+    return options.searchPaths.filter((value): value is string => typeof value === 'string');
+  }
+  if (Array.isArray(options.paths)) {
+    return options.paths.filter((value): value is string => typeof value === 'string');
+  }
+  return undefined;
 }
 
 let nextRenderProfileId = 0;
@@ -344,6 +399,8 @@ const getConsumerResolutionBaseDir = (
 };
 
 export class Compiler {
+  /** @internal */
+  public opts: ConfigOptions;
   private baseOptsNormalized: ConfigOptions;
   private configuredPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
@@ -351,12 +408,13 @@ export class Compiler {
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
 
   constructor(
-    public opts: ConfigOptions = {
+    opts: ConfigOptions = {
       compile: {},
       output: {},
       language: {}
     }
   ) {
+    this.opts = opts;
     this.baseOptsNormalized = mergeWith(
       createBaseConfig(),
       opts,
@@ -547,13 +605,13 @@ export class Compiler {
           return loadedPlugin.name;
         }
         if (Reflect.has(target, prop)) {
-          const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+          const value = Reflect.get(target, prop, receiver) as unknown;
           return typeof value === 'function' ? value.bind(receiver) : value;
         }
         if (!loadedPlugin) {
           return undefined;
         }
-        const value = (loadedPlugin as unknown as Record<PropertyKey, unknown>)[prop];
+        const value = Reflect.get(loadedPlugin, prop, loadedPlugin) as unknown;
         return typeof value === 'function' ? value.bind(loadedPlugin) : value;
       }
     });
@@ -728,9 +786,12 @@ export class Compiler {
   }
 
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
+    const searchPaths = getSearchPaths(resolved.activeOptions)
+      ?? getSearchPaths(resolved.effectiveConfig.compile ?? {});
     const contextOptions: ContextOptions & Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
-      ...resolved.activeOptions
+      ...resolved.activeOptions,
+      ...(searchPaths ? { searchPaths } : {})
     };
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(
@@ -779,6 +840,8 @@ export class Compiler {
 
   /**
    * Create a context with the configured plugins
+   *
+   * @internal
    */
   createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
     const resolved = this.resolveEffectiveConfig(filePath, renderOptions);
@@ -931,10 +994,19 @@ export class Compiler {
 
   private async evaluateInput(
     context: Context,
+    resolved: ResolvedRenderConfig,
     input: { filePath?: string; source?: string; language?: string; extension?: string },
     profile?: RenderProfile
   ) {
     const { filePath, source, language, extension } = input;
+    const rootLessSourceOptions: RootLessSourceOptions = {
+      banner: typeof resolved.activeOptions.banner === 'string'
+        ? resolved.activeOptions.banner
+        : undefined,
+      globalVars: getLessVariableOverrides(resolved.activeOptions.globalVars),
+      modifyVars: getLessVariableOverrides(resolved.activeOptions.modifyVars)
+    };
+    const shouldPrepareRootLessSource = hasRootLessSourceOptions(rootLessSourceOptions);
 
     if (filePath) {
       this.attachImportVisitorHook(context, filePath);
@@ -944,8 +1016,11 @@ export class Compiler {
 
     let tree;
     if (source != null) {
+      const preparedSource = shouldPrepareRootLessSource
+        ? prepareRootLessSource(source, rootLessSourceOptions)
+        : source;
       const parsed = await measureProfileAsync(profile, 'parseString', () =>
-        context.parseString(source, {
+        context.parseString(preparedSource, {
           filePath,
           type: language,
           extension
@@ -958,8 +1033,30 @@ export class Compiler {
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
+      if (!context.root) {
+        context.root = tree;
+      }
     } else {
-      const loaded = await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
+      const loaded = shouldPrepareRootLessSource
+        ? await measureProfileAsync(profile, 'getPreparedRootTree', async () => {
+            const { resolvedPath } = await context.resolveImportPath(filePath!);
+            const sourceGetter = context.plugins.find(plugin => plugin.getSource);
+            if (!sourceGetter?.getSource) {
+              throw new Error('No source getter found');
+            }
+            const rootSource = await sourceGetter.getSource(resolvedPath);
+            const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
+            const parsed = await context.parseString(preparedSource, {
+              filePath: resolvedPath,
+              type: language,
+              extension
+            });
+            if (parsed.node) {
+              context.sourceTrees.set(resolvedPath, parsed.node);
+            }
+            return parsed;
+          })
+        : await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
       const loadedNode = loaded.node;
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
@@ -967,6 +1064,9 @@ export class Compiler {
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
+      if (!context.root) {
+        context.root = tree;
+      }
     }
 
     const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
@@ -1000,11 +1100,12 @@ export class Compiler {
     return css;
   }
 
+  /** @internal */
   async compile(filePath: string, options?: Partial<ConfigOptions>) {
-    const { context, profile } = await this.prepareRender(filePath, options);
+    const { resolved, context, profile } = await this.prepareRender(filePath, options);
 
     try {
-      const postEvald = await this.evaluateInput(context, { filePath }, profile);
+      const postEvald = await this.evaluateInput(context, resolved, { filePath }, profile);
 
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
@@ -1044,9 +1145,9 @@ export class Compiler {
   }
 
   async render(filePath: string, options?: Partial<ConfigOptions>) {
-    const { context, profile } = await this.prepareRender(filePath, options);
+    const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
-      const tree = await this.evaluateInput(context, { filePath }, profile);
+      const tree = await this.evaluateInput(context, resolved, { filePath }, profile);
       const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'render',
@@ -1078,10 +1179,10 @@ export class Compiler {
     config?: Partial<ConfigOptions>;
   } = {}) {
     const { filePath, language, extension, config: renderOptions } = options;
-    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
+    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, { filePath, source: content, language, extension }, profile);
+      const evald = await this.evaluateInput(context, resolved, { filePath, source: content, language, extension }, profile);
       const css = await this.renderTree(evald, context, profile);
       finalizeRenderProfile(profile, {
         method: 'renderString',
@@ -1123,10 +1224,10 @@ export class Compiler {
     const language = isSourceContent ? input.language : options?.language;
     const extension = isSourceContent ? input.extension : options?.extension;
     const renderOptions = options;
-    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
+    const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, {
+      const evald = await this.evaluateInput(context, resolved, {
         filePath,
         source,
         language,
@@ -1199,20 +1300,21 @@ export class Compiler {
     }
   }
 
+  /** @internal */
   async safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
     tree: Rules | null;
     context: Context;
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
   }> {
-    const { context, profile } = await this.prepareRender(filePath, {
+    const { resolved, context, profile } = await this.prepareRender(filePath, {
       ...options,
       breakOnError: false,
       suppressWarnings: options?.suppressWarnings ?? false
     });
 
     try {
-      const evald = await this.evaluateInput(context, { filePath }, profile);
+      const evald = await this.evaluateInput(context, resolved, { filePath }, profile);
 
       finalizeRenderProfile(profile, {
         method: 'safeCompile',
@@ -1263,19 +1365,20 @@ export class Compiler {
     }
   }
 
+  /** @internal */
   async safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<{
     css: string | null;
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
   }> {
-    const { context, profile } = await this.prepareRender(filePath, {
+    const { resolved, context, profile } = await this.prepareRender(filePath, {
       ...options,
       breakOnError: false,
       suppressWarnings: options?.suppressWarnings ?? false
     });
 
     try {
-      const tree = await this.evaluateInput(context, { filePath }, profile);
+      const tree = await this.evaluateInput(context, resolved, { filePath }, profile);
       const css = await this.renderTree(tree, context, profile);
 
       finalizeRenderProfile(profile, {

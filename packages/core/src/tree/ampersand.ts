@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node, type PlacementCloneOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -12,7 +12,6 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 
 function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
@@ -211,6 +210,18 @@ function getSelectorSyntaxText(selector: Selector): string {
   return writer.toString();
 }
 
+function selectorListItemForAmpersand(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new BasicSelector(item) : item;
+}
+
+function selectorListValueForAmpersand(value: SelectorList['value']): Selector[] {
+  const selectors = new Array<Selector>(value.length);
+  for (let i = 0; i < value.length; i++) {
+    selectors[i] = selectorListItemForAmpersand(value[i]!);
+  }
+  return selectors;
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -218,10 +229,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.value;
+    return selectorListValueForAmpersand(baseSelector.arg.value);
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.value;
+    return selectorListValueForAmpersand(baseSelector.value);
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
@@ -229,11 +240,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(exactBasicText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
@@ -241,11 +252,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(selectorText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   return [baseSelector];
 }
@@ -285,9 +296,11 @@ function mergeAmpersandTemplateSelectorList(
 ): SelectorList {
   const mergedItems: Selector[] = [];
   for (const item of selector.value) {
-    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+    const merged = mergeAmpersandTemplateSelector(selectorListItemForAmpersand(item), placement);
     if (isNode(merged, N.SelectorList)) {
-      mergedItems.push(...merged.value);
+      for (let i = 0; i < merged.value.length; i++) {
+        mergedItems.push(selectorListItemForAmpersand(merged.value[i]!));
+      }
     } else {
       mergedItems.push(merged);
     }
@@ -310,7 +323,7 @@ function createAmpersandWithSelectorContainer(
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = copyOwnedWithReusableLeaves(selector);
+  const owned = selector.cloneForPlacement({ reuseLeaves: false });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
@@ -341,21 +354,15 @@ function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
 }
 
 function ownComplexComponentForAppend(component: ComplexSelectorComponent): ComplexSelectorComponent {
-  return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
+  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
 }
 
-function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
-  const node = Reflect.construct(
-    selector.constructor,
-    [
-      value,
-      { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location
-    ]
+function createBasicSelectorLike(selector: SimpleSelector, value: string): BasicSelector {
+  const node = new BasicSelector(
+    value,
+    { ...selector.options },
+    selector.location.length === 0 ? undefined : selector.location
   );
-  if (!(node instanceof SimpleSelector)) {
-    throw new TypeError('Expected simple selector copy');
-  }
   return node.inherit(selector);
 }
 
@@ -364,7 +371,7 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
     throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
   }
   return {
-    selector: createSimpleSelectorLike(selector, selector.value + appendValue),
+    selector: createBasicSelectorLike(selector, selector.value + appendValue),
     appended: true
   };
 }
@@ -375,7 +382,7 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
     const items = new Array<Selector>(sourceItems.length);
     for (let i = 0; i < sourceItems.length; i++) {
       const item = sourceItems[i]!;
-      const result = appendSelector(item as Selector, appendValue);
+      const result = appendSelector(selectorListItemForAmpersand(item), appendValue);
       if (!result.appended) {
         throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }
@@ -398,14 +405,14 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
         continue;
       }
       const sourceComponents = selector.value;
-      const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
+      const value = new Array<ComplexSelectorComponent>(sourceComponents.length);
       for (let j = 0; j < sourceComponents.length; j++) {
-        components[j] = j === i
+        value[j] = j === i
           ? expectComplexAppendResult(result.selector)
           : ownComplexComponentForAppend(sourceComponents[j]!);
       }
       return {
-        selector: ComplexSelector.create(components).inherit(selector),
+        selector: ComplexSelector.create(value).inherit(selector),
         appended: true
       };
     }
@@ -448,7 +455,6 @@ function finishAmpersandAppendPlacement(
   return placement.result;
 }
 
-// AUDIT: This node is feeling quite large and bloated. We should reason about what is still needed.
 /**
  * The '&' selector element
  */
@@ -482,7 +488,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.appendValue = finalValue.appendValue;
     this._treeContext = treeContext;
 
-    // Set the F_AMPERSAND flag so it bubbles up to parent selectors
+    // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);
   }
 
@@ -548,7 +554,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const arg = copyOwnedWithReusableLeaves(selector);
+      const arg = selector.cloneForPlacement();
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
@@ -687,6 +693,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       node._storedSelector = this._storedSelector;
     }
     return node;
+  }
+
+  override cloneForPlacement(_options?: PlacementCloneOptions): Node {
+    const derived = this.derive();
+    derived.frozen = true;
+    return derived;
   }
 
   /** @todo - move to ToModuleVisitor */

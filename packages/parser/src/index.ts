@@ -7,6 +7,38 @@ export {
 } from './parser.js';
 
 export {
+  findTrailingImportantStart
+} from './declaration-scanner.js';
+
+export {
+  scanCheapSelectorComponents,
+  type CheapSelectorComponent
+} from './selector-scanner.js';
+
+export {
+  scanCheapAtRulePrelude,
+  scanCheapAtRulePreludeList,
+  type CheapAtRulePreludeToken
+} from './prelude-scanner.js';
+
+export {
+  findBalancedBlockEnd,
+  findStatementEnd,
+  findTopLevelBlockStart,
+  findTopLevelDelimiter,
+  isSourceWhitespace,
+  skipQuotedSourceString,
+  skipSourceTrivia,
+  type SourceScannerOptions
+} from './source-scanner.js';
+
+export {
+  appendParserDiagnostic,
+  type ParserDiagnostic,
+  type ScannerParseResult
+} from './source-text.js';
+
+export {
   buildTokenMatchBitsets,
   buildTokenTypeSet,
   tokenMatches,
@@ -34,13 +66,19 @@ export {
 export {
   LineMap,
   SourceText,
+  createPackedFieldSpans,
+  createPackedSegmentSpans,
   delimitedSpan,
+  setPackedFieldSpan,
+  setPackedSegmentSpan,
   sourceSpan,
   type DelimitedSpan,
-  type LineColumn,
+  type PackedFieldSpans,
+  type PackedSegmentSpans,
   type SourceSpan,
-  type SourceTextOptions,
+  type SourcePosition,
   type SourceTextStats,
+  type SourceTextVersion,
   type TriviaKind,
   type TriviaRun
 } from './source/index.js';

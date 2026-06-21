@@ -8,7 +8,7 @@ import {
   type LocationInfo,
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
-  BasicSelector, Block, RawRules
+  Block, RawRules
 } from '@jesscss/core';
 
 type C = CssRecursiveParser;
@@ -792,7 +792,7 @@ export function pageSelector(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
-      return new BasicSelector(token, undefined, location, this.context);
+      return new Any(token, { role: 'ident' }, location, this.context);
     }
   };
 }

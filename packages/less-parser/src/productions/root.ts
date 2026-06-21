@@ -67,7 +67,6 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
-type ProductionRule = (...args: any[]) => any;
 
 // ── Save references to CSS production factories ────────────────────────
 const cssMain = cssProductions.main;
@@ -108,11 +107,19 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
   if (!node) {
     return false;
   }
+  const isNodeLike = (value: unknown): value is Node => {
+    return Boolean(
+      value
+      && typeof value === 'object'
+      && 'type' in value && typeof value.type === 'string'
+      && 'valueOf' in value && typeof value.valueOf === 'function'
+    );
+  };
   const queue: unknown[] = [node];
   const seen = new Set<unknown>();
   while (queue.length > 0) {
     const current = queue.shift();
-    if (!current || seen.has(current) || !(current instanceof Node)) {
+    if (!current || seen.has(current) || !isNodeLike(current)) {
       continue;
     }
     seen.add(current);
@@ -141,7 +148,14 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
         }
       }
     }
-    queue.push(...current.children());
+    if ('data' in current) {
+      const value = current.data;
+      if (Array.isArray(value)) {
+        queue.push(...value);
+      } else if (value && typeof value === 'object') {
+        queue.push(...Object.values(value));
+      }
+    }
   }
   return false;
 }
@@ -332,9 +346,9 @@ const { isArray } = Array;
 /**
  * Groups extends by target (using valueOf()) and flag.
  * Returns an array of grouped Extend nodes where extends with the same target and flag
- * are combined into a single Extend node with a SelectorList of all matching selectors.
+ * are combined into a single Extend node with a SelectorList of all matching value.
  *
- * @todo Group complex selectors into selector lists
+ * @todo Group complex value into selector lists
  */
 function groupExtendsByTargetAndFlag(
   extendNodes: Extend[]
@@ -363,7 +377,7 @@ function groupExtendsByTargetAndFlag(
 // ── Exported production rules ─────────────────────────────────────────
 
 /** Charset moved within `main` (explained in that rule) */
-export function stylesheet(this: P, T: TokenMap): ProductionRule {
+export function stylesheet(this: P, T: TokenMap) {
   const $ = this;
   return (options: Record<string, any> = {}) => {
     let context: TreeContext;
@@ -821,7 +835,7 @@ export function lessMediaQueryFromReference(this: P, T: TokenMap) {
   };
 }
 
-export function lessMediaQueryTail(this: P, T: TokenMap): ProductionRule {
+export function lessMediaQueryTail(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1047,7 +1061,7 @@ export function mediaFeature(this: P, T: TokenMap) {
   ]);
 }
 
-export function mfValue(this: P, T: TokenMap): ProductionRule {
+export function mfValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
@@ -1173,15 +1187,15 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           const extendCount = extend.length;
 
           // Determine if extends should bubble up:
-          // 1. If any selectors in the list have extends (extendCount < selectorCount)
-          // 2. If all selectors have extends but their "all" flags don't match
+          // 1. If any value in the list have extends (extendCount < selectorCount)
+          // 2. If all value have extends but their "all" flags don't match
           let shouldBubble = false;
 
           if (extendCount < selectorCount) {
-          // Some selectors have extends, some don't - bubble up
+          // Some value have extends, some don't - bubble up
             shouldBubble = true;
           } else if (extendCount === selectorCount) {
-          // All selectors have extends - check if flags match
+          // All value have extends - check if flags match
             let finalExtends = groupExtendsByTargetAndFlag(extend);
             if (finalExtends.length === 1) {
             // All extends have same target and flag - can be inside ruleset
@@ -1208,8 +1222,8 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
       }
       const hasDefault = Boolean(ctx.hasDefault);
       let node = new Ruleset(
-        { selector, rules: rules.rules, guard },
-        guard ? { hasDefault } : undefined,
+        { selector, rules, guard },
+        guard && hasDefault ? { hasDefault } : undefined,
         undefined,
         $.context
       );
@@ -1223,7 +1237,7 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
   };
 }
 
-export function qualifiedRule(this: P, T: TokenMap): ProductionRule {
+export function qualifiedRule(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}, altContext?: AltContext) => {
     let selectorAlt = altContext ?? ((ctx: RuleContext) => [
@@ -1326,12 +1340,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     // Helper function to convert Any nodes to VarDeclaration nodes for mixin definition parameters
     const convertArgsForDefinition = (args: List<Node> | undefined): void => {
-      if (!args || !args.value.length) {
+      if (!args || !args.items.length) {
         return;
       }
 
-      for (let i = 0; i < args.value.length; i++) {
-        const node = args.value[i]!;
+      for (let i = 0; i < args.items.length; i++) {
+        const node = args.items[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
@@ -1343,7 +1357,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context);
           args.adopt(replacement);
-          args.value[i] = replacement;
+          args.items[i] = replacement;
         }
         // Rest nodes with string values can stay as-is for mixin definitions
       }
@@ -1351,12 +1365,12 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
     // Helper function to convert Any nodes to Reference nodes for mixin call arguments
     const convertArgsForCall = (args: List<Node> | undefined): void => {
-      if (!args || !args.value.length) {
+      if (!args || !args.items.length) {
         return;
       }
 
-      for (let i = 0; i < args.value.length; i++) {
-        const node = args.value[i]!;
+      for (let i = 0; i < args.items.length; i++) {
+        const node = args.items[i]!;
         const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
@@ -1371,7 +1385,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         }
         if (replacement) {
           args.adopt(replacement);
-          args.value[i] = replacement;
+          args.items[i] = replacement;
         }
       }
     };
@@ -1448,7 +1462,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let isPossibleMixinCall = true;
     if (!$.RECORDING_PHASE && !isSelectorList && !isPossibleMixinDefinition) {
       for (let s of selector.nodes()) {
-        /** Keep going until we get to basic selectors. */
+        /** Keep going until we get to basic value. */
         if (s instanceof ComplexSelector || s instanceof CompoundSelector) {
           continue;
         }
@@ -1490,8 +1504,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules: rules.rules, guard },
-                    guard ? { hasDefault } : undefined,
+                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
+                    guard && hasDefault ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context
                   );

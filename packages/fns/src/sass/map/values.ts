@@ -6,22 +6,25 @@
  * @example
  * map.values((a: 1, b: 2)) // 1, 2
  */
-import { defineFunction, Collection, List, Declaration, type Context } from '@jesscss/core';
+import { defineFunction, Collection, List, Declaration, Any, Node, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
 import { isNode, N } from '@jesscss/core';
+
+function declarationValueNode(value: Declaration['value']): Node {
+  return typeof value === 'string' ? new Any(value) : value;
+}
 
 const values = defineFunction(
   'values',
   function(this: FunctionThis | Context | undefined, map: Collection): List {
     // Get all declaration values from the collection
-    const valueNodes: any[] = [];
+    const values: Node[] = [];
     for (const node of map.value) {
       if (isNode(node, N.Declaration)) {
-        // The value is the declaration's value (already a Node)
-        valueNodes.push(node.value);
+        values.push(declarationValueNode(node.value));
       }
     }
-    return new List(valueNodes, { sep: ',' });
+    return new List(values, { sep: ',' });
   },
   {
     params: [

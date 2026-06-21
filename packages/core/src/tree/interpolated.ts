@@ -15,7 +15,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -305,7 +304,7 @@ export class Interpolated<
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
-        const copied = copyWithReusableLeaves(replacement);
+        const copied = replacement.cloneForPlacement();
         if (!isNode(copied, N.Selector)) {
           throw new TypeError('Expected selector copy');
         }

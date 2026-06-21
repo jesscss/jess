@@ -112,7 +112,7 @@ This is the concrete direction implied by the review above.
    - target names:
      - existing AST fields such as `value`, `selector`, `prelude`, and
        `arguments`
-     - compact node-owned `spans?: number[]` keyed by `static childKeys`, if
+     - compact node-owned `fieldSpans?: number[]` keyed by `static childKeys`, if
        offsets/state are needed
      - `DeferredFieldParserRegistry`
      - `DeferredFieldParsePlan` only if a plan object survives at all
@@ -175,7 +175,8 @@ class Declaration extends Node {
   name: string | Node;
   value: string | Node | (string | Node)[];
   important: boolean | string;
-  spans?: number[];
+  fieldSpans?: number[];
+  valueSpans?: number[];
 }
 ```
 
@@ -187,7 +188,21 @@ line/column positions merely to populate node provenance.
 
 The same pattern applies to `Ruleset`, `AtRule`, `VarDeclaration`, and other
 existing AST nodes: the runtime node has `type`, the static side has
-`childKeys`, and `spans` is packed by that static field order.
+`childKeys`, and `fieldSpans` is packed by that static field order.
+
+Do not overload that same `fieldSpans` table for arrays stored inside a direct field.
+When a direct field is array-backed, keep segment provenance in a field-specific
+packed table such as `valueSpans`. This keeps two coordinate systems distinct:
+
+- `fieldSpans` is keyed by direct field index from `childKeys`
+- `valueSpans` is keyed by array index inside `value`
+
+This distinction also gives the `Sequence` cleanup a concrete target. A
+declaration value that is only an ordered, default-spaced list of segments should
+not need a wrapper `Sequence` node just to preserve source ranges. Keep
+`Sequence` only where its runtime behavior is required: non-default whitespace,
+comparison semantics, rest arguments, evaluation behavior, or another proven
+semantic need.
 
 If a registry remains necessary, use field terminology:
 
@@ -224,7 +239,7 @@ or reshaped deliberately instead of silently surviving under nicer docs.
 
 | Current name/shape | Problem | Target shape/name | Action |
 | --- | --- | --- | --- |
-| `RawIslandNode` | Pretends a deferred field span is a node-like thing; adds object identity and debugger noise. | Existing AST field values plus optional node-owned `spans?: number[]` keyed by `static childKeys`. | Delete or replace. Keep an object view only if a cold debug API needs one. |
+| `RawIslandNode` | Pretends a deferred field span is a node-like thing; adds object identity and debugger noise. | Existing AST field values plus optional node-owned `fieldSpans?: number[]` keyed by `static childKeys`. | Delete or replace. Keep an object view only if a cold debug API needs one. |
 | `StructuralNodeKind: 'raw-island'` | Makes deferred fields appear to be part of the structural node taxonomy. | No structural node kind. Deferred state belongs to fields. | Remove from final public node taxonomy. |
 | `RawIslandNode[]` on `StructuralDocumentData` | Central side list of deferred spans is harder to inspect than node-owned state. | Existing AST nodes with string fields and optional packed node-owned spans. | Replace in the existing-AST path; only keep as transitional prototype data. |
 | `StructuralDocument.islands(...)` | Requires callers to know a service lookup path instead of inspecting the AST node, and cements `StructuralDocument` as a parallel AST-like result. | Field-specific node state or a cold debug helper such as `deferredFields(node)`. | Do not carry into compile/eval API. |
@@ -314,7 +329,7 @@ Objects and state:
 
 - `LineMap`
 - `lineStarts` array
-- cold `LineColumn` return objects
+- cold `SourcePosition` return objects
 
 Claimed requirements:
 
@@ -908,7 +923,7 @@ These allocations should happen only when a caller asks for a service.
 
 | Created on demand | Code | Requirement | Trigger | Review pressure |
 | --- | --- | --- | --- | --- |
-| `LineMap` and `lineStarts` array | `src/source/line-map.ts` | R1, R6 | `source.lineMap`, `offsetToLineColumn`, or `lineColumnToOffset` | Required; char-code loop avoids substring allocation. |
+| `LineMap` and `lineStarts` array | `src/source/line-map.ts` | R1, R6 | `source.lineMap`, `offsetToPosition`, or `positionToOffset` | Required; char-code loop avoids substring allocation. |
 | readable `FieldRange` objects | `src/structure/field-ranges.ts` | R1, R7 | `fieldRanges.get` or `rangesFor` | Acceptable if cold. Do not use this as a hot parser path. |
 | arrays from `foldingRanges()` and `symbols()` | `src/structure/document.ts` | R2, R6 | editor/index queries | Optional service cost. |
 | `IslandParserRegistry` | `src/services/registry.ts` | R4, R5 | caller creates a lazy parse plan or activation configures providers | Required for lazy provider proof, but should not exist in structural-only parse. |

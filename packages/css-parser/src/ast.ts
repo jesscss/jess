@@ -1,181 +1,444 @@
 import {
+  any,
   atrule,
   atrulestatement,
+  compound,
   decl,
-  Node,
+  list,
+  paren,
+  query,
   ruleset,
+  sel,
+  type AtRulePrelude,
   stylesheet,
+  type Node,
+  type Selector,
   type Stylesheet
 } from '@jesscss/core';
-import type {
-  StructuralContainerNode,
-  StructuralNode,
-  StructuralStatementNode
-} from '@jesscss/parser/structure/index';
-import { renderParserDiagnostic } from '@jesscss/parser';
-import { parseCssStructure } from './structural.js';
+import {
+  appendParserDiagnostic,
+  findBalancedBlockEnd,
+  findStatementEnd,
+  findTrailingImportantStart,
+  findTopLevelBlockStart,
+  findTopLevelDelimiter,
+  createPackedFieldSpans,
+  scanCheapAtRulePrelude,
+  scanCheapAtRulePreludeList,
+  scanCheapSelectorComponents,
+  setPackedFieldSpan,
+  SourceText,
+  renderParserDiagnostic,
+  type ScannerParseResult,
+  type ParserDiagnostic,
+  type SourceScannerOptions,
+  type CheapSelectorComponent,
+  type CheapAtRulePreludeToken,
+  skipSourceTrivia
+} from '@jesscss/parser';
 
-/**
- * Parses the cheap CSS structural subset into real core AST nodes.
- *
- * This is the compiler-facing proof path: it produces a `Stylesheet` and keeps
- * selector/name/value/prelude fields as strings until later code proves it needs
- * typed parsing.
- */
-export function parseCssStylesheet(filePath: string, source: string): Stylesheet {
-  const document = parseCssStructure(filePath, source);
-  if (document.diagnostics.length > 0) {
-    const diagnostic = renderParserDiagnostic(document.source, document.diagnostics[0]!);
-    throw new SyntaxError(`${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`);
+export type FlatCssDeclarationStylesheetResult = ScannerParseResult<Stylesheet>;
+
+const EMPTY_DIAGNOSTICS: readonly ParserDiagnostic[] = [];
+
+type DiagnosticSink = (
+  severity: ParserDiagnostic['severity'],
+  code: string,
+  message: string,
+  start: number,
+  end: number
+) => void;
+
+type QueuedDiagnostic = Parameters<DiagnosticSink>;
+
+function parseDeclarationNodes(
+  source: string,
+  start: number,
+  end: number,
+  addDiagnostic: DiagnosticSink
+): Node[] {
+  const declarations: Node[] = [];
+  let cursor = start;
+  while (cursor < end) {
+    cursor = skipSourceTrivia(source, cursor, end);
+    if (cursor >= end) {
+      break;
+    }
+    const statementEnd = findStatementEnd(source, cursor, end);
+    const colon = findTopLevelDelimiter(source, ':', cursor, statementEnd);
+    if (colon !== -1) {
+      const name = source.slice(cursor, colon).trim();
+      const isCustomProperty = name.startsWith('--');
+      const valueText = source.slice(colon + 1, statementEnd);
+      const nameStart = trimStartOffset(source, cursor, colon);
+      const nameEnd = trimEndOffset(source, nameStart, colon);
+      const valueStart = isCustomProperty
+        ? colon + 1
+        : trimStartOffset(source, colon + 1, statementEnd);
+      const valueEnd = statementEnd;
+      let node: Node;
+      if (isCustomProperty) {
+        node = decl({ name, value: valueText });
+      } else {
+        const trimmedValue = valueText.trim();
+        const importantStart = findTrailingImportantStart(trimmedValue);
+        node = decl({
+          name,
+          value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
+          ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
+        });
+      }
+      setFieldSpan(node, 'name', nameStart, nameEnd);
+      setFieldSpan(node, 'value', valueStart, valueEnd);
+      declarations.push(node);
+    } else if (source.slice(cursor, statementEnd).trim()) {
+      addDiagnostic(
+        'warning',
+        'css-flat-unsupported-statement',
+        'Flat CSS declaration parser skipped a statement without a top-level declaration colon.',
+        cursor,
+        statementEnd
+      );
+    }
+    cursor = statementEnd + 1;
   }
-  const root = stylesheet(childrenToAst(document.root.children, source));
-
-  return root;
+  return declarations;
 }
 
-function childrenToAst(children: readonly StructuralNode[], source: string): Node[] {
-  const out: Node[] = [];
+function isCssNameCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 95
+  );
+}
 
-  for (const child of children) {
-    if (child.kind === 'error' || child.kind === 'raw-island') {
+function materializeCheapAtRulePreludeToken(token: CheapAtRulePreludeToken): string | Node {
+  return typeof token === 'string' ? token : paren(any(token[1]));
+}
+
+function materializeCheapAtRulePreludeNode(token: CheapAtRulePreludeToken): Node {
+  return typeof token === 'string' ? any(token) : paren(any(token[1]));
+}
+
+export function parseCheapAtRulePrelude(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const tokens = scanCheapAtRulePrelude(text, options);
+  if (!tokens) {
+    return undefined;
+  }
+  if (tokens.length === 1) {
+    return materializeCheapAtRulePreludeToken(tokens[0]!);
+  }
+  return query(tokens.map(materializeCheapAtRulePreludeNode));
+}
+
+function materializeCheapAtRulePreludeListItem(tokens: CheapAtRulePreludeToken[]): Node {
+  return tokens.length === 1
+    ? materializeCheapAtRulePreludeNode(tokens[0]!)
+    : query(tokens.map(materializeCheapAtRulePreludeNode));
+}
+
+function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const items = scanCheapAtRulePreludeList(text, options);
+  return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
+}
+
+function materializeCheapCompound(component: string[]): string | Selector {
+  return component.length === 1
+    ? component[0]!
+    : compound(component);
+}
+
+function materializeCheapSelector(components: CheapSelectorComponent[]): string | Selector {
+  if (components.length === 1) {
+    const only = components[0]!;
+    if (Array.isArray(only)) {
+      return materializeCheapCompound(only);
+    }
+  }
+  return sel(components.map((component) => {
+    if (typeof component === 'string') {
+      return component;
+    }
+    return materializeCheapCompound(component);
+  }));
+}
+
+function parseCheapSelector(selector: string): string | Selector | undefined {
+  const source = selector.trim();
+  if (!source) {
+    return undefined;
+  }
+  const components = scanCheapSelectorComponents(source);
+  if (!components) {
+    return undefined;
+  }
+  if (components.length === 1) {
+    const only = components[0]!;
+    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
+  }
+  return materializeCheapSelector(components);
+}
+
+function parseStatementNode(
+  source: string,
+  start: number,
+  end: number
+): Node | undefined {
+  const textEnd = source[end - 1] === ';' ? end - 1 : end;
+  const textStart = skipSourceTrivia(source, start, textEnd);
+  const text = source.slice(textStart, textEnd).trim();
+  if (!text) {
+    return undefined;
+  }
+  if (text[0] !== '@') {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < text.length) {
+    const code = text.charCodeAt(nameEnd);
+    const isNameCode =
+      (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57)
+      || code === 45
+      || code === 95;
+    if (!isNameCode) {
+      break;
+    }
+    nameEnd++;
+  }
+  const name = text.slice(0, nameEnd);
+  if (name.length === 1) {
+    return undefined;
+  }
+  const prelude = text.slice(nameEnd).trim();
+  return atrulestatement({
+    name,
+    ...(prelude && { prelude })
+  });
+}
+
+function parseBlockAtRuleNode(
+  source: string,
+  start: number,
+  blockStart: number,
+  blockEnd: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  if (source[start] !== '@') {
+    return undefined;
+  }
+  let nameEnd = start + 1;
+  while (nameEnd < blockStart && isCssNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  const name = source.slice(start, nameEnd);
+  if (name.length === 1) {
+    return undefined;
+  }
+  const preludeText = source.slice(nameEnd, blockStart).trim();
+  const prelude = parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
+  if (preludeText && !prelude) {
+    return undefined;
+  }
+  return atrule({
+    name,
+    ...(prelude !== undefined && { prelude }),
+    rules: parseCssNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+  });
+}
+
+function parseCssNodes(
+  source: string,
+  start: number,
+  end: number,
+  addDiagnostic: DiagnosticSink
+): Node[] {
+  const children: Node[] = [];
+  let cursor = start;
+  while (cursor < end) {
+    cursor = skipSourceTrivia(source, cursor, end);
+    if (cursor >= end) {
+      break;
+    }
+    const blockStart = findTopLevelBlockStart(source, cursor, end);
+    const statementEnd = findStatementEnd(source, cursor, blockStart === -1 ? end : blockStart);
+    if (statementEnd < (blockStart === -1 ? end : blockStart)) {
+      const statement = parseStatementNode(source, cursor, statementEnd + 1);
+      if (statement) {
+        children.push(statement);
+      } else {
+        const statementStart = skipSourceTrivia(source, cursor, statementEnd + 1);
+        const isMalformedAtRule = source[statementStart] === '@';
+        addDiagnostic(
+          'warning',
+          isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
+          isMalformedAtRule
+            ? 'Flat CSS declaration parser skipped a malformed at-rule statement.'
+            : 'Flat CSS declaration parser skipped a statement without a top-level block.',
+          cursor,
+          statementEnd + 1
+        );
+      }
+      cursor = statementEnd + 1;
       continue;
     }
-    out.push(nodeToAst(child, source));
+    if (blockStart === -1) {
+      const trailing = source.slice(cursor, end).trim();
+      if (trailing) {
+        addDiagnostic(
+          'warning',
+          'css-flat-unsupported-trailing-source',
+          'Flat CSS declaration parser skipped trailing source without a top-level block.',
+          cursor,
+          end
+        );
+      }
+      break;
+    }
+    const blockEnd = findBalancedBlockEnd(source, blockStart, end);
+    if (blockEnd === -1) {
+      addDiagnostic(
+        'error',
+        'css-flat-unclosed-block',
+        'Flat CSS declaration parser reached the end of source before the block closed.',
+        blockStart,
+        end
+      );
+      break;
+    }
+    const headerStart = trimStartOffset(source, cursor, blockStart);
+    const headerEnd = trimEndOffset(source, headerStart, blockStart);
+    const header = source.slice(headerStart, headerEnd);
+    if (header[0] === '@') {
+      const atRule = parseBlockAtRuleNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+      if (atRule) {
+        children.push(atRule);
+      } else {
+        addDiagnostic(
+          'warning',
+          'css-flat-unsupported-at-rule',
+          'Flat CSS declaration parser skipped an at-rule.',
+          cursor,
+          blockEnd + 1
+        );
+      }
+    } else if (header) {
+      const selector = parseCheapSelector(header);
+      if (selector === undefined) {
+        addDiagnostic(
+          'warning',
+          'css-flat-unsupported-selector',
+          'Flat CSS declaration parser skipped a qualified rule with an unsupported selector.',
+          cursor,
+          blockEnd + 1
+        );
+      } else {
+        let queuedDiagnostics: QueuedDiagnostic[] | undefined;
+        const rules = parseDeclarationNodes(
+          source,
+          blockStart + 1,
+          blockEnd,
+          (...args) => {
+            (queuedDiagnostics ??= []).push(args);
+          }
+        );
+        if (rules.length === 0) {
+          addDiagnostic(
+            'warning',
+            'css-flat-unsupported-nested-block',
+            'Flat CSS declaration parser skipped a qualified rule with nested blocks.',
+            cursor,
+            blockEnd + 1
+          );
+          cursor = blockEnd + 1;
+          continue;
+        }
+        if (queuedDiagnostics) {
+          for (let i = 0; i < queuedDiagnostics.length; i++) {
+            addDiagnostic(...queuedDiagnostics[i]!);
+          }
+        }
+        const node = ruleset({
+          selector,
+          rules
+        });
+        setFieldSpan(node, 'selector', headerStart, headerEnd);
+        children.push(node);
+      }
+    }
+    cursor = blockEnd + 1;
   }
-
-  return out;
-}
-
-function nodeToAst(node: StructuralContainerNode | StructuralStatementNode, source: string): Node {
-  switch (node.kind) {
-    case 'rule':
-      return withFieldSpans(ruleset({
-        selector: text(source, node.headerStart, node.headerEnd),
-        rules: childrenToAst(node.children, source)
-      }), [
-        ['selector', node.headerStart, node.headerEnd]
-      ]);
-
-    case 'at-rule':
-      return withFieldSpans(atrule({
-        name: atRuleName(source, node),
-        prelude: atRulePrelude(source, node),
-        rules: childrenToAst(node.children, source)
-      }), atRuleFieldSpans(source, node));
-
-    case 'at-rule-statement':
-    case 'import':
-      return withFieldSpans(atrulestatement({
-        name: text(source, node.nameStart, node.nameEnd),
-        prelude: text(source, node.valueStart, node.valueEnd)
-      }), [
-        ['name', node.nameStart, node.nameEnd],
-        ['prelude', node.valueStart, node.valueEnd]
-      ]);
-
-    case 'declaration':
-      return withFieldSpans(decl({
-        name: text(source, node.nameStart, node.nameEnd),
-        value: text(source, node.valueStart, node.valueEnd)
-      }), [
-        ['name', node.nameStart, node.nameEnd],
-        ['value', node.valueStart, node.valueEnd]
-      ]);
-
-    case 'block':
-    case 'mixin-call':
-    case 'mixin-definition':
-    case 'variable-declaration':
-      throw new SyntaxError(`CSS AST parsing does not support structural ${node.kind} nodes.`);
-
-    case 'document':
-      return stylesheet(childrenToAst(node.children, source));
-  }
-}
-
-function text(source: string, start: number, end: number): string {
-  return source.slice(start, end);
-}
-
-function atRuleName(source: string, node: StructuralContainerNode): string {
-  const header = text(source, node.headerStart, node.headerEnd);
-  const match = /^@[A-Za-z][\w-]*/u.exec(header);
-  return match?.[0] ?? header;
-}
-
-function atRulePrelude(source: string, node: StructuralContainerNode): string {
-  const name = atRuleName(source, node);
-  const start = node.headerStart + name.length;
-  return text(source, start, node.headerEnd).trim();
-}
-
-type FieldSpanInput = readonly [field: string, start: number, end: number];
-type NodeConstructorWithChildKeys = {
-  readonly childKeys?: readonly string[] | null;
-};
-
-function atRuleFieldSpans(source: string, node: StructuralContainerNode): FieldSpanInput[] {
-  const name = atRuleName(source, node);
-  const preludeStart = node.headerStart + name.length;
-  return [
-    ['name', node.headerStart, node.headerStart + name.length],
-    ['prelude', trimStart(source, preludeStart, node.headerEnd), node.headerEnd]
-  ];
-}
-
-function withFieldSpans<T extends Node>(node: T, fields: readonly FieldSpanInput[]): T {
-  for (const [field, start, end] of fields) {
-    setFieldSpan(node, field, start, end);
-  }
-  return node;
+  return children;
 }
 
 function setFieldSpan(node: Node, field: string, start: number, end: number): void {
-  const childKeys = childKeysFor(node);
+  const childKeys = (node.constructor as typeof Node).childKeys;
   if (!childKeys) {
-    throw new TypeError(`${node.type} does not declare childKeys for field spans.`);
+    return;
   }
   const index = childKeys.indexOf(field);
   if (index === -1) {
-    throw new TypeError(`${node.type} does not declare a ${field} child field.`);
+    return;
   }
-  const spans = node.spans ??= emptyFieldSpans(childKeys.length);
-  const offset = index * 3;
-  spans[offset] = start;
-  spans[offset + 1] = end;
-  spans[offset + 2] = 0;
+  setPackedFieldSpan(node.fieldSpans ??= createPackedFieldSpans(childKeys.length), index, start, end);
 }
 
-function childKeysFor(node: Node): readonly string[] | null | undefined {
-  const constructor = node.constructor;
-  if (!hasChildKeys(constructor)) {
-    return undefined;
-  }
-  return constructor.childKeys;
-}
-
-function hasChildKeys(value: unknown): value is NodeConstructorWithChildKeys {
-  return typeof value === 'function' && 'childKeys' in value;
-}
-
-function emptyFieldSpans(fieldCount: number): number[] {
-  const spans = new Array<number>(fieldCount * 3);
-  for (let i = 0; i < spans.length; i += 3) {
-    spans[i] = -1;
-    spans[i + 1] = -1;
-    spans[i + 2] = 0;
-  }
-  return spans;
-}
-
-function trimStart(source: string, start: number, end: number): number {
+function trimStartOffset(source: string, start: number, end: number): number {
   let offset = start;
-  while (offset < end && isWhitespace(source.charCodeAt(offset))) {
+  while (offset < end && isWhitespaceCode(source.charCodeAt(offset))) {
     offset++;
   }
   return offset;
 }
 
-function isWhitespace(code: number): boolean {
+function trimEndOffset(source: string, start: number, end: number): number {
+  let offset = end;
+  while (offset > start && isWhitespaceCode(source.charCodeAt(offset - 1))) {
+    offset--;
+  }
+  return offset;
+}
+
+function isWhitespaceCode(code: number): boolean {
   return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
+}
+
+/**
+ * Parse a small CSS qualified-rule subset directly into the core AST shape.
+ *
+ * This is the existing-AST proof path for scanner-first work: it creates a
+ * `Stylesheet` root with string-backed selectors and declaration fields, and it
+ * intentionally avoids Chevrotain, structural documents, and deferred-island
+ * objects. Unsupported syntax is left for later slices rather than hidden
+ * behind a broad fallback parser.
+ */
+export function parseFlatCssDeclarationStylesheet(
+  filePath: string,
+  input: string | SourceText
+): FlatCssDeclarationStylesheetResult {
+  const sourceText = input instanceof SourceText ? input : new SourceText(input, filePath);
+  const source = sourceText.text;
+  let diagnostics: ParserDiagnostic[] | undefined;
+  const addDiagnostic: DiagnosticSink = (severity, code, message, start, end): void => {
+    diagnostics = appendParserDiagnostic(diagnostics, severity, code, message, start, end);
+  };
+  return {
+    tree: stylesheet(parseCssNodes(source, 0, source.length, addDiagnostic)),
+    source: sourceText,
+    diagnostics: diagnostics ?? EMPTY_DIAGNOSTICS
+  };
+}
+
+export function parseCssStylesheet(filePath: string, input: string | SourceText): Stylesheet {
+  const result = parseFlatCssDeclarationStylesheet(filePath, input);
+  const diagnostic = result.diagnostics[0];
+  if (diagnostic) {
+    const rendered = renderParserDiagnostic(result.source, diagnostic);
+    throw new SyntaxError(`${rendered.filePath}:${rendered.line}:${rendered.column} ${rendered.message}`);
+  }
+  return result.tree;
 }

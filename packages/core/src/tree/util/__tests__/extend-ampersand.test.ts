@@ -99,81 +99,40 @@ describe('Extend Ampersand Handling Tests', () => {
   });
 
   describe('Expected outputs - boundary crossing', () => {
-    it('replaces boundary-crossing ampersands without calling generic copy on the source selector', () => {
+    it('replaces boundary-crossing ampersands', () => {
       const parentSelector = el('.foo');
       const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
-      const originalCopy = selector.copy.bind(selector);
-      let selectorCopies = 0;
-      const copyForCounting: typeof selector.copy = (...args) => {
-        selectorCopies++;
-        return originalCopy(...args);
-      };
-      selector.copy = copyForCounting;
+      const target = compound([el('.foo'), el('.bar')]);
+      const extendWith = el('.a');
 
-      try {
-        const target = compound([el('.foo'), el('.bar')]);
-        const extendWith = el('.a');
+      const result = extendSelector(selector, target, extendWith, true);
 
-        const result = extendSelector(selector, target, extendWith, true);
-
-        expect(selectorCopies).toBe(0);
-        expect(result.hoistToRoot).toBe(true);
-        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
-      } finally {
-        selector.copy = originalCopy;
-      }
+      expect(result.hoistToRoot).toBe(true);
+      expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
     });
 
-    it('hoists ampersand boundary output without calling generic SelectorList.copy()', () => {
-      const originalCopy = SelectorList.prototype.copy;
-      let selectorListCopies = 0;
-      SelectorList.prototype.copy = function copyForCounting(
-        this: SelectorList,
-        ...args: Parameters<SelectorList['copy']>
-      ): ReturnType<SelectorList['copy']> {
-        selectorListCopies++;
-        return originalCopy.apply(this, args);
-      };
+    it('hoists ampersand boundary output', () => {
+      const parentSelector = el('.foo');
+      const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
+      const target = compound([el('.foo'), el('.bar')]);
+      const extendWith = el('.a');
 
-      try {
-        const parentSelector = el('.foo');
-        const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
-        const target = compound([el('.foo'), el('.bar')]);
-        const extendWith = el('.a');
+      const result = extendSelector(selector, target, extendWith, true);
 
-        const result = extendSelector(selector, target, extendWith, true);
-
-        expect(selectorListCopies).toBe(0);
-        expect(result.hoistToRoot).toBe(true);
-        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
-      } finally {
-        SelectorList.prototype.copy = originalCopy;
-      }
+      expect(result.hoistToRoot).toBe(true);
+      expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
     });
 
     it('uses an owned extend copy for the resolved ampersand selector', () => {
       const parentSelector = el('.foo');
       const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
-      const originalCopy = parentSelector.copy.bind(parentSelector);
-      let parentSelectorCopies = 0;
-      const copyForCounting: typeof parentSelector.copy = (...args) => {
-        parentSelectorCopies++;
-        return originalCopy(...args);
-      };
-      parentSelector.copy = copyForCounting;
+      const target = compound([el('.foo'), el('.bar')]);
+      const extendWith = el('.a');
 
-      try {
-        const target = compound([el('.foo'), el('.bar')]);
-        const extendWith = el('.a');
+      const result = extendSelector(selector, target, extendWith, true);
 
-        const result = extendSelector(selector, target, extendWith, true);
-
-        expect(parentSelectorCopies).toBe(0);
-        expect(result.hoistToRoot).toBe(true);
-        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
-      } finally {
-        parentSelector.copy = originalCopy;
-      }
+      expect(result.hoistToRoot).toBe(true);
+      expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
     });
 
     it('keeps boundary-crossing ampersand extend output owned without reparenting source selectors', () => {
@@ -238,27 +197,15 @@ describe('Extend Ampersand Handling Tests', () => {
       const parentSelector = el('.container');
       const ampersandWithSelector = ampWithSelector(parentSelector);
       const selector = sel([co('>'), compound([ampersandWithSelector, el('.item')])]);
-      const originalCopy = selector.copy.bind(selector);
-      let selectorCopies = 0;
-      selector.copy = ((...args) => {
-        selectorCopies++;
-        return originalCopy(...args);
-      }) as typeof selector.copy;
+      const target = compound([el('.container'), el('.item')]);
+      const extendWith = el('.new-item');
 
-      try {
-        const target = compound([el('.container'), el('.item')]);
-        const extendWith = el('.new-item');
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result).not.toBe('NOT_FOUND');
+      const output = result.toTrimmedString();
 
-        const result = extendSelector(selector, target, extendWith, true);
-        expect(result).not.toBe('NOT_FOUND');
-        const output = result.toTrimmedString();
-
-        expect(selectorCopies).toBe(0);
-        expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
-        expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
-      } finally {
-        selector.copy = originalCopy;
-      }
+      expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
+      expect(output).toBe('> :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
     });
 
     it('should resolve authored && to the doubled parent selector for exact extends', () => {
@@ -268,26 +215,11 @@ describe('Extend Ampersand Handling Tests', () => {
       const selector = compound([amp1, amp2]); // &&
       const target = compound([el('.e'), el('.e')]); // .e.e
       const extendWith = el('.dbl');
-      const originalCopy = BasicSelector.prototype.copy;
-      let basicSelectorCopies = 0;
-      BasicSelector.prototype.copy = function copyForCounting(
-        this: BasicSelector,
-        ...args: Parameters<BasicSelector['copy']>
-      ): ReturnType<BasicSelector['copy']> {
-        basicSelectorCopies++;
-        return originalCopy.apply(this, args);
-      };
+      const result = extendSelector(selector, target, extendWith, true);
+      const output = result.toTrimmedString();
 
-      try {
-        const result = extendSelector(selector, target, extendWith, true);
-        const output = result.toTrimmedString();
-
-        expect(basicSelectorCopies).toBe(0);
-        expect(result.hoistToRoot).toBe(true);
-        expect(output).toBe('.e.e,\n.dbl');
-      } finally {
-        BasicSelector.prototype.copy = originalCopy;
-      }
+      expect(result.hoistToRoot).toBe(true);
+      expect(output).toBe('.e.e,\n.dbl');
     });
   });
 

@@ -31,28 +31,28 @@ describe('Extend ampersand boundary behavior', () => {
     const headerNavBody = rules([]);
     const headerNav = ruleset({
       selector: sel([implicitAmp, implicitSpace, el('.header-nav')]),
-      rules: headerNavBody.rules
+      rules: headerNavBody
     });
     const headerBody = rules([headerNav]);
-    const header = ruleset({ selector: el('.header'), rules: headerBody.rules });
+    const header = ruleset({ selector: el('.header'), rules: headerBody });
 
     const root = rules([
       header,
       ruleset({
         selector: sel([el('.footer'), co(' '), el('.footer-nav')]),
-        rules: [
+        rules: rules([
           extend({
             target: sel([el('.header'), co(' '), el('.header-nav')]),
             flag: ExtendFlag.All
           })
-        ]
+        ])
       })
     ]);
 
     const context = new Context();
     const evald = await root.eval(context);
-    const headerRuleset = evald.value[0];
-    const innerRuleset = headerRuleset?.value?.rules?.[0];
+    const headerRuleset = evald.rules[0];
+    const innerRuleset = headerRuleset?.rules?.rules?.[0];
     expect(innerRuleset?.hoistToRoot).toBe(true);
   });
 

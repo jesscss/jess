@@ -58,12 +58,13 @@ describe('Complex selector', () => {
       expect(node.toTrimmedString()).toBe('a > .foo');
     });
 
-    test('stores components on canonical value', () => {
+    test('exposes value as direct child field', () => {
       const first = el('a');
       const combinator = co('>');
       const second = el('.foo');
       const node = sel([first, combinator, second]);
 
+      expect(node.value).toEqual([first, combinator, second]);
       expect(node.value).toEqual([first, combinator, second]);
       expect(ComplexSelector.childKeys).toEqual(['value']);
     });
@@ -77,7 +78,7 @@ describe('Complex selector', () => {
       expect(writer.captures).toBe(0);
     });
 
-    test('streams selector components without capture scaffolding', () => {
+    test('streams selector value without capture scaffolding', () => {
       const writer = new CountingWriter();
       const node = sel([
         el('a'),
@@ -300,6 +301,16 @@ describe('Complex selector', () => {
       // visibleKeySet excludes combinators
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
+
+    test('string-backed complex', async () => {
+      const sel1 = sel(['.one', '>', '.two', '+', 'div']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('.one > .two + div');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', 'div']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+    });
+
     test('nested complex (w/ relative :is)', async () => {
       let sel2 = sel([
         compound([

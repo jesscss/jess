@@ -59,17 +59,17 @@ describe('extend integration (eval -> toString)', () => {
 
     const root = rules([
       ruleset({
-        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.copy(true), co(' '), el('.c')])]),
-        rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
+        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.clone(true), co(' '), el('.c')])]),
+        rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: [
+        rules: rules([
           extend({
             target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
             flag: ExtendFlag.Exact
           })
-        ]
+        ])
       })
     ]);
 
@@ -85,11 +85,11 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
-  it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
+  it('extends value inside nested rulesets (Less extend-selector replace case)', async () => {
     // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
     // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
     // No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
-    // Scanner-fed reproduction:
+    // Progressive reproduction:
     // - Step 0: no extends → nested output
     // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`; inner block must show .replace, .rep_ace, .c
 
@@ -99,23 +99,23 @@ describe('extend integration (eval -> toString)', () => {
           compound([el('.replace'), el('.replace')]),
           sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
         ]),
-        rules: [
+        rules: rules([
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: [
+            rules: rules([
               decl({ name: 'prop', value: any('copy-paste-replace') })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ...(includeRepAceExtend
         ? [
             ruleset({
               selector: el('.rep_ace'),
-              rules: [
+              rules: rules([
               // Less `all` (partial=true)
                 extend({ target: el('.replace'), flag: ExtendFlag.All })
-              ]
+              ])
             })
           ]
         : [])
@@ -188,34 +188,34 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: el('.header'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.header-nav'),
-            rules: [
+            rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
                 selector: sel([amp({}), pseudo({ name: ':before' })]),
-                rules: [
+                rules: rules([
                   decl({ name: 'background', value: any('blue') })
-                ]
+                ])
               })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: footer,
-        rules: [
+        rules: rules([
           ruleset({
             selector: footerNav,
-            rules: [
+            rules: rules([
               extend({
                 target: sel([el('.header'), co(' '), el('.header-nav')]),
                 flag: ExtendFlag.All
               })
-            ]
+            ])
           })
-        ]
+        ])
       })
     ]);
 
@@ -262,23 +262,23 @@ describe('extend integration (eval -> toString)', () => {
       const root = rules([
         ruleset({
           selector: el('.target'),
-          rules: [
+          rules: rules([
             decl({ name: 'background', value: any('red') })
-          ]
+          ])
         }),
         ruleset({
           selector: sellist([sel([parentA]), sel([parentB])]),
-          rules: [
+          rules: rules([
             ruleset({
               selector: el('.child'),
-              rules: [
+              rules: rules([
                 extend({
                   target: el('.target'),
                   flag: ExtendFlag.All
                 })
-              ]
+              ])
             })
-          ]
+          ])
         })
       ]);
 
@@ -330,23 +330,23 @@ describe('extend integration (eval -> toString)', () => {
       const root = rules([
         ruleset({
           selector: el('.target'),
-          rules: [
+          rules: rules([
             decl({ name: 'background', value: any('red') })
-          ]
+          ])
         }),
         ruleset({
           selector: sellist([sel([parentA]), sel([parentB])]),
-          rules: [
+          rules: rules([
             ruleset({
               selector: el('.child'),
-              rules: [
+              rules: rules([
                 extend({
                   target: el('.target'),
                   flag: ExtendFlag.All
                 })
-              ]
+              ])
             })
-          ]
+          ])
         })
       ]);
 
@@ -368,7 +368,7 @@ describe('extend integration (eval -> toString)', () => {
     }
   });
 
-  it('extends attribute selectors without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
+  it('extends attribute value without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
     // Represents:
     // .attributes {
     //   [data="test"] { extend: attributes; }
@@ -379,18 +379,18 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: el('.attributes'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: dataTest,
-            rules: [decl({ name: 'extend', value: any('attributes') })]
+            rules: rules([decl({ name: 'extend', value: any('attributes') })])
           }),
           ruleset({
             selector: el('.attribute-test'),
-            rules: [
+            rules: rules([
               extend({ target: dataTest, flag: ExtendFlag.All })
-            ]
+            ])
           })
-        ]
+        ])
       })
     ]);
 
@@ -413,22 +413,22 @@ describe('extend integration (eval -> toString)', () => {
     // So .ee must be added to outer .bb only; inner .bb must stay .bb (and only .ff gets added there via .bb all).
     const innerBbRuleset = ruleset({
       selector: el('.bb'),
-      rules: [decl({ name: 'color', value: any('black') })]
+      rules: rules([decl({ name: 'color', value: any('black') })])
     });
     const root = rules([
       ruleset({
         selector: el('.bb'),
-        rules: [
+        rules: rules([
           decl({ name: 'background', value: any('red') }),
           innerBbRuleset
-        ]
+        ])
       }),
       ruleset({
         selector: el('.ee'),
-        rules: [
+        rules: rules([
           extend({ target: el('.dd'), flag: ExtendFlag.All }),
           extend({ target: el('.bb'), flag: ExtendFlag.Exact })
-        ]
+        ])
       })
     ]);
     const context = new Context({ collapseNesting: false });
@@ -439,21 +439,21 @@ describe('extend integration (eval -> toString)', () => {
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      && Array.isArray(node.rules)
+      && Array.isArray(node.rules.rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const outerBb = evald.value.find(
+    const outerBb = evald.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.some(rule => isDeclarationNamed(rule, 'background'))
-        && node.rules.some(rule => rule instanceof Ruleset)
+        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'background'))
+        && node.rules.rules.some(rule => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    const inner = outerBb?.rules.find(
+    const inner = outerBb?.rules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.some(rule => isDeclarationNamed(rule, 'color'))
+        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
     const innerSelectorStr = inner?.selector.valueOf() ?? '';
@@ -470,45 +470,45 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.ext1'), co(' '), el('.ext2')])]),
-        rules: [decl({ name: 'background', value: any('black') })]
+        rules: rules([decl({ name: 'background', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: sellist([sel([el('.ext1'), co(' '), el('.ext3')])]),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           }),
           ruleset({
             selector: el('.tv-lowres'),
-            rules: [
+            rules: rules([
               decl({ name: 'background', value: any('blue') }),
               extend({ target: el('.ext1'), flag: ExtendFlag.All })
-            ]
+            ])
           }),
           atrule({
             name: any('@media'),
             prelude: any('(hires)'),
-            rules: [
+            rules: rules([
               ruleset({
                 selector: sellist([sel([el('.ext1'), co(' '), el('.ext4')])]),
-                rules: [decl({ name: 'color', value: any('green') })]
+                rules: rules([decl({ name: 'color', value: any('green') })])
               }),
               ruleset({
                 selector: el('.tv-hires'),
-                rules: [
+                rules: rules([
                   decl({ name: 'background', value: any('red') }),
                   extend({ target: el('.ext1'), flag: ExtendFlag.All })
-                ]
+                ])
               })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.all'),
-        rules: [extend({ target: el('.ext1'), flag: ExtendFlag.All })]
+        rules: rules([extend({ target: el('.ext1'), flag: ExtendFlag.All })])
       })
     ]);
 
@@ -543,33 +543,33 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: [decl({ name: 'color', value: any('black') })]
+        rules: rules([decl({ name: 'color', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               decl({ name: 'color', value: any('black') }),
               extend({ target: el('.a') }),
               extend({ target: el('.md') })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma') })]
+        rules: rules([extend({ target: el('.ma') })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb') })]
+        rules: rules([extend({ target: el('.mb') })])
       })
     ]);
     const context = new Context({ collapseNesting: false });
@@ -601,33 +601,33 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: [decl({ name: 'color', value: any('black') })]
+        rules: rules([decl({ name: 'color', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               decl({ name: 'color', value: any('black') }),
               extend({ target: el('.a') }),
               extend({ target: el('.md') })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma') })]
+        rules: rules([extend({ target: el('.ma') })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb') })]
+        rules: rules([extend({ target: el('.mb') })])
       })
     ]);
 
@@ -661,32 +661,32 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: [decl({ name: 'color', value: any('black') })]
+        rules: rules([decl({ name: 'color', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               decl({ name: 'color', value: any('black') }),
               extend({ target: sellist([el('.a'), el('.md')]) })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma') })]
+        rules: rules([extend({ target: el('.ma') })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb') })]
+        rules: rules([extend({ target: el('.mb') })])
       })
     ]);
 
@@ -716,7 +716,7 @@ describe('extend integration (eval -> toString)', () => {
   it('extend-chaining.less AST shape: same nodes and selector shapes as parsed (start through @media (tv))', async () => {
     // Same nodes and AST shape as Jess/Less parser for extend-chaining.less from document start
     // through end of @media (tv), plus .mb/.mc so the extend chain resolves. Selector shape:
-    // BasicSelector for ruleset selectors; Paren(QueryCondition(Keyword)) for @media prelude;
+    // BasicSelector for ruleset value; Paren(QueryCondition(Keyword)) for @media prelude;
     // one Extend with SelectorList target for .ma; Extend before Declaration in .ma rules.
     const blackColor = color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 });
     const maExtendTarget = sellist([
@@ -752,126 +752,126 @@ describe('extend integration (eval -> toString)', () => {
       comment('//very simple chaining'),
       ruleset({
         selector: el('.a'),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
-      ruleset({ selector: el('.b'), rules: [extend({ target: el('.a'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.c'), rules: [extend({ target: el('.b'), flag: ExtendFlag.Exact })] }),
+      ruleset({ selector: el('.b'), rules: rules([extend({ target: el('.a'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.c'), rules: rules([extend({ target: el('.b'), flag: ExtendFlag.Exact })]) }),
       comment('//very simple chaining, ordering not important'),
-      ruleset({ selector: el('.d'), rules: [extend({ target: el('.e'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.e'), rules: [extend({ target: el('.f'), flag: ExtendFlag.Exact })] }),
+      ruleset({ selector: el('.d'), rules: rules([extend({ target: el('.e'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.e'), rules: rules([extend({ target: el('.f'), flag: ExtendFlag.Exact })]) }),
       ruleset({
         selector: el('.f'),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
       comment('//extend with all'),
       ruleset({
         selector: compound([el('.g'), el('.h')]),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
       ruleset({
         selector: compound([el('.i'), el('.j')]),
-        rules: [
+        rules: rules([
           extend({ target: el('.g'), flag: ExtendFlag.All }),
           decl({ name: 'color', value: any('inherit') })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.k'),
-        rules: [extend({ target: el('.i'), flag: ExtendFlag.All })]
+        rules: rules([extend({ target: el('.i'), flag: ExtendFlag.All })])
       }),
       comment('//extend multi-chaining'),
       ruleset({
         selector: el('.l'),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
-      ruleset({ selector: el('.m'), rules: [extend({ target: el('.l'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.n'), rules: [extend({ target: el('.m'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.o'), rules: [extend({ target: el('.n'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.p'), rules: [extend({ target: el('.o'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.q'), rules: [extend({ target: el('.p'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.r'), rules: [extend({ target: el('.q'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.s'), rules: [extend({ target: el('.r'), flag: ExtendFlag.Exact })] }),
-      ruleset({ selector: el('.t'), rules: [extend({ target: el('.s'), flag: ExtendFlag.Exact })] }),
+      ruleset({ selector: el('.m'), rules: rules([extend({ target: el('.l'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.n'), rules: rules([extend({ target: el('.m'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.o'), rules: rules([extend({ target: el('.n'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.p'), rules: rules([extend({ target: el('.o'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.q'), rules: rules([extend({ target: el('.p'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.r'), rules: rules([extend({ target: el('.q'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.s'), rules: rules([extend({ target: el('.r'), flag: ExtendFlag.Exact })]) }),
+      ruleset({ selector: el('.t'), rules: rules([extend({ target: el('.s'), flag: ExtendFlag.Exact })]) }),
       comment('// self referencing is ignored'),
       ruleset({
         selector: el('.u'),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
       ruleset({
         selector: compound([el('.v'), el('.u'), el('.v')]),
-        rules: [extend({ target: el('.u'), flag: ExtendFlag.All })]
+        rules: rules([extend({ target: el('.u'), flag: ExtendFlag.All })])
       }),
       comment('// circular reference because the new extend product will match the existing extend'),
       ruleset({
         selector: el('.w'),
-        rules: [
+        rules: rules([
           extend({ target: el('.w'), flag: ExtendFlag.Exact }),
           decl({ name: 'color', value: blackColor })
-        ]
+        ])
       }),
       ruleset({
         selector: compound([el('.v'), el('.w'), el('.v')]),
-        rules: [extend({ target: el('.w'), flag: ExtendFlag.All })]
+        rules: rules([extend({ target: el('.w'), flag: ExtendFlag.All })])
       }),
       comment('// classic circular references'),
       ruleset({
         selector: el('.x'),
-        rules: [
+        rules: rules([
           extend({ target: el('.z'), flag: ExtendFlag.Exact }),
           decl({ name: 'color', value: any('x') })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.y'),
-        rules: [
+        rules: rules([
           extend({ target: el('.x'), flag: ExtendFlag.Exact }),
           decl({ name: 'color', value: any('y') })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.z'),
-        rules: [
+        rules: rules([
           extend({ target: el('.y'), flag: ExtendFlag.Exact }),
           decl({ name: 'color', value: any('z') })
-        ]
+        ])
       }),
       comment('//very simple chaining, but with the extend inside the ruleset'),
       ruleset({
         selector: el('.va'),
-        rules: [decl({ name: 'color', value: blackColor })]
+        rules: rules([decl({ name: 'color', value: blackColor })])
       }),
       ruleset({
         selector: el('.vb'),
-        rules: [
+        rules: rules([
           extend({ target: el('.va'), flag: ExtendFlag.Exact }),
           nil(),
           decl({ name: 'color', value: any('inherit') })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.vc'),
-        rules: [extend({ target: el('.vb'), flag: ExtendFlag.Exact }), nil()]
+        rules: rules([extend({ target: el('.vb'), flag: ExtendFlag.Exact }), nil()])
       }),
       comment('// media queries - don\'t extend outside, do extend inside'),
       atrule({
         name: any('@media'),
         prelude: paren(query([keyword('tv')])),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               extend({ target: maExtendTarget, flag: ExtendFlag.Exact }),
               decl({ name: 'color', value: blackColor })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           }),
           atrule({
             name: any('@media'),
             prelude: paren(query([keyword('plasma')])),
-            rules: [
+            rules: rules([
               // Parsed structure: inner Rules wrapping Extend then Ruleset (same as snapshot)
               rules([
                 extend({
@@ -881,26 +881,26 @@ describe('extend integration (eval -> toString)', () => {
                 }),
                 ruleset({
                   selector: sellist([el('.me'), el('.mf')]),
-                  rules: [
+                  rules: rules([
                     nil(),
                     decl({
                       name: 'background',
                       value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                     })
-                  ]
+                  ])
                 })
               ])
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma'), flag: ExtendFlag.Exact })]
+        rules: rules([extend({ target: el('.ma'), flag: ExtendFlag.Exact })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb'), flag: ExtendFlag.Exact })]
+        rules: rules([extend({ target: el('.mb'), flag: ExtendFlag.Exact })])
       })
     ]);
     const serializeOpts = { showValues: true, maxStringLength: 120 };
@@ -937,33 +937,33 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: [decl({ name: 'color', value: any('black') })]
+        rules: rules([decl({ name: 'color', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               decl({ name: 'color', value: any('black') }),
               extend({ target: el('.a') }),
               extend({ target: el('.md') })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma') })]
+        rules: rules([extend({ target: el('.ma') })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb') })]
+        rules: rules([extend({ target: el('.mb') })])
       })
     ]);
     const context = new Context({ collapseNesting: true });
@@ -988,39 +988,39 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
-  it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged selectors', async () => {
+  it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged value', async () => {
     // Failure-point parity from jess all-less extend-chaining.less:
     // .ma:extend(.a, .md) parsed as a single Extend with SelectorList target,
     // and compiler defaults to collapseNesting true.
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: [decl({ name: 'color', value: any('black') })]
+        rules: rules([decl({ name: 'color', value: any('black') })])
       }),
       atrule({
         name: any('@media'),
         prelude: any('(tv)'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.ma'),
-            rules: [
+            rules: rules([
               decl({ name: 'color', value: any('black') }),
               extend({ target: sellist([el('.a'), el('.md')]) })
-            ]
+            ])
           }),
           ruleset({
             selector: el('.md'),
-            rules: [decl({ name: 'color', value: any('inherit') })]
+            rules: rules([decl({ name: 'color', value: any('inherit') })])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.mb'),
-        rules: [extend({ target: el('.ma') })]
+        rules: rules([extend({ target: el('.ma') })])
       }),
       ruleset({
         selector: el('.mc'),
-        rules: [extend({ target: el('.mb') })]
+        rules: rules([extend({ target: el('.mb') })])
       })
     ]);
 
@@ -1060,20 +1060,20 @@ describe('extend integration (eval -> toString)', () => {
       const root = rules([
         ruleset({
           selector: el('.a'),
-          rules: [decl({ name: 'color', value: spaced([any('red')]) })]
+          rules: rules([decl({ name: 'color', value: spaced([any('red')]) })])
         }),
         atrule({
           name: any('@media'),
           prelude: any('screen'),
-          rules: [
+          rules: rules([
             ruleset({
               selector: el('.b'),
-              rules: [
+              rules: rules([
                 decl({ name: 'background', value: spaced([any('blue')]) }),
                 extend({ target: el('.a') })
-              ]
+              ])
             })
-          ]
+          ])
         })
       ]);
       const context = new Context({ collapseNesting: false });
@@ -1099,19 +1099,19 @@ describe('extend integration (eval -> toString)', () => {
         atrule({
           name: any('@media'),
           prelude: any('screen'),
-          rules: [
+          rules: rules([
             ruleset({
               selector: el('.b'),
-              rules: [decl({ name: 'color', value: spaced([any('red')]) })]
+              rules: rules([decl({ name: 'color', value: spaced([any('red')]) })])
             })
-          ]
+          ])
         }),
         ruleset({
           selector: el('.a'),
-          rules: [
+          rules: rules([
             decl({ name: 'background', value: spaced([any('blue')]) }),
             extend({ target: el('.b') })
-          ]
+          ])
         })
       ]);
       const context = new Context({ collapseNesting: false });
@@ -1137,19 +1137,19 @@ describe('extend integration (eval -> toString)', () => {
         atrule({
           name: any('@media'),
           prelude: any('screen'),
-          rules: [
+          rules: rules([
             ruleset({
               selector: el('.b'),
-              rules: [decl({ name: 'color', value: spaced([any('red')]) })]
+              rules: rules([decl({ name: 'color', value: spaced([any('red')]) })])
             }),
             ruleset({
               selector: el('.c'),
-              rules: [
+              rules: rules([
                 decl({ name: 'background', value: spaced([any('blue')]) }),
                 extend({ target: el('.b') })
-              ]
+              ])
             })
-          ]
+          ])
         })
       ]);
       const context = new Context({ collapseNesting: false });
@@ -1174,47 +1174,47 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: el('.header'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.header-nav'),
-            rules: [
+            rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
                 selector: sel([amp({}), pseudo({ name: ':before' })]),
-                rules: [decl({ name: 'background', value: any('blue') })]
+                rules: rules([decl({ name: 'background', value: any('blue') })])
               })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.footer'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.footer-nav'),
-            rules: [
+            rules: rules([
               extend({
                 target: sel([el('.header'), co(' '), el('.header-nav')]),
                 flag: ExtendFlag.All
               })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.issue-2586-bordered'),
-        rules: [decl({ name: 'border', value: any('solid 1px black') })]
+        rules: rules([decl({ name: 'border', value: any('solid 1px black') })])
       }),
       ruleset({
         selector: el('.issue-2586-somepage'),
-        rules: [
+        rules: rules([
           ruleset({
             selector: el('.content'),
-            rules: [
+            rules: rules([
               extend({ target: el('.issue-2586-bordered'), flag: ExtendFlag.All })
-            ]
+            ])
           })
-        ]
+        ])
       })
     ]);
 
@@ -1240,23 +1240,23 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.one')]), sel([el('.two')])]),
-        rules: [
+        rules: rules([
           ruleset({
             selector: sel([el('.three')]),
-            rules: [
+            rules: rules([
               decl({ name: 'inner', value: any('one two') })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.theme'),
-        rules: [
+        rules: rules([
           extend({
             target: sel([el('.one'), co(' '), el('.three')]),
             flag: ExtendFlag.Exact
           })
-        ]
+        ])
       })
     ]);
 
@@ -1275,23 +1275,23 @@ describe('extend integration (eval -> toString)', () => {
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.one')]), sel([el('.two')])]),
-        rules: [
+        rules: rules([
           ruleset({
             selector: sel([el('.three')]),
-            rules: [
+            rules: rules([
               decl({ name: 'inner', value: any('one two') })
-            ]
+            ])
           })
-        ]
+        ])
       }),
       ruleset({
         selector: el('.theme'),
-        rules: [
+        rules: rules([
           extend({
             target: el('.three'),
             flag: ExtendFlag.All
           })
-        ]
+        ])
       })
     ]);
 

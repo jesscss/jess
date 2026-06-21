@@ -486,9 +486,9 @@ describe('renderNodeToBuffer', () => {
       { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
       { surface: 'SelectorCapture', node: selcap(el('.captured')), expected: '.captured' },
       { surface: 'Log', node: log({ level: 'debug', message: any('') }), expected: '', expectedParts: [] },
-      { surface: 'JsArray', node: jsarray([any('one'), any('two')]) },
-      { surface: 'JsObject', node: jsobj({ one: any('one') }) },
-      { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }) },
+      { surface: 'JsArray', node: jsarray([any('one'), any('two')]), expectedParts: [] },
+      { surface: 'JsObject', node: jsobj({ one: any('one') }), expectedParts: [] },
+      { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }), expectedParts: [] },
       {
         surface: 'Mixin',
         node: mixin({ name: any('.paint'), rules: [decl({ name: 'color', value: any('red') })] }),
@@ -546,7 +546,8 @@ describe('renderNodeToBuffer', () => {
             undefined,
             0
           )
-        ])
+        ]),
+        expectedParts: []
       },
       { surface: 'SelectorBase', node: new RenderBufferSelector('.base'), expected: '.base' }
     ];

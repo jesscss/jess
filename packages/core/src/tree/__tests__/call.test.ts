@@ -1473,6 +1473,38 @@ describe('Call', () => {
     }
   });
 
+  it('renders optional fallback call dimensions through normal dimension serialization', async () => {
+    const args = list([dimension([-0.0000000001, 'deg'])]);
+    const name = ref({ key: 'rotate' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(0deg)');
+    expect(await rule.render(context, buffer)).toBe('rotate(0deg)');
+    expect(buffer.parts).toEqual(['rotate(0deg)']);
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'rotate(0deg)'
+    });
+  });
+
+  it('preserves source trivia in optional fallback call arguments', async () => {
+    const first = new Color({ node: '#333' }, undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Color({ node: '#111' }, undefined, [40, 1, 41, 43, 1, 44]);
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const args = list([first, second]);
+    const name = ref({ key: 'linear-gradient' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'linear-gradient(#333 /*{comment}*/, #111)'
+    });
+  });
+
   it('resolves optional missing dynamic function fallback without evaluating the source call surface', async () => {
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
@@ -2151,9 +2183,9 @@ describe('Call', () => {
     }));
     context.root = root;
     context.rulesContext = root;
-    const originalCopy = List.prototype.copy;
+    const originalCopy = List.prototype.cloneForPlacement;
     let copiedLists = 0;
-    List.prototype.copy = function copyForCounting(this: List, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    List.prototype.cloneForPlacement = function copyForCounting(this: List, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       copiedLists++;
       return originalCopy.apply(this, args);
     };
@@ -2167,7 +2199,7 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('ok');
       expect(copiedLists).toBe(0);
     } finally {
-      List.prototype.copy = originalCopy;
+      List.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -2781,9 +2813,9 @@ describe('Call', () => {
   });
 
   it('does not copy source-free static fallback call arg containers', async () => {
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     let sequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -2807,7 +2839,7 @@ describe('Call', () => {
       expect(args.parent).toBe(rule);
       expect(arg.parent).toBe(args);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -2851,9 +2883,9 @@ describe('Call', () => {
   });
 
   it('keeps source fallback call content canonical when optional function evaluation falls back', async () => {
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     let sequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -2877,7 +2909,7 @@ describe('Call', () => {
       expect(sequenceCopies).toBe(0);
       expect(content.parent).toBe(rule);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -2901,10 +2933,10 @@ describe('Call', () => {
   });
 
   it('renders source-backed fallback call content without owning output content', async () => {
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -2934,16 +2966,16 @@ describe('Call', () => {
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
       derivedCalls.restore();
     }
   });
 
   it('renders and resolves source-backed fallback content without deriving a fallback Call', async () => {
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -2975,16 +3007,16 @@ describe('Call', () => {
       expect(content.parent).toBe(rule);
       expect(rule.evaluated).toBe(false);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
       derivedCalls.restore();
     }
   });
 
   it('renders optional JS failure fallback content without owning a fallback Call surface', async () => {
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     const derivedCalls = countDeriveCallUse();
     let sequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -3027,7 +3059,7 @@ describe('Call', () => {
       expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
       derivedCalls.restore();
     }
   });

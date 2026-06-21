@@ -146,7 +146,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(evalSpy).not.toHaveBeenCalled();
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
-    expect(node.value[0]!.parent).toBe(node);
+    expect(node.rules[0]!.parent).toBe(node);
   });
 
   it('keeps static fragment string and buffer render separators without deriving', () => {

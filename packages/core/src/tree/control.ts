@@ -24,7 +24,6 @@ import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -52,12 +51,6 @@ function throwWhileIterationLimitExceeded(): never {
 
 function throwInvalidWhileIterationRegistrationPrep(): never {
   throw new TypeError('Expected $while iteration registration prep to return Rules');
-}
-
-function assertRulesBodyArray(owner: string, rules: unknown): asserts rules is Node[] {
-  if (!Array.isArray(rules)) {
-    throw new TypeError(`${owner} requires rules to be a Node array.`);
-  }
 }
 
 function makeDirectiveRulesPublic(rules: Rules) {
@@ -165,7 +158,7 @@ async function runWithRulesContext<T>(
 }
 
 function deriveIterationChild(node: Node): Node {
-  return copyWithReusableLeaves(node);
+  return node.cloneForPlacement();
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {
@@ -220,6 +213,24 @@ function hasIterationStateMutation(rules: Rules): boolean {
   return rules.rules.some(node => isNode(node, N.VarDeclaration));
 }
 
+function getDirectIterationStateMutations(rules: Rules): VarDeclaration[] | undefined {
+  const mutations: VarDeclaration[] = [];
+  for (const node of rules.rules) {
+    if (!isNode(node, N.VarDeclaration)) {
+      continue;
+    }
+    if (
+      node.options?.assign
+      || node.options?.setDefined
+      || node.options?.throwIfDefined
+    ) {
+      return undefined;
+    }
+    mutations.push(node);
+  }
+  return mutations.length > 0 ? mutations : undefined;
+}
+
 async function syncWhileState(
   stateRules: Rules,
   iterationRules: Rules,
@@ -237,6 +248,27 @@ async function syncWhileState(
       value,
       sourceNode: last.sourceNode,
       readonly: last.cell.readonly
+    });
+  }
+}
+
+async function syncDirectWhileStateMutations(
+  stateRules: Rules,
+  mutations: VarDeclaration[],
+  context: Context
+): Promise<void> {
+  const stateFrame = stateRules.getScopeFrame();
+  for (const mutation of mutations) {
+    const name = mutation.name instanceof Any
+      ? mutation.name
+      : await mutation.name.eval(context);
+    if (!(name instanceof Any)) {
+      throw new TypeError('Expected $while mutation name to resolve to Any');
+    }
+    setScopeFrameLiveBinding(stateFrame, name.valueOf(), {
+      value: await mutation.value.eval(context),
+      sourceNode: mutation,
+      readonly: mutation.options?.readonly
     });
   }
 }
@@ -290,15 +322,15 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     return;
   }
   if (isNode(input, N.List)) {
-    for (let key = 0; key < input.value.length; key++) {
-      const value = input.value[key]!;
+    for (let key = 0; key < input.items.length; key++) {
+      const value = input.items[key]!;
       yield [value, key];
     }
     return;
   }
   if (isNode(input, N.Sequence)) {
-    for (let key = 0; key < input.value.length; key++) {
-      const value = input.value[key]!;
+    for (let key = 0; key < input.items.length; key++) {
+      const value = input.items[key]!;
       yield [value, key];
     }
     return;
@@ -317,7 +349,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     return;
   }
   if (isNode(input, N.Ruleset) || isNode(input, N.Mixin)) {
-    const rules = input.rules;
+    const rules = input.rules.rules;
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -399,22 +431,19 @@ async function createForIterationSurface(
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  iterationRules.scopeFrame = buildScopeFrame(
-    undefined,
-    iterationRules,
-    parentFrame,
-    liveSlots,
-    undefined,
-    true
-  );
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
   attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
   return iterationRules.prepareRegistration(context);
 }
 
+export type IfBranch = {
+  /** Undefined means "else" branch */
+  condition?: Node;
+  rules: Rules;
+};
+
 export type IfValue = {
-  condition: Node;
-  rules: Node[];
-  else?: If | Rules;
+  branches: IfBranch[];
 };
 
 /**
@@ -425,28 +454,26 @@ export type IfValue = {
  *
  * This is language-agnostic: it’s the canonical Jess control node.
  */
-export class If extends Rules<IfValue> {
-  static override childKeys = ['condition', 'rules', 'else'] as const;
+export class If extends Node<IfValue> {
+  static override childKeys = ['branches'] as const;
 
-  readonly condition: Node;
-  readonly else: IfValue['else'];
-  declare readonly rules: Node[];
+  readonly branches: IfBranch[];
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('If', value.rules);
-    super(value, options, location, treeContext, value.rules);
-    this.condition = value.condition;
-    this.else = value.else;
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.branches = value.branches;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    this.adopt(this.condition);
-    if (this.else) {
-      this.adopt(this.else);
-      makeDirectiveRulesPublic(this.else);
+    for (const branch of this.branches) {
+      if (branch.condition) {
+        this.adopt(branch.condition);
+      }
+      this.adopt(branch.rules);
+      makeDirectiveRulesPublic(branch.rules);
     }
-    makeDirectiveRulesPublic(this);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -460,45 +487,41 @@ export class If extends Rules<IfValue> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
+    const [first, ...rest] = this.branches;
     w.add('$if', this);
     w.add(' (');
-    this.condition.writeSyntax(options);
+    first?.condition?.writeSyntax(options);
     w.add(') ');
-    this.writeBraced(options);
-    this.writeElseSyntax(options);
-  }
+    first?.rules.writeBraced(options);
 
-  private writeElseSyntax(options: FinalPrintOptions): void {
-    if (!this.else) {
-      return;
+    for (const br of rest) {
+      if (br.condition) {
+        w.add(' $else if (');
+        br.condition.writeSyntax(options);
+        w.add(') ');
+      } else {
+        w.add(' $else ');
+      }
+      br.rules.writeBraced(options);
     }
-    const w = options.writer;
-    if (this.else instanceof If) {
-      w.add(' $else if (');
-      this.else.condition.writeSyntax(options);
-      w.add(') ');
-      this.else.writeBraced(options);
-      this.else.writeElseSyntax(options);
-      return;
-    }
-    w.add(' $else ');
-    this.else.writeBraced(options);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
     const run = async (): Promise<Node> => {
-      let conditionPasses: boolean;
-      if (this.condition instanceof Condition) {
-        conditionPasses = await this.condition.evaluateBoolean(context);
-      } else {
-        const condition = await this.condition.eval(context);
-        conditionPasses = condition instanceof Bool && condition.value === true;
-      }
-      if (conditionPasses) {
-        return createIterationEvalSurface(this).eval(context);
-      }
-      if (this.else) {
-        return this.else.eval(context);
+      for (const branch of this.branches) {
+        if (!branch.condition) {
+          return branch.rules.eval(context);
+        }
+        let conditionPasses: boolean;
+        if (branch.condition instanceof Condition) {
+          conditionPasses = await branch.condition.evaluateBoolean(context);
+        } else {
+          const condition = await branch.condition.eval(context);
+          conditionPasses = condition instanceof Bool && condition.value === true;
+        }
+        if (conditionPasses) {
+          return branch.rules.eval(context);
+        }
       }
       return createGeneratedOutputRulesSurface();
     };
@@ -510,19 +533,22 @@ export class If extends Rules<IfValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    let conditionPasses: boolean;
-    if (this.condition instanceof Condition) {
-      conditionPasses = await this.condition.evaluateBoolean(context);
-    } else {
-      const condition = await this.condition.eval(context);
-      conditionPasses = condition instanceof Bool && condition.value === true;
+    for (const branch of this.branches) {
+      if (!branch.condition) {
+        return renderControlRules(branch.rules, context, buffer, options);
+      }
+      let conditionPasses: boolean;
+      if (branch.condition instanceof Condition) {
+        conditionPasses = await branch.condition.evaluateBoolean(context);
+      } else {
+        const condition = await branch.condition.eval(context);
+        conditionPasses = condition instanceof Bool && condition.value === true;
+      }
+      if (conditionPasses) {
+        return renderControlRules(branch.rules, context, buffer, options);
+      }
     }
-    if (conditionPasses) {
-      return renderControlRules(createIterationEvalSurface(this), context, buffer, options);
-    }
-    return this.else
-      ? renderControlRules(this.else, context, buffer, options)
-      : '';
+    return '';
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -542,28 +568,28 @@ export class If extends Rules<IfValue> {
 export type StructuredLoopValue = {
   pattern: ForPattern;
   iterable: ForIterable;
-  rules: Node[];
+  rules: Rules;
 };
 
 /**
  * `$for <header> { ... }`
  */
-export class For extends Rules<StructuredLoopValue> {
+export class For extends Node<StructuredLoopValue> {
   static override childKeys = ['pattern', 'iterable', 'rules'] as const;
 
   readonly pattern: ForPattern;
   readonly iterable: ForIterable;
-  declare readonly rules: Node[];
+  readonly rules: Rules;
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('For', value.rules);
-    // AUDIT: Uh.... why is this passing 5 values?
-    super(value, options, location, treeContext, value.rules);
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.pattern = value.pattern;
     this.iterable = value.iterable;
+    this.rules = value.rules;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const decl of getBindingDeclarations(this.pattern)) {
       this.adopt(decl);
@@ -577,7 +603,8 @@ export class For extends Rules<StructuredLoopValue> {
         this.adopt(this.iterable.step);
       }
     }
-    makeDirectiveRulesPublic(this);
+    this.adopt(this.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
@@ -586,7 +613,7 @@ export class For extends Rules<StructuredLoopValue> {
     const run = async (): Promise<Node> => {
       const outputRules: Node[] = [];
       let counter = 1;
-      const originalRules = this;
+      const originalRules = this.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const iterationRules = await createForIterationSurface(
@@ -671,7 +698,7 @@ export class For extends Rules<StructuredLoopValue> {
     }
     w.add(')');
     w.add(' ');
-    this.writeBraced(options);
+    this.rules.writeBraced(options);
   }
 
   private async renderIterations(
@@ -679,8 +706,7 @@ export class For extends Rules<StructuredLoopValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    const { pattern, iterable } = this;
-    const originalRules = this;
+    const { pattern, iterable, rules: originalRules } = this;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
     let counter = 1;
@@ -713,28 +739,30 @@ export class For extends Rules<StructuredLoopValue> {
 
 export type WhileValue = {
   condition: Node;
-  rules: Node[];
+  rules: Rules;
 };
 
 /**
  * `$while (<condition>) { ... }`
  */
-export class While extends Rules<WhileValue> {
+export class While extends Node<WhileValue> {
   static override childKeys = ['condition', 'rules'] as const;
 
   readonly condition: Node;
-  declare readonly rules: Node[];
+  readonly rules: Rules;
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('While', value.rules);
-    super(value, options, location, treeContext, value.rules);
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.condition = value.condition;
+    this.rules = value.rules;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
-    makeDirectiveRulesPublic(this);
+    this.adopt(this.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -751,13 +779,13 @@ export class While extends Rules<WhileValue> {
     w.add('$while (', this);
     this.condition.writeSyntax(options);
     w.add(') ');
-    this.writeBraced(options);
+    this.rules.writeBraced(options);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
     const run = async (): Promise<Node> => {
       const outputRules: Node[] = [];
-      const originalRules = this;
+      const originalRules = this.rules;
       const stateRules = createWhileStateSurface(originalRules, context);
       let iterations = 0;
       await runWithRulesContext(context, stateRules, async () => {
@@ -804,8 +832,9 @@ export class While extends Rules<WhileValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    const originalRules = this;
+    const originalRules = this.rules;
     const stateRules = createWhileStateSurface(originalRules, context);
+    const directMutations = getDirectIterationStateMutations(originalRules);
     let iterations = 0;
     let output = '';
     await runWithRulesContext(context, stateRules, async () => {
@@ -825,7 +854,9 @@ export class While extends Rules<WhileValue> {
           throwWhileIterationLimitExceeded();
         }
         let iterationRules = createWhileIterationSurface(originalRules, stateRules);
-        if (hasIterationStateMutation(originalRules)) {
+        if (directMutations) {
+          await syncDirectWhileStateMutations(stateRules, directMutations, context);
+        } else if (hasIterationStateMutation(originalRules)) {
           const preparedIterationRules = await iterationRules.prepareRegistration(context);
           if (!(preparedIterationRules instanceof Rules)) {
             throwInvalidWhileIterationRegistrationPrep();

@@ -25,7 +25,6 @@ import {
   emitNodeSourceSyntaxWithTrivia,
   emitTriviaTokens
 } from './util/trivia.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   evaluateNodeArrayMaybe,
   evaluateNodeArraySync
@@ -104,12 +103,14 @@ function sequenceRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOption
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
-  static override childKeys = ['value'] as const;
+  static override childKeys = ['items'] as const;
 
+  readonly items: Node[];
   readonly preserveWhitespace: boolean | undefined;
 
   constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
     super(value, options, location);
+    this.items = value;
     this.preserveWhitespace = options?.preserveWhitespace;
   }
 
@@ -122,9 +123,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private deriveAdditionSequence(): Sequence {
-    const values = new Array<Node>(this.value.length);
-    for (let i = 0; i < this.value.length; i++) {
-      values[i] = copyWithReusableLeaves(this.value[i]!);
+    const values = new Array<Node>(this.items.length);
+    for (let i = 0; i < this.items.length; i++) {
+      values[i] = this.items[i]!.cloneForPlacement();
     }
     return new Sequence(
       values,
@@ -137,7 +138,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     let count = 0;
     let only: Node | undefined;
     let hasNil = false;
-    let unchanged = values.length === this.value.length;
+    let unchanged = values.length === this.items.length;
     for (let i = 0; i < values.length; i++) {
       const node = values[i]!;
       if (!node || node instanceof Nil) {
@@ -147,7 +148,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       }
       count++;
       only = node;
-      if (unchanged && node !== this.value[i]) {
+      if (unchanged && node !== this.items[i]) {
         unchanged = false;
       }
     }
@@ -174,7 +175,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(this.items, other.items, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -186,7 +187,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return undefined;
   }
 
-  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
+  private renderSequenceSyntax(value = this.items, options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (value.length === 0) {
       return '';
@@ -273,20 +274,20 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private renderSequenceDirect(context: Context, options?: PrintOptions): string {
-    return this.renderSequenceValueDirect(context, this.value, options);
+    return this.renderSequenceValueDirect(context, this.items, options);
   }
 
   private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
-    if (this.value.length === 0) {
+    if (this.items.length === 0) {
       return '';
     }
     const mark = w.mark();
 
     const renderCustomRest = async (start: number): Promise<string> => {
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = start; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -296,8 +297,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     };
 
     if (printOptions.inCustom) {
-      for (let i = 0; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = 0; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -311,8 +312,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
     const renderRest = async (start: number, previous: Node | undefined): Promise<string> => {
       let prev = previous;
-      for (let i = start; i < this.value.length; i++) {
-        const node = this.value[i]!;
+      for (let i = start; i < this.items.length; i++) {
+        const node = this.items[i]!;
         if (node instanceof Nil) {
           continue;
         }
@@ -326,8 +327,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     };
 
     let prev: Node | undefined;
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.items.length; i++) {
+      const node = this.items[i]!;
       if (node instanceof Nil) {
         continue;
       }
@@ -350,7 +351,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     printOptions: ReturnType<typeof getPrintOptions>
   ): void {
     const w = printOptions.writer;
-    const emittedCommentTrivia = emitCommentTriviaBetweenNodes(prev, node, printOptions);
     const sourceTrivia = (
       printOptions.trivia
       && sequenceNodeTrivia(prev) === printOptions.trivia
@@ -358,6 +358,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     )
       ? printOptions.trivia
       : undefined;
+    const emittedBefore = printOptions.emittedTrivia?.size ?? 0;
+    emitCommentTriviaBetweenNodes(prev, node, printOptions);
+    const emittedBetween = (printOptions.emittedTrivia?.size ?? 0) !== emittedBefore;
     const leadingTrivia = sourceTrivia
       ? consumeTrivia(sourceTrivia, node.location[0], 'before', printOptions)
       : undefined;
@@ -365,7 +368,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       emitTriviaTokens(leadingTrivia, printOptions);
       return;
     }
-    if (emittedCommentTrivia) {
+    if (emittedBetween) {
       return;
     }
     const prevLastChar = w.lastChar();
@@ -393,8 +396,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     let prev: Node | undefined;
-    for (let i = 0; i < this.value.length; i++) {
-      const node = this.value[i]!;
+    for (let i = 0; i < this.items.length; i++) {
+      const node = this.items[i]!;
       if (node instanceof Nil) {
         continue;
       }
@@ -408,9 +411,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
   }
 
-  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderSequenceSyntax(this.value, options);
+    return this.renderSequenceSyntax(this.items, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -428,7 +430,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         : prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedValue(context, this.value, prepared, buffer);
+      return this.renderResolvedValue(context, this.items, prepared, buffer);
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.renderDirectValue(context, prepared, buffer);
@@ -492,19 +494,19 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const newSequence = this.deriveAdditionSequence();
     if (b instanceof List) {
-      const values = new Array<Node>(b.value.length + 1);
+      const values = new Array<Node>(b.items.length + 1);
       values[0] = newSequence;
-      for (let i = 0; i < b.value.length; i++) {
-        values[i + 1] = copyWithReusableLeaves(b.value[i]!);
+      for (let i = 0; i < b.items.length; i++) {
+        values[i + 1] = b.items[i]!.cloneForPlacement();
       }
       return new List(values).inherit(this);
     } else if (isNode(b, N.Sequence)) {
-      const values = new Array<Node>(newSequence.value.length + b.value.length);
-      for (let i = 0; i < newSequence.value.length; i++) {
-        values[i] = newSequence.value[i]!;
+      const values = new Array<Node>(newSequence.items.length + b.items.length);
+      for (let i = 0; i < newSequence.items.length; i++) {
+        values[i] = newSequence.items[i]!;
       }
-      for (let i = 0; i < b.value.length; i++) {
-        values[newSequence.value.length + i] = copyWithReusableLeaves(b.value[i]!);
+      for (let i = 0; i < b.items.length; i++) {
+        values[newSequence.items.length + i] = b.items[i]!.cloneForPlacement();
       }
       return new Sequence(
         values,
@@ -512,12 +514,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         newSequence.location.length ? newSequence.location : undefined
       ).inherit(newSequence);
     } else {
-      b = copyWithReusableLeaves(b);
-      const values = new Array<Node>(newSequence.value.length + 1);
-      for (let i = 0; i < newSequence.value.length; i++) {
-        values[i] = newSequence.value[i]!;
+      b = b.cloneForPlacement();
+      const values = new Array<Node>(newSequence.items.length + 1);
+      for (let i = 0; i < newSequence.items.length; i++) {
+        values[i] = newSequence.items[i]!;
       }
-      values[newSequence.value.length] = b;
+      values[newSequence.items.length] = b;
       return new Sequence(
         values,
         newSequence._options ? { ...newSequence._options } : undefined,
@@ -544,9 +546,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return this;
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeValues(evaluateNodeArraySync(context, this.value));
+      return this.finalizeValues(evaluateNodeArraySync(context, this.items));
     }
-    const values = evaluateNodeArrayMaybe(context, this.value);
+    const values = evaluateNodeArrayMaybe(context, this.items);
     return isThenable(values)
       ? (values as Promise<Node[]>).then(resolved => this.finalizeValues(resolved))
       : this.finalizeValues(values as Node[]);
@@ -559,7 +561,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast
-  //   this.value.forEach(n => {
+  //   this.items.forEach(n => {
   //     const val = cast(n)
   //     val.toCSS(context, out)
   //   })
@@ -568,8 +570,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.expr([', loc)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((n, i) => {
+  //   const length = this.items.length - 1
+  //   this.items.forEach((n, i) => {
   //     n.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

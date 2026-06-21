@@ -2,7 +2,7 @@
  * Walk-and-consume extend algorithm.
  *
  * The find selector decomposes into *positions* — each position is a set of
- * simple selectors (AND). Positions are separated by combinators. The walk
+ * simple value (AND). Positions are separated by combinators. The walk
  * progresses through the target tree, consuming find positions:
  *
  *   - SimpleSelector find  → 1 position, 1 simple
@@ -18,7 +18,7 @@
  *
  * When :is() appears as a component in a compound selector, it adds an AND
  * branch. The *last* selector in each :is() alternative occupies the same
- * compound position as its sibling components. Everything before the last
+ * compound position as its sibling value. Everything before the last
  * selector is an ancestral prefix — a separate path.
  *
  *   .a:is(.x > .y).b
@@ -38,7 +38,7 @@
  * ## Reading back-to-front
  *
  * Selectors read back-to-front: rightmost = subject element, leftward =
- * ancestors/preceding. For :is() alternatives that are complex selectors,
+ * ancestors/preceding. For :is() alternatives that are complex value,
  * the last element is at the current position; the rest is a branch going up.
  *
  * ComplexSelector find support is currently used for diagnostics only
@@ -50,11 +50,7 @@ import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
-import {
-  CompoundSelector,
-  isRawCompoundSelectorComponent,
-  type CompoundSelectorComponent
-} from '../selector-compound.js';
+import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
@@ -64,12 +60,11 @@ import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
-import { valueText } from './value-text.js';
 
 const { isArray } = Array;
 
-function copySelectorsForPlacement(selectors: Selector[]): Selector[] {
-  return selectors.map(selector => copySelectorForExtend(selector));
+function copySelectorsForPlacement(value: Selector[]): Selector[] {
+  return value.map(selector => copySelectorForExtend(selector));
 }
 
 function isSelectorNode(value: unknown): value is Selector {
@@ -107,12 +102,12 @@ function hasSelectorIdentityFlag(value: unknown): value is { isTag?: boolean; is
 
 /**
  * A find selector decomposed into positions.
- * Each position is a set of simple selectors that must ALL match (AND).
+ * Each position is a set of simple value that must ALL match (AND).
  * Positions are separated by combinators.
  */
 interface FindSpec {
   /** Simples at each position (AND within a position) */
-  positions: CompoundSelectorComponent[][];
+  positions: Selector[][];
   /** Combinators between positions (length = positions.length - 1) */
   combinators: string[];
   /** Original find selector (for valueOf comparisons) */
@@ -121,7 +116,7 @@ interface FindSpec {
 
 function decomposeFind(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
-    const positions: CompoundSelectorComponent[][] = [];
+    const positions: Selector[][] = [];
     const combinators: string[] = [];
     for (const comp of find.value) {
       if (comp instanceof Combinator) {
@@ -174,7 +169,7 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);
   }
   if (isNode(node, N.CompoundSelector) && !isNode(find, N.CompoundSelector)) {
-    return node.value.length === 1 && valueText(node.value[0]!) === find.valueOf();
+    return false;
   }
   return node.valueOf() === find.valueOf();
 }
@@ -188,10 +183,10 @@ function areCompoundsEquivalent(a: CompoundSelector, b: CompoundSelector): boole
   }
   const used = new Uint8Array(b.value.length);
   for (const aComp of a.value) {
-    const aVal = valueText(aComp);
+    const aVal = aComp.valueOf();
     let found = false;
     for (let j = 0; j < b.value.length; j++) {
-      if (!used[j] && valueText(b.value[j]!) === aVal) {
+      if (!used[j] && b.value[j]!.valueOf() === aVal) {
         used[j] = 1;
         found = true;
         break;
@@ -273,13 +268,13 @@ function tailOf(sel: Selector): Selector {
  *   .y  vs  :is(.x > .y)  → true (.y is the tail of .x > .y)
  *   .x  vs  :is(.x > .y)  → false (.x is in the ancestral prefix)
  */
-function positionSimpleMatches(find: CompoundSelectorComponent, target: CompoundSelectorComponent): boolean {
-  if (valueText(find) === valueText(target)) {
+function positionSimpleMatches(find: Selector, target: Selector): boolean {
+  if (find.valueOf() === target.valueOf()) {
     return true;
   }
 
   // find is :is() → OR: try each alternative's tail
-  if (!isRawCompoundSelectorComponent(find) && isNode(find, N.PseudoSelector) && find.name === ':is' && find.arg) {
+  if (isNode(find, N.PseudoSelector) && find.name === ':is' && find.arg) {
     const arg = selectorArgOf(find);
     if (!arg) {
       return false;
@@ -293,7 +288,7 @@ function positionSimpleMatches(find: CompoundSelectorComponent, target: Compound
   }
 
   // target is :is() → OR: try each alternative's tail
-  if (!isRawCompoundSelectorComponent(target) && isNode(target, N.PseudoSelector) && target.name === ':is' && target.arg) {
+  if (isNode(target, N.PseudoSelector) && target.name === ':is' && target.arg) {
     const arg = selectorArgOf(target);
     if (!arg) {
       return false;
@@ -313,7 +308,7 @@ function positionSimpleMatches(find: CompoundSelectorComponent, target: Compound
  * Does `targetComp` match `findComp` at this position?
  * Handles :is() as OR alternatives (tail-aware) and compound equivalence.
  */
-function positionComponentMatches(findComp: CompoundSelectorComponent, targetComp: CompoundSelectorComponent): boolean {
+function positionComponentMatches(findComp: Selector, targetComp: Selector): boolean {
   if (findComp instanceof CompoundSelector && targetComp instanceof CompoundSelector) {
     return areCompoundsEquivalent(findComp, targetComp);
   }
@@ -322,13 +317,13 @@ function positionComponentMatches(findComp: CompoundSelectorComponent, targetCom
 
 /**
  * Try to match find positions as a contiguous subsequence in target
- * components. Returns the start index or -1.
+ * value. Returns the start index or -1.
  */
 function findSubsequence(
   targetComps: any[],
   spec: FindSpec
 ): number {
-  // Reconstruct find components (positions interleaved with combinators)
+  // Reconstruct find value (positions interleaved with combinators)
   const findComps: any[] = [];
   for (let p = 0; p < spec.positions.length; p++) {
     if (p > 0) {
@@ -386,12 +381,12 @@ function findSubsequence(
 }
 
 /**
- * Try to consume find simples from a compound's components (subsequence match).
+ * Try to consume find simples from a compound's value (subsequence match).
  * Returns matched indices or null if not all consumed.
  */
 function consumeSimples(
-  targetComps: CompoundSelectorComponent[],
-  findSimples: CompoundSelectorComponent[]
+  targetComps: SimpleSelector[],
+  findSimples: Selector[]
 ): number[] | null {
   const matchIndices: number[] = [];
   let findIdx = 0;
@@ -462,7 +457,7 @@ function containsAmpersand(sel: Selector): boolean {
     return sel.value.some(child => containsAmpersand(child));
   }
   if (sel instanceof CompoundSelector) {
-    return sel.value.some(child => !isRawCompoundSelectorComponent(child) && containsAmpersand(child));
+    return sel.value.some(child => containsAmpersand(child));
   }
   if (sel instanceof ComplexSelector) {
     return sel.value.some(child => isSelectorNode(child) && containsAmpersand(child));
@@ -627,31 +622,18 @@ function walkComplexSelector(
   partial: boolean,
   ctx: WalkContext
 ): Selector {
-  if (
-    !partial
-    && !isMultiPosition(spec)
-    && complex.value.length === 1
-    && isSelectorNode(complex.value[0])
-    && isWholeNodeMatch(complex.value[0], spec)
-  ) {
-    return applyWholeMatch(complex, spec, extendWith, partial, ctx);
-  }
-
   // Multi-position find: try contiguous subsequence match
   if (isMultiPosition(spec)) {
     return consumePositionsFromComplex(complex, spec, extendWith, partial, ctx);
   }
 
   // Single-position find: walk each component individually
-  const components = complex.value;
+  const value = complex.value;
   let anyChanged = false;
-  const newComponents = [...components];
+  const newComponents = [...value];
 
-  for (let i = 0; i < components.length; i++) {
-    const comp = components[i]!;
-    if (isRawCompoundSelectorComponent(comp)) {
-      continue;
-    }
+  for (let i = 0; i < value.length; i++) {
+    const comp = value[i]!;
     if (isNode(comp, N.Combinator)) {
       continue;
     }
@@ -660,7 +642,7 @@ function walkComplexSelector(
       isRoot: false,
       parentType: 'ComplexSelector',
       hasContentBefore: i > 0,
-      hasContentAfter: i < components.length - 1
+      hasContentAfter: i < value.length - 1
     };
 
     const extended = walkNode(comp, spec, extendWith, partial, childCtx);
@@ -691,44 +673,23 @@ function walkCompoundSelector(
     return compound;
   }
 
-  // Multi-simple: consume find simples from compound components
+  // Multi-simple: consume find simples from compound value
   if (isMultiSimple(spec) && partial) {
     return consumeSimplesFromCompound(compound, spec, extendWith);
   }
 
-  // Single-simple: walk individual components (recurses into :is())
-  const components = compound.value;
+  // Single-simple: walk individual value (recurses into :is())
+  const value = compound.value;
   let anyChanged = false;
-  const newComponents = [...components];
+  const newComponents = [...value];
 
-  for (let i = 0; i < components.length; i++) {
-    const comp = components[i]!;
-    if (isRawCompoundSelectorComponent(comp)) {
-      const findComp = spec.positions[0]?.[0];
-      if (!findComp || !positionComponentMatches(findComp, comp)) {
-        continue;
-      }
-      const rawSelector = CompoundSelector.create([comp]).inherit(compound);
-      const extended = applyWholeMatch(rawSelector, spec, extendWith, partial, {
-        isRoot: false,
-        parentType: 'CompoundSelector',
-        hasContentBefore: i > 0,
-        hasContentAfter: i < components.length - 1
-      });
-      if (extended !== rawSelector) {
-        if (!(extended instanceof SimpleSelector)) {
-          throw new TypeError('Expected simple selector');
-        }
-        newComponents[i] = extended;
-        anyChanged = true;
-      }
-      continue;
-    }
+  for (let i = 0; i < value.length; i++) {
+    const comp = value[i]!;
     const childCtx: WalkContext = {
       isRoot: false,
       parentType: 'CompoundSelector',
       hasContentBefore: i > 0,
-      hasContentAfter: i < components.length - 1
+      hasContentAfter: i < value.length - 1
     };
 
     const extended = walkNode(comp, spec, extendWith, partial, childCtx);
@@ -748,8 +709,8 @@ function walkCompoundSelector(
 }
 
 /**
- * Consume find simples from a compound's components.
- * Matched components → :is(matched, extendWith). Remainder stays.
+ * Consume find simples from a compound's value.
+ * Matched value → :is(matched, extendWith). Remainder stays.
  */
 function consumeSimplesFromCompound(
   compound: CompoundSelector,
@@ -765,7 +726,7 @@ function consumeSimplesFromCompound(
   }
 
   const matchedSet = new Set(matchIndices);
-  const remainders: CompoundSelectorComponent[] = [];
+  const remainders: SimpleSelector[] = [];
   for (let i = 0; i < targetComps.length; i++) {
     if (!matchedSet.has(i)) {
       remainders.push(targetComps[i]!);
@@ -783,7 +744,7 @@ function consumeSimplesFromCompound(
 }
 
 /**
- * Consume find positions from a complex selector's components.
+ * Consume find positions from a complex selector's value.
  * Contiguous subsequence match with exact combinator matching.
  */
 function consumePositionsFromComplex(
@@ -1085,7 +1046,7 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
 export type MatchResult = false | 'local' | 'within-ampersand' | 'crossing';
 
 /**
- * Check if a parent selector contains the target as one of its components.
+ * Check if a parent selector contains the target as one of its value.
  * Used to detect same-target nesting (e.g., .bb under .bb) where exact
  * extends should not apply to avoid duplication.
  */
@@ -1130,26 +1091,15 @@ export function classifyExtendMatch(
   return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
 }
 
-export function classifyExtendTargetPresence(
-  target: Selector,
-  find: Selector,
-  partial: boolean,
-  parentSelector?: Selector
-): MatchResult {
-  const spec = decomposeFind(find);
-  return wouldMatchNode(target, spec, find, partial, ROOT_CTX, parentSelector, false);
-}
-
 function wouldMatchNode(
   node: Selector,
   spec: FindSpec,
   extendWith: Selector,
   partial: boolean,
   ctx: WalkContext,
-  parentSelector?: Selector,
-  suppressSelfExtend = true
+  parentSelector?: Selector
 ): MatchResult {
-  if (suppressSelfExtend && spec.original.valueOf() === extendWith.valueOf()) {
+  if (spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
 
@@ -1161,7 +1111,7 @@ function wouldMatchNode(
       if (ctx.isRoot && parentSelector) {
         if (node.hasFlag(F_AMPERSAND)) {
           const composed = Ruleset.composeSelector(node, parentSelector);
-          if (wouldMatchNode(composed, spec, extendWith, partial, ROOT_CTX, undefined, suppressSelfExtend)) {
+          if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
             return 'crossing';
           }
         }
@@ -1193,7 +1143,7 @@ function wouldMatchNode(
         parentType: 'SelectorList',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      }, parentSelector, suppressSelfExtend);
+      }, parentSelector);
       if (result) {
         return result;
       }
@@ -1212,26 +1162,6 @@ function wouldMatchNode(
       }
       return false;
     }
-    if (
-      !partial
-      && node.value.length === 1
-      && isSelectorNode(node.value[0])
-      && isWholeNodeMatch(node.value[0], spec)
-    ) {
-      if (ctx.isRoot && parentSelector) {
-        return false;
-      }
-      if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
-        return false;
-      }
-      if (ctx.parentType === 'SelectorList' && parentSelector) {
-        return 'within-ampersand';
-      }
-      if (parentSelector && parentContainsTarget(parentSelector, node)) {
-        return 'within-ampersand';
-      }
-      return 'local';
-    }
     for (let i = 0; i < node.value.length; i++) {
       const comp = node.value[i]!;
       if (isNode(comp, N.Combinator)) {
@@ -1242,7 +1172,7 @@ function wouldMatchNode(
         parentType: 'ComplexSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      }, undefined, suppressSelfExtend);
+      });
       if (result) {
         return result;
       }
@@ -1257,12 +1187,12 @@ function wouldMatchNode(
   }
 
   if (isNode(node, N.CompoundSelector)) {
-    // Exact targets like `.e.e` against authored nested selectors like `&&`
+    // Exact targets like `.e.e` against authored nested value like `&&`
     // only become visible after substituting the parent selector into the
     // whole compound. Looking at each `&` component independently misses that.
     if (parentSelector && !partial && node.hasFlag(F_AMPERSAND)) {
       const composed = Ruleset.composeSelector(node, parentSelector);
-      if (wouldMatchNode(composed, spec, extendWith, partial, ROOT_CTX, undefined, suppressSelfExtend)) {
+      if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
         return 'crossing';
       }
     }
@@ -1276,7 +1206,7 @@ function wouldMatchNode(
         parentType: 'CompoundSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < node.value.length - 1
-      }, undefined, suppressSelfExtend);
+      });
       if (result) {
         return result;
       }
@@ -1293,7 +1223,7 @@ function wouldMatchNode(
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
-      }, undefined, suppressSelfExtend);
+      });
       return innerResult ? 'within-ampersand' : false;
     }
     if (parentSelector) {
@@ -1302,7 +1232,7 @@ function wouldMatchNode(
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
-      }, undefined, suppressSelfExtend);
+      });
       return innerResult ? 'within-ampersand' : false;
     }
     return false;
@@ -1317,14 +1247,14 @@ function wouldMatchNode(
     // Tail-aware: when :is() is inside a compound, only the tail of
     // complex alternatives is at the current position.
     if (ctx.parentType === 'CompoundSelector') {
-      return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial, suppressSelfExtend);
+      return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial);
     }
     return wouldMatchNode(arg, spec, extendWith, partial, {
       isRoot: false,
       parentType: 'PseudoSelector',
       hasContentBefore: false,
       hasContentAfter: false
-    }, undefined, suppressSelfExtend);
+    });
   }
 
   return false;
@@ -1334,8 +1264,7 @@ function wouldMatchPseudoTailAware(
   pseudo: PseudoSelector,
   spec: FindSpec,
   extendWith: Selector,
-  partial: boolean,
-  suppressSelfExtend: boolean
+  partial: boolean
 ): MatchResult {
   const arg = selectorArgOf(pseudo);
   if (!arg) {
@@ -1349,7 +1278,7 @@ function wouldMatchPseudoTailAware(
         parentType: 'PseudoSelector',
         hasContentBefore: false,
         hasContentAfter: false
-      }, undefined, suppressSelfExtend);
+      });
     }
     const comps = alt.value;
     for (let i = comps.length - 1; i >= 0; i--) {
@@ -1359,7 +1288,7 @@ function wouldMatchPseudoTailAware(
           parentType: 'CompoundSelector',
           hasContentBefore: i > 0,
           hasContentAfter: i < comps.length - 1
-        }, undefined, suppressSelfExtend);
+        });
       }
     }
     return false;

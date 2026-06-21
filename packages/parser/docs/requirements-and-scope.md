@@ -268,14 +268,24 @@ class Declaration extends Node {
   // Packed by childKeys index: [nameStart, nameEnd, nameFlags,
   // valueStart, valueEnd, valueFlags, importantStart, importantEnd,
   // importantFlags].
-  spans?: number[];
+  fieldSpans?: number[];
+
+  // Only present when `value` is array-backed and individual value segments
+  // need source provenance or hydration flags. Also packed as
+  // [segmentStart, segmentEnd, segmentFlags] triples, but indexed by value
+  // array position rather than by childKeys.
+  valueSpans?: number[];
 }
 ```
 
 This schema is intentionally field-first:
 
 - `value: 'rgb(10, 20, 30)'` is the deferred value
-- `spans` preserves offsets/provenance only if needed
+- `fieldSpans` preserves offsets/provenance only if needed
+- `fieldSpans` describes direct fields; it must not also describe items inside an
+  array-backed field
+- array-backed fields use field-specific segment span slots such as
+  `valueSpans`, keeping the direct-field table and per-segment table separate
 - `Declaration.childKeys` already maps the `value` field to its packed slot
 - the owning node type plus field slot should usually be enough to select the
   parser/hydrator
@@ -379,6 +389,28 @@ The exact core AST shape is not sacred. The important rule is that a node should
 only materialize richer structure when correctness requires it or a caller
 observes that richer structure. Nodes may hydrate or mutate internal field
 representation when the serialized output shape remains the same.
+
+Array-backed fields are allowed to replace wrapper nodes when the wrapper only
+means "these values occur in order." For example, a declaration value can be:
+
+```ts
+Declaration {
+  name: 'border',
+  value: ['1px', 'solid', colorNode],
+  valueSpans: [
+    10, 13, 0,
+    14, 19, 0,
+    20, 24, 0
+  ]
+}
+```
+
+That does not automatically make every historical `Sequence` node obsolete.
+`Sequence` still has runtime behavior today for whitespace preservation,
+comparison, rest arguments, and evaluation. The cut rule is narrower: do not
+create a `Sequence` merely to represent default single-spaced declaration value
+segments when a plain array plus `valueSpans` and trivia can preserve the same
+serialization and semantics.
 
 ### R9. Visitor Support Is Conditional
 

@@ -43,15 +43,6 @@ The fastest credible runtime path remains:
 Less is the optimizing path. Preserve SCSS-enabling seams only when they are
 concrete and cheap or isolated behind cold extension boundaries.
 
-The scanner-first parser and binding/lookup work must be attacked
-holistically. If a parser/e2e proof fails because lookup, live binding, import,
-or callable resolution lacks one source of truth, move that blocker into the
-binding queue instead of adding parser-local workarounds. If binding work needs
-new parser shapes to prove Less-to-CSS behavior, keep the parser slice bounded
-to CSS/Less and the existing corpus/benchmark gates. Do not expand SCSS/Jess
-structural work until CSS/Less structural-fed output equality and benchmark
-gates are green.
-
 Do not preserve an unreleased or self-invented public-looking method for
 compatibility alone. If repo usage does not need it and the user has not
 approved it as API, delete or reshape it.
@@ -112,1064 +103,942 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: callable namespace lookup stays on frames for local/targeted
-  namespace starts while ruleset namespace paths use offset-aware frame/bucket
-  lookup.
-- Verdict: accepted as a binding/lookup port from the less-v5 lookup work, not a
-  speed claim. The pass keeps local, targeted, restricted, and reference-import
-  namespace starts on prepared scope-frame/callable-bucket lookup instead of
-  reopening broad `Rules.findMixinsFast(...)` crawls. It also fixes the
-  over-cut case where a frame-covered ruleset namespace lookup was treated as a
-  definite miss before exact ruleset-path candidates and callable namespace
-  unions were checked.
-- Architecture surface: `Rules.findMixin(...)`,
-  `Rules.findMixinNamespacePathFast(...)`,
-  `Rules.findRulesetNamespacePathFast(...)`,
-  `Rules.findCompoundPrefixCallableRulesetPathFast(...)`,
-  `Rules.findCallableDescendantsWithinMixinNamespaces(...)`, and the focused
-  `ScopeFrame callable buckets` / `namespace fast path` tests.
-- Separation/duplication: ruleset namespace lookup now reuses callable buckets
-  with path offsets instead of selector rescans and remainder array/slice
-  fallbacks. The branch intentionally does not import less-v5 node-shape drift:
-  `Ruleset` and `Mixin` remain `Rules` subclasses with `.rules` arrays.
-- Cumulative node weight: no production AST node, retained map, set, side table,
-  wrapper `Rules`, or compatibility shim was added. The new arrays are returned
-  result arrays or existing `prefixMatches`/test-observation arrays.
-- New traversal: added/extended loops only inside lookup over existing callable
-  buckets, scope-frame chains, and child-entry surfaces. These replace broader
-  selector/key-path rescans and broad namespace-start crawls; the fact needed is
-  not available on one scalar edge because namespace paths may consume an offset
-  inside the same key array.
-- Review-flagged allocations: `collectCallableBucketRulesetPrefixMatches(...)`
-  creates a result array only when a matching ruleset prefix exists; test arrays
-  record forbidden broad lookup calls. No retained allocation or hot-path side
-  cache was added.
+- Latest pass: merge `feature/less-v5-alpha-readiness` into
+  `feature/scanner-first-parser-docs`.
+- Verdict: accepted as branch repair and history integration, not a measured
+  performance pass. The scanner-first experimental branch now carries the latest
+  alpha release/API scaffolding, parser proof files, binding/lookup commits,
+  and direct-field parser experiments instead of leaving completed work stranded
+  in the main checkout branch.
+- Architecture surface: the merge intentionally imports broad parser/core/API
+  surface so the branch is not split. This does not bless every surface as the
+  target architecture. Known follow-up surfaces include direct-field node value
+  cleanup, scanner-first AST shape cleanup, parser package shape review, and
+  binding/lookup consolidation.
+- Separation/duplication: the merge may temporarily preserve duplicate parser
+  proof paths and old/new node-field paths because losing completed commits was
+  worse than carrying them forward. Follow-up cleanup must delete duplicate
+  helpers, raw/progressive naming debt, and compatibility-style paths once tests
+  prove the smaller shape.
+- Cumulative node weight: not improved by this merge. It imports existing node
+  construction and materialization work so it can be reviewed in one branch.
+  The next parser/core slices must cut object creation instead of adding wrapper
+  objects or side maps.
+- New traversal: merge-carried traversal only. Review-flagged loops belong to
+  imported parser proof tests, binding lookup invalidation, selector/extend
+  matching, and existing node child iteration. No speed claim is made.
+- New node/materialization: merge-carried node construction only. The imported
+  parser proofs create existing AST nodes plus some known debt surfaces that
+  must be reshaped toward semantic fields and `childKeys`.
+- Render path: no new render strategy was chosen in conflict resolution. The
+  merge carries alpha render/eval changes forward for verification.
+- Helper/API surface: release/API scaffolding from alpha is kept. Parser and
+  core helper surfaces still need review against `packages/parser/docs`.
+- Metadata mutations: merge-carried source/location/adoption behavior only.
+  Offset-first scanner work remains the target for new parser paths.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [generator],
+  [node construction], [copy helper], [inherit/adopt/frozen],
+  [parent/source mutation], [generic defensive read], [side map/set],
+  [routine error control], and [materialized array/object] are all present in
+  the merge diff because this is a whole-branch integration, not a focused
+  cutting pass. Treat them as imported debt unless a subsequent focused slice
+  proves and cuts them.
+- Evidence: conflict markers were removed and `git diff --check` passed after
+  merge resolution. No performance claim is made.
+
+- Latest pass: scanner-first Less function-arg tightening and pattern params.
+- Verdict: accepted as a parse-coverage correction after review, not a
+  measured performance pass. Root function-call arguments no longer store
+  already-recognized variables, quoted strings, numbers, mixed comma/semicolon
+  groups, or escaped parens as inert `Any` strings. Cheap mixin definition
+  pattern params such as `.m(1)`, `.mixout('left')`, and
+  `.border-side(left, @width)` now parse into existing core `Num`, `Quoted`,
+  `Any`, and `VarDeclaration(paramVar)` shapes.
+- New traversal: no tree traversal. The existing statement/mixin header
+  scanners parse already-sliced argument/parameter arms only.
+- New node/materialization: no new node family. Accepted function args create
+  existing `Reference(type=variable)`, `Quoted`, `Num`, nested `List`, `Paren`,
+  and atom `Any` nodes. Function args with block bodies, sequences, or nested
+  function expressions remain unsupported so structured values are not smuggled
+  through `Any`.
+- Render path: parse-only slice. No function evaluation, mixin matching,
+  fallback rendering, callable lookup, or output work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none beyond normal core-node construction/adoption.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1344 parsed top-level rules /
+  154 warnings to 1352 parsed top-level rules / 121 warnings with zero
+  errors/thrown failures. Remaining warning counts are 97 unsupported block
+  headers, 23 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
+- Latest pass: scanner-first Less root function-call statements.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Root statements such as `test-collapse()`, `store(@var)`,
+  `test-atrule("@charset"; '"utf-8"')`, and `e('...')` now become existing
+  `Call` nodes with `Reference(type=function, fallbackValue=true)` names and
+  `silentFail` call options, matching the current Less function-call AST
+  contract.
+- New traversal: no tree traversal. The statement parser checks the already
+  sliced statement text only after at-rule and mixin-call statement parsing
+  miss.
+- New node/materialization: no new node family. Accepted root function
+  statements create existing `Call`, `Reference`, and optional `List`/`Any`
+  argument nodes. Block-valued arguments are explicitly rejected in this slice
+  so `each(..., { ... })` and `if(..., { ... })` do not sneak structured code
+  through an `Any` string.
+- Render path: parse-only slice. No function evaluation, fallback rendering,
+  callable lookup, or output work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String names and cheap argument text have no
+  source/parent metadata beyond normal core-node construction.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1341 parsed top-level rules /
+  161 warnings to 1344 parsed top-level rules / 154 warnings with zero
+  errors/thrown failures. Remaining warning counts are 130 unsupported block
+  headers, 23 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
+- Latest pass: scanner-first Less spread mixin call arguments.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Mixin call arguments `@name...` and bare `...` now become existing
+  `Rest` nodes in the scanner-first call path. Invalid trailing ellipsis text
+  such as `foo...` remains unsupported.
+- New traversal: no tree traversal. The existing call-argument loop adds one
+  suffix check for the already-sliced argument arm.
+- New node/materialization: no new node family. Accepted `@name...` creates
+  the existing `Rest(Reference(type=variable))` shape used by the current
+  Less parser; bare `...` creates the existing nameless `Rest`.
+- Render path: parse-only slice. No evaluation, callable matching, or render
+  path work was added.
+- Helper/API surface: one private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. The new nodes have no source/parent metadata beyond
+  normal construction/adoption through the existing `List`.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1341 parsed top-level rules and
+  moved from 183 warnings to 161 warnings with zero errors/thrown failures.
+  Remaining warning counts are 130 unsupported block headers, 30 unsupported
+  statements, and 1 empty declaration name. No speed claim is made.
+
+- Latest pass: scanner-first Less namespace-combinator mixin calls.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less mixin call statements such as `#theme > .mixin()` and
+  `#namespace .borders()` now normalize to the existing `Call` plus
+  `Reference(type=mixin-ruleset, role=name)` key-array shape. Deprecated
+  no-paren namespace calls remain unsupported.
+- New traversal: no tree traversal. The existing mixin-reference scanner now
+  skips trivia and optional `>` separators between already-cheap `.` / `#`
+  name segments.
+- New node/materialization: no new node family, selector node, combinator node,
+  or namespace wrapper. Accepted statements create the same `Call`,
+  `Reference`, and optional argument `List` nodes as earlier contiguous
+  namespace calls.
+- Render path: parse-only slice. No evaluation, callable lookup, or render path
+  work was added.
+- Helper/API surface: private Less AST helper behavior only; no public parser
+  API, plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String reference keys have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1338 parsed top-level rules /
+  200 warnings to 1341 parsed top-level rules / 183 warnings with zero
+  errors/thrown failures. Remaining warning counts are 130 unsupported block
+  headers, 52 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
+- Latest pass: scanner-first Less keyframe selector headers.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. `from`, `to`, numeric percentages, and comma-lists of numeric
+  percentages now become string-backed keyframe `Ruleset.selector` fields, but
+  only while parsing the immediate body of `@keyframes` / vendor-prefixed
+  keyframes at-rules. The same `0% { ... }` shape outside a keyframes body
+  still stays unsupported.
+- New traversal: no tree traversal. The parser carries a single recursive
+  parse-context flag for keyframes bodies and scans only the sliced block
+  header for keyword or percentage arms.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Single keyframe selectors are strings; comma-list keyframe
+  selectors reuse existing `SelectorList` with string entries.
+- Render path: parse-only slice. No evaluation, extend, or selector hydration
+  work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String selector arms have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1338 parsed top-level rules and
+  moved from 210 warnings to 200 warnings with zero errors/thrown failures.
+  Remaining warning counts are 130 unsupported block headers, 69 unsupported
+  statements, and 1 empty declaration name. No speed claim is made.
+
+- Latest pass: scanner-first Less ampersand suffix selectors.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block headers such as `&1`, `&:focus`, and `&-item` now become
+  string-backed `Ruleset.selector` fields after exact `& { ... }` scope blocks
+  have already been handled. Parenthesized ampersand pseudo-functions still
+  wait for a later selector-hydration slice.
+- New traversal: no tree traversal. The existing Less-local deferred-text scan
+  validates the already-sliced ampersand header for balanced text; this does
+  not walk parent/source chains, side maps, or Chevrotain productions.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Accepted headers reuse existing `Ruleset` nodes and store
+  `selector` as a string.
+- Render path: parse-only slice. String selectors render through existing
+  string-backed ruleset header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred selector strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1338 parsed top-level rules and
+  moved from 282 warnings to 210 warnings with zero errors/thrown failures.
+  Remaining warning counts are 140 unsupported block headers, 69 unsupported
+  statements, and 1 empty declaration name. The statement count rose because
+  newly parsed ampersand-suffix blocks expose unsupported inner statements that
+  were previously hidden behind a skipped outer block. No speed claim is made.
+
+- Latest pass: scanner-first Less interpolated selector headers.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block headers containing `@{...}` interpolation now become
+  string-backed `Ruleset.selector` fields after balanced deferred-text
+  validation. This prevents `@{selector} { ... }` from being misclassified as
+  a malformed at-rule while still leaving full selector hydration for later.
+- New traversal: no tree traversal. The existing Less-local deferred-text scan
+  now serves both at-rule preludes and interpolation-bearing selector headers;
+  selector use requires at least one `@{...}` interpolation. It scans only the
+  already-sliced block header for strings, comments, line comments, escapes,
+  `()`, `[]`, and interpolation braces.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Accepted headers reuse existing `Ruleset` nodes and store
+  `selector` as a string.
+- Render path: parse-only slice. String selectors render through existing
+  string-backed ruleset header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred selector strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1323 parsed top-level rules / 304
+  warnings to 1338 parsed top-level rules / 282 warnings with zero
+  errors/thrown failures. Remaining warning counts are 234 unsupported block
+  headers, 47 unsupported statements, and 1 empty declaration name; the
+  unsupported at-rule bucket is now gone. No speed claim is made.
+
+- Latest pass: scanner-first Less deferred at-rule preludes.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block at-rules now keep balanced structured preludes as string
+  fields when the shared cheap prelude tokenizer cannot materialize a useful
+  core `QueryCondition` or `List`. This is Less-local and does not widen the
+  shared CSS prelude scanner.
+- New traversal: one bounded character scan over an already-sliced at-rule
+  prelude to validate balanced `()`, `[]`, strings, comments, line comments,
+  escapes, and Less `@{...}` interpolation. It does not walk AST nodes,
+  parent/source chains, side maps, or Chevrotain productions.
+- New node/materialization: no new node family. Successfully deferred Less
+  preludes reuse the existing `AtRule` node and store `prelude` as a string;
+  the existing cheap query/list path still materializes core nodes first when
+  it can.
+- Render path: parse-only slice. String preludes render through existing
+  string-backed `AtRule` header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred prelude strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1295 parsed top-level rules / 372
+  warnings to 1323 parsed top-level rules / 304 warnings with zero
+  errors/thrown failures. Remaining warning counts are 243 unsupported block
+  headers, 13 unsupported at-rules, 47 unsupported statements, and 1 empty
+  declaration name. No speed claim is made.
+
+- Latest pass: Ruleset selector-bit traversal stops using generic `node.value`.
+- Verdict: accepted as a direct-field cleanup slice, not a measured performance
+  pass. `Ruleset.attachSelectorBitsToNode(...)` now follows `node.children()`,
+  which is backed by each node's declared `childKeys`, instead of recursing
+  through legacy generic payload objects.
+- New traversal: no new traversal family. The existing selector-bit walk still
+  descends through selector children; it now uses the canonical child surface
+  instead of rediscovering shape through `.value`, arrays, and plain-object
+  recursion.
 - New node/materialization: none.
-- Render path: unchanged except that render/eval namespace calls resolve through
-  narrower lookup. The pass does not create nodes to stringify.
-- Helper/API surface: one private bucket helper was added for prefix matches,
-  and existing private helpers gained a `pathStart` offset. No public API or
-  compatibility surface was added.
-- Metadata mutations: none added. No source/root/parent metadata changed.
-- Routine error control: none added in production. The four
-  `[routine error control]` hits are test-only `try/finally` blocks that restore
-  `Rules.findMixinsFast` / `Rules.findMixin` after instrumentation.
-- Review-flagged diff tokens: [loop/traversal] and [array helper] refer to
-  bounded lookup over existing buckets/results; [materialized array/object]
-  refers to returned match arrays and test observation arrays, not eval/render
-  node materialization.
-- Evidence: `pnpm --filter @jesscss/core build`, `git diff --check`, focused
-  red-set namespace tests, broader mixin lookup tests, and focused reference
-  lookup tests passed in this scanner-first parser branch. Run
-  `verify:aggressive-cutting-review` before committing this pass.
+- Render path: no render or eval behavior was added. This only affects
+  selector-bit metadata attachment while composing/preparing selectors.
+- Helper/API surface: deleted the private `attachSelectorBitsToValue(...)`
+  helper and its private `isRecord(...)` helper from `ruleset.ts`; added no new
+  public API.
+- Metadata mutations: unchanged. The pass only changes how existing selector
+  children are found before setting `keySetLibrary`.
+- Evidence: focused core `ruleset`, selector-container, and mixin tests passed.
+  No speed claim is made.
 
-- Latest pass: direct variable occurrence current-cell projection.
-- Verdict: accepted as a narrow declaration binding/direct lookup unification
-  slice, not a speed claim. Covered current static variable occurrences now
-  project from `lookupScopeFrameVariable(...)` / `ScopeFrame.currentBindingsByName`
-  before the direct occurrence helper considers local tree buckets.
-- Architecture surface: `lookupScopeFrameVariable(...)` current-frame-only
-  options, direct variable occurrence lookup in
-  `util/direct-rules-lookup.ts`, and focused reference/scope-frame tests.
-- Separation/duplication: deleted the private
-  `findScopeBindingDeclaration(...)` bucket scan. The remaining direct local
-  scan is only the occurrence fallback for cases the frame path does not
-  accept, such as `setDefined` source nodes, property lookup, child/import
-  surfaces, filters, and source-order modes.
-- Cumulative node weight: no production node, map, set, side table, wrapper,
-  or retained cache was added. Non-test `packages/core/src` line count is
-  `54975` in this worktree after the slice.
-- New traversal: none added in production. The direct lookup path reuses the
-  existing scope-frame lookup loop with parent/fallback search disabled for
-  this call site and removes one duplicate bucket loop.
-- New node/materialization: none in production. Tests construct small Rules
-  fixtures only.
-- Render path: unchanged.
-- Helper/API surface: the old private helper was deleted. Two internal
-  `lookupScopeFrameVariable(...)` options were added so callers can ask the
-  existing frame facade to answer only the current frame, without parent or
-  fallback traversal.
-- Metadata mutations: production reads `sourceNode` from the frame result to
-  return the existing direct occurrence projection; it does not mutate parent,
-  source, location, or frozen metadata.
-- Review-flagged diff tokens: [generator] is docs wording from the wider
-  scoped diff; [node construction] and [materialized array/object] are test
-  fixture construction; [parent/source mutation] is source-node identity reads
-  from the frame hit; [routine error control] is the reference-test poison
-  tripwire and restoration block.
-- Evidence: the new reference test first failed on the deleted
-  `findScopeBindingDeclaration(...)` bucket path, then passed after the cut.
-  Focused reference occurrence/current-cell tests passed; full
-  `scope-frame.test.ts`, full `rules.test.ts`,
-  `pnpm run verify:binding-lookup-hot-paths`, `pnpm --filter @jesscss/core
-  build`, and `git diff --check` passed. A full `reference.test.ts` attempt
-  was interrupted after it produced no completion output for several minutes;
-  exact reference tests for the touched direct-variable path passed.
+- Latest pass: string-backed `SelectorList` items for scanner-first Less selector lists.
+- Verdict: accepted as a parser-shape/object-reduction slice, not a measured
+  performance pass. The Less scanner-first AST path now parses cheap comma
+  selector headers into the existing core `SelectorList` node while keeping
+  cheap selector atoms as strings instead of allocating `BasicSelector` leaves.
+- New traversal: the Less AST builder adds a top-level comma scan over an
+  already-sliced block header. Core `SelectorList` keeps its existing item
+  loops for render, keyset computation, eval/resolve, and flattening, with
+  string-item branches added where those loops previously assumed node items.
+  New selector-list consumer loops are limited to already-list-local paths:
+  implicit-ampersand materialization, selector composition flattening,
+  selector-list extraction from `:is()` during extend normalization, placement
+  copying, batched list extension, root extend-target expansion, ampersand
+  template/appended-selector expansion, and existing selector-list
+  search/compare loops. The compare path intentionally uses direct nested
+  loops over the two list values instead of allocating a temporary hash
+  collection plus mapped arrays. No tree-wide traversal, side-map lookup,
+  generator, or Chevrotain fallback was added.
+- New node/materialization: one existing `SelectorList` node is created when a
+  header is positively recognized as a comma selector list. Cheap atom members
+  remain strings; compound/complex members reuse existing selector containers
+  with string components. A string list item is materialized as an existing
+  `ComplexSelector([item])` only at node-only semantic boundaries:
+  extend-record implicit-ampersand materialization, nested
+  selector composition, extend matching/search/comparison, batched extend
+  application, extend-path application, root extend-target expansion, and
+  implicit-ampersand materialization. Ampersand append materializes string atoms
+  as `BasicSelector` because append semantics require a simple selector, not a
+  complex wrapper. Those boundaries require a real `Selector` because they
+  compare, compose, copy/place, append, or return extend locations over selector
+  nodes. No structural/progressive/raw/island node was added.
+- Render/eval path: string selector-list items write directly to the active
+  writer and pass through eval/resolve unchanged. Node-only extend/trivia paths
+  either skip string items when node metadata is impossible, or materialize only
+  inside cold selector semantics when extend/ampersand logic requires node
+  methods.
+- Helper/API surface: no public helper or export was added. Three private
+  string-to-selector adapters plus one extend-record adapter keep raw strings
+  out of node-only ruleset, ampersand, root-extend, extend-record, and
+  extend-search paths. The existing `SelectorList` value type was widened in
+  place to `Selector | string` items.
+- Metadata mutations: none. String selector-list items have no parent/source
+  metadata.
+- Evidence: focused core selector/ruleset/extend/ampersand tests and focused
+  Less AST/corpus tests passed. A post-fix reviewer found five remaining
+  string-backed selector-list consumer leaks; this pass added regression tests
+  for those paths and guarded them. The Less AST corpus gate moved from 1250
+  parsed top-level rules / 415 warnings to 1267 parsed top-level rules / 400
+  warnings. No speed claim is made.
 
-- Latest pass: binding-cell source-of-truth cut for `setDefined`.
-- Verdict: accepted as a binding cleanup plus correctness repair, not a speed
-  claim.
-  `setDefined` modeled paths now update the binding cell returned by
-  `lookupScopeFrameVariable(...)` / `assignScopeFrameVariable(...)` without a
-  second `Rules.varsByName` scan. The source AST mutation boundary from the
-  previous pass remains: evaluated replacements live in binding cells or
-  inserted runtime declarations, not authored declaration fields.
-- Architecture surface: `Rules.registerNode(...)` setDefined assignment,
-  `ScopeFrame` assignment helper, generated `$for` iteration frame coverage,
-  binding queue docs, and no parser surface.
-- Separation/duplication: deleted the `Rules.varsByName` sync helper because
-  the scope-frame lookup result carries the canonical cell to update for the
-  covered path. Sub-agent review caught the uncovered `$for` iteration-frame
-  case; that was fixed by marking generated iteration frames
-  declaration-covered so same-iteration reads stay on the frame chain instead
-  of reopening direct occurrence lookup.
-- Cumulative node weight: no new nodes, maps, sets, side tables, wrappers, or
-  retained state. Non-test `packages/core/src` line count moved from 55008 to
-  54991 in this slice.
-- New traversal: none added. The pass deletes the
-  `syncVarDeclarationBindingEntry(...)` reverse scan through a name bucket and
-  deletes a redundant live/declaration assignment branch in
-  `assignScopeFrameVariable(...)`.
-- New node/materialization: none.
-- Render path: unchanged.
-- Helper/API surface: one private helper was deleted; one exported assignment
-  helper was simplified without changing its signature.
-- Metadata mutations: no new parent/source/frozen or descriptor mutation. The
-  remaining write is the existing binding-cell `value` write.
-- Review-flagged diff tokens: the diff contains only deletions in the runtime
-  binding path, one frame-coverage correction, plus docs. No added loop, array
-  helper, copy/materialization, descriptor mutation, or defensive runtime check.
-- Evidence: focused setDefined/control and scope-frame tests passed; non-test
-  `packages/core/src` line count moved from 55008 to 54991 for this slice.
+- Latest pass: scanner-first cheap selector atom expansion.
+- Verdict: accepted as a parser coverage and object-avoidance slice, not a
+  measured performance pass. The shared selector scanner now recognizes
+  pseudo-no-parens, attribute selector atoms, and pragmatic non-ASCII names as
+  cheap string atoms. CSS/Less parsers reuse those atoms inside existing
+  `CompoundSelector` / `ComplexSelector` / `SelectorList` containers and do not
+  allocate `BasicSelector`, `PseudoSelector`, attribute selector, or combinator
+  leaves for this cheap path.
+- New traversal: bounded character scans inside a single selector atom for
+  quoted attribute text and pseudo names. The scanner still runs only on an
+  already-sliced selector header; it does not walk AST nodes, source parents,
+  side maps, or Chevrotain productions. Pseudo functions and unclosed
+  attributes remain rejected instead of broadening raw structured support.
+- New node/materialization: no new node family was added. Newly accepted
+  selector pieces are strings; existing selector containers are materialized
+  only when a selector has compound, complex, or list structure that needs an
+  owning AST boundary.
+- Render/eval path: parse-only slice. String selector atoms render through the
+  existing string-backed selector-container paths and pass through eval/resolve
+  unchanged.
+- Helper/API surface: private scanner helpers only; no public export or
+  language-profile surface was added.
+- Metadata mutations: none. String selector atoms have no parent/source
+  metadata.
+- Evidence: focused parser selector-scanner tests, CSS AST/corpus tests, and
+  Less AST/corpus tests passed after rebuilding `@jesscss/parser` before
+  dependent package tests. The Less AST corpus gate moved from 1281 parsed
+  top-level rules / 388 warnings to 1295 parsed top-level rules / 372 warnings
+  with zero errors/thrown failures. No speed claim is made.
 
-- Latest pass: scanner-first direct semantic fields, Rules inheritance cleanup,
-  and callable namespace frame-chain repair.
-- Verdict: accepted as a correctness/architecture cleanup slice, not a speed
-  claim. This pass removes the invented declaration `raw*`/`valueNode` public
-  surface, keeps scanner-first cheap text on semantic fields, makes wrapper
-  `Rules` bodies illegal where rules-bearing nodes now own arrays directly, and
-  fixes array-path mixin namespace lookup so a covered miss in the current
-  frame does not suppress allowed parent-frame lookup.
-- Architecture surface: core node constructors/field names for declaration,
-  var declaration, at-rule/statement, ruleset/mixin/control rules-bearing
-  shapes; Less compat adapter tests; parser serializer fixtures; scanner-first
-  Jess e2e proofs; and docs. Language service and VSCode plugin remain outside
-  this slice.
-- Separation/duplication: the pass deliberately cuts duplicate textual-vs-node
-  declaration storage instead of adding aliases. `name`, `value`, `important`,
-  `prelude`, and inherited `rules` are the semantic storage locations. The
-  parser packages keep their existing parser ownership; the scanner-first e2e
-  path proves thin source-backed core nodes without adding a second production
-  stack for SCSS/Jess.
-- Cumulative node weight: normal render paths can keep declaration names,
-  values, at-rule headers, and simple selectors as strings or mixed
-  string/node arrays. Materialized `Any`, `Sequence`, selector containers, and
-  at-rule header nodes are cold semantic boundaries for registration, visitors,
-  or parser compatibility. The lookup fix adds no retained maps, side tables,
-  wrapper nodes, or fallback parser islands.
-- New traversal: [loop/traversal] declaration adoption/materialization walks
-  only the directly-owned mixed string/node field arrays; parser/test loops are
-  fixture or existing production assembly; the lookup repair prepares/searches
-  the existing callable frame chain only when `searchParents` is enabled.
-- New node/materialization: [node construction] string-backed declaration,
-  at-rule, at-rule statement, and selector materializers create canonical nodes
-  only when semantic registration or tests explicitly request them. Render-only
-  structural-fed paths remain string-backed. [materialized array/object] arrays
-  introduced in the diff are direct rule/value payloads, clone payloads, parser
-  fixture expectations, or cold materialization results rather than retained
-  hot-path side graphs.
-- Render path: scanner-first render proofs still render CSS/Less-equivalent
-  output without eager field materialization for structural-only cases. The
-  namespace lookup change only affects callable resolution; it does not build
-  output nodes just to stringify.
-- Helper/API surface: `getCallableSelectorTextKeyPath` is a small local helper
-  to route string-backed selectors through the same callable key-path logic as
-  node-backed selectors. The public-looking raw/value wrapper names are removed
-  instead of preserved. Less compat adapter tests now construct `Ruleset` with
-  direct `rules: []` arrays rather than compatibility `Rules` wrappers.
-- Metadata mutations: [inherit/adopt/frozen] declaration/at-rule adoption is
-  the ownership boundary for real child nodes inside mixed fields; string fields
-  are not adopted. [parent/source mutation] source/root/location propagation is
-  limited to cold materialization/clone paths. [generic defensive read] the
-  remaining `Reflect.construct` in declaration clone/derive preserves subclass
-  construction for inherited declaration types and is recorded as follow-up
-  audit debt, not a pattern to widen.
-- Review-flagged diff tokens: [array helper] parser/test array helpers and
-  value splitting are bounded fixture or production assembly, not retained
-  caches; [generator] yielded pairs are existing callable/declaration iterator
-  surfaces updated for field names; [copy helper] copy calls remain in clone,
-  derive, and callable output ownership paths; [routine error control] new
-  throws are test assertions or cold subset-boundary materialization errors,
-  not expected lookup/render control flow.
-- Evidence: `git diff --check`; forbidden field/vocabulary scan for
-  `rawName|rawPrelude|rawValueSegments|rawImportant|valueNode|valueSegments`;
-  `pnpm --filter @jesscss/core build`; focused namespace test; broad focused
-  core slice; `pnpm --filter @jesscss/plugin-less-compat exec vitest --run
-  test/unit/transform/adapter.test.ts`; parser AST suites for css/less/scss;
-  `pnpm --filter @jesscss/fns test -- --run src/__tests__/each.test.ts`; and
-  `pnpm --filter jess test -- --run test/scanner-first-e2e.test.ts`.
-- Corrective amendment: removed the bad `syncDeclarationValueNode`
-  `Object.defineProperty` assignment machinery. `setDefined` updates live
-  binding cells rather than replacing authored declaration values; declaration
-  value mutation is reserved for progressive upgrade/materialization from
-  string-backed fields to semantic nodes. Declaration textual rendering now
-  caches the semantic `value` field and writes string, node, and mixed segment
-  values directly without allocating one-item arrays. This is a
-  simplification/correctness cleanup, not a speed claim.
-- Amendment review: [loop/traversal] the only loop is the existing direct
-  mixed declaration value segment walk when the field is already an array.
-  String and node values no longer allocate a one-item array just to render.
-  [helper/API surface] no new render helper is retained; the branch stays local
-  to declaration rendering. [metadata mutations] setDefined no longer mutates
-  declaration fields; no descriptor mutation is retained.
-- Amendment evidence: `git diff --check`; `pnpm --filter @jesscss/core test
-  -- --run src/tree/__tests__/declaration.test.ts
-  src/tree/__tests__/progressive-nodes.test.ts
-  src/tree/__tests__/rules.test.ts -t
-  "Declaration|declaration|setDefined|progressive|important|multiline"`.
-- Live-binding follow-up: this slice exposed that Rules still has parallel
-  binding and lookup systems rather than one cohesive runtime binding model:
-  source declaration occurrence lookup, scope-frame `currentBindingsByName`,
-  `assignmentBindingsByName`, legacy `varsByName`, property lookup, callable
-  lookup, and imported assignment summaries can each own part of the answer.
-  The target model is a single declaration-binding layer with stable source
-  nodes and mutable runtime cells; source AST fields may only mutate for
-  serialization-preserving progressive upgrades such as string-to-node
-  materialization. Evaluated replacements such as `setDefined` must live in
-  binding cells or inserted runtime declarations, not by changing the authored
-  declaration node's semantic fields.
-
-- Latest pass: scanner-first CSS transform function declaration proof.
-- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
-  claim. The Less structural-fed path now admits `scaleX(<number>)` only
-  through the existing progressive function segment path used by already-proven
-  simple function values.
-- Architecture surface: Less plugin structural-fed admission/building and
-  scanner-first e2e proof only. It does not change core node APIs, package
-  exports, SCSS/Jess parsing, language-service behavior, or the default parser
-  path.
-- Separation/duplication: this reuses the existing `Call`/`Reference`/argument
-  node construction path for scanner-native function values, with a small
-  function policy table to keep `scaleX` constrained to one numeric argument.
-  It does not add a second declaration-value parser, a raw parenthesized value
-  escape hatch, or new visitor/materialization policy.
-- Cumulative node weight: the accepted value creates only the existing
-  function `Call`, name `Reference`, argument `List`, and numeric argument node
-  required to preserve a recognized function shape. It adds no maps, side
-  tables, wrapper containers, selected island requests, retained caches, or
-  full-tree fallback surfaces.
-- New traversal: none. The existing bounded function-argument split runs over
-  the already-isolated declaration value string.
-- New node/materialization: no new node classes. The proof intentionally keeps
-  the declaration as raw-name plus progressive value segments rather than
-  materializing `Any` property names or legacy declaration value wrappers.
-- Render path: focused e2e proof renders equal CSS through structural-fed with
-  zero full-tree fallback, zero selected island requests, zero actual parser
-  executions, and zero promoted bytes.
-- Helper/API surface: no public API. The plugin-local scanner-native function
-  policy table admits the corpus-observed `scaleX` function while keeping its
-  argument boundary narrower than the existing Less/color function entries.
-- Metadata mutations: none added beyond normal node construction/adoption.
-  Existing unrelated `AUDIT:` markers remain outside this slice.
-- Review-flagged diff tokens: new `new Call`, `new Reference`, `new List`, and
-  numeric node construction are all existing progressive function-value nodes
-  reached through the already-proven helper path. The new policy table is
-  static metadata for the existing scanner-native function helper, not a
-  retained per-document cache. No new side maps, selected island request,
-  full-tree fallback, parser entrypoint, or retained cache is introduced.
-- Evidence: focused scanner-first e2e covers `.a { transform: scaleX(1); }`
-  alongside the existing `rgb`, `rgba`, `lighten`, and `darken` progressive
-  function proofs, plus boundary fallbacks for `scaleX` values with multiple
-  arguments, dimensions, colors, Less variables, nested functions, strings, and
-  comments.
-
-- Latest pass: scanner-first no-prelude CSS `@starting-style` block proof.
-- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
-  claim. The Less structural-fed path now admits `@starting-style { ... }`
-  only in the no-prelude CSS block form, at root with ordinary rule children
-  and inside rules with already-supported declaration children. Rule-local
-  nested-rule bodies, nested at-rule bodies, and mixin-body `@starting-style`
-  remain canonical fallback until separately proven.
-- Architecture surface: Less plugin structural-fed admission/building only.
-  It does not change core node APIs, package exports, SCSS/Jess parsing,
-  language-service behavior, or the default parser path.
-- Separation/duplication: this reuses the existing raw-field `AtRule`
-  builder and child validation paths. It adds one plugin-local predicate for
-  no-prelude CSS block at-rules rather than introducing a general unknown
-  at-rule parser or raw-prelude escape hatch.
-- Cumulative node weight: this slice creates only the existing raw-field
-  `AtRule` plus the already-proven raw `Ruleset`/`Declaration` children for
-  accepted shapes. It adds no maps, side tables, wrapper containers, selected
-  island requests, or retained caches.
-- New traversal: none. The child bodies already walk through the existing
-  structural-fed at-rule/rule/declaration loops.
-- New node/materialization: none beyond the raw-field `AtRule` already used by
-  `@media`, `@layer`, and unknown block proofs. The no-prelude case deliberately
-  rejects `@starting-style <prelude> { ... }` as canonical fallback.
-- Render path: focused root and rule-local proofs render equal CSS through
-  structural-fed with zero full-tree fallback, zero selected island requests,
-  zero actual parser executions, and zero promoted bytes.
-- Helper/API surface: one plugin-local predicate recognizes proven no-prelude
-  CSS block at-rule names. `@starting-style` is also listed as a known semantic
-  block name so it cannot accidentally use the root unknown-block path.
-- Metadata mutations: none added beyond normal node construction/adoption.
-  Existing unrelated `AUDIT:` markers remain outside this slice.
-- Review-flagged diff tokens: [side map/set] no side-map or side-set storage is
-  introduced; the only mention is this accounting line. No new canonical node
-  classes, selected-island request, full-tree fallback, or parser entrypoint are
-  introduced. The changed `new AtRule` path is the existing raw-field at-rule
-  builder admitting one additional no-prelude CSS block family.
-- Evidence: focused scanner-first e2e covers
-  `@starting-style { .a { opacity: 0; } }`,
-  `.a { opacity: 1; @starting-style { opacity: 0; } }`, and the negative
-  `@starting-style initial { ... }`, rule-local nested-rule, rule-local nested
-  at-rule, and mixin-body fallbacks. Full corpus movement is recorded in the
-  strategy doc after the corpus gate is rerun.
-
-- Latest pass: scanner-first simple Less mixin parameter/argument proof.
-- Verdict: accepted as a narrow structural-fed correctness proof, not a speed
-  claim. The Less structural-fed path now admits `.m(@name) { ... }` style
-  definitions and `.m(literal)` calls only when every parameter is a simple
-  Less variable name and every call argument is a simple literal token.
-- Architecture surface: Less plugin structural-fed admission/building only.
-  It does not change core node APIs, package exports, SCSS/Jess parsing,
-  language-service behavior, or the default parser path.
-- Separation/duplication: the scanner-native helpers live beside the existing
-  no-arg mixin helpers and still construct the existing core `Mixin`, `Call`,
-  `List`, `Any`, and `Reference` surfaces. Richer Less `mixinName`,
-  `mixinArgs`, guard, default, rest, named-arg, accessor, and interpolated
-  productions remain explicit canonical fallback rather than duplicated
-  partial grammar.
-- Cumulative node weight: this slice adds parameter `Any` nodes, call-argument
-  literal nodes, and use-site `Reference` nodes only for the covered shape.
-  It adds no `Rules` maps, lookup caches, side tables, or wrapper containers.
-- New traversal: one short comma split over the already-isolated mixin
-  parameter text and one short comma split over the already-isolated call
-  argument text. These scans are required to avoid accepting raw strings that
-  contain parameter/argument structure; they do not walk the tree.
-- New node/materialization: the builder creates the existing `List`/`Any`
-  parameter surface and existing `List`/literal call-argument surface needed by
-  core mixin binding, plus a use-site variable `Reference` when a declaration
-  reads a simple parameter. These are semantic binding surfaces, not
-  render-only wrappers.
-- Render path: the focused proof renders equal CSS through structural-fed with
-  zero full-tree fallback, zero selected island requests, zero actual parser
-  executions, and zero promoted bytes. Declaration render still uses the
-  ordinary core call/eval binding path once the parameter reference is reached.
-- Helper/API surface: three plugin-local helpers recognize simple mixin
-  definitions, simple mixin calls, and use-site parameter references. No public
-  parser/core API is introduced.
-- Metadata mutations: none added beyond normal node construction/adoption.
-  Existing unrelated `AUDIT:` markers remain outside this slice.
-- Review-flagged diff tokens: new `new List`, `new Any`, and `new Reference`
-  calls are the semantic parameter, argument, and parameter-reference nodes
-  described above. New arrays/maps are bounded local construction surfaces for
-  parameter and argument lists, not retained side caches.
-- Evidence: focused scanner-first e2e covers
-  root-level and ruleset-local simple positional parameterized mixins,
-  including `.paint(@color) { color: @color; } .a { .paint(blue); }`, with
-  `runtimeTreeSource: structural-fed`, zero fallback/materialization counters,
-  serialized `Mixin` params, `Call` args, and value `Reference`. Full
-  scanner-first e2e passes. The Less corpus gate still reports 13
-  structural-fed cases out of 65, 53 canonical fallbacks, zero requested
-  islands, zero actual parser executions, zero promoted bytes, and 75
-  progressive nodes; the mixin fallback distribution moved from seven
-  definition/one call to six definition/two call fallbacks because one corpus
-  case now passes definition-signature admission and stops at richer call
+- Latest pass: scanner-first Less mixin rest/default-comma parameters.
+- Verdict: accepted as a parser coverage slice, not a measured performance
+  pass. Cheap Less mixin definitions now parse `...` and `@name...` parameters
+  into existing core `Rest` nodes inside the existing params `List`, and
+  comma-separated definitions keep top-level comma runs inside a default value
+  when the next comma arm is not another parameter. No progressive/raw/island
+  node was added.
+- New traversal: one file-local top-level comma splitter over an already-sliced
+  mixin parameter string. It uses the existing source-scanner delimiter helper
+  and a boolean-only param-text classifier to inspect the next arm without
+  allocating throwaway params; it does not walk AST nodes, parent chains, side
+  maps, or Chevrotain productions. The parser rejects empty comma arms and
+  non-final rest parameters instead of widening the cheap path past Less
   syntax.
+- New node/materialization: named and anonymous rest params allocate existing
+  `Rest` nodes because current core callable matching already represents
+  definition rest parameters that way. Default values remain source-backed
+  strings on `VarDeclaration.value`; comma-heavy defaults do not allocate value
+  nodes.
+- Render/eval path: parse-only slice. It does not add evaluation, lookup, or
+  render materialization paths. Existing `Rest` string serialization remains
+  core debt shared with the Chevrotain parser and is not claimed as Less source
+  round-tripping in this pass.
+- Helper/API surface: private parser helpers only; no public export or registry
+  surface was added.
+- Metadata mutations: none. Parsed params are adopted through the existing
+  `List`/`Mixin` constructors.
+- Evidence: focused Less AST proof tests passed, and the Less AST corpus gate
+  moved from 1267 parsed top-level rules / 400 warnings to 1281 parsed top-level
+  rules / 388 warnings with zero errors/thrown failures. No speed claim is made.
 
-- Latest pass: scanner-first thin `@supports` declaration-condition prelude.
-- Verdict: accepted as a structural-fed correctness proof, not a speed claim.
-  The Less structural-fed path now admits `@supports (property: literal)` only
-  when the parenthesized condition can be represented as
-  `Paren(QueryCondition([property-token, literal-token]))`. Richer supports
-  expressions, variable-bearing values, comments, multiline preludes, boolean
-  operators, and nested conditions remain canonical fallback.
-- Architecture surface: Less structural-fed admission/building plus core
-  `AtRule` raw-name/structured-prelude header identity/rendering. This does
-  not widen SCSS/Jess parsing and does not add language-service surface.
-- Separation/duplication: the supports predicate/builder stays plugin-local
-  and reuses existing `QueryCondition`/`Paren` nodes. No package export,
-  parser profile, or grammar registry is duplicated; broader supports grammar
-  remains canonical fallback.
-- Cumulative node weight: this slice adds only semantic prelude nodes for the
-  supported `@supports` condition and one core identity test fixture. It does
-  not add cumulative `Rules` lookup/cache objects or a new side table.
-- New traversal: no new tree traversal. The Less plugin adds one bounded regex
-  recognition step over the already-isolated at-rule prelude string and reuses
-  the existing block/rule/declaration structural-fed walks. Core `AtRule`
-  header rendering adds no scan; it writes an existing structured prelude node
-  when a raw at-rule name owns one.
-- New node/materialization: the scanner-fed builder creates one `Paren`, one
-  `QueryCondition`, one property `Any`, and one literal value node for the
-  supports prelude. This is accepted as semantic prelude structure because the
-  condition is not a raw atom and must not be stored as a raw prelude blob.
-  `AtRule` raw-name semantic materialization still materializes only the raw
-  at-keyword when eval/registration needs a canonical name; it does not
-  materialize a raw supports prelude string.
-- Render path: supported cases render equal CSS through structural-fed with
-  zero full-tree fallback, zero selected island requests, zero actual parser
-  executions, and zero promoted bytes. `AtRule` can now render `rawName` plus a
-  structured `prelude` node directly, so the header does not first stringify a
-  raw complex supports condition.
-- Helper/API surface: one plugin-local literal-token-to-node helper and one
-  plugin-local supports-condition recognizer. No public parser/core API is
-  introduced; `RawAtRuleValue.prelude` is widened to the existing core `Node`
-  type only so raw at-keyword storage can pair with structured prelude storage.
-- Metadata mutations: none added beyond normal node construction/adoption. The
-  focused proof intentionally leaves unrelated `AUDIT:` markers and broader
-  `AtRule` cleanup outside this slice.
-- Review-flagged diff tokens: [node construction] and
-  [materialized array/object] matches are the focused core `AtRule.valueOf()`
-  regression fixture constructing two raw-name `AtRule` nodes with empty body
-  arrays to prove distinct structured supports preludes do not collide. They
-  are test-only construction, not runtime parser/eval materialization.
-- Review fix: sub-agent review caught that raw-name `AtRule.valueOf()` ignored
-  structured preludes. The raw-name identity branch now uses the existing
-  at-rule syntax identity helper for structured preludes, and a focused core
-  test proves `@supports (display: grid)` and `@supports (display: flex)` do
-  not collide before semantic materialization.
-- Evidence: focused scanner-first e2e now covers root, nested declaration-body,
-  nested rule-body, direct nested, and mixin-body `@supports` with
-  `Paren(QueryCondition(...))` serialized preludes and zero island parser
-  executions. Focused core at-rule identity coverage proves structured raw-name
-  preludes participate in `valueOf()`. The Less corpus gate reports 13
-  structural-fed cases out of 65, 53 canonical fallbacks, zero requested
-  islands, zero actual parser executions, zero promoted bytes, and 75
-  progressive nodes. Verification also covered core/plugin builds, package
-  exports, eslint on touched implementation/e2e files, `git diff --check`, and
-  aggressive cutting review.
+- Latest pass: scanner-first string-backed Less guards.
+- Verdict: accepted as a parser coverage and object-reduction slice, not a
+  measured performance pass. Cheap guarded Less block headers with
+  parenthesized conditions now attach a string `guard` field to existing
+  `Ruleset`/`Mixin` nodes instead of allocating `Condition(Any(...))` wrappers
+  during the structural parse.
+- New traversal: one file-local linear header scan finds a top-level `when`
+  suffix while respecting quotes, comments, and balanced brackets. It runs only
+  on a block header already sliced by the source scanner. No tree traversal,
+  parent walk, side-map lookup, or Chevrotain fallback was added.
+- New node/materialization: no new node family or structural facade was added.
+  Guarded rulesets and mixins reuse existing core nodes. `& when (...) { ... }`
+  becomes an existing nil-selector `Ruleset` so the guard has an owning node
+  without creating a fake ampersand selector.
+- Render/eval path: mixin syntax can write string guards directly. Ruleset
+  evaluation and callable mixin guard lookup throw hydration-required
+  `TypeError`s if a string guard reaches eval; those are exceptional
+  unsupported execution boundaries for the parse-only proof, not routine
+  miss/control flow. Guard evaluation hydration remains a later parser/eval
+  integration slice.
+- Helper/API surface: no public parser API was added. Core `MixinValue` and
+  `RulesetValue` were widened in place so existing AST nodes own the deferred
+  field instead of introducing `Progressive*` or island objects.
+- Metadata mutations: none beyond normal constructor adoption for existing
+  node fields. String guards have no parent/source metadata.
+- Evidence: focused Less AST/corpus tests, focused core ruleset/mixin/condition
+  tests, including explicit mixin string-guard failure, core build,
+  less-parser build, package export verification, and the
+  aggressive-cutting review gate passed after this prosecution. The Less corpus
+  gate moved from 1161 parsed top-level rules / 523 warnings to 1250 parsed
+  top-level rules / 425 warnings. No speed claim is made.
 
-- Latest pass: scanner-first docs/tooling review hardening.
-- Verdict: accepted as a docs/tooling guardrail pass, not a runtime or
-  performance claim. It records current scanner-first corpus evidence, reopens
-  cumulative `Rules` ownership as an audit item, and tightens the aggressive
-  cutting verifier so danger-token accounting must live in this latest pass
-  block instead of anywhere in historical prose.
-- Architecture surface: architecture documentation and review tooling only.
-  Runtime parser/eval/render code is not changed by this pass.
-- Separation/duplication: the docs identify `Rules` exact/prefix callable
-  traversal as the first DRY cleanup candidate, and the verifier now separates
-  latest-pass evidence from older self-prosecution entries.
-- Cumulative node weight: the new binding audit item records accumulated
-  `Rules` maps/caches as unresolved ownership work rather than accepting the
-  current node weight as architecture-complete.
-- New traversal: none in runtime code. The verifier scans only diff text and
-  the latest self-prosecution block.
-- New node/materialization: none.
-- Render path: no render/stringification path changed.
-- Helper/API surface: one private verifier extraction of the latest
-  self-prosecution block; no package exports or runtime APIs.
-- Metadata mutations: none.
-- Review-flagged diff tokens: [array helper] is confined to verifier label
-  accounting over current diff findings; [generic defensive read] and
-  [side map/set] are documentation-only mentions of existing `Reflect`/Map/Set
-  audit targets, not new runtime reads or side maps.
-- Evidence: `git diff --check`, `node --check
-  scripts/verify-aggressive-cutting-review.mjs`,
-  `pnpm run verify:aggressive-cutting-review`, and sub-agent review of the
-  docs/tooling diff.
-
-- Latest pass: scanner-first deprecated no-parens mixin-call proof.
-- Verdict: accepted as a bounded Less mixin-call proof, not a performance claim.
-  The structural-fed path now admits only structural `mixin-call` nodes whose
-  name is a scanner-native class/id mixin name with optional empty parens.
-- New traversal/allocation: a warning collector walks the structural tree only
-  on successful structural-fed prototype output. It allocates warning
-  diagnostics only when a no-parens mixin call is present, and only then
-  materializes line/column data through the lazy source map.
-- New materialization: no eager selector/value materialization. The e2e proof
-  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
-  declaration value storage, and preservation of the canonical
-  `parse/deprecated` warning.
-- Helper/API surface: no exports and no compatibility shims. Namespaced
-  no-parens calls such as `#theme > .mixin;`, parameterized/guarded/important
-  calls, and property-accessor calls remain canonical fallback.
-- Metadata mutations: none added.
-- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
-  e2e suite, scanner-first Less corpus parity audit, Less plugin build, eslint,
-  `git diff --check`, and aggressive cutting review.
-
-- Latest pass: scanner-first complex-target `:extend(...)` proof.
-- Verdict: accepted as a bounded Less extend semantics proof, not a performance
-  claim. The structural-fed path now admits cheap target-only complex selectors
-  such as `.base .child` while the owning ruleset selector remains raw.
-- New traversal/allocation: one private target tokenizer walks only the
-  already-matched `:extend(...)` target substring. It creates the
-  `BasicSelector`, `Combinator`, and `ComplexSelector` nodes required for Less
-  extend matching; it does not parse unrelated selectors, declarations, values,
-  or child rules.
-- New materialization: target selector materialization only. The e2e proof
-  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
-  source selector storage, and raw declaration value storage. Unsupported
-  pseudo/attribute/interpolated source selectors, compound/pseudo targets,
-  `&:extend(...)`, and grouped extends remain canonical fallback.
-- Helper/API surface: no exports and no compatibility shims. The helper is
-  private to the Less plugin prototype and should be narrowed or replaced when
-  the shared scanner-native selector materializer grows a reusable target mode.
-- Metadata mutations: none added.
-- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
-  e2e suite, scanner-first Less corpus parity audit, Less plugin build, eslint,
-  `git diff --check`, and aggressive cutting review.
-
-- Latest pass: scanner-first simple `:extend(... all)` selector-header proof.
-- Verdict: accepted as a bounded Less semantics proof, not a performance claim.
-  The structural-fed path now admits only the already-cheap selector-header
-  extend shape with an optional lowercase `all` flag; complex targets,
-  interpolated selectors, pseudo/attribute source selectors, `&:extend(...)`
-  statements, and multiple extend groups remain canonical fallback.
-- New traversal/allocation: no new walks, side tables, arrays, or legacy parser
-  islands. The proof reuses the existing single regex gate and constructs only
-  the `Extend` plus target `BasicSelector` already required for Less extend
-  registration; the owning ruleset selector remains a raw string.
-- New materialization: no eager selector/value materialization. The e2e proof
-  asserts zero requested islands, zero actual parses, zero promoted bytes, raw
-  source selector storage, and the runtime `ExtendFlag.All` value.
-- Helper/API surface: no exports and no compatibility shims. This is a private
-  scanner-native token widening inside the Less plugin prototype.
-- Metadata mutations: none added.
-- Evidence: focused red-to-green scanner-first e2e proof, full scanner-first
-  e2e suite, and scanner-first Less corpus parity audit.
-
-- Latest pass: scanner-first multiline CSS grid template-area raw declaration
-  proof.
-- Verdict: accepted as a bounded scanner-fed render proof, not a performance
-  claim. The Less structural-fed predicate now admits only property-specific
-  `grid-template-areas` quoted rows with proven continuation indentation; the
-  existing two-space multiline negative case remains canonical fallback.
-- New traversal: two short raw-string loops in
-  `packages/core/src/tree/declaration.ts` run only when a raw declaration has
-  all-string segments and at least one newline. They do not walk AST children,
-  parent links, source maps, side tables, or semantic scopes.
-- New node/materialization: none. Raw declarations still keep string segments
-  and the e2e proof asserts no `valueNode` materialization, zero requested
-  islands, zero actual parses, and zero promoted bytes.
-- Render path: direct raw writer output only. The writer restores canonical
-  colon/newline placement for multiline raw values without constructing `Any`,
-  `Sequence`, `List`, or declaration value wrappers.
-- Helper/API surface: two private helpers in `declaration.ts` and one private
-  Less plugin predicate helper. Nothing is exported; remove or narrow these
-  helpers when multiline raw declaration formatting is represented by packed
-  source-span metadata instead of string-segment normalization.
-- Metadata mutations: none added.
-- Review-flagged exception: `const segments = this._rawValueSegments ?? []`
-  reuses the existing raw declaration segment array; it is not a new side map,
-  semantic materialization, or eval isolation container.
-- Evidence: focused red-to-green multiline CSS grid e2e proof; full
-  `progressive-nodes.test.ts`; core build; full scanner-first e2e; scanner-first
-  Less corpus including `tests-unit/css-grid/css-grid.less` moving to
-  structural-fed; Less plugin build; eslint; `git diff --check`; aggressive
-  cutting review.
-
-- Latest pass: scanner-first recursive supported at-rules inside at-rule child
-  rules.
-- Verdict: accepted as a thin scanner-fed proof, not a performance claim. The
-  Less structural-fed validator/builder now lets ordinary rules inside
-  supported `@media` / `@supports` bodies keep accepting supported at-rule
-  children. Core ruleset registration now reads a raw parent `AtRule.rawName`
-  when deciding whether a parent at-rule body is nestable, avoiding eager
-  `Any('@media')` header materialization for this raw-field path.
-- New traversal: none. The Less plugin reuses the existing recursive rule and
-  at-rule validation/build paths. Core adds one direct raw-name helper read in
-  an existing ruleset registration decision; it does not add a new walk or
-  side table lookup.
-- New node/materialization: none in production. The review script flagged one
-  test-only `new Context()` in `progressive-nodes.test.ts`; that context is the
-  existing registration fixture needed to prove a raw-field child ruleset can
-  prepare under a raw-field parent at-rule without materializing the header.
-- Render path: direct raw render still writes raw at-rule names/preludes and raw
-  declaration segments. The new e2e proof asserts equal CSS, structural-fed
-  runtime source, zero full-tree fallback, zero requested islands, zero actual
-  parses, zero promoted bytes, and serialized raw at-rule/declaration fields
-  without `BasicSelector` or `Any` value wrappers.
-- Helper/API surface: one private helper, `atRuleNameText(...)`, mirrors the
-  existing `atRuleStatementNameText(...)` helper and keeps the raw-name branch
-  local to `rules.ts`. It is not exported.
-- Metadata mutations: none added.
-- Review-flagged exception: the new `TypeError` preserves the previous
-  invariant behavior for a malformed parent `AtRule` with neither `rawName` nor
-  `name`. It is not a lookup miss, expected branch result, or routine
-  scanner-fed fallback path.
-- Evidence: focused red-to-green scanner-first e2e test; focused and full
-  `progressive-nodes.test.ts`; focused eslint for the clean touched files; core
-  build; Less plugin build; full scanner-first e2e; scanner-first Less corpus;
-  `git diff --check`; aggressive-cutting review.
-
-- Latest pass: scanner-first raw `@media` blocks inside no-argument Less mixin
-  definitions.
-- Verdict: accepted as a thin proof extension, not a performance claim. The
-  Less structural-fed validator now allows mixin-body `@media` blocks only by
-  reusing the existing at-rule validator; non-media at-rules still fall back.
-  Callable surface copying now preserves raw-field `AtRule` headers while
-  copying owned callable output, so a mixin call does not have to materialize
-  canonical `Any` name/prelude nodes just to emit copied `@media` output.
-- New traversal: none. The mixin validator delegates an already-visited
-  `at-rule` child to the existing at-rule validation path. The callable copy
-  change stays inside the existing recursive callable-copy traversal and only
-  chooses raw header strings when the source at-rule already carries them.
-- New node/materialization: no new production materialization. The review
-  script flagged `new Declaration(...)` and `rules([])` in
-  `callable-candidate-state.test.ts`; both are test fixtures for the raw
-  at-rule copy regression. Runtime code adds no new node construction for this
-  pass and specifically avoids constructing canonical at-rule header nodes for
-  raw-field at-rules during callable copy.
-- Render path: copied raw `AtRule` output renders through the existing raw
-  at-rule render path. The new e2e proof asserts equal CSS, zero requested
-  islands, zero actual parses, zero promoted bytes, and serialization without
-  `BasicSelector` or `Any` declaration value nodes for the covered mixin shape.
-- Helper/API surface: none added.
-- Metadata mutations: none added.
-- Review-flagged exception: the new `TypeError` is an invariant failure for an
-  impossible malformed `AtRule` copy source with neither raw nor canonical
-  name. It is not routine branch control, lookup miss handling, or a hot-path
-  negative result.
-- Evidence: touched-file eslint; core build; Less plugin build; focused core
-  callable-candidate-state test; scanner-first e2e test; scanner-first Less
-  corpus test; aggressive-cutting review.
-
-- Latest pass: scanner-first raw-field at-rule-statement/at-rule/ruleset/
-  declaration proof.
-- Verdict: deferred. This pass intentionally adds a tiny raw-field construction
-  surface for scanner-first parser evidence, not a production migration or
-  speed claim. It proves real core `AtRuleStatement`, `AtRule`, `Ruleset`, and
-  `Declaration` nodes can render/serialize raw statement at-rule headers,
-  block at-rule headers, selectors, declaration names, and declaration value
-  payloads without allocating canonical header/selector/value child nodes on
-  the direct render path. Semantic registration/eval
-  materializes only the currently proven scanner-native at-rule header storage,
-  simple selector subset (`*`, tag, `.class`, `#id`), adjacent basic compound
-  selector subset, simple/flat literal declaration value text, conservative
-  quoted/url declaration and Less variable value text, conservative raw
-  custom-property value text, and declaration exact `!important` flag text on
-  demand. The current Less structural-fed emitter uses raw core `AtRule` for
-  root `@media`, ruleset-local `@media` with scanner-native declaration bodies
-  or already-supported ordinary nested rules, root `@layer` with ordinary rule
-  bodies, and root `@supports` with a single scanner-native declaration
-  condition. It uses raw core `AtRuleStatement` for scanner-native root
-  `@charset` statements. Statement-form `@import` remains a canonical fallback
-  because import/reference ordering and file-resolution semantics are not
-  proven in the cheap path. Nested block at-rule families outside that shape
-  remain outside this proof and still require materializers or canonical
-  fallback.
-- New traversal: `packages/core/src/tree/declaration.ts`
-  `Declaration.writeRawDeclarationSyntax(...)` loops over
-  `rawValueSegments`. This is bounded to the raw segment count and replaces
-  would-be wrapper nodes on the proof path; it is not on canonical declarations.
-  `Declaration.materializeRawDeclarationParts(...)` also loops over raw
-  segments only when semantic registration needs to turn mixed raw segments into
-  a reachable canonical value container. `Ruleset.materializeRawSelectorForSemantics(...)`
-  performs no traversal; it validates and materializes one raw simple selector
-  string or adjacent basic compound selector at registration/eval boundaries.
-  Compound selector materialization runs `splitRawCompoundSelector(...)` over the
-  raw selector string and then loops over the returned parts only when semantics
-  are requested; direct raw render does not enter either loop.
-  `AtRule.materializeRawHeaderForSemantics(...)` performs no traversal; it
-  materializes one raw at-rule name and optional raw prelude string at
-  registration/eval boundaries. Extending the structural-fed emitter to root
-  `@layer`, root `@supports`, and ruleset-local `@media` with ordinary nested
-  rules reuses existing raw at-rule/ruleset storage and does not add render-time
-  traversal. Extending declarations and variables to conservative quoted/url and
-  raw custom-property values reuses the existing raw segment loop; it does not
-  add another render traversal. `AtRuleStatement` raw-name import detection is
-  a direct string read during existing registration scanning; it does not
-  materialize statement header nodes and adds no new traversal.
-- Aggressive Cutting Self-Prosecution, scanner-first nested ampersand pseudo
-  selector proof: widening the raw selector subset to `&:focus` / `&::before`
-  style branches adds one anchored branch recognizer and one cold semantic
-  materialization case. Direct render/serialization still writes the raw selector
-  string and does not allocate `Ampersand`, `PseudoSelector`, or selector
-  wrapper nodes. If registration/eval asks for selector semantics, the raw
-  branch materializes to the existing canonical `CompoundSelector` shape with
-  one `new Ampersand(...)` and one `new PseudoSelector(...)`. Those node
-  constructions are intentionally behind `materializeRawSelectorForSemantics()`,
-  not on the direct render/stringify path, and replace a full selector parse for
-  this proven branch. This does not claim general pseudo-selector support,
-  selector-function argument parsing, attribute selectors, or Less
-  nested-selector collapse.
-- Aggressive Cutting Self-Prosecution, scanner-first important spelling proof:
-  Widening the important splitter to accept spaced/case-variant flags is not a
-  new parser and does not add a traversal. The structural-fed declaration path
-  still carries one raw value segment plus one `rawImportant` string and direct
-  render/serialization still avoids value-node and important-node allocation.
-  This is deliberately a behavior-preservation proof: `! important` and
-  `!IMPORTANT` render the way the current Less path renders them, not as a
-  forced canonical spelling. It also does not widen custom-property important
-  handling or Less-variable important handling.
-- Aggressive Cutting Self-Prosecution, scanner-first color function allow-list
-  proof: admitting `darken(...)` and `rgba(...)` reuses the existing
-  scanner-native function value materializer and the same scalar argument
-  subset already proven for `lighten(...)` and `rgb(...)`. This pass does not add
-  another value parser, does not widen accepted argument grammar, and does not
-  change direct raw render behavior; unsupported function names, named-color
-  arguments, nested calls, comments, interpolation, and variable arguments still
-  fall back canonically.
-- Aggressive Cutting Self-Prosecution, scanner-first raw selector classifier
-  DRY pass: core now owns the scanner-native raw selector admission predicates
-  used by the Less plugin's structural-fed admission gate and by `Ruleset`'s
-  progressive selector construction. The hot admission helper is boolean and
-  does not allocate option objects. This pass does not widen selector syntax and
-  does not settle visitor exposure for selector leaf nodes.
-- Aggressive Cutting Self-Prosecution, compound selector string-component
-  proof: `CompoundSelector` now accepts scanner-native simple selector strings
-  and raw ruleset compound materialization passes split strings through instead
-  of allocating `BasicSelector` leaves. This is deliberately compound-only:
-  complex selectors still use existing branch/combinator structures, selector
-  lists still own selector branches, and unsupported selector syntax does not
-  enter the structural-fed subset. Visibility-clone recursion skips string
-  leaves because no selector node exists to flag or clone. Ordered lookup keys,
-  ampersand substitution, and extend matching now compare raw components through
-  shared `valueText(...)` instead of materializing leaves only to call
-  `valueOf()`. Visitor and source-map behavior must still be proven separately
-  before treating raw strings as a general selector-node replacement, and
-  attribute selectors remain raw candidates unless equality/matching semantics
-  require structured attribute fields. Visitor exposure is not an automatic
-  requirement: some selector atoms may intentionally have no Jess visitor
-  surface if plugin research and Jess semantics do not justify materializing
-  them.
-  Latest correction: single raw string atoms also remain
-  `CompoundSelector` surfaces during semantic materialization and extend
-  processing. The extend processor now preserves raw string compound components
-  while recursing only into already-materialized selector-node components, so
-  `.base` can extend/serialize correctly without allocating a `BasicSelector`.
-  The scanner-first extend proof is green again for exact, `all`, and
-  complex-target Less extends with raw source selectors.
-  Latest cleanup proof: focused extend/import tests now cover raw string
-  compound exact matches, single-component `ComplexSelector` exact matches,
-  import-root selection, and reference-mode generated `:is(...)` simplification
-  for both `collapseNesting` modes. That does not complete the location-search
-  deletion: complex dispatch, ampersand-boundary behavior, chained extends, and
-  import/reference activation still need bounded migration before
-  `findExtendableLocations` can be removed.
-  Cleanup target: `walk-and-consume` should be the single extend matching
-  surface. The older location-search fallback remains transitional debt from
-  prior work; do not widen it as a design target. Before adding support for a
-  new scanner-first extend shape, ask whether the walk path can produce the
-  correct result directly from existing raw strings and nodes. Only keep
-  location-search behavior that is still absolutely necessary for a proven
-  correct result until it can be deleted.
-  Danger-token prosecution: the touched `CompoundSelector` paths still allocate
-  an owned component array when deriving evaluated component surfaces, because
-  evaluated selector surfaces already need a placement-owned component list.
-  This pass does not add another wrapper hierarchy; it removes `BasicSelector`
-  leaf construction for scanner-native compound raw selector branches, including
-  one-part raw compounds.
-  `valueText(...)` is a small shared primitive for string-or-node comparison; it
-  avoids parser-node allocation and avoids unsafe casts. The touched
-  selector-match helper keeps one existing `ComplexSelector` remainder
-  construction for non-raw complex remainder shapes; this is not part of the hot
-  raw compound render path. The new `filter(...)` use is a typed narrowing pass
-  over an existing compound component array during extend matching, not a new
-  materialization policy. The new `TypeError` is an invariant failure for
-  invalid internal raw component input, not routine control flow. The
-  `.inherit(...)` calls remain the existing ownership boundary for derived
-  selector surfaces. Test-only `throw new Error(...)` assertions are local
-  invariant guards, not runtime behavior.
-- Aggressive Cutting Self-Prosecution, scanner-first raw attribute selector
-  atom proof: the raw selector classifier now admits a deliberately narrow
-  attribute selector atom subset such as `[data-kind]` and
-  `[data-kind="primary"]`. The progressive selector constructor scans bracketed
-  atoms with quote-aware loops so compound, complex, and selector-list splitting
-  can preserve the attribute text as a string component instead of parsing
-  attribute fields. Commas or spaces inside quoted attribute values are not
-  treated as selector boundaries. This is not a general attribute grammar:
-  structured
-  attribute equality, interpolation, comments, newlines, and richer selector
-  pseudos remain outside this proof and must fall back or get their own
-  materializer. Attribute visitor exposure is not promised and may explicitly
-  stay unsupported for this atom family; plugin research and Jess semantics
-  must prove that a node/field surface is worth preserving before this path
-  pays for it. The new scanner loop replaces a
-  regex-only split because regex matching could not safely distinguish brackets
-  and quoted values without either rejecting useful cheap atoms or allocating a
-  richer parser surface.
-- Aggressive Cutting Self-Prosecution, scanner-first no-argument pseudo selector
-  atom proof: the raw selector classifier now admits a deliberately narrow
-  pseudo atom subset such as `:root`, `button:hover`, and `.a::before`.
-  Progressive selector construction splits pseudo atoms as raw string
-  components, not structured pseudo fields; the existing
-  `&:focus` / `&::before` branch remains the special case that materializes an
-  `Ampersand` plus `PseudoSelector` only when semantic registration demands
-  parent substitution. Pseudos with arguments such as `:is(...)`, interpolation,
-  comments, newlines, and richer selector grammar remain outside this proof.
-  Pseudo names use the existing ident-like non-bare-hyphen subset, so `:-` and
-  `::-` do not enter the structural-fed path. Single raw string atoms stay
-  `CompoundSelector` surfaces across eval/resolve instead of collapsing into
-  `BasicSelector`; this keeps class/id/type/universal, pseudo, and attribute
-  atoms string-backed until a real semantic consumer needs a richer selector
-  node.
-  Pseudo leaf visitor exposure is not promised and may explicitly stay
-  unsupported for this atom family unless plugin research or Jess semantics
-  proves a node/field surface is worth preserving.
-- Review-flagged allocations:
-  `packages/core/src/tree/declaration.ts` lets ordinary `decl(...)` construct
-  scanner-first declarations from raw string or mixed string/node values.
-  Scanner-first flat literal declaration cases keep the value as one raw string
-  segment for direct render/serialization; important declarations additionally
-  store the raw flag as `rawImportant`. Neither path tokenizes into arrays/nodes
-  until a later semantic materializer is requested. Focused tests add normal
-  `new Context()` render setup. `packages/core/src/tree/ruleset.ts`
-  stores simple selector atoms as strings and constructs thin
-  `CompoundSelector`, `ComplexSelector`, and `SelectorList` containers with raw
-  string leaves for scanner-native compound/list/complex selectors. The nested
-  ampersand-pseudo proof keeps `&:focus` as a string until selector semantics
-  demand the existing `Ampersand` plus `PseudoSelector` branch.
-  `packages/core/src/tree/at-rule.ts`
-  constructs `Any` header nodes only when a raw at-rule crosses into semantic
-  registration/eval; direct raw render keeps `name` / `prelude` undefined and
-  uses `rawName` / `rawPrelude`.
-- Review-flagged array helper: `segments.map(...)` appears only in the semantic
-  materialization fallback for mixed raw string/Node segments, where it creates
-  the reachable canonical sequence payload. Direct raw render does not use this
-  helper. `packages/core/src/tree/util/progressive-block-render.ts` remains
-  limited to earlier standalone progressive proof nodes; the structural-fed
-  root `@media` path now uses raw core `AtRule` and does not rely on that
-  detached writer bridge.
-- Review-flagged diff tokens: the raw declaration value type includes an array
-  of string/Node segments. The array is caller-owned input for the explicit
-  proof path; raw core rulesets still use the existing `rules: Node[]` body
-  surface and do not reintroduce a nested `Rules` wrapper.
-- New node/materialization: one explicit core `Declaration` via `decl(...)`
-  raw string input, one progressive core `Ruleset` selector path, one raw-header core
-  `AtRule` path, and one raw-header core `AtRuleStatement` path for
-  statement-form at-rules. No
-  `Any`, `Reference`, selector, header, or value wrapper nodes are created for
-  raw statement at-rule/block at-rule header, selector, name, or value payloads
-  during direct render. If semantic registration/eval asks for canonical parts,
-  `Declaration.materializeRawDeclarationParts(...)` creates the canonical
-  `Any` name/value/important nodes at that boundary and hides raw segment
-  children from `childKeys` serialization/traversal so the canonical value is
-  not also exposed through `rawValueSegments`. `Ruleset` stores atom selectors
-  as strings or creates thin selector containers with raw string components for
-  the proven compound/list/complex subset. `valueOf()` on those structured
-  selector containers is a normalized selector representation; exact source
-  spacing belongs to source spans/trivia, not the selector value string.
-  `AtRule`
-  creates canonical `Any` name/prelude nodes only for the proven raw root
-  `@media` subset at registration/eval boundaries. `AtRuleStatement` direct
-  render keeps `name` / `prelude`
-  undefined and writes `rawName` / `rawPrelude`; existing import-registration
-  scanning reads `rawName` directly so `@charset` does not materialize just to
-  decide it is not `@import`.
-- Render path: raw declarations stringify directly in
-  `writeRawDeclarationSyntax(...)` and `render(...)`; rulesets write their
-  string selector or selector container through the ordinary `Ruleset`
-  render/serialize path; raw
-  at-rules write `rawName` / `rawPrelude` directly in the ordinary `AtRule`
-  render/serialize path; raw at-rule statements write `rawName` / `rawPrelude`
-  directly in the ordinary `AtRuleStatement` render/serialize path. They do not
-  resolve into canonical header/selector/value nodes just to print.
-- Helper/API surface: ordinary `decl(...)` accepts raw string or mixed
-  string/node declaration values through the existing core declaration
-  entrypoint. `RawRulesetValue` is available through the existing
-  `ruleset(...)` constructor type, `RawAtRuleValue` through the existing
-  `atrule(...)` constructor type, and `RawAtRuleStatementValue` through
-  `atrulestatement(...)`. This is
-  deliberate API surface for scanner-first proof code and remains separate from
-  ordinary canonical construction.
-- Metadata mutations: none added.
-- Parent/adoption mutations: `Declaration.materializeRawDeclarationParts(...)`
-  adopts the materialized name/value/important nodes when the raw declaration
-  crosses into semantic registration/eval, preserving the normal parent/child
-  invariant at the materialization boundary. `Ruleset.materializeRawSelectorForSemantics(...)`
-  adopts the created raw-component selector container when a string atom crosses
-  into a semantic boundary, so subsequent traversal sees one selector
-  representation, not both.
-  `AtRule.materializeRawHeaderForSemantics(...)`
-  adopts created `Any` header nodes and moves them into canonical `name` /
-  `prelude` slots while clearing `rawName` / `rawPrelude`, so subsequent
-  traversal sees one header representation, not both. `AtRuleStatement` direct
-  render and import detection do not mutate parent/adoption state; its cold
-  semantic materializer follows the same one-representation rule if a future
-  statement-form semantic path requests canonical header nodes.
-- Routine error control: none added. The new `TypeError` sites are construction
-  and invariant guards for invalid raw selector input or impossible raw/canonical
-  callable-copy state, not expected misses or branch control.
-- Allocation changes: adds raw fields on `Declaration` instances for the proof
-  path, string or thin-container selector storage on `Ruleset`, and raw header
-  strings on `AtRule` and `AtRuleStatement`; avoids statement/header/name/value
-  child node allocation for direct render and avoids `BasicSelector`,
-  `AttributeSelector`, and pseudo leaf allocation for proven selector atoms. No
-  speed claim until the structural-fed path is benchmarked under corpus gates.
-- Evidence: focused `progressive-nodes.test.ts` passed with raw declaration,
-  raw ruleset, raw at-rule, and raw at-rule-statement
-  serialize/render/materialization assertions; `pnpm --filter @jesscss/core
-  build`, package-scoped `pnpm --filter @jesscss/core test -- --run
-  src/tree/__tests__/progressive-nodes.test.ts`, scanner-first e2e, Less corpus
-  parity, `pnpm run verify:package-exports`, `pnpm run
-  verify:aggressive-cutting-review`, and `git diff --check` passed. File-scoped
-  eslint that includes `packages/core/src/tree/rules.ts` is blocked by
-  pre-existing file-wide lint debt in that file; it is not used as proof for
-  this slice.
-- Latest pass: scanner-first parser prototype AST-shape cleanup, visitor
-  traversal planning, and TS7 declaration stabilization.
-- Verdict: accepted as a prototype-enabling shape cut, not a completed
-  runtime-performance win. `Ruleset`, block-bearing `AtRule`, `Mixin`, and
-  control nodes now use inherited `Rules` body behavior with `.rules: Node[]`
-  at the container, while `AtRuleStatement` owns statement-form at-rules. The
-  pass removes accidental nested body wrappers and arbitrary single-payload
-  names where this slice reaches them, and rejects compatibility aliases for
-  the removed names. No speed claim.
-- New traversal: provider and semantic-index loops in the scanner-first parser
-  are bounded scans over source structure or selected island plans. They are
-  cold/prototype planning surfaces, not eval/render loops. `IslandParsePlan`
-  now has a traversal-time visitor request helper that scans the already
-  planned visitor rules for the reached structural node and requests only that
-  node's owned islands; tests assert the helper does not execute providers or
-  promote siblings. Core changes keep existing body iteration patterns on
-  `Node[]` after removing nested `Rules` wrappers. The collapsed serializer
-  adds one bounded look-ahead only when a disabled reference-mode `Rules`
-  wrapper is reached, so it can decide whether to preserve the already-written
-  current frame for later renderable siblings or roll back an otherwise empty
-  frame. Added loops in tests are fixture construction/assertion only.
-- New node/materialization: `AtRuleStatement` is a new semantic node for
-  statement-form at-rules so block-bearing `AtRule` can inherit `Rules`
-  without lying about imports/charsets. Structural-fed e2e materializes only
-  selected selector/value islands for the bounded CSS/Less subset and records
-  canonical fallback for unsupported syntax. SCSS/Jess provider tests promote
-  only selected selector/value/control/module-at-rule islands and assert
-  promoted-byte counters without full-tree fallback. Test-only node
-  construction is fixture setup.
-- Render path: the pass must not materialize children merely to stringify.
-  Focused e2e tests prove plain rules and structurally handled declarations
-  render equal while selected islands remain unrequested unless needed. Control
-  render tests cover selected `$if`/`$for`/`$while` output through direct render
-  surfaces. Review follow-up fixed disabled reference-mode wrappers under
-  `collapseNesting`: hidden terminal wrappers stay invisible, hidden wrappers
-  followed by renderable siblings no longer leave declarations under the prior
-  sibling frame, and leading block trivia remains printable.
-- Helper/API surface: `DefinedFunction` is an exported type-only name for
-  TypeScript 7 declaration emit. It preserves the existing rich callable type
-  surface instead of widening `defineFunction(...)` to a bare runtime function.
-  Parser service helpers are prototype package surfaces with JSDoc and
-  counters; they are not core eval/render helpers. SCSS/Jess provider
-  entrypoints stay package-owned, and visitor method-table planning derives
-  structural island interests without importing core visitor classes. The
-  visitor planner now carries exact per-method materialization rules so
-  `visitDeclaration` and `visitRuleset` do not cross-product all requested
-  island kinds across every parent node kind; repeated plans reuse the cached
-  rule array and report cache hits. The traversal request helper reports
-  visitor traversal requests, materialized node requests, promoted island
-  requests, adapter-node requests, replacement requests, and fallback
-  full-tree materializations without importing compiler node classes.
-- Metadata mutations: constructor adoption now reflects the direct body-array
-  ownership model. A `Rules` instance passed where a body array is required is
-  invalid; there is no compatibility conversion from old nested body wrappers.
-  The Jess parser tree validator skips metadata/root pointers while continuing
-  to verify owned child parentage. Review follow-up fixed lingering
-  inherited-`Rules` assumptions: `toObject()` descends only through direct
-  plain `Rules` wrappers, and array namespace callable lookup now passes
-  `searchParents: false` into scope-frame lookup.
-- Routine error control: scanner/parser recovery records diagnostics instead
-  of allocating thrown `Error` objects for ordinary parse misses. Test-only
-  throws remain as assertions.
-- Allocation changes: intended reduction is one less nested `Rules` wrapper for
-  inherited containers and no alias objects for removed field names. Remaining
-  object count and speed claims are shelved until benchmark/profile evidence.
-- Evidence: `git diff --check`; `pnpm run verify:aggressive-cutting-review`;
-  `pnpm --filter @jesscss/core build`; focused core
-  `control`/`define-function`/`define-function-split-sequence` tests;
-  `pnpm --filter @jesscss/fns build`; `pnpm --filter @jesscss/fns test`;
-  `pnpm --filter @jesscss/parser test`; `pnpm --filter @jesscss/css-parser
-  test`; `pnpm --filter @jesscss/less-parser test`; `pnpm --filter
-  @jesscss/scss-parser test`; `pnpm --filter @jesscss/scss-parser build`;
-  `pnpm --filter @jesscss/jess-parser test`; `pnpm --filter
-  @jesscss/jess-parser build`; `pnpm --filter @jesscss/plugin-less build`;
-  `pnpm --filter @jesscss/plugin-less test`; `pnpm --filter
-  @jesscss/plugin-scss build`; `pnpm --filter @jesscss/plugin-scss test`;
-  `pnpm run verify:package-exports`; and the focused scanner-first e2e/Jess
-  diagnostic pair all pass in this worktree. Latest focused checks also cover
-  `toObject()` plain wrapper descent, array namespace `searchParents: false`,
-  disabled reference-wrapper collapse/trivia behavior, repeated reference
-  imports, parser visitor traversal counters, and plugin structural activation.
-
-- Latest pass: Less-compat raw primitive visitor boundary and scanner-first
-  corpus recovery.
-- Verdict: accepted as a correctness and prototype-boundary fix, not a speed
-  claim. Primitive raw selector/value segments are not Less visitor nodes, and
-  raw selector adapters no longer pass strings into `WeakSet`-backed adapter
-  caches. Less adapter nodes now follow the current `.rules: Node[]` and
-  `.value` shapes instead of removed nested `Rules.rules` and `List.items`
-  aliases.
-- New traversal: none added.
-- New node/materialization: raw Less selector/element compatibility objects are
-  created only at the Less adapter boundary for primitive selector strings; no
-  core selector/value nodes are materialized for the scanner-first raw path.
-- Render path: unchanged; focused scanner-first e2e continues to prove raw
-  declaration and selector render paths do not request islands or promoted
-  bytes.
-- Helper/API surface: `RawLessSelector`, `RawLessElement`, and
-  `RawLessCombinator` make the existing compatibility boundary explicit instead
-  of pretending every Less-compatible object wraps a Jess `Node`.
-- Metadata mutations: none.
-- Evidence: `pnpm --filter @jesscss/plugin-less-compat build`; `pnpm --filter
-  @jesscss/plugin-less-compat exec vitest --run
-  test/integration/plugin-manager.test.ts`; `pnpm --filter @jesscss/core test
-  -- --run src/tree/__tests__/progressive-nodes.test.ts
-  src/tree/util/__tests__/raw-selector.test.ts`; `pnpm --filter jess test --
-  --run test/scanner-first-e2e.test.ts`; and
-  `JESS_SCANNER_FIRST_CORPUS_DETAILS=1 pnpm --filter jess test -- --run
-  test/scanner-first-less-corpus.test.ts -t "matches current compiler output"`
-  pass. The focused corpus snapshot records 12 structural-fed prototype
-  records, 54 canonical fallbacks, zero requested islands, zero actual parses,
-  zero promoted bytes, and 71 progressive nodes across the included 64-file /
-  65-case upstream Less corpus.
-
-- Latest pass: walk-side extend cleanup for raw compounds, single-component
-  complex selectors, batched exact matches, and target-presence classification.
-- Verdict: accepted as a deletion-enabling correctness split, not a speed
-  claim. The walk-and-consume surface now covers raw string compound exact and
-  partial matching, single-component `ComplexSelector` whole-item matching,
-  same-target batched exact selector-list extension, and root activation checks
-  that need target presence rather than output-change semantics.
-  `classifyExtendTargetPresence` reuses the walk decomposition with the
-  self-extend output-change guard disabled, and `extend-roots.ts` no longer
-  calls `findExtendableLocations(...).hasMatches`.
-- New traversal: no new selector walk family. `applyBatchedExtend` now asks the
-  existing walk classifier instead of the legacy location-search classifier for
-  its same-target selector-list branch. The target-presence helper uses the
-  existing `wouldMatchNode` traversal with a boolean guard to distinguish
-  presence from output-change classification.
-- New node/materialization: one cold, local `CompoundSelector.create([raw])`
-  surface is created inside raw compound component matching so the existing
-  whole-match application path can produce the same `:is(...)`/selector-list
-  shapes for raw string components. Single-component complex matching and
-  target-presence classification add no node materialization.
-- Render path: unchanged.
-- Helper/API surface: one exported helper was added to `extend-walk.ts` and is
-  immediately used to remove the legacy location-search dependency from
-  `extend-roots.ts`. The batched exact-match branch uses existing
-  `classifyExtendMatch`; no new public core API is intended.
+- Latest pass: implicit `.value` child fallback cut.
+- Verdict: accepted as an AST ownership cleanup and parser-shape prerequisite,
+  not a measured performance pass. Base `Node` no longer treats every node with
+  a `.value` property as though `value` were its child surface. Nodes that own
+  semantic children must declare them through `static childKeys`.
+- New traversal: no new traversal was added. Existing base traversal,
+  visitation, and deep trivia detach still read `static childKeys`; the hidden
+  fallback to `['value']` was removed. Host wrappers with `childKeys = null`
+  keep their JS payload for lookup/indexing but no longer expose it as CSS
+  output or traversal.
+- New node/materialization: no new node or wrapper was added. The verifier's
+  materialized array/object matches are existing test fixture literals updated
+  with `expectedParts: []` for host/lookup transport wrappers that render no
+  stylesheet text.
+- Render/eval path: no render-only materialization was added. Existing selector
+  subclasses that genuinely use `.value` as their semantic surface now inherit
+  an explicit selector-base `childKeys = ['value']` contract; leaf selectors
+  that render themselves still override with `childKeys = null`.
+- Helper/API surface: no helper or public export was added.
 - Metadata mutations: none.
 - Evidence: `pnpm --filter @jesscss/core test -- --run
-  src/tree/util/__tests__/extend-walk.test.ts
-  src/tree/util/__tests__/extend-selector-algorithm.test.ts` passes.
+  src/tree/__tests__/node-render-buffer.test.ts
+  src/tree/__tests__/list.test.ts src/tree/__tests__/js-host.test.ts
+  src/tree/__tests__/selector.test.ts src/tree/__tests__/selector-basic.test.ts`,
+  `pnpm --filter @jesscss/core build`, and `pnpm --filter
+  @jesscss/less-parser test -- --run test/ast-proof.test.ts` passed. No speed
+  claim is made.
 
-- Latest pass: scanner-first internal raw-selector export and Jess module
-  at-rule island owner reconstruction.
-- Verdict: accepted as a package-boundary and provider-correctness fix, not a
-  speed claim. Raw selector admission helpers no longer ride the public core
-  barrel; the Less plugin imports the explicitly internal scanner-first
-  subpath. Jess module at-rule islands reconstruct only the owning at-rule
-  statement from structural `nameStart`/`nameEnd` offsets before dispatching to
-  the existing Jess parser rule, because the shared structural island is the
-  prelude slice rather than the whole statement.
-- New traversal: none added. The Jess provider reads one owner node already on
-  the island execution context and slices the existing source text.
-- New node/materialization: none added. The provider still returns the existing
-  Jess parser result only when a Jess module at-rule island is explicitly
-  requested.
-- Render path: unchanged.
-- Helper/API surface: `@jesscss/core/internal/raw-selector` is an intentionally
-  internal scanner-first subpath used by the Less plugin. The public core tree
-  barrel no longer exports those helpers as general core API.
+- Latest pass: string-token selector containers for scanner-first AST proofs.
+- Verdict: accepted as a parser object-reduction slice, not a measured
+  performance pass. CSS/Less scanner-first AST construction now keeps cheap
+  compound/complex selector pieces as strings inside existing `CompoundSelector`
+  and `ComplexSelector` nodes instead of allocating `BasicSelector` and
+  `Combinator` leaves for each token.
+- New traversal: no new tree traversal was added. Existing selector eval and
+  render loops now skip string components directly instead of calling node
+  methods on them. Existing ruleset selector-visibility recursion returns
+  immediately for string selector pieces.
+- New node/materialization: no new node family was added. The slice removes
+  eager selector leaf materialization in the CSS/Less AST builders for the cheap
+  selector subset. It retains the existing selector container nodes because they
+  are the actual AST shape for compound and complex selectors.
+- Render/eval path: string selector components write directly to the active
+  writer and survive selector-container eval/resolve unchanged. Ruleset
+  composition now treats string selector pieces as selector components when
+  composing parent/child complex selectors, and string selector tokens
+  contribute to selector keysets. There is no Chevrotain deferred-field parsing
+  in this path.
+- Helper/API surface: `scanCheapSelectorComponents(...)` moved to
+  `@jesscss/parser` so CSS and Less share the string-token scanner without
+  Less importing CSS parser internals. The helper returns plain string tokens;
+  language AST builders decide whether to keep a whole selector string, build a
+  selector container with string components, or reject the header for a later
+  slice.
+- Metadata mutations: no new parent/source metadata mutation was added. String
+  selector pieces have no parent/source/visibility flags; visibility helpers
+  skip them.
+- Flagged materialized arrays/objects: the verifier flags widened array types
+  and evaluation arrays in existing selector methods plus widened ruleset
+  composition arrays. Those arrays already existed for selector eval/resolve and
+  parent/child selector composition; this pass changes their element type so
+  they can carry strings and avoid allocating leaf nodes in parser output.
+- Evidence: CSS and Less AST proof tests failed first on eager
+  `BasicSelector`/`Combinator` leaves, then passed after the change. A reviewer
+  found partial string-awareness in selector keysets and ruleset composition;
+  focused core tests now cover string-backed compound/complex keysets and
+  string-backed complex selector composition. Parser scanner tests,
+  CSS AST/corpus/local fixture tests, Less AST proof, Less source-scanner
+  corpus, and parser/core/css-parser/less-parser builds passed. No speed claim
+  is made without benchmark/profile evidence.
+
+- Latest pass: `Rules.value` payload deletion.
+- Verdict: accepted as an AST ownership correction and hot-path source-of-truth
+  cleanup, not a measured performance pass. `Rules` now owns only `.rules`;
+  real value nodes keep `.value`.
+- New traversal: `Rules.clone(...)` uses one direct indexed loop over
+  `this.rules` when cloning children. Generic descendant checks in import and
+  serialization helpers now walk `static childKeys` instead of assuming every
+  node has a `.value` payload. The at-rule layer check keeps its existing
+  frame-child scan but reads `frame.rules.rules` directly.
+- New node/materialization: no new node family was added. `Rules` calls
+  `super(NO_VALUE, ...)` and processes its constructor body directly into
+  `.rules`, removing the duplicate base payload. `Rules.clone(...)` still
+  creates a cloned body only for explicit clone callers.
+- Render/eval path: no render-only materialization was added. Scope-frame prep
+  now carries the already-read rules array through declaration and assignment
+  indexing so it does not reread the child surface just to prepare binding
+  state.
+- Helper/API surface: no compatibility alias was added. Test traps moved from
+  `.value` to `.rules` to keep proving that prepared lookup paths do not
+  rediscover child bodies. The flagged `throw new Error(...)` lines are those
+  test traps, not production miss control flow. The flagged `hasOwnProperty`
+  read is the constructor contract assertion proving `Rules` no longer owns a
+  `.value` payload.
+- Metadata mutations: no new parent/source mutation path was added. The
+  source-node comparisons flagged in the diff are the existing at-rule layer
+  placement identity check after changing the body read from `.value` to
+  `.rules`.
+- Flagged array helpers: the `.map(...)` calls are test expectations over
+  output/source placement arrays. The production `Array.some(...)` in
+  `containsNodeType(...)` is a cold serialization merge check over an already
+  provided child array; it replaces an invalid generic `.value` descent rather
+  than adding a new render/eval walk.
+- Evidence: `@jesscss/css-parser` build, `@jesscss/core` build, focused
+  reference/declaration tests, and the touched core test slice passed. The
+  touched slice covered `10` files, `957` passing tests, and `6` skipped. No
+  speed claim is made without benchmark/profile evidence.
+
+- Latest pass: shared cheap at-rule prelude helper and CSS block at-rules.
+- Verdict: accepted as a CSS/Less parser-shape DRY pass, not a measured
+  performance pass. The cheap prelude tokenizer now lives in `@jesscss/css-parser`
+  and is reused by Less; CSS can parse cheap block at-rules into real `AtRule`
+  nodes instead of warning on every block at-rule.
+- New traversal: CSS parser root/body walking now uses one recursive
+  `parseCssNodes(...)` helper, so block at-rule bodies reuse the same statement,
+  qualified-rule, and diagnostic flow as the root. This adds recursion only when
+  a positively parsed at-rule block owns a body. The prelude helper keeps the
+  same bounded linear scan over the sliced prelude text.
+- New node/materialization: no new node families were added. CSS block at-rules
+  create existing `AtRule` nodes; bare preludes remain strings; simple balanced
+  preludes create existing `Paren(Any(...))` or `QueryCondition` nodes. Less
+  deletes its duplicate prelude-tokenizer implementation and imports the shared
+  helper.
+- Render/eval path: no render/eval path was changed. Parsed CSS/Less nodes use
+  existing core serialization.
+- Helper/API surface: `parseCheapAtRulePrelude(...)` is now exported from
+  `@jesscss/css-parser` because Less already depends on css-parser's cheap
+  selector helper and both languages share this CSS-family prelude subset. The
+  helper remains intentionally narrow and returns `undefined` for commas,
+  interpolation, nested conditions, or general-enclosed syntax.
+- Metadata mutations: none beyond normal constructor adoption for existing core
+  nodes.
+- Evidence: focused CSS AST/corpus tests, focused Less AST/source-scanner tests,
+  ESLint, and package builds passed. No speed claim is made.
+
+- Latest pass: scanner-first simple at-rule prelude tokenization.
+- Verdict: accepted as a parser-shape correctness pass, not a measured
+  performance pass. The Less AST proof now refuses to keep structured media
+  prelude text as one raw string when it has balanced parenthesized structure.
+- New traversal: `parseAtRulePrelude(...)` adds one bounded linear scan over the
+  already-sliced prelude text. It is only reached after source scanning has
+  positively identified an at-rule block; unsupported tokens return a warning
+  instead of falling through to Chevrotain or a raw island.
+- New node/materialization: bare atom preludes such as `screen` remain strings.
+  A balanced parenthesized atom becomes existing `Paren(Any(...))`; a simple
+  top-level sequence such as `screen and (min-width: 1px)` becomes existing
+  `QueryCondition` with scalar children. No new node family or structural facade
+  was added.
+- Render/eval path: no render/eval path was changed. The created nodes are the
+  existing core query surface and serialize through current AtRule rendering.
+- Helper/API surface: the helper is file-local to `packages/less-parser/src/ast.ts`.
+  It accepts only the narrow grammar proven by tests: bare atoms, balanced
+  top-level paren atoms, and whitespace-separated top-level sequences. Commas,
+  nested conditions, interpolation, and general-enclosed syntax remain
+  unsupported for now.
+- Metadata mutations: none beyond normal constructor adoption for the existing
+  core nodes.
+- Evidence: focused `@jesscss/less-parser` AST/source-scanner tests and ESLint
+  passed. No speed claim is made.
+
+- Latest pass: scanner-first string-backed block `AtRule` headers.
+- Verdict: accepted as a parser-shape reduction, not a measured performance
+  pass. The scanner-first Less proof can now construct real `AtRule` nodes with
+  string `name`/`prelude` fields for cheap block at-rules such as
+  `@media screen { ... }`, avoiding `Any` wrapper nodes for header text.
+- New traversal: no new tree traversal was added. The Less parser reuses the
+  existing recursive `parseLessNodes(...)` body path when a block header is
+  positively classified as an at-rule.
+- New node/materialization: one existing core node shape was widened. No new
+  node family, structural facade, or Chevrotain fallback was added. Parser
+  object creation maps directly to existing `AtRule` plus recursive `Rules`.
+- Render/eval path: string at-rule headers stringify directly and stay static
+  during eval. Node-backed headers still use the previous trivia-aware render
+  and lifted-context eval paths. The verifier flags an `OutputWriter`
+  allocation because the old Node-header render capture was moved behind the
+  widened file-local helper; the new string-header path returns before that
+  allocation.
+- Helper/API surface: one file-local render helper was widened to accept string
+  fields; `AtRule.clone(...)` now validates name/prelude/rules fields
+  explicitly instead of using a generic cast helper. The clone `TypeError`
+  guards are cold-path validation for caller-provided `cloneFn` output; they are
+  not lookup/render/eval miss control flow.
+- Metadata mutations: existing `inherit(...)` and `adopt(...)` calls remain.
+  `adopt(...)` is now guarded so string preludes are not treated as child nodes;
+  `inherit(...)` remains the existing AtRule clone/derive metadata path, not a
+  new parser-owned wrapper.
+- Test-only helpers: the string-array `join('\n')` flagged by the verifier is
+  fixture formatting in the AtRule unit test, not production allocation.
+- Evidence: focused `@jesscss/core` `at-rule.test.ts`, `@jesscss/core` build,
+  focused `@jesscss/less-parser` AST/source-scanner tests, `@jesscss/less-parser`
+  build, package export/public package checks, and
+  `verify:aggressive-cutting-review` completed with the above danger-token
+  prosecution. No speed claim is made.
+
+- Latest pass: base `Node.value` contract cut for direct-field nodes.
+- Verdict: accepted as an AST ownership correction and prerequisite cleanup for
+  parser AST-shape work, not a measured performance pass. Base `Node` no longer
+  declares `.value` as a universal field; direct-field containers such as
+  `Ruleset`, `AtRule`, and `Mixin` do not get a duplicate payload field.
+- New traversal: base `children()`, `_visitEntries`, `_visitValues`, and
+  `detachTrivia(true)` now read `static childKeys` and direct fields instead of
+  assuming every node has a constructor payload. This keeps old generator
+  surfaces working for visitor/extend callsites, but generators remain an audit
+  target rather than the model for new parser work.
+- New node/materialization: no new node family was added. Comment stripping in
+  placement cloning now strips `Comment` before reusable-leaf sharing, and
+  selector header visibility uses scoped flag restoration instead of cloning a
+  source-free basic selector.
+- Render/eval path: no render-only node construction was added. Explicit
+  callable reference fallbacks now return callable signature text instead of
+  resolving to a `MixinCollection` that renders empty in declaration value
+  position.
+- Helper/API surface: no parser-facing helper was added. Temporary constructor
+  sentinel use for migrated direct-field nodes is debt, not target
+  architecture; parser docs now say node fields plus `childKeys` are the
+  source of truth.
+- Metadata mutations: the selector visibility restoration list is scoped to the
+  header render try/finally and restores flags before returning. This is a
+  smaller render-local mutation than cloning selector leaves for visibility.
+- Evidence: `pnpm --filter @jesscss/core build` passed. Focused
+  `ruleset.test.ts`, `at-rule.test.ts`, and `import-style.test.ts` passed:
+  `3` files, `229` tests, `1` skipped. No speed claim is made without
+  benchmark/profile evidence.
+
+- Latest pass: node-owned clone/copy source-of-truth cut.
+- Verdict: accepted as a machinery deletion and AST ownership correction, not a
+  measured performance pass. External constructor-reconstruction helpers are not
+  the target model. A node with direct semantic fields owns its own `clone()`;
+  `cloneForPlacement(...)` is only a small placement-policy wrapper around
+  node-owned cloning.
+- New traversal: no production tree walk was added for this pass. The retained
+  import-placement descendant source lookup already existed; the new source-free
+  leaf branch exits before that projection when placement/source identity is the
+  same object.
+- Review-flagged allocations: `packages/core/src/tree/util/cloning.ts`,
+  `Node.copy()`, and the exported reusable-leaf copy helper surface were
+  removed. The follow-up review flagged `Ruleset`, `Mixin`, and `AtRule` as
+  still relying on inherited constructor-payload cloning despite direct fields;
+  those nodes now override `clone()` directly.
+- New node/materialization: no new wrapper node family was added. Placement
+  cloning still creates semantic placement state where an import/callable output
+  surface must own parents/source metadata; source-free scalar leaves are reused
+  directly instead of cloned.
+- Render path: no render-only node creation was added. The focused tests assert
+  several render/eval paths avoid `Rules.clone()` or source-backed child copies.
+- Helper/API surface: the broad copy helper module is gone. Remaining copy-like
+  names are node methods (`clone`, `cloneForPlacement`) or narrow semantic
+  helpers such as callable/import placement policy. Any object/direct-field node
+  added later must override `clone()` rather than teaching an external helper
+  how to reconstruct it.
+- Metadata mutations: the pass removed `Reflect.construct` reconstruction from
+  ordinary clone/derive paths and removed pointless runtime `instanceof` checks
+  after constructors whose result type is already known. `defineType(...)` still
+  uses `Reflect.construct` as a factory boundary and should be audited
+  separately before changing that public helper.
+- Evidence: focused core clone/declaration/rules/import/reference tests passed:
+  `5` files, `466` tests, `6` skipped. Sub-agent review found the remaining
+  direct-field clone overrides and stale docs; this block records the corrected
+  rule. No speed claim is made without a benchmark/profile pair.
+
+- Latest pass: composed selector ownership and source-trivia separator cleanup.
+- Verdict: accepted as a correctness fix found while proving the direct-field
+  cleanup against CSS parser serialization, not a measured performance pass.
+  Generated collapsed selectors must not adopt live-owned selector leaves from
+  source rulesets; they now build from placement-owned selector components.
+- New traversal: no new tree walk was added. The selector composition helper
+  maps the already-known parent/child selector component arrays once when a
+  generated composed selector is required.
+- Review-flagged allocations: the new placement copies replace an invalid
+  live-node adoption that could create parent/source ownership cycles and hang
+  collapsed rendering. They are semantic placement state for a generated
+  selector, not render-only materialization for string output.
+- Render path: `Sequence` no longer synthesizes an extra default space after it
+  already emitted authored comment trivia between adjacent source nodes. The
+  emitted trivia run owns the separator exactly as parsed.
+- Helper/API surface: one private selector-component ownership helper was added
+  inside `Ruleset`; no public API or parser-facing helper was added.
+- Metadata mutations: `Rules._emitRulesBody(...)` now reads `this.rules`
+  instead of the legacy constructor payload. Generated composed selectors own
+  their cloned components instead of stealing parent pointers from canonical
+  source selectors.
+- Evidence: DebugMCP was attempted for the hanging CSS parser test, then a
+  tiny built-runtime reproduction isolated `Ruleset._prependParent(a, b)` as
+  the hang. After the fix, the reproduction returned `a b` and collapsed CSS
+  output. Focused `@jesscss/core` ruleset/list/sequence and wider
+  ruleset/at-rule/import/call/list tests passed; `@jesscss/css-parser`
+  `ast-proof.test.ts` and `ast-serialize.test.ts` passed after rebuilding
+  `@jesscss/parser` and `@jesscss/core`.
+
+- Latest pass: string-backed CSS AST proof path.
+- Verdict: accepted as a narrow parser-shape proof, not a runtime hydration or
+  performance pass. Existing `Declaration` and `Ruleset` nodes now accept string
+  fields where strings serialize correctly, and `@jesscss/css-parser` exposes a
+  deliberately narrow `parseFlatCssDeclarationStylesheet(...)` proof that
+  returns a core `Stylesheet` directly. The slice adds no `Progressive*`,
+  `Structural*`, `RawIsland*`, Chevrotain, side-map, or provider-plan machinery.
+- New traversal: the proof parser adds straight source scans for flat qualified
+  rules and declaration statements. These are parser-local scans, not eval/render
+  walks, and they replace a heavier structural/island proof vehicle for this
+  tiny subset.
+- Review-flagged allocations: the per-declaration intermediate value object was
+  cut after review. The remaining production node construction is the actual
+  AST output: `Stylesheet`, `Ruleset`, `Rules`, and `Declaration` nodes. The
+  `decl(...)` factory now returns `new Declaration(...)` directly instead of
+  first converting string names into `Any` nodes.
+- New node/materialization: only named AST ownership boundaries are created.
+  String-backed selector/declaration fields are not materialized into selector,
+  value, or flag nodes during the proof parse.
+- Render path: syntax serialization can write string-backed fields directly.
+  Eval/render paths that would need typed selector/value semantics now throw a
+  local hydration-required `TypeError` instead of crashing later or silently
+  pretending strings are evaluated nodes.
+- Helper/API surface: one narrow exported proof function,
+  `parseFlatCssDeclarationStylesheet(...)`, is added. It is intentionally not a
+  full `parseCssStylesheet(...)` replacement and the docs were updated to avoid
+  overstating its scope.
+- Metadata mutations: no parent/source/frozen/location/line-column/span metadata
+  was added for string fields. Existing node adoption ignores primitive field
+  values.
+- Evidence: sub-agent review flagged eval/render safety, over-broad selector
+  metadata widening, parser naming scope, and a small allocation. The slice was
+  revised to fence string-backed eval, cut metadata widening, rename the proof,
+  and remove the intermediate object. Focused `stylesheet.test.ts`,
+  `css-parser` `ast-proof.test.ts`, `@jesscss/core` build,
+  `@jesscss/css-parser` build, `verify:package-exports`,
+  `verify:public-packages`, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed.
+
+- Latest pass: slim `Stylesheet extends Rules` root.
+- Verdict: accepted as an AST-shape prerequisite for scanner-first compiler
+  parse results, not a performance pass. The node adds no document services,
+  side tables, diagnostics, source storage, or island/probe machinery; it is
+  only a distinct root type over the existing `Rules` body contract.
+- New traversal: no new walk is added. The existing `rulesParent` ancestor climb
+  keeps its original loop shape and now stops when it reaches any rules-like
+  node, so `Stylesheet` is treated as a valid `Rules` ancestor instead of being
+  skipped by a literal `type === 'Rules'` check.
+- Review-flagged allocations: none added.
+- New node/materialization: one public `Stylesheet` node exists only when a
+  parser intentionally constructs a stylesheet root; nested containers remain
+  ordinary `Rules` / `Ruleset` / `AtRule` surfaces.
+- Render path: unchanged. `Stylesheet` inherits direct `Rules` serialization and
+  the focused test proves it renders the existing body shape.
+- Helper/API surface: one `stylesheet(...)` factory/export is added so parser
+  packages can return the documented core root node. No `N.Stylesheet` bit or
+  parallel `StructuralDocument` API is added.
+- Metadata mutations: no provenance, parent, frozen, location, line/column, or
+  packed-span metadata is added. Parent/source-root behavior only recognizes the
+  rules-like subclass already in the tree.
+- Evidence: focused `stylesheet.test.ts`, full `rules.test.ts` /
+  `node-mutation.test.ts` slice, `@jesscss/core` build,
+  `verify:package-exports`, `verify:public-packages`, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed after sub-agent review flagged the
+  missing `rulesParent` contract and the test was extended.
+
+- Latest pass: collapsed render frame rollback after reference-import lookup cuts.
+- Verdict: accepted as a correctness fix for the binding/lookup branch fallout,
+  not a performance pass. The seven binding/lookup commits are already on
+  `feature/less-v5-alpha-readiness`; focused proof exposed that
+  `1e840ab9e` left a render regression where a reference-import `Rules`
+  wrapper could open or replace a collapsed frame, emit no visible CSS, and
+  leave the replacement frame behind for the next declaration. The serializer
+  now restores the existing frame/header arrays from snapshots when a child
+  container or child `Rules` wrapper emits nothing, instead of restoring only
+  array length. No speed claim.
+- New traversal: none. The pass does not add a node walk or lookup path.
+- Review-flagged allocations: two rollback snapshots use the existing
+  `saveArrayState(...)` helper only around paths that may roll back after
+  `ensureRenderedFrames(...)`; they replace incorrect length-only rollback
+  state, not normal successful emission.
+- New node/materialization: none.
+- Render path: successful rendering still writes strings directly. The added
+  snapshots are used only on no-output rollback paths after a child render
+  touched frame state.
+- Helper/API surface: none added. A parent-aware composed-selector cache detour
+  was rejected and removed because the failure reproduced without it.
+- Metadata mutations: frame/header array restoration is the intended render
+  state rollback for hidden/reference children that emit no CSS. No source,
+  parent, frozen, or node ownership metadata changed.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "repeated reference/multiple imports keep import-site-local parent chains"`,
+  full `import-style.test.ts`, `nesting-collapse.test.ts`,
+  `ruleset.test.ts -t "collapse|composed|selector"`, the targeted
+  `reference.test.ts` lookup slice, full `mixin.test.ts`, `@jesscss/core`
+  build, `git diff --check`, and `pnpm run verify:aggressive-cutting-review`
+  passed. The first full mixin attempt failed because `@jesscss/core build`
+  was run concurrently and removed `lib` while Vitest imported through
+  `css-parser/lib`; rerunning after the build passed `199/199`.
+
+- Latest pass: policy-gated namespace-start broad fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. `local: true` and
+  `hasTarget: true` no longer disable frame-owned callable namespace-start
+  lookup. The narrow uncovered child helper already applies local and
+  target-restricted child-surface gates, and policy-skipped children now count
+  as modeled misses so a covered empty namespace start does not reopen the
+  broad ruleset/mixin crawl. The broad start fallback remains only for
+  no-frame callers. No speed claim.
+- New traversal: none. The pass removes local/target frame bypasses and
+  prevents covered empty namespace starts from entering the ruleset fallback.
+- Review-flagged allocations: none added.
+- New node/materialization: none.
+- Render path: unchanged. This pass only changes callable namespace lookup
+  routing.
+- Helper/API surface: none added.
 - Metadata mutations: none.
-- Evidence: `pnpm --filter @jesscss/core build`; `pnpm run
-  verify:package-exports`; `pnpm --filter @jesscss/jess-parser test --
-  test/island-providers.test.ts`; `pnpm --filter @jesscss/jess-parser test`;
-  `pnpm --filter @jesscss/jess-parser build`; `pnpm --filter jess test -- --run
-  test/scanner-first-e2e.test.ts`; `JESS_SCANNER_FIRST_CORPUS_DETAILS=1 pnpm
-  --filter jess test -- --run test/scanner-first-less-corpus.test.ts -t
-  "matches current compiler output"`; and `git diff --check` pass.
+- Routine error control: production none. Tests add `try/finally` only to
+  restore the temporary `findMixinsFast` spy.
+- Allocation changes: no new production arrays or objects; tests add spy
+  arrays only.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "local namespace-start|restricted namespace-start|targeted namespace-start|selector-list prefix|static miss skips Rules.findMixinsFast"`
+  passed, and full
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
+  passed (`199/199`).
+
+- Previous pass: frame-owned array-path mixin namespace broad-start fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. When `findMixin(array)`
+  has a current `ScopeFrame`, namespace mixin starts no longer reopen
+  `this.findMixinsFast(keys[0]!, ...)` as a broad start-key crawl after frame
+  lookup and the narrow uncovered child/reference-import helpers fail to
+  produce a modeled result. At the time of that pass, the broad fallback
+  remained for no-frame, targeted, or local callers; the latest pass above
+  removes the local branch. No speed claim.
+
+- Latest pass: frame-owned exact ruleset namespace direct-bucket fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. `findRulesetNamespacePathFast(...)`
+  no longer calls `scope.getCallableEntriesForKey(segment)` as an exact
+  remainder fallback when a `ScopeFrame` exists. Frame-owned exact ruleset
+  namespace matches now come from the prepared callable frame and visible frame
+  collectors; the direct bucket fallback remains only for no-frame callers. No
+  speed claim.
+- New traversal: none. The pass deletes one direct cache/bucket read on modeled
+  frame paths and leaves the no-frame fallback unchanged.
+- Review-flagged allocations: none added.
+- New node/materialization: none.
+- Render path: unchanged. Focused render tests prove output still reaches
+  imported ruleset namespace bodies without re-entering the direct bucket
+  producer.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: no new arrays or objects.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "namespaced reference-imported ruleset array-path lookups"`
+  passed with a spy proving direct bucket reads stay empty for the frame-owned
+  `#Namespace` exact path. Focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "namespaced reference-imported ruleset array-path|namespaced selector-list array-path|callable child-surface namespace misses"`
+  and
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "ruleset namespace path lookup|compound-prefix ruleset lookup|definite namespace misses avoid legacy remainder-array fallback|namespace fast path|reference-import compound prefix|reference-import selector-list prefix|mixin-ruleset calls with args"`
+  passed. The full `import-style.test.ts` file still has an existing failure in
+  `import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains`;
+  that failure reproduces without this slice and remains a separate binding /
+  import placement blocker.
+
+- Latest pass: array-path callable namespace union dedupe deletion.
+- Verdict: accepted as a narrow post-result dedupe cut. `findMixin(array)` can
+  legitimately union compound-prefix ruleset results with callable namespace
+  results, but covered producers must be disjoint by construction. This pass
+  removes the identity scan that treated duplicates as an expected runtime
+  outcome. No speed claim.
+- New traversal: removed the nested identity scan over the existing compound
+  union. The remaining loop only appends already-produced callable namespace
+  results when both producers are semantically active.
+- Review-flagged allocations: no new allocation family. The existing copy-on-
+  append remains when compound-prefix entries are borrowed; this preserves the
+  borrowed array and is not a dedupe structure.
+- New node/materialization: none.
+- Render path: unchanged. The tests exercise parser/render behavior only to
+  prove Less lookup semantics still render the same output.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: deleted duplicate-check branching and one nested scan; no
+  new arrays beyond the pre-existing copy-on-append path.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "ruleset namespace path preserves callable namespace unions|real Less stable namespaces avoid direct-crawl|type=mixin ignores compound-prefix ruleset ambiguity|compound-prefix ruleset lookup uses callable buckets|ruleset namespace path lookup uses callable buckets|compound-prefix ruleset lookup reuses path offsets|mixin-ruleset calls with args"`
+  passed. Full `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`,
+  `pnpm --filter @jesscss/core build`, `git diff --check`, and
+  `pnpm run verify:aggressive-cutting-review` also passed before committing.
+
+- Latest pass: callable ruleset namespace lookup fallback deletion.
+- Verdict: accepted as a bounded registryless lookup cut, not a completion of
+  the namespace lane. Namespaced mixin-ruleset calls with args still use
+  rulesets as namespace containers, but terminal parameterized calls now dispatch
+  through `findMixin(..., 'Mixin', ...)` and visible exact/prefix ruleset lookup
+  no longer scans `scope.rules` after callable bucket / child-entry facts have
+  the modeled surface. The generic callable-result dedupe helper was deleted;
+  duplicate production must be prevented at the modeled source. No speed claim.
+- New traversal: deleted the local visible `scope.rules` /
+  `sourceRulesOf(scope)` scans from `findVisibleExactCallableRulesetPath(...)`
+  and `findVisibleCallableRulesetPrefixMatches(...)`. Added exact ruleset
+  frame/child-entry collectors so imported compound exact paths such as
+  `#imported .dark .button` are represented by callable bucket facts instead
+  of reopening the visible exact crawl. Prefix and exact namespace facts now
+  come from frame buckets plus direct child entries for this path; remaining
+  frame/fallback walks still need further binding-lane scrutiny.
+- Review-flagged allocations: runtime result-dedupe array copying was removed;
+  the implementation-coupled terminal-hop capture test was deleted in favor of
+  adjacent behavior tests.
+- New node/materialization: none. No new AST nodes, wrapper `Rules`, or copied
+  callable arrays were introduced for runtime lookup.
+- Render path: unchanged. This pass only changes callable lookup routing for
+  arg-bearing namespace terminals and does not add a render-time boundary.
+- Helper/API surface: private bucket/frame collectors remain for modeled
+  ruleset prefix and exact namespace paths
+  (`collectCallableBucketRulesetPrefixMatches(...)`,
+  `collectCallableRulesetPrefixMatchesFromFrame(...)`,
+  `collectCallableRulesetExactMatchesFromFrame(...)`, and their visible
+  frame-chain/child-entry callers). They replace the deleted same-surface
+  rules scans and prevent a duplicate producer for the covered path. The
+  generic `dedupeCallableEntries(...)` / `sameCallableEntry(...)` helpers were
+  removed.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: deleted runtime result dedupe array copying; no test-only
+  capture array remains in this pass.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "mixin-ruleset calls with args still use rulesets as namespace containers|mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only|mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution|mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets|mixin-ruleset calls with args reject imported exact ruleset terminals after namespace resolution"`
+  passed, focused namespace/ruleset coverage passed after deleting exact/prefix
+  visible scans, full `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
+  passed (`195/195`), `pnpm --filter @jesscss/core build` passed, and
+  `pnpm run verify:aggressive-cutting-review` passed with the remaining
+  danger-token loops/arrays prosecuted in this block.
 
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
@@ -2626,44 +2495,12 @@ with `--no-verify` after the explicit gates pass.
   full-baseline blocker is pre-existing `Call` serialization/render fallout
   that reproduces with the latest diff reversed on clean `53ffb2baf`. No
   lookup runtime change. No speed claim.
-- Architecture surface: this closeout is now amended by the scanner-first
-  branch audit of `Rules` cumulative lookup/index ownership. The review surface
-  is the architecture process plus `Rules` as a canonical child container that
-  has accumulated lookup, eval, render, registration, and merge responsibilities.
-- Separation/duplication: `BINDING-LOOKUP-REMAINING.md` item 87 records that
-  lookup utilities did not by themselves establish ownership separation.
-  Future work must distinguish state/cache ownership from helper location and
-  must address near-duplicate callable traversal methods before adding more
-  narrow lookup cases.
-- Cumulative node weight: `Rules` currently carries persistent maps/caches for
-  functions, variables, callables, direct declarations, direct declaration
-  matches, and per-name versions while `ScopeFrame` carries overlapping binding
-  and callable/declaration bucket state. This cumulative shape is not accepted
-  as complete architecture; it is reopened as a binding audit item.
 - New traversal: none.
 - Review-flagged allocations: none in this docs-only pass.
 - New node/materialization: none in this docs-only pass.
 - Render path: no render/stringification path changed.
 - Helper/API surface: none in this docs-only pass.
 - Metadata mutations: none in this docs-only pass.
-- Review-flagged diff tokens: docs and verifier edits add required
-  self-prosecution labels and tracker prose for the `Rules` cumulative
-  ownership audit. The broader scanner-first branch diff also includes
-  runtime danger categories that must not be hand-waved:
-  [loop/traversal] selector splitting/classification and progressive selector
-  iteration loops; [array helper] cold selector value mapping and source-slice
-  checks; [node construction] raw declaration construction and cold semantic
-  selector materialization/invariant test assertions; [inherit/adopt/frozen]
-  selector ownership transfer at semantic boundaries; [parent/source mutation]
-  tree-context reads for selector materialization; [generic defensive read]
-  the documented existing `Rules` render helper `Reflect.get(...)` smell;
-  [side map/set] selector duplicate tracking and the `Rules` audit map/set
-  evidence; [routine error control] invariant-only test/runtime guards; and
-  [materialized array/object] raw declaration input shapes, selector part
-  arrays, and helper arrays used by scanner-first structural proofs. These are
-  not accepted as final architecture by default; scanner-first proof code must
-  either remove them, keep them cold/public, or document the ownership boundary
-  before commit.
 - Allocation changes: none in this docs-only pass.
 - Evidence: `BINDING-LOOKUP-REMAINING.md` has no unchecked binding rows.
   Focused rerun of representative `call.test.ts` failures still shows the

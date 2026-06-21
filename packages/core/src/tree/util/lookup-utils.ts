@@ -7,7 +7,7 @@ import { Nil } from '../nil.js';
 import { Node } from '../node.js';
 import type { Context } from '../../context.js';
 import {
-  isRawCompoundSelectorComponent,
+  isStringCompoundSelectorComponent,
   type CompoundSelectorComponent
 } from '../selector-compound.js';
 import {
@@ -56,7 +56,7 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
     if (!node || isNode(node, N.Nil)) {
       return;
     }
-    if (isRawCompoundSelectorComponent(node)) {
+    if (isStringCompoundSelectorComponent(node)) {
       addKey(node);
       return;
     }

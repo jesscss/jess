@@ -81,6 +81,19 @@ labels above come from a side table. The target CSS/Less path may instead store
 string values directly on existing AST fields, with optional packed spans on the
 owning node when offsets or hydration state are needed.
 
+Packed span terminology:
+
+- `node.fieldSpans` is for direct fields, keyed by that node's static `childKeys`
+  order as `[start, end, flags]` triples.
+- array-backed fields use field-specific segment tables, such as
+  `node.valueSpans`, keyed by array index inside that field.
+
+That split keeps `Declaration.value` as a plain string, node, or array without
+making one packed table mean both "the whole value field" and "each value item."
+It also means simple ordered declaration values can eventually be represented as
+plain arrays plus segment spans instead of wrapper nodes whose only purpose is
+ordering.
+
 If a profile marks `.foo` as an unparsed selector field or `red` as an unparsed
 declaration-value field, the current prototype can store those spans separately
 and request a typed value later. That current API is still named around "islands";

@@ -753,7 +753,7 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       const referencedTree = createReferencedZTree();
       localContext.sourceTrees.set(referencedPath, referencedTree);
-      const firstRuleset = referencedTree.value[0];
+      const firstRuleset = referencedTree.rules[0];
       expect(firstRuleset).toBeInstanceOf(Ruleset);
       if (!(firstRuleset instanceof Ruleset)) {
         throw new Error('Expected first referenced child to be a ruleset');

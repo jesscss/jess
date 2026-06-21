@@ -75,6 +75,60 @@ describe('AtRule', () => {
     context = new Context();
   });
 
+  it('renders string-backed block headers without scalar wrapper nodes', () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: rules([
+        ruleset({
+          selector: sel([el('.inside')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+
+    expect(node.name).toBe('@media');
+    expect(node.prelude).toBe('screen');
+    expect(node.toTrimmedString()).toBe([
+      '@media screen {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(node)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude: 'screen'
+    `);
+  });
+
+  it('evaluates string-backed block headers as static text', async () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: rules([
+        ruleset({
+          selector: sel([el('.inside')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+    const evaluated = await node.eval(context);
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (evaluated instanceof AtRule) {
+      expect(evaluated.name).toBe('@media');
+      expect(evaluated.prelude).toBe('screen');
+      expect(evaluated.toString({ context })).toContain('@media screen');
+    }
+  });
+
   it('keeps static leaf at-rules canonical in registration prep', async () => {
     const node = new AtRuleStatement({
       name: any('@namespace', { role: 'atkeyword' }),
@@ -1842,6 +1896,30 @@ describe('AtRule', () => {
     expect(writer.previews).toBe(0);
     expect(writer.reads).toBe(0);
     expect(writer.restores).toBe(0);
+  });
+
+  it('normalizes leading prelude whitespace when writing direct leaf at-rules', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
+    });
+    node.getHeaderString = () => {
+      throw new Error('direct leaf at-rule writeSyntax should not use header string transport');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBe('@namespace foo url(http://www.example.com);');
+  });
+
+  it('normalizes leading prelude whitespace when rendering evaluated leaf at-rules', () => {
+    const node = atrule({
+      name: any('@impor', { role: 'atkeyword' }),
+      prelude: quoted(any('impor-typo-dont-parse-as-@import.less'))
+    });
+    node.removeFlag(F_STATIC);
+
+    expect(node.render(context)).toBe('@impor "impor-typo-dont-parse-as-@import.less";');
   });
 
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {

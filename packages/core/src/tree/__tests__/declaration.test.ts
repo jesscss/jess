@@ -72,6 +72,19 @@ describe('Declaration', () => {
     expect(rule.toTrimmedString()).toBe('color: #eee');
   });
 
+  it('uses direct fields as the declaration source of truth', () => {
+    const name = any('color');
+    const value = any('red');
+    const important = any('!important', { role: 'flag' });
+    const node = decl({ name, value, important });
+
+    expect(node.name).toBe(name);
+    expect(node.value).toBe(value);
+    expect(node.important).toBe(important);
+    expect(node.value).not.toHaveProperty('name');
+    expect([...node.children()]).toEqual([name, value, important]);
+  });
+
   it('does not allocate options when serializing a default declaration', () => {
     const rule = decl({ name: 'color', value: color('#eee') });
 
@@ -288,17 +301,17 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalNameCopy = sourceName.copy;
-    const originalValueCopy = sourceValue.copy;
+    const originalNameCopy = sourceName.cloneForPlacement;
+    const originalValueCopy = sourceValue.cloneForPlacement;
     let sourcePartCopies = 0;
-    sourceName.copy = function copyNameForCounting(
+    sourceName.cloneForPlacement = function copyNameForCounting(
       this: typeof sourceName,
       ...args: Parameters<typeof originalNameCopy>
     ): ReturnType<typeof originalNameCopy> {
       sourcePartCopies++;
       return originalNameCopy.apply(this, args);
     };
-    sourceValue.copy = function copyValueForCounting(
+    sourceValue.cloneForPlacement = function copyValueForCounting(
       this: typeof sourceValue,
       ...args: Parameters<typeof originalValueCopy>
     ): ReturnType<typeof originalValueCopy> {
@@ -313,8 +326,8 @@ describe('Declaration', () => {
       expect(sourceValue.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
-      sourceName.copy = originalNameCopy;
-      sourceValue.copy = originalValueCopy;
+      sourceName.cloneForPlacement = originalNameCopy;
+      sourceValue.cloneForPlacement = originalValueCopy;
     }
   });
 
@@ -333,7 +346,7 @@ describe('Declaration', () => {
     ];
 
     for (const [assign, expected] of cases) {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
       const prior = makePrior(assign);
       const root = rules([prior]);
@@ -346,7 +359,7 @@ describe('Declaration', () => {
         name: any('background-color'),
         value
       }, { assign });
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -362,7 +375,7 @@ describe('Declaration', () => {
         expect(value.parent).toBe(sourceDeclaration);
         expect(sourceDeclaration.registrationPrepared).toBe(false);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     }
   });
@@ -702,6 +715,34 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom: red');
   });
 
+  it('preserves leading trivia for interpolated custom property values', async () => {
+    const interpolatedValue = interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
+    });
+    interpolatedValue._location = [50, 1, 51, 72, 1, 73];
+    const value = new Sequence([interpolatedValue]);
+    value._location = interpolatedValue.location;
+    const trivia = createTriviaMap({
+      before: new Map([[interpolatedValue.location[0], [token(' ', 'WS', 49)]]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const node = rules([
+      vardecl({
+        name: any('string_w_comment'),
+        value: any('/* // Not commented out // */')
+      }),
+      customdecl({
+        name: any('--comment'),
+        value
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context, { trivia })).toBeString(`
+      --comment: /* // Not commented out // */;
+    `);
+  });
+
   it('preserves generic calls in custom property values during render(context)', () => {
     const node = decl({
       name: any('--custom'),
@@ -939,9 +980,9 @@ describe('Declaration', () => {
         value: any('foo')
       }, { assign: '+:' })
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let scalarCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(red|foo)$/u.test(String(this.valueOf()))) {
         scalarCopies++;
       }
@@ -956,7 +997,7 @@ describe('Declaration', () => {
       `);
       expect(scalarCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1309,8 +1350,8 @@ describe('Declaration', () => {
       ])
     ]);
 
-    const parent = node.value[0]!;
-    const child = parent.value[2]!;
+    const parent = node.rules[0]!;
+    const child = parent.rules[2]!;
     child.parent = parent;
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -1366,9 +1407,9 @@ describe('Declaration', () => {
         }, { assign: AssignmentType.MergeList })
       ])
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let srcValueCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(one|two|three)$/u.test(String(this.valueOf()))) {
         srcValueCopies++;
       }
@@ -1383,7 +1424,7 @@ describe('Declaration', () => {
       `);
       expect(srcValueCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1451,7 +1492,7 @@ describe('Declaration', () => {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1) !important;
       }
     `);
-    const elevated = node.value[1];
+    const elevated = node.rules[1];
     expect(elevated).toBeInstanceOf(Ruleset);
     if (!(elevated instanceof Ruleset)) {
       throw new TypeError('Expected ruleset output');
@@ -1527,9 +1568,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.Add })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = List.prototype.copy;
+    const originalCopy = List.prototype.cloneForPlacement;
     let sourceListCopies = 0;
-    List.prototype.copy = function copyForCounting(
+    List.prototype.cloneForPlacement = function copyForCounting(
       this: List,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1547,7 +1588,7 @@ describe('Declaration', () => {
       expect(sourceListCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      List.prototype.copy = originalCopy;
+      List.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1564,9 +1605,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.MergeSequence })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     let sourceSequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1583,7 +1624,7 @@ describe('Declaration', () => {
       expect(sourceSequenceCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
     }
   });
 

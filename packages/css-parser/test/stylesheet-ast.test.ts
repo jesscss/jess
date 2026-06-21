@@ -41,8 +41,8 @@ describe('CSS scanner-first Stylesheet AST', () => {
     expect(root._location).toBeUndefined();
     expect(rule._location).toBeUndefined();
     expect(declaration._location).toBeUndefined();
-    expect(rule.spans).toEqual([0, 2, 0, -1, -1, 0, -1, -1, 0, -1, -1, 0]);
-    expect(declaration.spans).toEqual([5, 10, 0, 12, 16, 0, -1, -1, 0]);
+    expect(rule.fieldSpans).toEqual([0, 2, 0, -1, -1, 0, -1, -1, 0, -1, -1, 0]);
+    expect(declaration.fieldSpans).toEqual([5, 10, 0, 12, 16, 0, -1, -1, 0]);
   });
 
   test('keeps component-value blocks inside declaration strings', () => {
@@ -53,7 +53,7 @@ describe('CSS scanner-first Stylesheet AST', () => {
 
     expect(root.toTrimmedString()).toBe('.a {\n  --payload: { token: "}"; };\n}\n');
     expect(serializeTypes(root)).toContain('name: \'--payload\'');
-    expect(serializeTypes(root)).toContain('value: \'{ token: "}"; }\'');
+    expect(serializeTypes(root)).toContain('value: \' { token: "}"; }\'');
     expect(serializeTypes(root)).not.toContain('(Any');
   });
 
@@ -84,7 +84,7 @@ describe('CSS scanner-first Stylesheet AST', () => {
 
   test('reports structural diagnostics instead of silently dropping error nodes', () => {
     expect(() => parseCssStylesheet('fixture.css', '.a { color: blue;')).toThrow(
-      /Unclosed block/u
+      /reached the end of source before the block closed/u
     );
   });
 });

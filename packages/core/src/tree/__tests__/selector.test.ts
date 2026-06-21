@@ -107,6 +107,27 @@ describe('Selector', () => {
       expect(writer.captures).toBe(0);
     });
 
+    it('serializes string-backed selector list members without selector leaves', async () => {
+      const selector = sellist(['h1', sel(['h2', '>', 'a', '>', 'p']), 'h3']);
+      selector.keySetLibrary = context.selectorBits;
+
+      expect(selector.toTrimmedString()).toBe('h1,\nh2 > a > p,\nh3');
+      expect(selector.valueOf()).toBe('h1,h2>a>p,h3');
+      expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['h1', 'h2', 'a', 'p', 'h3']))).toBe(true);
+      expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+      expect(await selector.resolve(context)).toBe(selector);
+    });
+
+    it('filters reference targets without treating string selector list members as nodes', () => {
+      const selector = sellist(['h1']);
+
+      expect(selector.toTrimmedString({
+        referenceMode: true,
+        referenceRenderEnabled: true,
+        referenceFilterTargets: true
+      })).toBe('h1');
+    });
+
     it('serializes comment trivia between selector list members before separators', () => {
       const first = el('#comments');
       first._location = [0, 1, 1, 8, 1, 9];

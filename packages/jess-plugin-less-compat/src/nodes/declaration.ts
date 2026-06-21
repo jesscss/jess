@@ -3,19 +3,6 @@ import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
 import { fromLessNode } from '../transform/from-less.js';
 
-function replaceDeclarationField<K extends 'name' | 'value'>(
-  declaration: Declaration,
-  key: K,
-  value: Declaration[K]
-): void {
-  Object.defineProperty(declaration, key, {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value
-  });
-}
-
 export const transformDeclarationToLess = createFromAdapter<Declaration>({
   fields: {
     name: {
@@ -23,7 +10,7 @@ export const transformDeclarationToLess = createFromAdapter<Declaration>({
       set: (d, value) => {
         const name = value instanceof Any ? value : new Any(String(value), { role: 'property' });
         d.adopt(name);
-        replaceDeclarationField(d, 'name', name);
+        d.name = name;
       }
     },
     value: {
@@ -34,7 +21,7 @@ export const transformDeclarationToLess = createFromAdapter<Declaration>({
       set: (d, value) => {
         const node = value instanceof Node ? value : fromLessNode(value);
         d.adopt(node);
-        replaceDeclarationField(d, 'value', node);
+        d.value = node;
       }
     },
     important: d => d.important || false,
