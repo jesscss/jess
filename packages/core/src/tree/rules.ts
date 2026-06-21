@@ -162,12 +162,12 @@ function isImportAtRule(node: Node): node is AtRule {
     && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
 }
 
-function keysStartWith(keys: readonly string[], path: readonly string[]): boolean {
-  if (keys.length > path.length) {
+function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
+  if (keys.length > path.length - pathStart) {
     return false;
   }
   for (let i = 0; i < keys.length; i++) {
-    if (keys[i] !== path[i]) {
+    if (keys[i] !== path[pathStart + i]) {
       return false;
     }
   }
@@ -216,25 +216,6 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
     i--;
   }
   return out;
-}
-
-function getCallableRulesetKeyPaths(ruleset: Ruleset): string[][] {
-  const selector = ruleset.selector;
-  if (isNode(selector, N.Nil)) {
-    return [];
-  }
-  if (isNode(selector, N.SelectorList)) {
-    const out: string[][] = [];
-    for (let i = 0; i < selector.value.length; i++) {
-      const keys = getOrderedSelectorKeys(selector.value[i]!);
-      if (keys.length > 0) {
-        out.push(keys);
-      }
-    }
-    return out;
-  }
-  const keys = getOrderedSelectorKeys(selector);
-  return keys.length > 0 ? [keys] : [];
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
@@ -773,6 +754,45 @@ function collectCallableBucketRemainderResults(
       continue;
     }
     (results ??= []).push(candidate);
+  }
+  return results;
+}
+
+function collectCallableBucketRulesetPrefixMatches(
+  bucket: CallableLookupEntry[],
+  path: readonly string[],
+  offset: number,
+  scope: Rules
+): CallableRulesetPrefixMatch[] | undefined {
+  const remainingLength = path.length - offset;
+  if (remainingLength <= 1) {
+    return undefined;
+  }
+  let results: CallableRulesetPrefixMatch[] | undefined;
+  for (let i = bucket.length - 1; i >= 0; i--) {
+    const entry = bucket[i]!;
+    if (!isNode(entry.value, N.Ruleset)) {
+      continue;
+    }
+    const consumedLength = entry.match.length + 1;
+    if (consumedLength >= remainingLength) {
+      continue;
+    }
+    let matchesPath = true;
+    for (let matchIndex = 0; matchIndex < entry.match.length; matchIndex++) {
+      if (entry.match[matchIndex] !== path[offset + matchIndex + 1]) {
+        matchesPath = false;
+        break;
+      }
+    }
+    if (!matchesPath) {
+      continue;
+    }
+    (results ??= []).push({
+      ruleset: entry.value,
+      consumed: entry.match.length === 0 ? [path[offset]!] : [path[offset]!, ...entry.match],
+      scope
+    });
   }
   return results;
 }
@@ -1445,24 +1465,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     if (uncoveredChildren) {
       for (let i = 0; i < uncoveredChildren.length; i++) {
-        const direct = uncoveredChildren[i]!.findMixinsFast(key, {
-          hasTarget: options.hasTarget,
-          local: options.local,
+        const direct = uncoveredChildren[i]!.findMixinsFastForUncoveredCallable(
+          key,
+          reason,
           includeRulesets,
-          searchParents: false
-        });
-        if (direct.length > 0) {
-          (frameResults ??= []).push(...direct);
+          options
+        );
+        if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+          if (direct.length > 0) {
+            (frameResults ??= []).push(...direct);
+          }
         }
       }
     } else {
-      const direct = firstUncoveredChild.findMixinsFast(key, {
-        hasTarget: options.hasTarget,
-        local: options.local,
+      const direct = firstUncoveredChild.findMixinsFastForUncoveredCallable(
+        key,
+        reason,
         includeRulesets,
-        searchParents: false
-      });
-      if (direct.length > 0) {
+        options
+      );
+      if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED && direct.length > 0) {
         frameResults = direct;
       }
     }
@@ -1915,11 +1937,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findVisibleExactCallableRulesetPath(
     path: string[],
-    options?: {
-      hasTarget?: boolean;
-      local?: boolean;
-      searchParents?: boolean;
-    }
+    options?: CallableFindOptions,
+    pathStart = 0
   ): Ruleset[] {
     const searchSurface = (
       scope: Rules,
@@ -1934,20 +1953,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      for (let i = scope.rules.length - 1; i >= 0; i--) {
-        const candidate = scope.rules[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keyPaths = getCallableRulesetKeyPaths(candidate);
-        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
-          const keys = keyPaths[keyPathIndex]!;
-          if (
-            keys.length === path.length
-            && keysStartWith(keys, path)
-          ) {
-            results.push(candidate);
-            break;
+      const segment = path[pathStart];
+      if (segment) {
+        const directMatches = collectCallableBucketRemainderResults(
+          scope.getCallableEntriesForKey(segment),
+          true,
+          path,
+          pathStart
+        );
+        if (directMatches) {
+          for (let i = 0; i < directMatches.length; i++) {
+            const match = directMatches[i];
+            if (isNode(match, N.Ruleset)) {
+              results.push(match);
+            }
           }
         }
       }
@@ -2010,11 +2029,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findVisibleCallableRulesetPrefixMatches(
     path: string[],
-    options?: {
-      hasTarget?: boolean;
-      local?: boolean;
-      searchParents?: boolean;
-    }
+    options?: CallableFindOptions,
+    pathStart = 0
   ): CallableRulesetPrefixMatch[] {
     const searchSurface = (
       scope: Rules,
@@ -2029,20 +2045,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         visited.add(scope);
       }
 
-      for (let i = scope.rules.length - 1; i >= 0; i--) {
-        const candidate = scope.rules[i]!;
-        if (!isNode(candidate, N.Ruleset)) {
-          continue;
-        }
-        const keyPaths = getCallableRulesetKeyPaths(candidate);
-        for (let keyPathIndex = 0; keyPathIndex < keyPaths.length; keyPathIndex++) {
-          const keys = keyPaths[keyPathIndex]!;
-          if (
-            keys.length > 0
-            && keys.length < path.length
-            && keysStartWith(keys, path)
-          ) {
-            results.push({ ruleset: candidate, consumed: keys, scope });
+      const segment = path[pathStart];
+      if (segment) {
+        const directPrefixMatches = collectCallableBucketRulesetPrefixMatches(
+          scope.getCallableEntriesForKey(segment),
+          path,
+          pathStart,
+          scope
+        );
+        if (directPrefixMatches) {
+          for (let i = 0; i < directPrefixMatches.length; i++) {
+            results.push(directPrefixMatches[i]!);
           }
         }
       }
@@ -2354,9 +2367,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private collectCallableRulesetPrefixMatchesFromFrame(
     frame: ScopeFrame,
     path: string[],
-    results: CallableRulesetPrefixMatch[]
+    results: CallableRulesetPrefixMatch[],
+    pathStart = 0
   ): void {
-    const segment = path[0];
+    const segment = path[pathStart];
     if (!segment || !isNode(frame.rulesNode, N.Rules)) {
       return;
     }
@@ -2376,7 +2390,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       let matchesPath = true;
       for (let matchIndex = 0; matchIndex < entry.match.length; matchIndex++) {
-        if (entry.match[matchIndex] !== path[matchIndex + 1]) {
+        if (entry.match[matchIndex] !== path[pathStart + matchIndex + 1]) {
           matchesPath = false;
           break;
         }
@@ -2392,13 +2406,40 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
+  private collectCallableRulesetExactMatchesFromFrame(
+    frame: ScopeFrame,
+    path: string[],
+    results: Ruleset[],
+    pathStart = 0
+  ): void {
+    const segment = path[pathStart];
+    if (!segment || !isNode(frame.rulesNode, N.Rules)) {
+      return;
+    }
+    const bucket = frame.callableBucketsByName?.get(segment);
+    if (!bucket?.length) {
+      return;
+    }
+    const matches = collectCallableBucketRemainderResults(bucket, true, path, pathStart);
+    if (!matches) {
+      return;
+    }
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      if (isNode(match, N.Ruleset)) {
+        results.push(match);
+      }
+    }
+  }
+
   private collectChildCallableRulesetPrefixMatchesFromFrames(
     scope: Rules,
     path: string[],
     options: CallableFindOptions,
-    results: CallableRulesetPrefixMatch[]
+    results: CallableRulesetPrefixMatch[],
+    pathStart = 0
   ): boolean {
-    const segment = path[0];
+    const segment = path[pathStart];
     if (!segment) {
       return true;
     }
@@ -2425,11 +2466,53 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(childFrame, path, results);
+      this.collectCallableRulesetPrefixMatchesFromFrame(childFrame, path, results, pathStart);
       if (
         (!childFrame.callableMissCoverageKnown || !childFrame.callableMissesCovered)
         && !this.prefixOwnsChildRules(scope, entry.node, segment, results)
       ) {
+        covered = false;
+      }
+    }
+    return covered;
+  }
+
+  private collectChildCallableRulesetExactMatchesFromFrames(
+    scope: Rules,
+    path: string[],
+    options: CallableFindOptions,
+    results: Ruleset[],
+    pathStart = 0
+  ): boolean {
+    const segment = path[pathStart];
+    if (!segment) {
+      return true;
+    }
+    const childEntries = scope.directChildRuleEntries !== undefined
+      ? (scope.directChildRuleEntries ?? undefined)
+      : scope.collectDirectChildRulesEntries();
+    if (!childEntries?.length) {
+      return true;
+    }
+    let covered = true;
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
+        continue;
+      }
+      if (entry.hasExactRulesetSurface === false) {
+        continue;
+      }
+      if (entry.node.options?.forward) {
+        continue;
+      }
+      if (options.local && entry.node.options?.local) {
+        continue;
+      }
+      const childFrame = entry.node.getScopeFrame();
+      entry.node.prepareCallableLookupFrame(childFrame, segment, true);
+      this.collectCallableRulesetExactMatchesFromFrame(childFrame, path, results, pathStart);
+      if (!childFrame.callableMissCoverageKnown || !childFrame.callableMissesCovered) {
         covered = false;
       }
     }
@@ -2441,9 +2524,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     path: string[],
     searchParents: boolean,
     options: CallableFindOptions,
-    results: CallableRulesetPrefixMatch[]
+    results: CallableRulesetPrefixMatch[],
+    pathStart = 0
   ): boolean {
-    const segment = path[0];
+    const segment = path[pathStart];
     if (!segment) {
       return true;
     }
@@ -2461,8 +2545,46 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       first = false;
       scope.prepareCallableLookupFrame(cursor, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(cursor, path, results);
-      if (!this.collectChildCallableRulesetPrefixMatchesFromFrames(scope, path, options, results)) {
+      this.collectCallableRulesetPrefixMatchesFromFrame(cursor, path, results, pathStart);
+      if (!this.collectChildCallableRulesetPrefixMatchesFromFrames(scope, path, options, results, pathStart)) {
+        covered = false;
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    return covered;
+  }
+
+  private collectVisibleCallableRulesetExactMatchesFromFrames(
+    frame: ScopeFrame,
+    path: string[],
+    searchParents: boolean,
+    options: CallableFindOptions,
+    results: Ruleset[],
+    pathStart = 0
+  ): boolean {
+    const segment = path[pathStart];
+    if (!segment) {
+      return true;
+    }
+    let cursor: ScopeFrame | undefined = frame;
+    let covered = true;
+    let first = true;
+    while (cursor) {
+      if (!isNode(cursor.rulesNode, N.Rules)) {
+        covered = false;
+        break;
+      }
+      const scope = cursor.rulesNode as Rules;
+      if (!first && isNonClassicImportBoundary(scope)) {
+        break;
+      }
+      first = false;
+      scope.prepareCallableLookupFrame(cursor, segment, true);
+      this.collectCallableRulesetExactMatchesFromFrame(cursor, path, results, pathStart);
+      if (!this.collectChildCallableRulesetExactMatchesFromFrames(scope, path, options, results, pathStart)) {
         covered = false;
       }
       if (!searchParents) {
@@ -2570,9 +2692,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private findRulesetNamespacePathFast(
     keys: string[],
-    options: CallableFindOptions = {}
+    options: CallableFindOptions = {},
+    pathStart = 0
   ): MixinEntry[] | undefined {
-    if (keys.length < 2) {
+    if (keys.length - pathStart < 2) {
       return undefined;
     }
 
@@ -2585,26 +2708,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const walk = (
       scope: Rules,
       path: string[],
+      offset: number,
       searchParents: boolean
     ): RulesetNamespaceFastResult => {
-      const [segment] = path;
+      const segment = path[offset];
       if (!segment) {
         return DEFINITE_MISS;
       }
       let prefixMatches: CallableRulesetPrefixMatch[] = [];
-      let prefixMatchesCovered = false;
       let hasMixinNamespace = false;
       let mixinNamespaceCovered = false;
       const scopeFrame = !options.hasTarget && !options.local
         ? scope.getScopeFrame()
         : undefined;
       if (scopeFrame) {
-        prefixMatchesCovered = this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
+        this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
           scopeFrame,
           path,
           searchParents,
           options,
-          prefixMatches
+          prefixMatches,
+          offset
         );
         this.prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
         const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
@@ -2612,7 +2736,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           searchParents
         });
         if (frameHit.kind === 'hit') {
-          hasMixinNamespace = true;
+          hasMixinNamespace = Boolean(collectCallableBucketResults(frameHit.bucket, false)?.length);
           mixinNamespaceCovered = true;
         } else if (frameHit.kind === 'miss') {
           mixinNamespaceCovered = true;
@@ -2638,8 +2762,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             mixinNamespaceCovered = true;
           } else if (
             !mixinNamespaceCovered
-            &&
-            prefixMatches.length > 0
+            && prefixMatches.length > 0
             && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
               scope,
               segment,
@@ -2661,7 +2784,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 searchParents: false
               });
               if (fallbackHit.kind === 'hit') {
-                hasMixinNamespace = true;
+                hasMixinNamespace = Boolean(collectCallableBucketResults(fallbackHit.bucket, false)?.length);
                 break;
               }
               if (
@@ -2691,7 +2814,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
-              });
+              }, offset);
               if (fallbackPrefixMatches.length > 0) {
                 prefixMatches = fallbackPrefixMatches;
                 break;
@@ -2701,12 +2824,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
       }
-      if (!prefixMatchesCovered) {
+      if (prefixMatches.length === 0 && !scopeFrame) {
         prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
           hasTarget: options.hasTarget,
           local: options.local,
           searchParents
-        });
+        }, offset);
+      }
+      if (prefixMatches.length === 0 && !scopeFrame) {
+        const directBucket = scope.getCallableEntriesForKey(segment);
+        const directPrefixMatches = collectCallableBucketRulesetPrefixMatches(
+          directBucket,
+          path,
+          offset,
+          scope
+        );
+        if (directPrefixMatches?.length) {
+          prefixMatches = directPrefixMatches;
+        }
+      }
+      if (!mixinNamespaceCovered) {
+        if (options.searchParents === false) {
+          const uncoveredChildNamespaceMixins = scope.findMixinsFastForUncoveredCallable(
+            segment,
+            'child-surface',
+            false,
+            options
+          );
+          if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            hasMixinNamespace = uncoveredChildNamespaceMixins.length > 0;
+            mixinNamespaceCovered = true;
+          }
+        }
       }
       if (!mixinNamespaceCovered) {
         hasMixinNamespace = scope.findMixinsFast(segment, {
@@ -2724,12 +2873,56 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (options.terminalMixinOnly === true) {
           return DEFINITE_MISS;
         }
-        const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
-          hasTarget: options.hasTarget,
-          local: options.local,
-          searchParents
-        });
-        return exactPathMatches.length > 0 ? exactPathMatches : DEFINITE_MISS;
+        let exactMatches: MixinEntry[] | undefined;
+        if (scopeFrame) {
+          scope.prepareCallableLookupFrame(scopeFrame, segment, true);
+          const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
+            includeRulesets: true,
+            searchParents
+          });
+          if (frameHit.kind === 'hit') {
+            exactMatches = collectCallableBucketRemainderResults(frameHit.bucket, true, path, offset);
+          }
+        }
+        if (exactMatches === undefined) {
+          exactMatches = collectCallableBucketRemainderResults(
+            scope.getCallableEntriesForKey(segment),
+            true,
+            path,
+            offset
+          );
+        }
+        if (exactMatches?.length) {
+          return exactMatches;
+        }
+        if (scopeFrame) {
+          const exactFrameMatches: Ruleset[] = [];
+          const exactFrameMatchesCovered = this.collectVisibleCallableRulesetExactMatchesFromFrames(
+            scopeFrame,
+            path,
+            searchParents,
+            options,
+            exactFrameMatches,
+            offset
+          );
+          if (exactFrameMatches.length > 0) {
+            return exactFrameMatches;
+          }
+          if (exactFrameMatchesCovered) {
+            return DEFINITE_MISS;
+          }
+        }
+        if (!scopeFrame) {
+          const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
+            hasTarget: options.hasTarget,
+            local: options.local,
+            searchParents
+          }, offset);
+          if (exactPathMatches.length > 0) {
+            return exactPathMatches;
+          }
+        }
+        return DEFINITE_MISS;
       }
 
       if (prefixMatches.length > 1) {
@@ -2738,84 +2931,101 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
+      const existingNoParentOptions = options.searchParents === false ? options : undefined;
+      const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
           sawLegacyOnlyPrefix = true;
           continue;
         }
-        const remainderLength = path.length - consumed.length;
+        const remainderStart = offset + consumed.length;
+        const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
           return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
         }
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
-          const segment = path[consumed.length]!;
-          simpleLookupOptions ??= {
-            hasTarget: options.hasTarget,
-            local: options.local,
-            includeRulesets: options.terminalMixinOnly !== true,
-            searchParents: false
-          };
-          let simpleCallableCovered = false;
-          const simpleFrame = !options.hasTarget && !options.local
-            ? ruleset.rules.getScopeFrame()
-            : undefined;
-          if (simpleFrame) {
-            const includeRulesets = simpleLookupOptions.includeRulesets !== false;
-            ruleset.rules.prepareCallableLookupFrame(simpleFrame, segment, includeRulesets);
-            const simpleHit = lookupScopeFrameCallable(simpleFrame, segment, {
-              includeRulesets,
+          const segment = path[remainderStart]!;
+          if (options.terminalMixinOnly === true) {
+            nestedOptions ??= existingNoParentOptions ?? {
+              ...options,
               searchParents: false
-            });
-            if (simpleHit.kind === 'hit') {
-              resolved = collectCallableBucketResults(simpleHit.bucket, includeRulesets);
-              simpleCallableCovered = true;
-            } else if (simpleHit.kind === 'miss') {
-              simpleCallableCovered = true;
-            } else if (simpleHit.reason === 'child-surface' || simpleHit.reason === 'reference-import') {
-              const uncovered = ruleset.rules.findMixinsFastForUncoveredCallable(
-                segment,
-                simpleHit.reason,
-                includeRulesets,
-                simpleLookupOptions
-              );
-              if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-                resolved = uncovered;
-                simpleCallableCovered = true;
-              }
-            }
-          }
-          if (resolved === undefined && !simpleCallableCovered) {
-            const simpleCallableMatches = ruleset.rules.findMixinsFast(segment, simpleLookupOptions);
-            if (simpleCallableMatches.length > 0) {
-              resolved = simpleCallableMatches;
-            }
-          }
-          if (resolved === undefined && options.terminalMixinOnly !== true) {
-            const simpleCallableRulesets = ruleset.rules.findVisibleExactCallableRulesetPath([segment], {
+            };
+            resolved = ruleset.rules.findMixin(segment, 'Mixin', nestedOptions);
+          } else {
+            simpleLookupOptions ??= {
               hasTarget: options.hasTarget,
               local: options.local,
+              includeRulesets: options.terminalMixinOnly !== true,
               searchParents: false
-            });
-            resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
+            };
+            let simpleCallableCovered = false;
+            const simpleFrame = !options.hasTarget && !options.local
+              ? ruleset.rules.getScopeFrame()
+              : undefined;
+            if (simpleFrame) {
+              const includeRulesets = simpleLookupOptions.includeRulesets !== false;
+              ruleset.rules.prepareCallableLookupFrame(simpleFrame, segment, includeRulesets);
+              const simpleHit = lookupScopeFrameCallable(simpleFrame, segment, {
+                includeRulesets,
+                searchParents: false
+              });
+              if (simpleHit.kind === 'hit') {
+                resolved = collectCallableBucketResults(simpleHit.bucket, includeRulesets);
+                simpleCallableCovered = true;
+              } else if (simpleHit.kind === 'miss') {
+                simpleCallableCovered = true;
+              } else if (simpleHit.reason === 'child-surface' || simpleHit.reason === 'reference-import') {
+                const uncovered = ruleset.rules.findMixinsFastForUncoveredCallable(
+                  segment,
+                  simpleHit.reason,
+                  includeRulesets,
+                  simpleLookupOptions
+                );
+                if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+                  resolved = uncovered;
+                  simpleCallableCovered = true;
+                }
+              }
+            }
+            if (resolved === undefined && !simpleCallableCovered) {
+              const simpleCallableMatches = ruleset.rules.findMixinsFast(segment, simpleLookupOptions);
+              if (simpleCallableMatches.length > 0) {
+                resolved = simpleCallableMatches;
+              }
+            }
+            if (resolved === undefined && options.terminalMixinOnly !== true) {
+              const simpleCallableRulesets = ruleset.rules.findVisibleExactCallableRulesetPath(path, {
+                hasTarget: options.hasTarget,
+                local: options.local,
+                searchParents: false
+              }, remainderStart);
+              resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
+            }
           }
         } else {
           nestedOptions ??= {
             ...options,
             searchParents: false
           };
-          const remainderStart = consumed.length;
-          resolved = ruleset.rules.findMixinNamespacePathFast(
+          resolved = ruleset.rules.findRulesetNamespacePathFast(
             path,
-            undefined,
             nestedOptions,
             remainderStart
           );
           if (resolved === undefined) {
+            resolved = ruleset.rules.findMixinNamespacePathFast(
+              path,
+              undefined,
+              nestedOptions,
+              remainderStart
+            );
+          }
+          if (resolved === undefined) {
             resolved = ruleset.rules.findMixin(
               collectKeyRemainder(path, remainderStart),
-              undefined,
+              terminalFilterType,
               nestedOptions
             );
           }
@@ -2828,7 +3038,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return sawLegacyOnlyPrefix ? undefined : DEFINITE_MISS;
     };
 
-    const result = walk(this, keys, true);
+    const result = walk(this, keys, pathStart, options.searchParents !== false);
     return result === DEFINITE_MISS ? [] : result;
   }
 
@@ -2853,6 +3063,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     let nestedOptions: CallableFindOptions | undefined;
     const existingNoParentOptions = options.searchParents === false ? options : undefined;
+    const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {
       const remainderLength = keys.length - consumed.length;
@@ -2868,18 +3079,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       let resolved: MixinEntry[] | undefined;
       if (remainderLength === 1) {
-        resolved = ruleset.rules.findMixin(keys[consumed.length]!, undefined, nestedOptions);
+        resolved = ruleset.rules.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
       } else {
-        resolved = ruleset.rules.findMixinNamespacePathFast(
+        resolved = ruleset.rules.findRulesetNamespacePathFast(
           keys,
-          undefined,
           nestedOptions,
           consumed.length
         );
         if (resolved === undefined) {
+          resolved = ruleset.rules.findMixinNamespacePathFast(
+            keys,
+            undefined,
+            nestedOptions,
+            consumed.length
+          );
+        }
+        if (resolved === undefined) {
           resolved = ruleset.rules.findMixin(
             collectKeyRemainder(keys, consumed.length),
-            undefined,
+            terminalFilterType,
             nestedOptions
           );
         }
@@ -2904,6 +3122,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let remainder: string | string[] | undefined;
     let nestedOptions: CallableFindOptions | undefined;
     const existingNoParentOptions = options.searchParents === false ? options : undefined;
+    const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     let descendantMissCovered = false;
@@ -2988,14 +3207,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       if (nested === undefined && keys.length === 2) {
         remainder ??= keys[1]!;
-        nested = entryRules.findMixin(remainder, undefined, nestedOptions);
+        nested = entryRules.findMixin(remainder, terminalFilterType, nestedOptions);
       } else if (nested === undefined) {
-        nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
+        nested = entryRules.findRulesetNamespacePathFast(
+          keys,
+          nestedOptions,
+          1
+        );
+        if (nested === undefined) {
+          nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
+        }
         if (nested === undefined) {
           remainder ??= collectKeyRemainder(keys, 1);
           nested = entryRules.findMixin(
             remainder,
-            undefined,
+            terminalFilterType,
             nestedOptions
           );
         }
@@ -3131,6 +3357,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
             return undefined;
           }
+          const pathKeys = splitStaticCallablePathKey(keys);
+          if (pathKeys) {
+            return this.findMixin(pathKeys, filterType, options);
+          }
         }
       }
       const pathKeys = splitStaticCallablePathKey(keys);
@@ -3183,6 +3413,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             );
             if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
               namespaceMixins = uncovered;
+              namespaceMixinMissCovered = true;
+            }
+          }
+        }
+        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+          if (options.searchParents === false) {
+            const uncoveredChildNamespaceMixins = this.findMixinsFastForUncoveredCallable(
+              keys[0]!,
+              'child-surface',
+              false,
+              options
+            );
+            if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+              namespaceMixins = uncoveredChildNamespaceMixins;
               namespaceMixinMissCovered = true;
             }
           }

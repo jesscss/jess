@@ -3873,8 +3873,6 @@ describe('Mixin', () => {
           options?: { hasTarget?: boolean; local?: boolean; searchParents?: boolean }
         ): unknown[];
       };
-      const proto = RulesClass.prototype as unknown as PrefixProbeRules;
-      const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
       const importedLeaf = mixin({
         name: any('.leaf'),
         rules: rules([decl({ name: 'color', value: any('green') })])
@@ -3889,6 +3887,8 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
+      const proto: PrefixProbeRules = Object.getPrototypeOf(root);
+      const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
       let recursivePrefixCrawls = 0;
 
       proto.findVisibleCallableRulesetPrefixMatches = function(path, options) {
@@ -4435,7 +4435,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('ruleset namespace path lookup crawls without indexing rules', () => {
+    it('ruleset namespace path lookup uses callable buckets without legacy rule indexing', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
@@ -4455,7 +4455,7 @@ describe('Mixin', () => {
       expect(found?.[0]?.type).toBe('Ruleset');
     });
 
-    it('compound-prefix ruleset lookup crawls without indexing rules', () => {
+    it('compound-prefix ruleset lookup uses callable buckets without legacy rule indexing', () => {
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),

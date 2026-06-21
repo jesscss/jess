@@ -103,6 +103,50 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: callable ruleset namespace lookup fallback deletion.
+- Verdict: accepted as a bounded registryless lookup cut, not a completion of
+  the namespace lane. Namespaced mixin-ruleset calls with args still use
+  rulesets as namespace containers, but terminal parameterized calls now dispatch
+  through `findMixin(..., 'Mixin', ...)` and visible exact/prefix ruleset lookup
+  no longer scans `scope.rules` after callable bucket / child-entry facts have
+  the modeled surface. The generic callable-result dedupe helper was deleted;
+  duplicate production must be prevented at the modeled source. No speed claim.
+- New traversal: deleted the local visible `scope.rules` /
+  `sourceRulesOf(scope)` scans from `findVisibleExactCallableRulesetPath(...)`
+  and `findVisibleCallableRulesetPrefixMatches(...)`. Added exact ruleset
+  frame/child-entry collectors so imported compound exact paths such as
+  `#imported .dark .button` are represented by callable bucket facts instead
+  of reopening the visible exact crawl. Prefix and exact namespace facts now
+  come from frame buckets plus direct child entries for this path; remaining
+  frame/fallback walks still need further binding-lane scrutiny.
+- Review-flagged allocations: runtime result-dedupe array copying was removed;
+  the implementation-coupled terminal-hop capture test was deleted in favor of
+  adjacent behavior tests.
+- New node/materialization: none. No new AST nodes, wrapper `Rules`, or copied
+  callable arrays were introduced for runtime lookup.
+- Render path: unchanged. This pass only changes callable lookup routing for
+  arg-bearing namespace terminals and does not add a render-time boundary.
+- Helper/API surface: private bucket/frame collectors remain for modeled
+  ruleset prefix and exact namespace paths
+  (`collectCallableBucketRulesetPrefixMatches(...)`,
+  `collectCallableRulesetPrefixMatchesFromFrame(...)`,
+  `collectCallableRulesetExactMatchesFromFrame(...)`, and their visible
+  frame-chain/child-entry callers). They replace the deleted same-surface
+  rules scans and prevent a duplicate producer for the covered path. The
+  generic `dedupeCallableEntries(...)` / `sameCallableEntry(...)` helpers were
+  removed.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: deleted runtime result dedupe array copying; no test-only
+  capture array remains in this pass.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "mixin-ruleset calls with args still use rulesets as namespace containers|mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only|mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution|mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets|mixin-ruleset calls with args reject imported exact ruleset terminals after namespace resolution"`
+  passed, focused namespace/ruleset coverage passed after deleting exact/prefix
+  visible scans, full `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
+  passed (`195/195`), `pnpm --filter @jesscss/core build` passed, and
+  `pnpm run verify:aggressive-cutting-review` passed with the remaining
+  danger-token loops/arrays prosecuted in this block.
+
 - Latest pass: `Mixin` callable-wrapper source-parent preservation.
 - Verdict: accepted as a bounded callable-output ownership pass inside the
   still-open `Mixin` row. Static direct mixin output and ruleset-as-mixin

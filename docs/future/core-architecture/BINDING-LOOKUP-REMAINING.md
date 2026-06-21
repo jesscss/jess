@@ -1076,7 +1076,16 @@ reference-import ruleset namespace still acts as a container while
 imported terminal mixin. A second imported compound-prefix test proves an exact
 imported terminal ruleset path returns `undefined` under `terminalMixinOnly`.
 Both spy on broad root `findMixinsFast(...)`, and existing parameterized
-mixin-ruleset call tests stayed green.
+mixin-ruleset call tests stayed green. Follow-up June 2026 proof also removes
+the generic callable-result dedupe helper and the local `scope.rules` scans from
+visible exact/prefix ruleset lookup. Exact and prefix ruleset namespace matches
+now come from callable bucket / child-entry facts, including reference-imported
+compound exact paths; if those facts do not model a case, the case remains
+unfinished rather than hidden behind a same-surface rediscovery fallback.
+Arg-bearing namespace resolution now dispatches the final segment through
+`findMixin(..., 'Mixin', ...)` instead of treating the last hop as a generic
+mixin-ruleset lookup with post-filtering. The full focused `mixin.test.ts` file
+stayed green after rebuilding `@jesscss/core`.
 
 63. [x] Collapse duplicated namespace-offset fallback checks if the remaining
 fallback-frame proof matches the current-frame proof. Scope:
