@@ -28,7 +28,7 @@ import {
   type SourceScannerOptions
 } from '@jesscss/parser';
 
-export type FlatLessDeclarationStylesheetResult = ScannerParseResult<Stylesheet>;
+export type LessAstStylesheetResult = ScannerParseResult<Stylesheet>;
 
 const EMPTY_DIAGNOSTICS: readonly ParserDiagnostic[] = [];
 const LESS_SCANNER_OPTIONS: SourceScannerOptions = { lineComments: true };
@@ -72,11 +72,11 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): Selecto
   }));
 }
 
-function parseCheapLessSelector(selector: string): string | Selector {
+function parseCheapLessSelector(selector: string): string | Selector | undefined {
   const source = selector.trim();
   const components = scanCheapSelectorComponents(source);
   if (!components) {
-    return selector;
+    return undefined;
   }
   if (components.length === 1) {
     const only = components[0]!;
@@ -133,106 +133,149 @@ function parseAtRuleStatement(source: string, start: number, end: number): Node 
   });
 }
 
-function parseLessDeclarationNodes(
+function parseLessStatementNode(
+  source: string,
+  start: number,
+  end: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  const colon = findTopLevelDelimiter(source, ':', start, end, LESS_SCANNER_OPTIONS);
+  if (colon === -1) {
+    const statement = parseAtRuleStatement(source, start, end + 1);
+    if (statement) {
+      return statement;
+    }
+    if (source.slice(start, end).trim()) {
+      const isMalformedAtRule = source[skipSourceTrivia(source, start, end, LESS_SCANNER_OPTIONS)] === '@';
+      addDiagnostic(
+        'warning',
+        isMalformedAtRule ? 'less-ast-malformed-at-rule-statement' : 'less-ast-unsupported-statement',
+        isMalformedAtRule
+          ? 'Less AST parser skipped a malformed at-rule statement.'
+          : 'Less AST parser skipped a statement without a top-level declaration colon.',
+        start,
+        end
+      );
+    }
+    return undefined;
+  }
+  const variable = parseLessVariableDeclaration(source, start, colon, end);
+  if (variable) {
+    return variable;
+  }
+  const name = source.slice(start, colon).trim();
+  if (!name) {
+    addDiagnostic(
+      'warning',
+      'less-ast-empty-declaration-name',
+      'Less AST parser skipped a declaration with an empty name.',
+      start,
+      end
+    );
+    return undefined;
+  }
+  const isCustomProperty = name.startsWith('--');
+  const valueText = source.slice(colon + 1, end);
+  if (isCustomProperty) {
+    return decl({ name, value: valueText });
+  }
+  const trimmedValue = valueText.trim();
+  const importantStart = findTrailingImportantStart(trimmedValue);
+  return decl({
+    name,
+    value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
+    ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
+  });
+}
+
+function parseLessNodes(
   source: string,
   start: number,
   end: number,
   addDiagnostic: DiagnosticSink
 ): Node[] {
-  const declarations: Node[] = [];
+  const children: Node[] = [];
   let cursor = start;
   while (cursor < end) {
     cursor = skipSourceTrivia(source, cursor, end, LESS_SCANNER_OPTIONS);
     if (cursor >= end) {
       break;
     }
-    const statementEnd = findStatementEnd(source, cursor, end, LESS_SCANNER_OPTIONS);
-    const colon = findTopLevelDelimiter(source, ':', cursor, statementEnd, LESS_SCANNER_OPTIONS);
-    if (colon !== -1) {
-      const variable = parseLessVariableDeclaration(source, cursor, colon, statementEnd);
-      if (variable) {
-        declarations.push(variable);
-        cursor = statementEnd + 1;
-        continue;
+    const blockStart = findTopLevelBlockStart(source, cursor, end, LESS_SCANNER_OPTIONS);
+    const statementLimit = blockStart === -1 ? end : blockStart;
+    const statementEnd = findStatementEnd(source, cursor, statementLimit, LESS_SCANNER_OPTIONS);
+    if (statementEnd < statementLimit) {
+      const statement = parseLessStatementNode(source, cursor, statementEnd, addDiagnostic);
+      if (statement) {
+        children.push(statement);
       }
-      const name = source.slice(cursor, colon).trim();
-      if (!name) {
+      cursor = statementEnd + 1;
+      continue;
+    }
+    if (blockStart === -1) {
+      const statement = parseLessStatementNode(source, cursor, end, addDiagnostic);
+      if (statement) {
+        children.push(statement);
+      }
+      break;
+    }
+    const blockEnd = findBalancedBlockEnd(source, blockStart, end, LESS_SCANNER_OPTIONS);
+    if (blockEnd === -1) {
+      addDiagnostic(
+        'error',
+        'less-ast-unclosed-block',
+        'Less AST parser reached the end of source before the block closed.',
+        blockStart,
+        end
+      );
+      break;
+    }
+    const selector = source.slice(cursor, blockStart).trim();
+    if (selector) {
+      if (selector[0] === '@') {
         addDiagnostic(
           'warning',
-          'less-flat-empty-declaration-name',
-          'Flat Less declaration parser skipped a declaration with an empty name.',
+          'less-ast-unsupported-at-rule',
+          'Less AST parser skipped an at-rule block.',
           cursor,
-          statementEnd
+          blockEnd + 1
         );
-        cursor = statementEnd + 1;
-        continue;
-      }
-      const isCustomProperty = name.startsWith('--');
-      const valueText = source.slice(colon + 1, statementEnd);
-      if (isCustomProperty) {
-        declarations.push(decl({ name, value: valueText }));
       } else {
-        const trimmedValue = valueText.trim();
-        const importantStart = findTrailingImportantStart(trimmedValue);
-        declarations.push(decl({
-          name,
-          value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
-          ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
+        const parsedSelector = parseCheapLessSelector(selector);
+        if (parsedSelector === undefined) {
+          addDiagnostic(
+            'warning',
+            'less-ast-unsupported-block-header',
+            'Less AST parser skipped a block with an unsupported header.',
+            cursor,
+            blockEnd + 1
+          );
+          cursor = blockEnd + 1;
+          continue;
+        }
+        children.push(ruleset({
+          selector: parsedSelector,
+          rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
         }));
       }
-    } else if (source.slice(cursor, statementEnd).trim()) {
-      addDiagnostic(
-        'warning',
-        'less-flat-unsupported-statement',
-        'Flat Less declaration parser skipped a statement without a top-level declaration colon.',
-        cursor,
-        statementEnd
-      );
     }
-    cursor = statementEnd + 1;
+    cursor = blockEnd + 1;
   }
-  return declarations;
-}
-
-function canParseFlatQualifiedRule(source: string, selector: string, bodyStart: number, bodyEnd: number): boolean {
-  return selector[0] !== '@'
-    && findTopLevelBlockStart(source, bodyStart, bodyEnd, LESS_SCANNER_OPTIONS) === -1;
-}
-
-function pushSkippedStatementDiagnostic(
-  source: string,
-  diagnostics: ParserDiagnostic[] | undefined,
-  start: number,
-  end: number
-): ParserDiagnostic[] | undefined {
-  if (!source.slice(start, end).trim()) {
-    return diagnostics;
-  }
-  const isMalformedAtRule = source[skipSourceTrivia(source, start, end, LESS_SCANNER_OPTIONS)] === '@';
-  return appendParserDiagnostic(
-    diagnostics,
-    'warning',
-    isMalformedAtRule ? 'less-flat-malformed-at-rule-statement' : 'less-flat-unsupported-statement',
-    isMalformedAtRule
-      ? 'Flat Less declaration parser skipped a malformed at-rule statement.'
-      : 'Flat Less declaration parser skipped a statement without a top-level block.',
-    start,
-    end
-  );
+  return children;
 }
 
 /**
  * Parse a small Less stylesheet subset directly into existing core AST nodes.
  *
  * This is a scanner-first parser proof, not a compatibility parser. It accepts
- * flat qualified rules, ordinary declarations, simple `@name:` variables, and
- * statement-form at-rules. Values stay as strings until a later decision proves
- * typed parsing is necessary.
+ * cheap qualified rules, nested cheap qualified rules, ordinary declarations,
+ * simple `@name:` variables, and statement-form at-rules. Values stay as strings
+ * until a later decision proves typed parsing is necessary.
  */
-export function parseFlatLessDeclarationStylesheet(
+export function parseLessAstStylesheet(
   filePath: string,
   input: string | SourceText
-): FlatLessDeclarationStylesheetResult {
+): LessAstStylesheetResult {
   const sourceText = input instanceof SourceText ? input : new SourceText(input, filePath);
   const source = sourceText.text;
   let diagnostics: ParserDiagnostic[] | undefined;
@@ -254,14 +297,9 @@ export function parseFlatLessDeclarationStylesheet(
       LESS_SCANNER_OPTIONS
     );
     if (statementEnd < (blockStart === -1 ? source.length : blockStart)) {
-      const colon = findTopLevelDelimiter(source, ':', cursor, statementEnd, LESS_SCANNER_OPTIONS);
-      const statement = colon === -1
-        ? parseAtRuleStatement(source, cursor, statementEnd + 1)
-        : parseLessVariableDeclaration(source, cursor, colon, statementEnd);
+      const statement = parseLessStatementNode(source, cursor, statementEnd, addDiagnostic);
       if (statement) {
         children.push(statement);
-      } else {
-        diagnostics = pushSkippedStatementDiagnostic(source, diagnostics, cursor, statementEnd + 1);
       }
       cursor = statementEnd + 1;
       continue;
@@ -271,8 +309,8 @@ export function parseFlatLessDeclarationStylesheet(
         diagnostics = appendParserDiagnostic(
           diagnostics,
           'warning',
-          'less-flat-unsupported-trailing-source',
-          'Flat Less declaration parser skipped trailing source without a top-level block.',
+          'less-ast-unsupported-trailing-source',
+          'Less AST parser skipped trailing source without a top-level block.',
           cursor,
           source.length
         );
@@ -284,27 +322,38 @@ export function parseFlatLessDeclarationStylesheet(
       diagnostics = appendParserDiagnostic(
         diagnostics,
         'error',
-        'less-flat-unclosed-block',
-        'Flat Less declaration parser reached the end of source before the block closed.',
+        'less-ast-unclosed-block',
+        'Less AST parser reached the end of source before the block closed.',
         blockStart,
         source.length
       );
       break;
     }
     const selector = source.slice(cursor, blockStart).trim();
-    if (selector && canParseFlatQualifiedRule(source, selector, blockStart + 1, blockEnd)) {
+    if (selector && selector[0] !== '@') {
+      const parsedSelector = parseCheapLessSelector(selector);
+      if (parsedSelector === undefined) {
+        diagnostics = appendParserDiagnostic(
+          diagnostics,
+          'warning',
+          'less-ast-unsupported-block-header',
+          'Less AST parser skipped a block with an unsupported header.',
+          cursor,
+          blockEnd + 1
+        );
+        cursor = blockEnd + 1;
+        continue;
+      }
       children.push(ruleset({
-        selector: parseCheapLessSelector(selector),
-        rules: rules(parseLessDeclarationNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+        selector: parsedSelector,
+        rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
       }));
     } else if (selector) {
       diagnostics = appendParserDiagnostic(
         diagnostics,
         'warning',
-        selector[0] === '@' ? 'less-flat-unsupported-at-rule' : 'less-flat-unsupported-nested-block',
-        selector[0] === '@'
-          ? 'Flat Less declaration parser skipped an at-rule.'
-          : 'Flat Less declaration parser skipped a qualified rule with nested blocks.',
+        'less-ast-unsupported-at-rule',
+        'Less AST parser skipped an at-rule block.',
         cursor,
         blockEnd + 1
       );
