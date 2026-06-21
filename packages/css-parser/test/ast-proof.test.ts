@@ -180,10 +180,53 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
+  test('parses cheap comma-list at-rule preludes without raw broad strings', () => {
+    const result = parseFlatCssDeclarationStylesheet('media-list.css', `
+      @media screen and (min-width: 1px), print {
+        .inside { color: red; }
+      }
+    `);
+    const [media] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected block at-rule');
+    }
+    expect(isNode(media.prelude, N.List)).toBe(true);
+    if (!isNode(media.prelude, N.List)) {
+      throw new Error('Expected List prelude');
+    }
+    expect(media.prelude.value.map(item => item.toTrimmedString())).toEqual([
+      'screen and (min-width: 1px)',
+      'print'
+    ]);
+    expect(serializeTypes(media)).toContainString(`
+      (AtRule
+        name: '@media'
+        prelude:
+          (List
+    `);
+    expect(serializeTypes(media)).toContain('(QueryCondition');
+    expect(serializeTypes(media)).toContain('(Any \'print\')');
+    expect(media.toTrimmedString()).toBe([
+      '@media screen and (min-width: 1px), print {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
   test('diagnoses unsupported structured at-rule preludes instead of widening raw strings', () => {
     const result = parseFlatCssDeclarationStylesheet('unsupported-media.css', `
       @media screen and (foo, bar) {
         .comma { color: red; }
+      }
+
+      @media screen and (foo, bar), print {
+        .comma-list { color: red; }
       }
 
       @media (foo[bar]) {
@@ -193,6 +236,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule',
       'css-flat-unsupported-at-rule',
       'css-flat-unsupported-at-rule'
     ]);

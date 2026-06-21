@@ -4,6 +4,7 @@ import {
   atrulestatement,
   compound,
   decl,
+  list,
   paren,
   query,
   rules,
@@ -23,6 +24,7 @@ import {
   findTopLevelBlockStart,
   findTopLevelDelimiter,
   scanCheapAtRulePrelude,
+  scanCheapAtRulePreludeList,
   scanCheapSelectorComponents,
   SourceText,
   type ScannerParseResult,
@@ -122,6 +124,17 @@ export function parseCheapAtRulePrelude(text: string, options?: SourceScannerOpt
   return query(tokens.map(materializeCheapAtRulePreludeNode));
 }
 
+function materializeCheapAtRulePreludeListItem(tokens: CheapAtRulePreludeToken[]): Node {
+  return tokens.length === 1
+    ? materializeCheapAtRulePreludeNode(tokens[0]!)
+    : query(tokens.map(materializeCheapAtRulePreludeNode));
+}
+
+function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const items = scanCheapAtRulePreludeList(text, options);
+  return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
+}
+
 function materializeCheapCompound(component: string[]): string | Selector {
   return component.length === 1
     ? component[0]!
@@ -217,7 +230,7 @@ function parseBlockAtRuleNode(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = parseCheapAtRulePrelude(preludeText);
+  const prelude = parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
   if (preludeText && !prelude) {
     return undefined;
   }
