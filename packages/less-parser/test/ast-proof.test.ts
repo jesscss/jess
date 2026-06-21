@@ -833,8 +833,8 @@ describe('parseLessAstStylesheet', () => {
     expect(serialized).not.toContain('prelude: \'screen and (min-width: 1px), print\'');
   });
 
-  test('diagnoses unsupported structured at-rule preludes instead of widening raw strings', () => {
-    const result = parseLessAstStylesheet('unsupported-media.less', `
+  test('keeps structured Less at-rule preludes deferred as strings', () => {
+    const result = parseLessAstStylesheet('deferred-media.less', `
       @media screen and (foo, bar) {
         .comma { color: red; }
       }
@@ -846,13 +846,61 @@ describe('parseLessAstStylesheet', () => {
       @media (@{bp}) {
         .interpolated { color: blue; }
       }
+
+      @media @{bp} {
+        .topLevelInterpolation { color: purple; }
+      }
+    `);
+    const [comma, nestedComma, interpolated, topLevelInterpolation] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(comma, N.AtRule)).toBe(true);
+    expect(isNode(nestedComma, N.AtRule)).toBe(true);
+    expect(isNode(interpolated, N.AtRule)).toBe(true);
+    expect(isNode(topLevelInterpolation, N.AtRule)).toBe(true);
+    if (
+      !isNode(comma, N.AtRule)
+      || !isNode(nestedComma, N.AtRule)
+      || !isNode(interpolated, N.AtRule)
+      || !isNode(topLevelInterpolation, N.AtRule)
+    ) {
+      throw new Error('Expected deferred Less at-rule preludes');
+    }
+    expect(comma.prelude).toBe('screen and (foo, bar)');
+    expect(nestedComma.prelude).toBe('screen and (foo, bar), print');
+    expect(interpolated.prelude).toBe('(@{bp})');
+    expect(topLevelInterpolation.prelude).toBe('@{bp}');
+    expect(interpolated.toTrimmedString()).toBe([
+      '@media (@{bp}) {',
+      '  .interpolated {',
+      '    color: blue;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    const serialized = serializeTypes(result.tree);
+    expect(serialized).toContain('prelude: \'screen and (foo, bar)\'');
+    expect(serialized).toContain('prelude: \'screen and (foo, bar), print\'');
+    expect(serialized).toContain('prelude: \'(@{bp})\'');
+    expect(serialized).toContain('prelude: \'@{bp}\'');
+    expect(serialized).not.toContain('(QueryCondition');
+  });
+
+  test('diagnoses malformed deferred Less at-rule preludes', () => {
+    const result = parseLessAstStylesheet('malformed-deferred-media.less', `
+      @media } {
+        .bad { color: red; }
+      }
+
+      @media @{bp {
+        .badInterpolation { color: blue; }
+      }
     `);
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
       'less-ast-unsupported-at-rule',
-      'less-ast-unsupported-at-rule',
-      'less-ast-unsupported-at-rule'
+      'less-ast-unsupported-trailing-source'
     ]);
   });
 

@@ -100,6 +100,93 @@ function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOption
   return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
 }
 
+function findLessTopLevelBlockStart(source: string, offset: number, end: number): number {
+  let cursor = offset;
+  while (cursor < end) {
+    const blockStart = findTopLevelBlockStart(source, cursor, end, LESS_SCANNER_OPTIONS);
+    if (blockStart === -1) {
+      return -1;
+    }
+    if (blockStart > offset && source[blockStart - 1] === '@') {
+      const interpolationEnd = source.indexOf('}', blockStart + 1);
+      if (interpolationEnd !== -1 && interpolationEnd < end) {
+        cursor = interpolationEnd + 1;
+        continue;
+      }
+    }
+    return blockStart;
+  }
+  return -1;
+}
+
+function isBalancedLessAtRulePrelude(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+  const stack: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const char = text[cursor];
+    if (char === '"' || char === '\'') {
+      cursor = skipQuotedSourceString(text, cursor, text.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '@' && text[cursor + 1] === '{') {
+      const interpolationEnd = text.indexOf('}', cursor + 2);
+      if (interpolationEnd === -1) {
+        return false;
+      }
+      cursor = interpolationEnd + 1;
+      continue;
+    }
+    if (char === '/' && text[cursor + 1] === '*') {
+      const commentEnd = text.indexOf('*/', cursor + 2);
+      if (commentEnd === -1) {
+        return false;
+      }
+      cursor = commentEnd + 2;
+      continue;
+    }
+    if (char === '/' && text[cursor + 1] === '/') {
+      cursor += 2;
+      while (cursor < text.length) {
+        const code = text.charCodeAt(cursor);
+        if (code === 10 || code === 13) {
+          break;
+        }
+        cursor++;
+      }
+      continue;
+    }
+    if (char === '(') {
+      stack.push(')');
+    } else if (char === '[') {
+      stack.push(']');
+    } else if (char === '{') {
+      return false;
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (stack.pop() !== char) {
+        return false;
+      }
+    }
+    cursor++;
+  }
+  return stack.length === 0;
+}
+
+function parseLessAtRulePrelude(text: string): AtRulePrelude | undefined {
+  const prelude = parseCheapAtRulePrelude(text, LESS_SCANNER_OPTIONS)
+    ?? parseCheapAtRulePreludeList(text, LESS_SCANNER_OPTIONS);
+  if (prelude !== undefined) {
+    return prelude;
+  }
+  return isBalancedLessAtRulePrelude(text) ? text : undefined;
+}
+
 function materializeCheapCompound(component: readonly string[]): string | Selector {
   return component.length === 1
     ? component[0]!
@@ -780,8 +867,7 @@ function parseAtRuleBlock(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = parseCheapAtRulePrelude(preludeText, LESS_SCANNER_OPTIONS)
-    ?? parseCheapAtRulePreludeList(preludeText, LESS_SCANNER_OPTIONS);
+  const prelude = parseLessAtRulePrelude(preludeText);
   if (preludeText && !prelude) {
     return undefined;
   }
@@ -989,7 +1075,7 @@ function parseLessNodes(
     if (cursor >= end) {
       break;
     }
-    const blockStart = findTopLevelBlockStart(source, cursor, end, LESS_SCANNER_OPTIONS);
+    const blockStart = findLessTopLevelBlockStart(source, cursor, end);
     const statementLimit = blockStart === -1 ? end : blockStart;
     const statementEnd = findStatementEnd(source, cursor, statementLimit, LESS_SCANNER_OPTIONS);
     if (statementEnd < statementLimit) {
@@ -1054,7 +1140,7 @@ export function parseLessAstStylesheet(
     if (cursor >= source.length) {
       break;
     }
-    const blockStart = findTopLevelBlockStart(source, cursor, source.length, LESS_SCANNER_OPTIONS);
+    const blockStart = findLessTopLevelBlockStart(source, cursor, source.length);
     const statementEnd = findStatementEnd(
       source,
       cursor,

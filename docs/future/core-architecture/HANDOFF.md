@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less deferred at-rule preludes.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block at-rules now keep balanced structured preludes as string
+  fields when the shared cheap prelude tokenizer cannot materialize a useful
+  core `QueryCondition` or `List`. This is Less-local and does not widen the
+  shared CSS prelude scanner.
+- New traversal: one bounded character scan over an already-sliced at-rule
+  prelude to validate balanced `()`, `[]`, strings, comments, line comments,
+  escapes, and Less `@{...}` interpolation. It does not walk AST nodes,
+  parent/source chains, side maps, or Chevrotain productions.
+- New node/materialization: no new node family. Successfully deferred Less
+  preludes reuse the existing `AtRule` node and store `prelude` as a string;
+  the existing cheap query/list path still materializes core nodes first when
+  it can.
+- Render path: parse-only slice. String preludes render through existing
+  string-backed `AtRule` header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred prelude strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1295 parsed top-level rules / 372
+  warnings to 1323 parsed top-level rules / 304 warnings with zero
+  errors/thrown failures. Remaining warning counts are 243 unsupported block
+  headers, 13 unsupported at-rules, 47 unsupported statements, and 1 empty
+  declaration name. No speed claim is made.
+
 - Latest pass: Ruleset selector-bit traversal stops using generic `node.value`.
 - Verdict: accepted as a direct-field cleanup slice, not a measured performance
   pass. `Ruleset.attachSelectorBitsToNode(...)` now follows `node.children()`,
