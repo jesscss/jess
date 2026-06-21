@@ -26,6 +26,7 @@ export { N } from './node-type.js';
 import { Selector } from './selector.js';
 
 export * from './at-rule.js';
+export * from './at-rule-statement.js';
 export * from './block.js';
 export * from './bool.js';
 export * from './ampersand.js';

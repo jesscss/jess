@@ -53,11 +53,11 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     const result = parseFlatCssDeclarationStylesheet('ignored.css', source);
 
     expect(result.source).toBe(source);
-    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
-      'css-flat-unsupported-at-rule'
-    ]);
-    expect(result.tree.rules).toHaveLength(1);
-    expect(result.tree.rules[0]?.toTrimmedString()).toBe([
+    expect(result.diagnostics).toEqual([]);
+    expect(result.tree.rules).toHaveLength(2);
+    expect(result.tree.rules[0]?.type).toBe('AtRuleStatement');
+    expect(result.tree.rules[0]?.toTrimmedString()).toBe('@import "x.css";');
+    expect(result.tree.rules[1]?.toTrimmedString()).toBe([
       '.kept {',
       '  color: green;',
       '}',
@@ -115,5 +115,20 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       line: 1,
       column: 4
     });
+  });
+
+  test('diagnoses malformed at-rule statements instead of creating fake nodes', () => {
+    const result = parseFlatCssDeclarationStylesheet('broken.css', '@;\n.kept { color: red; }');
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-malformed-at-rule-statement'
+    ]);
+    expect(result.tree.rules).toHaveLength(1);
+    expect(result.tree.rules[0]?.toTrimmedString()).toBe([
+      '.kept {',
+      '  color: red;',
+      '}',
+      ''
+    ].join('\n'));
   });
 });

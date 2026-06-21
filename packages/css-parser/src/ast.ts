@@ -1,4 +1,5 @@
 import {
+  atrulestatement,
   decl,
   rules,
   ruleset,
@@ -99,6 +100,45 @@ function canParseFlatQualifiedRule(source: string, selector: string, bodyStart: 
   return selector[0] !== '@' && findTopLevelBlockStart(source, bodyStart, bodyEnd) === -1;
 }
 
+function parseStatementNode(
+  source: string,
+  start: number,
+  end: number
+): Node | undefined {
+  const textEnd = source[end - 1] === ';' ? end - 1 : end;
+  const textStart = skipSourceTrivia(source, start, textEnd);
+  const text = source.slice(textStart, textEnd).trim();
+  if (!text) {
+    return undefined;
+  }
+  if (text[0] !== '@') {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < text.length) {
+    const code = text.charCodeAt(nameEnd);
+    const isNameCode =
+      (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57)
+      || code === 45
+      || code === 95;
+    if (!isNameCode) {
+      break;
+    }
+    nameEnd++;
+  }
+  const name = text.slice(0, nameEnd);
+  if (name.length === 1) {
+    return undefined;
+  }
+  const prelude = text.slice(nameEnd).trim();
+  return atrulestatement({
+    name,
+    ...(prelude && { prelude })
+  });
+}
+
 function pushSkippedStatementDiagnostic(
   source: string,
   diagnostics: ParserDiagnostic[] | undefined,
@@ -108,13 +148,13 @@ function pushSkippedStatementDiagnostic(
   if (!source.slice(start, end).trim()) {
     return diagnostics;
   }
-  const isAtRule = source[skipSourceTrivia(source, start, end)] === '@';
+  const isMalformedAtRule = source[skipSourceTrivia(source, start, end)] === '@';
   return pushDiagnostic(
     diagnostics,
     'warning',
-    isAtRule ? 'css-flat-unsupported-at-rule' : 'css-flat-unsupported-statement',
-    isAtRule
-      ? 'Flat CSS declaration parser skipped an at-rule statement.'
+    isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
+    isMalformedAtRule
+      ? 'Flat CSS declaration parser skipped a malformed at-rule statement.'
       : 'Flat CSS declaration parser skipped a statement without a top-level block.',
     start,
     end
@@ -150,7 +190,12 @@ export function parseFlatCssDeclarationStylesheet(
     const blockStart = findTopLevelBlockStart(source, cursor);
     const statementEnd = findStatementEnd(source, cursor, blockStart === -1 ? source.length : blockStart);
     if (statementEnd < (blockStart === -1 ? source.length : blockStart)) {
-      diagnostics = pushSkippedStatementDiagnostic(source, diagnostics, cursor, statementEnd + 1);
+      const statement = parseStatementNode(source, cursor, statementEnd + 1);
+      if (statement) {
+        children.push(statement);
+      } else {
+        diagnostics = pushSkippedStatementDiagnostic(source, diagnostics, cursor, statementEnd + 1);
+      }
       cursor = statementEnd + 1;
       continue;
     }
