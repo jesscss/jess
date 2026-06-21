@@ -30,6 +30,7 @@ import {
   findTopLevelBlockStart,
   findTopLevelDelimiter,
   scanCheapAtRulePrelude,
+  scanCheapAtRulePreludeList,
   scanCheapSelectorComponents,
   skipQuotedSourceString,
   skipSourceTrivia,
@@ -80,6 +81,17 @@ function parseCheapAtRulePrelude(text: string, options?: SourceScannerOptions): 
     return materializeCheapAtRulePreludeToken(tokens[0]!);
   }
   return query(tokens.map(materializeCheapAtRulePreludeNode));
+}
+
+function materializeCheapAtRulePreludeListItem(tokens: CheapAtRulePreludeToken[]): Node {
+  return tokens.length === 1
+    ? materializeCheapAtRulePreludeNode(tokens[0]!)
+    : query(tokens.map(materializeCheapAtRulePreludeNode));
+}
+
+function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const items = scanCheapAtRulePreludeList(text, options);
+  return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
 }
 
 function materializeCheapCompound(component: readonly string[]): string | Selector {
@@ -472,7 +484,8 @@ function parseAtRuleBlock(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = parseCheapAtRulePrelude(preludeText, LESS_SCANNER_OPTIONS);
+  const prelude = parseCheapAtRulePrelude(preludeText, LESS_SCANNER_OPTIONS)
+    ?? parseCheapAtRulePreludeList(preludeText, LESS_SCANNER_OPTIONS);
   if (preludeText && !prelude) {
     return undefined;
   }

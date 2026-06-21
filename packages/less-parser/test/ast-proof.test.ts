@@ -533,10 +533,49 @@ describe('parseLessAstStylesheet', () => {
     `);
   });
 
+  test('parses cheap comma-list at-rule preludes without widening raw strings', () => {
+    const result = parseLessAstStylesheet('media-query-list.less', `
+      @media screen and (min-width: 1px), print {
+        .inside { color: red; }
+      }
+    `);
+    const [media] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(media, N.AtRule)).toBe(true);
+    if (!isNode(media, N.AtRule)) {
+      throw new Error('Expected list-backed AtRule');
+    }
+    expect(isNode(media.prelude, N.List)).toBe(true);
+    if (!isNode(media.prelude, N.List)) {
+      throw new Error('Expected comma-list AtRule prelude');
+    }
+    expect(media.prelude.sep).toBeUndefined();
+    expect(media.prelude.items[0]?.toTrimmedString()).toBe('screen and (min-width: 1px)');
+    expect(media.prelude.items[1]?.toTrimmedString()).toBe('print');
+    expect(media.toTrimmedString()).toBe([
+      '@media screen and (min-width: 1px), print {',
+      '  .inside {',
+      '    color: red;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    const serialized = serializeTypes(media);
+    expect(serialized).toContain('(List');
+    expect(serialized).toContain('(QueryCondition');
+    expect(serialized).toContain('(Any \'print\')');
+    expect(serialized).not.toContain('prelude: \'screen and (min-width: 1px), print\'');
+  });
+
   test('diagnoses unsupported structured at-rule preludes instead of widening raw strings', () => {
     const result = parseLessAstStylesheet('unsupported-media.less', `
       @media screen and (foo, bar) {
         .comma { color: red; }
+      }
+
+      @media screen and (foo, bar), print {
+        .nestedComma { color: green; }
       }
 
       @media (@{bp}) {
@@ -546,6 +585,7 @@ describe('parseLessAstStylesheet', () => {
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-at-rule',
       'less-ast-unsupported-at-rule',
       'less-ast-unsupported-at-rule'
     ]);

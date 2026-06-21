@@ -139,8 +139,8 @@ describe('Less source scanner corpus gate', () => {
       thrown
     }).toEqual({
       files: 190,
-      rules: 1113,
-      warnings: 605,
+      rules: 1118,
+      warnings: 599,
       errors: 0,
       thrown: []
     });

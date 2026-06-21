@@ -17,6 +17,7 @@ export {
 
 export {
   scanCheapAtRulePrelude,
+  scanCheapAtRulePreludeList,
   type CheapAtRulePreludeToken
 } from './prelude-scanner.js';
 

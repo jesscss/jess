@@ -1,4 +1,5 @@
 import {
+  findTopLevelDelimiter,
   isSourceWhitespace,
   skipQuotedSourceString,
   skipSourceTrivia,
@@ -158,4 +159,43 @@ export function scanCheapAtRulePrelude(
     cursor = skipSourceTrivia(source, next, source.length, options);
   }
   return tokens.length === 0 ? undefined : tokens;
+}
+
+/**
+ * Tokenize a cheap comma-separated at-rule prelude list.
+ *
+ * Each list item must already be valid for `scanCheapAtRulePrelude(...)`. The
+ * caller still owns AST materialization; the shared parser only returns nested
+ * token arrays so CSS/Less can decide whether a list is worth constructing.
+ */
+export function scanCheapAtRulePreludeList(
+  text: string,
+  options?: SourceScannerOptions
+): CheapAtRulePreludeToken[][] | undefined {
+  const source = text.trim();
+  if (!source) {
+    return undefined;
+  }
+  const items: CheapAtRulePreludeToken[][] = [];
+  let cursor = 0;
+  let sawComma = false;
+  while (cursor < source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, options);
+    const itemEnd = comma === -1 ? source.length : comma;
+    const item = source.slice(cursor, itemEnd).trim();
+    if (!item) {
+      return undefined;
+    }
+    const tokens = scanCheapAtRulePrelude(item, options);
+    if (!tokens) {
+      return undefined;
+    }
+    items.push(tokens);
+    if (comma === -1) {
+      break;
+    }
+    sawComma = true;
+    cursor = comma + 1;
+  }
+  return sawComma && items.length > 1 ? items : undefined;
 }
