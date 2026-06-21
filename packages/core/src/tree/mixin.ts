@@ -144,7 +144,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     throw new TypeError('Expected mixin guard copy');
   }
 
-  private deriveMixin(value: MixinValue): Mixin {
+  private withParts(value: MixinValue): Mixin {
     const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
     const ownedRules = this.ownRules(value.rules);
     const derived: MixinValue = {
@@ -268,7 +268,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     let node: Mixin = this;
     let { name, rules } = node;
     if (name && name instanceof Interpolated) {
-      node = this.deriveMixin({
+      node = this.withParts({
         name: this.name,
         rules: this.rules,
         params: this.params,

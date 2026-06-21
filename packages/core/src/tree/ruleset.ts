@@ -175,7 +175,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
   }
 
-  private deriveRuleset(
+  private withParts(
     parts: RulesetValue,
     sourceParts: RulesetValue = {
       selector: this.selector,
@@ -1361,7 +1361,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         selectorBeforeExtend: this.selectorBeforeExtend
       })
     };
-    const node = this.deriveRuleset(sourceParts, sourceParts, options);
+    const node = this.withParts(sourceParts, sourceParts, options);
     node._selectorCacheOwner = this;
     node.registrationPrepared = true;
     const { selector } = node;

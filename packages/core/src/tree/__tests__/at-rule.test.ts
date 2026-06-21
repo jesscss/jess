@@ -1021,7 +1021,7 @@ describe('AtRule', () => {
       rulesEvalCalls++;
       return originalEval.apply(this, args);
     };
-    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    node.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('static direct root-only body render should not derive a temporary at-rule');
     };
     try {
@@ -1241,7 +1241,7 @@ describe('AtRule', () => {
     if (!(evaluated instanceof AtRule)) {
       throw new Error('Expected AtRule eval result');
     }
-    evaluated.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    evaluated.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('evaluated collapse-nesting render should not derive a temporary at-rule');
     };
 
@@ -1359,7 +1359,7 @@ describe('AtRule', () => {
       ]
     });
 
-    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    node.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('direct body render with evaluated prelude should not derive a temporary at-rule');
     };
 

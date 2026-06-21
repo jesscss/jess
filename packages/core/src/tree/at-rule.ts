@@ -500,7 +500,7 @@ function createAtRuleEvalResultNode(
     return source;
   }
   return applyAtRuleBodyPublicResultState(
-    source.deriveAtRule({
+    source.withParts({
       name: source.name,
       prelude: source.prelude,
       rules: source.rules
@@ -680,7 +680,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return node;
   }
 
-  deriveAtRule(parts: AtRuleValue, sourceParts: AtRuleValue = {
+  withParts(parts: AtRuleValue, sourceParts: AtRuleValue = {
     name: this.name,
     prelude: this.prelude,
     rules: this.rules
@@ -972,7 +972,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private resolveBodyResult(record: AtRuleBodyEvalRecord): AtRule {
     return applyAtRuleBodyPublicResultState(
-      this.deriveAtRule({
+      this.withParts({
         name: this.name,
         prelude: this.prelude,
         rules: this.rules
@@ -1124,7 +1124,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return this;
     }
 
-    const node = this.deriveAtRule({
+    const node = this.withParts({
       name: this.name,
       prelude: this.prelude,
       rules: this.rules
@@ -1163,7 +1163,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRule> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
-        node = original.deriveAtRule({
+        node = original.withParts({
           name: original.name,
           prelude: original.prelude,
           rules: original.rules

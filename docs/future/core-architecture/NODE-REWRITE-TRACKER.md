@@ -18,20 +18,26 @@ function calls, and fewer conversions.
 separate per-node inventions. Use this contract when reviewing or changing any
 node family:
 
-- `derive*` is the primitive construction path for a node family. It accepts
-  explicit semantic fields, constructs the same node family directly, and
-  carries only required source/options/tree-context/placement metadata.
-- `clone(...)` is a cold/public convenience policy over `derive*`: it derives
-  from the node's current fields, optionally applying the requested child clone
-  policy first.
+- `derive(...)` or `withParts(...)` is the primitive construction path for a
+  node family. It accepts explicit semantic fields, constructs the same node
+  family directly, and carries only required source/options/tree-context/
+  placement metadata.
+- Do not put the node type in an instance method name just to identify the
+  receiver. Prefer `derive(...)` when the class does not already inherit a
+  different `derive(...)` contract; prefer `withParts(...)` when a Rules-like
+  subclass already inherits `Rules.derive(value?: Node[])`.
+- `clone(...)` is a cold/public convenience policy over that primitive: it
+  derives from the node's current fields, optionally applying the requested
+  child clone policy first.
 - `cloneForPlacement(...)` is placement ownership policy over `clone`/`derive`:
   comment stripping, inert leaf reuse, render metadata transfer, and freezing.
   It should not invent a second reconstruction model.
-- `derive*` should not call `clone()` and then patch fields. That copies old
-  state before replacing it and obscures whether the result comes from source
-  fields, evaluated fields, or a mixed mutation surface.
+- The primitive should not call `clone()` and then patch fields. That copies
+  old state before replacing it and obscures whether the result comes from
+  source fields, evaluated fields, or a mixed mutation surface.
 - `clone()` should not use generic constructor reconstruction for direct-field
-  nodes. Direct-field families need a family-owned `derive*`/`withParts` path.
+  nodes. Direct-field families need a family-owned `derive(...)`/`withParts(...)`
+  path.
 - Generic helpers such as `copyWithReusableLeaves(...)` are transitional. Move
   node-specific copy behavior into family-owned derive/clone methods, then
   delete generic constructor-copy branches when focused tests prove the family
