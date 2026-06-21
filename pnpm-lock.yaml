@@ -221,6 +221,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/parser':
+        specifier: workspace:*
+        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0

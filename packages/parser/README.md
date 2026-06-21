@@ -3,8 +3,10 @@
 Shared parser infrastructure for Jess-family stylesheet parsers.
 
 This package currently exposes the hand-written recursive-descent parser runtime
-used by existing parser packages. The scanner-first CSS/Less replacement work is
-being shaped here, but its prototype files are not public API on this branch.
+used by existing parser packages, plus a small set of offset-only source scanner
+helpers. The broader scanner-first CSS/Less replacement work is being shaped
+here, but prototype structural/island services are not public API on this
+branch.
 
 The planned scanner-first layer should provide cheap source, scanner, range,
 diagnostic, trivia, and recovery primitives that language parser packages can
@@ -20,12 +22,15 @@ Today, `@jesscss/parser` owns:
 - Chevrotain-compatible token/error/location types used by the existing parser
   packages
 - token matching helpers and recovery/content-assist primitives
+- low-level offset scanners for source trivia, quoted strings, balanced blocks,
+  and single-character top-level delimiters
 
 The scanner-first work should add only generic parsing infrastructure that proves
 its value:
 
 - immutable source text and lazy line/column mapping
-- low-level scanning helpers for strings, comments, delimited blocks, trivia, and recovery
+- more complete recovery/diagnostic scanners only after the small helpers prove
+  insufficient
 - half-open source offsets and optional structural records for broad scanning
 - optional side tables for source-backed fields such as selector, name, prelude,
   body, and value when node-owned state is not enough
@@ -106,6 +111,12 @@ allocates a structural tree, field range side table, trivia ranges, diagnostics,
 and deferred parse records discovered by a profile. Those shapes are accounting
 targets, not final requirements, and should not be treated as package API until
 they are defended against the requirements below.
+
+The current public scanner helpers are lower-level than that flow: they return
+only offsets and never allocate AST, structural nodes, diagnostics, profiles, or
+field records. Language packages remain responsible for deciding whether a span
+is immediately represented as a core AST node field, skipped as unsupported for
+the current slice, or parsed later by a language-owned parser.
 
 ### Deferred Field Parsing
 

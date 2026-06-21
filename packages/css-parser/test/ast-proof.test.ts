@@ -43,4 +43,34 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       ''
     ].join('\n'));
   });
+
+  test('does not turn unsupported at-rules or nested blocks into fake flat rulesets', () => {
+    const root = parseFlatCssDeclarationStylesheet('inline.css', `
+      @media (min-width: 1px) {
+        .inside { color: red; }
+      }
+
+      .outer {
+        .nested { color: blue; }
+      }
+
+      .kept {
+        color: green;
+      }
+    `);
+
+    expect(root.rules).toHaveLength(1);
+    const [kept] = root.rules;
+    expect(isNode(kept, N.Ruleset)).toBe(true);
+    if (!isNode(kept, N.Ruleset)) {
+      throw new Error('Expected a ruleset');
+    }
+    expect(kept.selector).toBe('.kept');
+    expect(kept.toTrimmedString()).toBe([
+      '.kept {',
+      '  color: green;',
+      '}',
+      ''
+    ].join('\n'));
+  });
 });

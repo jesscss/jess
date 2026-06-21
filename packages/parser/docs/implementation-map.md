@@ -19,9 +19,10 @@ section later in this file is only a secondary index.
 ## Current Branch And Prototype Layers
 
 This branch currently exports the older recursive-descent parser runtime in
-`src/parser.ts`. The scanner-first prototype branch also contains a substrate
-under `src/source`, `src/scanner`, `src/profiles`, `src/structure`, and
-`src/services`.
+`src/parser.ts` and a deliberately small scanner helper surface in
+`src/source-scanner.ts`. The scanner-first prototype branch also contains a
+substrate under `src/source`, `src/scanner`, `src/profiles`, `src/structure`,
+and `src/services`.
 
 Only the prototype scanner-first substrate is covered here. The purpose is to
 decide what should be imported, reshaped, renamed, or deleted before it becomes
@@ -37,7 +38,8 @@ the agreed requirements. "Useful later" is not enough.
 | `SourceText` | Own source and lazy line map | Keep | Keep small; no per-node copied source strings. |
 | `LineMap` | Offset to line/column conversion | Keep | Keep lazy; verify only if source-map/diagnostic cost becomes visible. |
 | core `LocationInfo` / `node.location` | Legacy Chevrotain-era source tuple and getter. | Do not use in scanner-first AST construction. | Migrate consumers to offset spans plus lazy `LineMap`; avoid touching `location` just to test for provenance. |
-| scanner helpers | Boundary correctness | Keep | Keep generic; do not grow into full tokenization without proof. |
+| `source-scanner.ts` helpers | Boundary correctness for AST-producing parser proofs | Keep public but tiny | Root export is intentional for offset-only helpers; keep generic, single-purpose, and free of language profiles or AST construction. |
+| broader scanner helpers from prototype | Boundary correctness | Provisional | Import only when they delete parser-local duplication or prove a new AST-producing slice; do not grow into full tokenization without proof. |
 | structural container/statement node objects | Broad containment and statements | Provisional | Prove they are cheaper than constructing actual existing CSS/Less AST nodes with deferred-capable fields. |
 | `RawIslandNode` objects | Deferred typed parse spans | Suspicious | In the preferred model, this is a string field plus state owned by the AST node, possibly packed inside that node. Delete or rename unless object identity is proven necessary. |
 | `FieldRangeTable` | Offsets for source-backed fields | Provisional keep | Keep only if it prevents wrapper/raw fields; redesign if lookup becomes hot. |
@@ -61,7 +63,8 @@ or enriching a real AST node?
 | `LineMap` | Human-facing offset conversion is document-wide, not node-specific. | Keep, lazy. |
 | `LocationInfo` tuple | No value for scanner-first AST output over offsets plus lazy line mapping; it stores line/column eagerly and the getter can allocate empty arrays. | Legacy only. |
 | `ScannerCursor` | Short-lived parser implementation state; not an output object. | Keep internal. |
-| scanner helpers | Shared boundary logic before AST construction. | Keep internal. |
+| `source-scanner.ts` helpers | Shared boundary logic before AST construction. They return offsets only and let language packages build or skip AST nodes. | Keep public but tiny. |
+| broader scanner/prototype helpers | Shared boundary logic before AST construction. | Keep internal until imported and defended. |
 | `ParserDiagnostic` | Diagnostics are output records, not AST nodes. | Keep. |
 | `TriviaRun` | Trivia can be document-wide and may not belong on every AST node. | Keep provisionally; consider packing. |
 | `StructuralContainerNode` / `StructuralStatementNode` | Possible value only for an editor/probe broad parse that deliberately avoids AST construction. For compile/parser replacement, value over existing AST nodes with deferred fields is unproven. | Provisional; likely loses to AST nodes for CSS/Less parser proof. |
@@ -92,8 +95,10 @@ This is the concrete direction implied by the review above.
    - current CSS proof: `@jesscss/css-parser` exposes
      `parseFlatCssDeclarationStylesheet(filePath, source)`, which returns a
      core `Stylesheet` with string-backed `Ruleset.selector`,
-     `Declaration.name`, and `Declaration.value` for a flat qualified-rule
-     declaration subset
+     `Declaration.name`, and declaration value fields for a flat qualified-rule
+     declaration subset. The current core field is still named `valueNode`;
+     renaming that to the semantic `value` field remains core-shape debt, not a
+     parser requirement.
    - introduce or target a real top-level `Stylesheet extends Rules` node if
      root document state cannot fit cleanly on plain `Rules`
    - widen the actual `@jesscss/core` node fields in place where needed
@@ -131,6 +136,9 @@ This is the concrete direction implied by the review above.
 5. Keep scanner/source pieces only where they support AST production:
    - boundary scanning, string/comment/delimiter handling, lazy line maps, and
      diagnostics remain useful
+   - current code imported only `src/source-scanner.ts`, which provides
+     offset-only trivia/string/block/top-level-delimiter helpers and creates no
+     structural nodes, profiles, side tables, diagnostics, or AST objects
    - structural node objects remain provisional until proven cheaper than direct
      construction of existing AST nodes with deferred-capable fields
 
@@ -890,7 +898,7 @@ In the scanner-first prototype branch, calling
 | root `StructuralContainerNode` | `src/structure/parse.ts` | R2 | Document container. | Required. |
 | one structural node per detected container/statement/error | `src/structure/types.ts` | R2, R6 | Captures containment and source ranges. | Provisional; direct existing AST nodes with deferred-capable fields may be cheaper. |
 | `StructuralDocument` facade | `src/structure/document.ts` | R2 | Exposes root, diagnostics, trivia, field ranges, islands, and cold queries. | Provisional broad-scan facade. Keep out of compile hot path; direct AST nodes with deferred fields are the preferred CSS/Less parser proof. |
-| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks scanner structural boundaries into a real core `Stylesheet` for a tiny flat CSS declaration subset. Selector/name/value fields remain strings; no island plan or Chevrotain parse is required. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
+| CSS `parseFlatCssDeclarationStylesheet` proof | `../css-parser/src/ast.ts` | R2, R3, R5 | Walks source-scanner boundaries into a real core `Stylesheet` for a tiny flat CSS qualified-rule declaration subset. It skips at-rules and nested blocks rather than manufacturing empty rulesets for unsupported syntax. Selector/name/value payloads remain strings; no island plan, structural node, or Chevrotain parse is required. Current `Ruleset.rules: Rules` and `Declaration.valueNode` shapes are inherited core debt, not parser-owned structural objects. | Keep expanding only where CSS output correctness requires it; do not turn it into another structural facade. |
 
 The prototype generic `parseStructure(input, profile, options)` allocation
 accounting has zero allocations for:

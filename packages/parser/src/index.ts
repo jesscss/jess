@@ -7,6 +7,16 @@ export {
 } from './parser.js';
 
 export {
+  findBalancedBlockEnd,
+  findStatementEnd,
+  findTopLevelBlockStart,
+  findTopLevelDelimiter,
+  isSourceWhitespace,
+  skipQuotedSourceString,
+  skipSourceTrivia
+} from './source-scanner.js';
+
+export {
   buildTokenMatchBitsets,
   buildTokenTypeSet,
   tokenMatches,
