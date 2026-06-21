@@ -140,6 +140,30 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     expect(serializeTypes(selectorListRule)).not.toContain('(BasicSelector');
   });
 
+  test('skips selector comments while preserving cheap selector shape', () => {
+    const result = parseFlatCssDeclarationStylesheet('selector-comments.css', `
+      a/* { } */ b {}
+      a/* test */b {}
+    `);
+    const [descendantRule, compoundRule] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(descendantRule, N.Ruleset)).toBe(true);
+    expect(isNode(compoundRule, N.Ruleset)).toBe(true);
+    if (!isNode(descendantRule, N.Ruleset) || !isNode(compoundRule, N.Ruleset)) {
+      throw new Error('Expected rulesets');
+    }
+    expect(isNode(descendantRule.selector, N.ComplexSelector)).toBe(true);
+    expect(isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    if (!isNode(descendantRule.selector, N.ComplexSelector) || !isNode(compoundRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected comment-normalized selector nodes');
+    }
+    expect(descendantRule.selector.value).toEqual(['a', ' ', 'b']);
+    expect(compoundRule.selector.value).toEqual(['a', 'b']);
+    expect(serializeTypes(descendantRule)).not.toContain('(BasicSelector');
+    expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+  });
+
   test('diagnoses malformed selector-list boundaries instead of dropping empty branches', () => {
     const result = parseFlatCssDeclarationStylesheet('selector-list-boundary.css', `
       .a, { color: red; }

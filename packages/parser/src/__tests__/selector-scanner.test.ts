@@ -19,6 +19,9 @@ describe('selector scanner helpers', () => {
     expect(scanCheapSelectorComponents('.æøå > :root')).toEqual([['.æøå'], '>', [':root']]);
     expect(scanCheapSelectorComponents('.a > .b + div')).toEqual([['.a'], '>', ['.b'], '+', ['div']]);
     expect(scanCheapSelectorComponents('.a .b')).toEqual([['.a'], ' ', ['.b']]);
+    expect(scanCheapSelectorComponents('a/* comment */b')).toEqual([['a', 'b']]);
+    expect(scanCheapSelectorComponents('a/* comment */ b')).toEqual([['a'], ' ', ['b']]);
+    expect(scanCheapSelectorComponents('a /* comment */b')).toEqual([['a'], ' ', ['b']]);
   });
 
   test('rejects selector structures outside the cheap scanner subset', () => {
@@ -39,6 +42,7 @@ describe('selector scanner helpers', () => {
     expect(scanCheapSelectorComponents('[data=-]')).toBeUndefined();
     expect(scanCheapSelectorComponents('[data=foo.bar]')).toBeUndefined();
     expect(scanCheapSelectorComponents('[data-x')).toBeUndefined();
+    expect(scanCheapSelectorComponents('a/* unclosed b')).toBeUndefined();
     expect(scanCheapSelectorComponents('.a >')).toBeUndefined();
     expect(scanCheapSelectorComponents('.a, .b')).toBeUndefined();
   });

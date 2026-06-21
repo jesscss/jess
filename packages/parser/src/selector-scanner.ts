@@ -228,6 +228,11 @@ function scanCompoundSelector(source: string, start: number): { component: strin
   };
 }
 
+function skipSelectorBlockComment(source: string, start: number): number {
+  const end = source.indexOf('*/', start + 2);
+  return end === -1 ? -1 : end + 2;
+}
+
 /**
  * Tokenize only cheap selector structures that are safe to share across
  * CSS-family parser proofs.
@@ -252,6 +257,14 @@ export function scanCheapSelectorComponents(selector: string): CheapSelectorComp
       continue;
     }
     const char = source[cursor];
+    if (char === '/' && source[cursor + 1] === '*') {
+      const commentEnd = skipSelectorBlockComment(source, cursor);
+      if (commentEnd === -1) {
+        return undefined;
+      }
+      cursor = commentEnd;
+      continue;
+    }
     if (char === '>' || char === '+' || char === '~') {
       if (components.length === 0 || lastWasCombinator) {
         return undefined;
@@ -270,7 +283,12 @@ export function scanCheapSelectorComponents(selector: string): CheapSelectorComp
     if (!compoundResult) {
       return undefined;
     }
-    components.push(compoundResult.component);
+    const previous = components[components.length - 1];
+    if (Array.isArray(previous)) {
+      previous.push(...compoundResult.component);
+    } else {
+      components.push(compoundResult.component);
+    }
     cursor = compoundResult.end;
     lastWasCombinator = false;
   }
