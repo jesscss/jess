@@ -1669,15 +1669,15 @@ lane.
 
 ## Remaining Work Clusters
 
-Current audit: most named binding / lookup / registryless architecture clusters
-above are closed or rejected with repo evidence, but current code evidence still
-shows retained callable bridge surfaces. Do not reseed declaration, property,
-scope-frame/current-cell, reference-handle, or simple-read tasks from older prose
-unless new code evidence contradicts the checked items. The remaining open
-binding work is the callable bridge audit: `Rules.findMixinsFast(...)`,
-`findMixinsFastForUncoveredCallable(...)`, array-path namespace starts, fallback
-frames, and any public array/string conversion that can still act as a broad
-second producer for a modeled lookup.
+Current audit: the named binding / lookup / registryless architecture clusters
+above are closed or rejected with repo evidence. Do not reseed declaration,
+property, scope-frame/current-cell, reference-handle, simple-read, or callable
+bridge tasks from older prose unless new code evidence contradicts the checked
+items. Latest production grep still shows callable API and helper names, but the
+retained call sites are now the public callable lookup API, semantic fallback
+frame walks, no-frame starts where no frame facts exist, or named
+`findMixinsFastForUncoveredCallable(...)` uncovered states. No remaining active
+cluster is open in this inventory.
 
 Known blocker outside the latest cut: full `import-style.test.ts` currently
 fails `import-reference-issues: repeated reference/multiple imports keep
@@ -1697,13 +1697,33 @@ Closed cluster map:
 - Callable, namespace, reference-import, parameterized terminal, and fallback
   frame behavior is covered by items 59-80, 82, and 83; covered callable paths
   stay off broad `findMixinsFast(...)`, with retained bridges limited to
-  uncovered callable states.
+  no-frame lookup or uncovered callable states.
 - Reference handle, source-static, leaky/searchScope, and simple-read proof is
   covered by items 81-83; stale handles clear and rebuild without resurrecting
   public registry-shaped lookup bridges.
 
 If future evidence reopens a lane, add a new checked-queue item with a specific
 proof surface rather than reviving the historical cluster list wholesale.
+
+Current completion evidence:
+
+- Active binding queue: all items checked; no new item is reseeded from this
+  inventory.
+- Stale lookup grep: production hits remain for callable API/helper names,
+  semantic fallback-frame traversal, no-frame starts, and named uncovered
+  callable states only; old public registry-shaped declaration wrappers remain
+  absent.
+- Focused gates: latest callable namespace/local/target tests, full
+  `mixin.test.ts`, focused import-style namespace tests,
+  `verify:binding-lookup-hot-paths`, core build, ESLint, `git diff --check`,
+  and `verify:aggressive-cutting-review` passed.
+- Stress profile: `node scripts/profile-less-benchmark.mjs
+  --fixture=scripts/fixtures/less-hotpath/scope-lookup-stress.less` reports
+  empty `rulesFindByType`, `registryFindByType`, and `searchChildrenByType`.
+- Changed-baseline/import-style blockers: the known full `import-style.test.ts`
+  repeated reference/multiple-import parent-chain failure and the changed
+  baseline `call.test.ts` serialization failures are documented above as
+  non-binding blockers.
 
 ## Completion Criteria
 
