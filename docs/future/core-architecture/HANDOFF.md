@@ -103,15 +103,16 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: local namespace-start broad fallback deletion.
-- Verdict: accepted as a narrow second-producer cut. `local: true` no longer
-  disables frame-owned callable namespace-start lookup. The narrow uncovered
-  child helper already applies the local child-surface skip, and policy-skipped
-  local children now count as modeled misses so a covered empty namespace start
-  does not reopen the broad ruleset/mixin crawl. The broad start fallback
-  remains only for no-frame or targeted callers. No speed claim.
-- New traversal: none. The pass removes the local frame bypass and prevents a
-  covered empty namespace start from entering the ruleset fallback.
+- Latest pass: policy-gated namespace-start broad fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. `local: true` and
+  `hasTarget: true` no longer disable frame-owned callable namespace-start
+  lookup. The narrow uncovered child helper already applies local and
+  target-restricted child-surface gates, and policy-skipped children now count
+  as modeled misses so a covered empty namespace start does not reopen the
+  broad ruleset/mixin crawl. The broad start fallback remains only for
+  no-frame callers. No speed claim.
+- New traversal: none. The pass removes local/target frame bypasses and
+  prevents covered empty namespace starts from entering the ruleset fallback.
 - Review-flagged allocations: none added.
 - New node/materialization: none.
 - Render path: unchanged. This pass only changes callable namespace lookup
@@ -123,10 +124,10 @@ with `--no-verify` after the explicit gates pass.
 - Allocation changes: no new production arrays or objects; tests add spy
   arrays only.
 - Evidence: focused
-  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "local namespace-start|selector-list prefix|static miss skips Rules.findMixinsFast"`
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "local namespace-start|restricted namespace-start|targeted namespace-start|selector-list prefix|static miss skips Rules.findMixinsFast"`
   passed, and full
   `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
-  passed (`197/197`).
+  passed (`199/199`).
 
 - Previous pass: frame-owned array-path mixin namespace broad-start fallback deletion.
 - Verdict: accepted as a narrow second-producer cut. When `findMixin(array)`

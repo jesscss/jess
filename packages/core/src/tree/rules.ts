@@ -1407,9 +1407,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let modeledChildSurface = false;
     for (let i = childEntries.length - 1; i >= 0; i--) {
       const entry = childEntries[i]!;
-      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
-        continue;
-      }
       if (includeRulesets) {
         if (
           entry.hasExactCallableSurface === false
@@ -1425,6 +1422,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (reason === 'child-surface' || entry.hasReferenceImportSurface === true) {
         modeledChildSurface = true;
+      }
+      if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options.hasTarget })) {
+        continue;
       }
       if (entry.node.options?.forward) {
         continue;
@@ -2140,7 +2140,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       const includeRulesets = filterType !== 'Mixin' && (restLength > 0 || options.terminalMixinOnly !== true);
       let matches: MixinEntry[] | undefined;
-      if (scope._scopeFrame && !options.hasTarget) {
+      if (scope._scopeFrame) {
         scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
         const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
           includeRulesets,
@@ -3389,7 +3389,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         let namespaceMixins: MixinEntry[] | undefined;
         let namespaceMixinMissCovered = false;
-        if (this._scopeFrame && !options.hasTarget) {
+        if (this._scopeFrame) {
           const namespaceKey = keys[0]!;
           this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
           const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
@@ -3434,7 +3434,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (
           namespaceMixins === undefined
           && !namespaceMixinMissCovered
-          && (!this._scopeFrame || options.hasTarget)
+          && !this._scopeFrame
         ) {
           namespaceMixins = this.findMixinsFast(keys[0]!, {
             hasTarget: options.hasTarget,

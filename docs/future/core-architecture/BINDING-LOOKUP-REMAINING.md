@@ -85,8 +85,11 @@ uncovered misses respect `searchParents: false` after the narrow bridge.
 Local array-path namespace starts now also use frame/narrow-helper lookup:
 `local: true` skips local child surfaces as modeled misses without reopening
 the broad root `findMixinsFast(...)` or ruleset fallback, while non-local child
-namespace hits still resolve through child frames. The remaining broad
-namespace-start fallback is limited to no-frame and targeted callers.
+namespace hits still resolve through child frames. Target-restricted
+mixin-output namespace starts likewise stay frame-owned: ambient restricted
+output misses are modeled without broad crawl, and `hasTarget: true` positives
+resolve through child frames. The remaining broad namespace-start fallback is
+limited to no-frame callers.
 
 3. [x] Delete any remaining simple exact callable child scans that are
 provably covered by frame facts. Scope: current-frame miss, child-entry family
