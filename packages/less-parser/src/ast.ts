@@ -357,9 +357,6 @@ function parseCheapMixinCallArgs(source: string): ReturnType<typeof list> | unde
   }
   const semi = findTopLevelDelimiter(text, ';', 0, text.length, LESS_SCANNER_OPTIONS);
   const comma = findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS);
-  if (semi !== -1 && comma !== -1) {
-    return undefined;
-  }
   const separator = semi !== -1
     ? ';'
     : comma !== -1
@@ -376,21 +373,60 @@ function parseCheapMixinCallArgs(source: string): ReturnType<typeof list> | unde
     if (
       !arg
       || arg.endsWith('...')
-      || findTopLevelDelimiter(arg, ':', 0, arg.length, LESS_SCANNER_OPTIONS) !== -1
       || !hasBalancedCheapArgumentText(arg)
+      || (separator === ';' && !hasNoEmptyTopLevelCommaArms(arg))
     ) {
       return undefined;
     }
-    args.push(any(arg));
+    const namedColon = findTopLevelDelimiter(arg, ':', 0, arg.length, LESS_SCANNER_OPTIONS);
+    if (namedColon === -1) {
+      args.push(any(arg));
+    } else {
+      const name = arg.slice(0, namedColon).trim();
+      const value = arg.slice(namedColon + 1).trim();
+      if (name[0] !== '@' || !value || !hasBalancedCheapArgumentText(value)) {
+        return undefined;
+      }
+      let nameEnd = 1;
+      while (nameEnd < name.length && isLessNameCode(name.charCodeAt(nameEnd))) {
+        nameEnd++;
+      }
+      if (nameEnd === 1 || name.slice(nameEnd).trim()) {
+        return undefined;
+      }
+      args.push(new VarDeclaration({
+        name: any(name.slice(1), { role: 'property' }),
+        value
+      }, { paramVar: true }));
+    }
     if (!separator || end === -1) {
       break;
     }
     cursor = end + 1;
     if (cursor >= text.length) {
+      if (separator === ';') {
+        break;
+      }
       return undefined;
     }
   }
   return list(args, separator ? { sep: separator } : undefined);
+}
+
+function hasNoEmptyTopLevelCommaArms(source: string): boolean {
+  let cursor = 0;
+  while (cursor <= source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, LESS_SCANNER_OPTIONS);
+    const armEnd = comma === -1 ? source.length : comma;
+    if (!source.slice(cursor, armEnd).trim()) {
+      return false;
+    }
+    if (comma === -1) {
+      return true;
+    }
+    cursor = comma + 1;
+  }
+  return true;
 }
 
 function isCheapMixinName(source: string): boolean {

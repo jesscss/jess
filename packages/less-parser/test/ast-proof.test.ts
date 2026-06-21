@@ -363,23 +363,50 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('mixin-calls-with-args.less', `
       .withArgs(@tone, 2px);
       #theme(red; screen and (min-width: 1px)) !important;
+      .named(@tone: red, @size: 2px);
+      .semiNamed(@tone: red; @shadow: 1px 2px, blue);
+      .semiList(1px, 2px; 3px);
+      .semiTrail(1px;);
 
       .a {
         .nested(rgb(10, 20, 30), "{");
       }
     `);
-    const [withArgs, theme, rule] = result.tree.rules;
+    const [withArgs, theme, named, semiNamed, semiList, semiTrail, rule] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(withArgs, N.Call)).toBe(true);
     expect(isNode(theme, N.Call)).toBe(true);
+    expect(isNode(named, N.Call)).toBe(true);
+    expect(isNode(semiNamed, N.Call)).toBe(true);
+    expect(isNode(semiList, N.Call)).toBe(true);
+    expect(isNode(semiTrail, N.Call)).toBe(true);
     expect(isNode(rule, N.Ruleset)).toBe(true);
-    if (!isNode(withArgs, N.Call) || !isNode(theme, N.Call) || !isNode(rule, N.Ruleset)) {
+    if (
+      !isNode(withArgs, N.Call)
+      || !isNode(theme, N.Call)
+      || !isNode(named, N.Call)
+      || !isNode(semiNamed, N.Call)
+      || !isNode(semiList, N.Call)
+      || !isNode(semiTrail, N.Call)
+      || !isNode(rule, N.Ruleset)
+    ) {
       throw new Error('Expected argument-bearing Less mixin calls');
     }
     expect(isNode(withArgs.args, N.List)).toBe(true);
     expect(isNode(theme.args, N.List)).toBe(true);
-    if (!isNode(withArgs.args, N.List) || !isNode(theme.args, N.List)) {
+    expect(isNode(named.args, N.List)).toBe(true);
+    expect(isNode(semiNamed.args, N.List)).toBe(true);
+    expect(isNode(semiList.args, N.List)).toBe(true);
+    expect(isNode(semiTrail.args, N.List)).toBe(true);
+    if (
+      !isNode(withArgs.args, N.List)
+      || !isNode(theme.args, N.List)
+      || !isNode(named.args, N.List)
+      || !isNode(semiNamed.args, N.List)
+      || !isNode(semiList.args, N.List)
+      || !isNode(semiTrail.args, N.List)
+    ) {
       throw new Error('Expected Less mixin call argument lists');
     }
     expect(withArgs.args.sep).toBe(',');
@@ -387,6 +414,19 @@ describe('parseLessAstStylesheet', () => {
     expect(theme.args.sep).toBe(';');
     expect(theme.args.items.map(item => item.valueOf())).toEqual(['red', 'screen and (min-width: 1px)']);
     expect(theme.options.markImportant).toBe(true);
+    expect(named.args.sep).toBe(',');
+    expect(named.args.items.map(item => item.toTrimmedString())).toEqual(['$tone: red', '$size: 2px']);
+    expect(named.args.items.every(item => isNode(item, N.VarDeclaration))).toBe(true);
+    expect(semiNamed.args.sep).toBe(';');
+    expect(semiNamed.args.items.map(item => item.toTrimmedString())).toEqual([
+      '$tone: red',
+      '$shadow: 1px 2px, blue'
+    ]);
+    expect(semiNamed.args.items.every(item => isNode(item, N.VarDeclaration))).toBe(true);
+    expect(semiList.args.sep).toBe(';');
+    expect(semiList.args.items.map(item => item.valueOf())).toEqual(['1px, 2px', '3px']);
+    expect(semiTrail.args.sep).toBe(';');
+    expect(semiTrail.args.items.map(item => item.valueOf())).toEqual(['1px']);
 
     const [nested] = rule.rules.rules;
     expect(isNode(nested, N.Call)).toBe(true);
@@ -416,8 +456,9 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
       .empty(,);
       .suffix(a) b;
-      .mixed(a, b; c);
-      .named(@tone: red);
+      .emptySemiComma(a; ,);
+      .trailingSemiComma(a; b,);
+      .doubleSemiComma(a; b,, c);
       .rest(@items...);
       .bad([oops)]);
       .deprecated;
@@ -427,6 +468,7 @@ describe('parseLessAstStylesheet', () => {
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
