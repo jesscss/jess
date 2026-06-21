@@ -827,6 +827,45 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(media)).not.toContain('(Any [role=atkeyword]');
   });
 
+  test('parses keyframe selector headers only inside keyframes bodies', () => {
+    const result = parseLessAstStylesheet('keyframes.less', `
+      @keyframes fade {
+        from {
+          opacity: 0;
+          0% { opacity: 0; }
+        }
+        5.5% { opacity: .5; }
+        0%, 100% { opacity: 1; }
+      }
+
+      0% { opacity: 0; }
+    `);
+    const [keyframes] = result.tree.rules;
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header'
+    ]);
+    expect(isNode(keyframes, N.AtRule)).toBe(true);
+    if (!isNode(keyframes, N.AtRule)) {
+      throw new Error('Expected keyframes AtRule');
+    }
+    const [from, decimal, endpoints] = keyframes.rules?.rules ?? [];
+    expect(isNode(from, N.Ruleset) && from.selector).toBe('from');
+    expect(isNode(decimal, N.Ruleset) && decimal.selector).toBe('5.5%');
+    expect(isNode(endpoints, N.Ruleset)).toBe(true);
+    if (!isNode(endpoints, N.Ruleset)) {
+      throw new Error('Expected comma-list keyframe ruleset');
+    }
+    expect(isNode(endpoints.selector, N.SelectorList)).toBe(true);
+    expect(endpoints.selector.valueOf()).toBe('0%,100%');
+    const serialized = serializeTypes(keyframes);
+    expect(serialized).toContain('selector: \'from\'');
+    expect(serialized).toContain('selector: \'5.5%\'');
+    expect(serialized).toContain('(SelectorList');
+    expect(serialized).not.toContain('(BasicSelector');
+  });
+
   test('parses balanced block at-rule preludes into query-ready nodes', () => {
     const result = parseLessAstStylesheet('media-query.less', `
       @media screen and (min-width: 1px) {

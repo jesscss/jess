@@ -103,6 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less keyframe selector headers.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. `from`, `to`, numeric percentages, and comma-lists of numeric
+  percentages now become string-backed keyframe `Ruleset.selector` fields, but
+  only while parsing the immediate body of `@keyframes` / vendor-prefixed
+  keyframes at-rules. The same `0% { ... }` shape outside a keyframes body
+  still stays unsupported.
+- New traversal: no tree traversal. The parser carries a single recursive
+  parse-context flag for keyframes bodies and scans only the sliced block
+  header for keyword or percentage arms.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Single keyframe selectors are strings; comma-list keyframe
+  selectors reuse existing `SelectorList` with string entries.
+- Render path: parse-only slice. No evaluation, extend, or selector hydration
+  work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. String selector arms have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1338 parsed top-level rules and
+  moved from 210 warnings to 200 warnings with zero errors/thrown failures.
+  Remaining warning counts are 130 unsupported block headers, 69 unsupported
+  statements, and 1 empty declaration name. No speed claim is made.
+
 - Latest pass: scanner-first Less ampersand suffix selectors.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Less block headers such as `&1`, `&:focus`, and `&-item` now become

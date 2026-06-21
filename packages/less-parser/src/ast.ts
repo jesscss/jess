@@ -56,6 +56,13 @@ type DiagnosticSink = (
   end: number
 ) => void;
 
+type LessAstParseContext = {
+  allowKeyframeSelectors?: boolean;
+};
+
+const DEFAULT_PARSE_CONTEXT: LessAstParseContext = {};
+const KEYFRAMES_PARSE_CONTEXT: LessAstParseContext = { allowKeyframeSelectors: true };
+
 function isLessNameCode(code: number): boolean {
   return (
     (code >= 65 && code <= 90)
@@ -317,6 +324,56 @@ function parseDeferredLessAmpersandSelector(selector: string): string | undefine
     return undefined;
   }
   return isBalancedLessDeferredText(source) ? source : undefined;
+}
+
+function parseKeyframeSelectorArm(text: string): string | undefined {
+  const source = text.trim();
+  if (source === 'from' || source === 'to') {
+    return source;
+  }
+  if (source.length < 2 || source[source.length - 1] !== '%') {
+    return undefined;
+  }
+  let dot = false;
+  for (let i = 0; i < source.length - 1; i++) {
+    const code = source.charCodeAt(i);
+    if (code >= 48 && code <= 57) {
+      continue;
+    }
+    if (code === 46 && !dot) {
+      dot = true;
+      continue;
+    }
+    return undefined;
+  }
+  return source[0] === '.' || source[source.length - 2] === '.' ? undefined : source;
+}
+
+function parseKeyframeSelectorList(selector: string): string | Selector | undefined {
+  const firstComma = findTopLevelDelimiter(selector, ',', 0, selector.length, LESS_SCANNER_OPTIONS);
+  if (firstComma === -1) {
+    return parseKeyframeSelectorArm(selector);
+  }
+  const first = parseKeyframeSelectorArm(selector.slice(0, firstComma));
+  if (first === undefined) {
+    return undefined;
+  }
+  const items = [first];
+  let cursor = firstComma + 1;
+  while (cursor < selector.length) {
+    const comma = findTopLevelDelimiter(selector, ',', cursor, selector.length, LESS_SCANNER_OPTIONS);
+    const itemEnd = comma === -1 ? selector.length : comma;
+    const item = parseKeyframeSelectorArm(selector.slice(cursor, itemEnd));
+    if (item === undefined) {
+      return undefined;
+    }
+    items.push(item);
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+  }
+  return sellist(items);
 }
 
 function parseLessVariableDeclaration(
@@ -923,12 +980,17 @@ function parseCheapMixinBlock(
   });
 }
 
+function isKeyframesAtRuleName(name: string): boolean {
+  return /^@(?:-[a-z]+-)?keyframes$/iu.test(name);
+}
+
 function parseAtRuleBlock(
   source: string,
   start: number,
   blockStart: number,
   blockEnd: number,
-  addDiagnostic: DiagnosticSink
+  addDiagnostic: DiagnosticSink,
+  context: LessAstParseContext
 ): Node | undefined {
   if (source[start] !== '@') {
     return undefined;
@@ -949,7 +1011,13 @@ function parseAtRuleBlock(
   return atrule({
     name,
     ...(prelude !== undefined && { prelude }),
-    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+    rules: rules(parseLessNodes(
+      source,
+      blockStart + 1,
+      blockEnd,
+      addDiagnostic,
+      isKeyframesAtRuleName(name) ? KEYFRAMES_PARSE_CONTEXT : DEFAULT_PARSE_CONTEXT
+    ))
   });
 }
 
@@ -958,7 +1026,8 @@ function parseLessBlockNode(
   start: number,
   blockStart: number,
   blockEnd: number,
-  addDiagnostic: DiagnosticSink
+  addDiagnostic: DiagnosticSink,
+  context: LessAstParseContext
 ): Node | undefined {
   const { body: selector, guard } = splitGuardedHeader(source.slice(start, blockStart));
   if (!selector) {
@@ -997,7 +1066,7 @@ function parseLessBlockNode(
     );
   }
   if (selector[0] === '@' && selector[1] !== '{') {
-    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic);
+    const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic, context);
     if (atRule) {
       return atRule;
     }
@@ -1022,7 +1091,9 @@ function parseLessBlockNode(
   if (mixinDefinition) {
     return mixinDefinition;
   }
-  const parsedSelector = parseCheapLessSelectorList(selector);
+  const parsedSelector = context.allowKeyframeSelectors && !guard
+    ? parseKeyframeSelectorList(selector)
+    : parseCheapLessSelectorList(selector);
   if (parsedSelector === undefined) {
     addDiagnostic(
       'warning',
@@ -1157,7 +1228,8 @@ function parseLessNodes(
   source: string,
   start: number,
   end: number,
-  addDiagnostic: DiagnosticSink
+  addDiagnostic: DiagnosticSink,
+  context: LessAstParseContext = DEFAULT_PARSE_CONTEXT
 ): Node[] {
   const children: Node[] = [];
   let cursor = start;
@@ -1195,7 +1267,7 @@ function parseLessNodes(
       );
       break;
     }
-    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic, context);
     if (blockNode) {
       children.push(blockNode);
     }
@@ -1271,7 +1343,7 @@ export function parseLessAstStylesheet(
       );
       break;
     }
-    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic, DEFAULT_PARSE_CONTEXT);
     if (blockNode) {
       children.push(blockNode);
     }
