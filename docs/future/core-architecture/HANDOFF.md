@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less interpolated selector headers.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Less block headers containing `@{...}` interpolation now become
+  string-backed `Ruleset.selector` fields after balanced deferred-text
+  validation. This prevents `@{selector} { ... }` from being misclassified as
+  a malformed at-rule while still leaving full selector hydration for later.
+- New traversal: no tree traversal. The existing Less-local deferred-text scan
+  now serves both at-rule preludes and interpolation-bearing selector headers;
+  selector use requires at least one `@{...}` interpolation. It scans only the
+  already-sliced block header for strings, comments, line comments, escapes,
+  `()`, `[]`, and interpolation braces.
+- New node/materialization: no new node family and no selector leaf
+  materialization. Accepted headers reuse existing `Ruleset` nodes and store
+  `selector` as a string.
+- Render path: parse-only slice. String selectors render through existing
+  string-backed ruleset header output and are not evaluated or hydrated here.
+- Helper/API surface: private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. Deferred selector strings have no parent/source
+  metadata.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1323 parsed top-level rules / 304
+  warnings to 1338 parsed top-level rules / 282 warnings with zero
+  errors/thrown failures. Remaining warning counts are 234 unsupported block
+  headers, 47 unsupported statements, and 1 empty declaration name; the
+  unsupported at-rule bucket is now gone. No speed claim is made.
+
 - Latest pass: scanner-first Less deferred at-rule preludes.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Less block at-rules now keep balanced structured preludes as string

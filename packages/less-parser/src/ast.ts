@@ -119,11 +119,12 @@ function findLessTopLevelBlockStart(source: string, offset: number, end: number)
   return -1;
 }
 
-function isBalancedLessAtRulePrelude(text: string): boolean {
+function isBalancedLessDeferredText(text: string, options?: { requireInterpolation?: boolean }): boolean {
   if (!text) {
     return false;
   }
-  const stack: string[] = [];
+  let expectedClose = '';
+  let sawInterpolation = false;
   let cursor = 0;
   while (cursor < text.length) {
     const char = text[cursor];
@@ -140,6 +141,7 @@ function isBalancedLessAtRulePrelude(text: string): boolean {
       if (interpolationEnd === -1) {
         return false;
       }
+      sawInterpolation = true;
       cursor = interpolationEnd + 1;
       continue;
     }
@@ -163,19 +165,20 @@ function isBalancedLessAtRulePrelude(text: string): boolean {
       continue;
     }
     if (char === '(') {
-      stack.push(')');
+      expectedClose += ')';
     } else if (char === '[') {
-      stack.push(']');
+      expectedClose += ']';
     } else if (char === '{') {
       return false;
     } else if (char === ')' || char === ']' || char === '}') {
-      if (stack.pop() !== char) {
+      if (expectedClose[expectedClose.length - 1] !== char) {
         return false;
       }
+      expectedClose = expectedClose.slice(0, -1);
     }
     cursor++;
   }
-  return stack.length === 0;
+  return expectedClose.length === 0 && (!options?.requireInterpolation || sawInterpolation);
 }
 
 function parseLessAtRulePrelude(text: string): AtRulePrelude | undefined {
@@ -184,7 +187,7 @@ function parseLessAtRulePrelude(text: string): AtRulePrelude | undefined {
   if (prelude !== undefined) {
     return prelude;
   }
-  return isBalancedLessAtRulePrelude(text) ? text : undefined;
+  return isBalancedLessDeferredText(text) ? text : undefined;
 }
 
 function materializeCheapCompound(component: readonly string[]): string | Selector {
@@ -242,6 +245,70 @@ function parseCheapLessSelectorList(selector: string): string | Selector | undef
     cursor = comma + 1;
   }
   return items.length > 1 ? sellist(items) : items[0];
+}
+
+function findTopLevelParenOpen(text: string): number {
+  let bracketDepth = 0;
+  let cursor = 0;
+  while (cursor < text.length) {
+    const char = text[cursor];
+    if (char === '"' || char === '\'') {
+      cursor = skipQuotedSourceString(text, cursor, text.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '@' && text[cursor + 1] === '{') {
+      const interpolationEnd = text.indexOf('}', cursor + 2);
+      if (interpolationEnd === -1) {
+        return -1;
+      }
+      cursor = interpolationEnd + 1;
+      continue;
+    }
+    if (char === '[') {
+      bracketDepth++;
+    } else if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+    } else if (char === '(' && bracketDepth === 0) {
+      return cursor;
+    }
+    cursor++;
+  }
+  return -1;
+}
+
+function looksLikeInterpolatedMixinHead(text: string): boolean {
+  const head = text.trim();
+  if (head[0] !== '.' && head[0] !== '#') {
+    return false;
+  }
+  for (let i = 1; i < head.length; i++) {
+    const char = head[i];
+    if (
+      isLessHeaderSpace(head.charCodeAt(i))
+      || char === '>'
+      || char === '+'
+      || char === '~'
+      || char === ':'
+      || char === '['
+      || char === ']'
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function parseDeferredLessSelector(selector: string): string | undefined {
+  const source = selector.trim();
+  const parenOpen = findTopLevelParenOpen(source);
+  if (parenOpen !== -1 && looksLikeInterpolatedMixinHead(source.slice(0, parenOpen))) {
+    return undefined;
+  }
+  return isBalancedLessDeferredText(source, { requireInterpolation: true }) ? source : undefined;
 }
 
 function parseLessVariableDeclaration(
@@ -913,7 +980,7 @@ function parseLessBlockNode(
       parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
     );
   }
-  if (selector[0] === '@') {
+  if (selector[0] === '@' && selector[1] !== '{') {
     const atRule = parseAtRuleBlock(source, start, blockStart, blockEnd, addDiagnostic);
     if (atRule) {
       return atRule;
@@ -926,6 +993,14 @@ function parseLessBlockNode(
       blockEnd + 1
     );
     return undefined;
+  }
+  const deferredSelector = parseDeferredLessSelector(selector);
+  if (deferredSelector !== undefined) {
+    return ruleset({
+      selector: deferredSelector,
+      ...(guard && { guard }),
+      rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+    });
   }
   const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic, selector, guard);
   if (mixinDefinition) {

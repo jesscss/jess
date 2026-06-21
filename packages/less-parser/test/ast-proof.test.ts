@@ -146,6 +146,42 @@ describe('parseLessAstStylesheet', () => {
     expect(serialized).not.toContain('(Combinator');
   });
 
+  test('keeps interpolated Less selector headers deferred as strings', () => {
+    const result = parseLessAstStylesheet('interpolated-selectors.less', `
+      @{inputs} {
+        .focus { color: red; }
+      }
+
+      .host {
+        &-bar@{state} { width: 1px; }
+        .row:nth-child(@{index}) { height: 2px; }
+      }
+    `);
+    const [interpolatedRoot, host] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(interpolatedRoot, N.Ruleset)).toBe(true);
+    expect(isNode(host, N.Ruleset)).toBe(true);
+    if (!isNode(interpolatedRoot, N.Ruleset) || !isNode(host, N.Ruleset)) {
+      throw new Error('Expected interpolated selector rulesets');
+    }
+    expect(interpolatedRoot.selector).toBe('@{inputs}');
+    const [focusRule] = interpolatedRoot.rules.rules;
+    expect(isNode(focusRule, N.Ruleset)).toBe(true);
+    expect(isNode(focusRule, N.Ruleset) && focusRule.selector).toBe('.focus');
+    const [interpolatedChild, pseudoFunctionChild] = host.rules.rules;
+    expect(isNode(interpolatedChild, N.Ruleset)).toBe(true);
+    expect(isNode(interpolatedChild, N.Ruleset) && interpolatedChild.selector).toBe('&-bar@{state}');
+    expect(isNode(pseudoFunctionChild, N.Ruleset)).toBe(true);
+    expect(isNode(pseudoFunctionChild, N.Ruleset) && pseudoFunctionChild.selector).toBe('.row:nth-child(@{index})');
+    const serialized = serializeTypes(result.tree);
+    expect(serialized).toContain('selector: \'@{inputs}\'');
+    expect(serialized).toContain('selector: \'&-bar@{state}\'');
+    expect(serialized).toContain('selector: \'.row:nth-child(@{index})\'');
+    expect(serialized).not.toContain('(Reference');
+    expect(serialized).not.toContain('(Interpolated');
+  });
+
   test('parses nested Less rulesets without fallback parsing', () => {
     const result = parseLessAstStylesheet('nested.less', `
       .outer {
@@ -907,6 +943,7 @@ describe('parseLessAstStylesheet', () => {
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
       .mixin(@x, , @y) { color: @x; }
+      .mixin-@{name}(@x, , @y) { color: @x; }
       .a {
         .b:hover(.c) { color: blue; }
         color: red;
@@ -915,6 +952,7 @@ describe('parseLessAstStylesheet', () => {
     const [rule] = result.tree.rules;
 
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header'
     ]);
@@ -926,6 +964,7 @@ describe('parseLessAstStylesheet', () => {
       ''
     ].join('\n'));
     expect(serializeTypes(result.tree)).not.toContain('.mixin(@x, , @y)');
+    expect(serializeTypes(result.tree)).not.toContain('.mixin-@{name}(@x, , @y)');
   });
 
   test('parses detached ruleset variable values as string-backed mixins', () => {
