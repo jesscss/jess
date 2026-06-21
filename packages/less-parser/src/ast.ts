@@ -348,6 +348,9 @@ function parseLessBlockNode(
   if (!selector) {
     return undefined;
   }
+  if (selector === '&') {
+    return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic));
+  }
   const variableName = parseLessVariableBlockName(source, start, blockStart);
   if (variableName) {
     return createDetachedRulesetVariable(

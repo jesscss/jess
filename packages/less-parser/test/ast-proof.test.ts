@@ -147,6 +147,50 @@ describe('parseLessAstStylesheet', () => {
     ].join('\n'));
   });
 
+  test('parses plain ampersand blocks as scope Rules without selector materialization', () => {
+    const result = parseLessAstStylesheet('ampersand-scope.less', `
+      & {
+        @tone: red;
+        .inner { color: @tone; }
+      }
+
+      .outer {
+        & {
+          color: blue;
+        }
+        width: 1px;
+      }
+    `);
+    const [rootScope, outer] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(rootScope, N.Rules)).toBe(true);
+    expect(isNode(outer, N.Ruleset)).toBe(true);
+    if (!isNode(rootScope, N.Rules) || !isNode(outer, N.Ruleset)) {
+      throw new Error('Expected ampersand scope rules and outer ruleset');
+    }
+
+    expect(isNode(rootScope.rules[0], N.VarDeclaration)).toBe(true);
+    expect(isNode(rootScope.rules[1], N.Ruleset)).toBe(true);
+    const [nestedScope, width] = outer.rules.rules;
+    expect(isNode(nestedScope, N.Rules)).toBe(true);
+    expect(isNode(width, N.Declaration)).toBe(true);
+    if (!isNode(nestedScope, N.Rules)) {
+      throw new Error('Expected nested ampersand scope rules');
+    }
+
+    expect(nestedScope.toTrimmedString()).toBe('color: blue;');
+    expect(outer.toTrimmedString()).toBe([
+      '.outer {',
+      '  color: blue;',
+      '  width: 1px;',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(result.tree)).not.toContain('(Ampersand');
+    expect(serializeTypes(result.tree)).not.toContain('selector: \'&\'');
+  });
+
   test('parses parameterless Less mixin definitions without fallback parsing', () => {
     const result = parseLessAstStylesheet('mixin-definition.less', `
       .paint() {
