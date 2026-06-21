@@ -14,6 +14,7 @@ function isSelectorNameCode(code: number): boolean {
     || (code >= 48 && code <= 57)
     || code === 45
     || code === 95
+    || code > 0x7f
   );
 }
 
@@ -23,17 +24,162 @@ function isSelectorNameStartCode(code: number, allowUppercase: boolean): boolean
     || (allowUppercase && code >= 65 && code <= 90)
     || code === 95
     || code === 45
+    || code > 0x7f
   );
 }
 
 function isTypeSelectorStartCode(code: number): boolean {
-  return (code >= 97 && code <= 122) || code === 95;
+  return (code >= 97 && code <= 122) || code === 95 || code > 0x7f;
+}
+
+function skipSelectorSpace(source: string, start: number, end: number): number {
+  let cursor = start;
+  while (cursor < end && isSourceWhitespace(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  return cursor;
+}
+
+function scanQuotedSelectorText(source: string, start: number): number {
+  const quote = source[start];
+  let cursor = start + 1;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    cursor++;
+    if (char === quote) {
+      return cursor;
+    }
+  }
+  return -1;
+}
+
+function isAttributeOperatorStart(char: string): boolean {
+  return char === '~' || char === '|' || char === '^' || char === '$' || char === '*';
+}
+
+function scanAttributeTrailingFlag(source: string, start: number, end: number): number {
+  let cursor = skipSelectorSpace(source, start, end);
+  const code = source.charCodeAt(cursor);
+  if (code === 73 || code === 83 || code === 105 || code === 115) {
+    cursor = skipSelectorSpace(source, cursor + 1, end);
+  }
+  return cursor;
+}
+
+function scanAttributeIdentifier(source: string, start: number, end: number): number {
+  if (start >= end || !isSelectorNameStartCode(source.charCodeAt(start), true)) {
+    return -1;
+  }
+  if (source[start] === '-' && (start + 1 >= end || !isSelectorNameCode(source.charCodeAt(start + 1)))) {
+    return -1;
+  }
+  let cursor = start + 1;
+  while (cursor < end && isSelectorNameCode(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  return cursor;
+}
+
+function scanAttributeName(source: string, start: number, end: number): number {
+  if (source[start] === '*') {
+    return source[start + 1] === '|'
+      ? scanAttributeIdentifier(source, start + 2, end)
+      : -1;
+  }
+  if (source[start] === '|') {
+    return scanAttributeIdentifier(source, start + 1, end);
+  }
+  const prefixOrNameEnd = scanAttributeIdentifier(source, start, end);
+  if (prefixOrNameEnd === -1) {
+    return -1;
+  }
+  if (source[prefixOrNameEnd] === '|') {
+    return scanAttributeIdentifier(source, prefixOrNameEnd + 1, end);
+  }
+  return prefixOrNameEnd;
+}
+
+function validateAttributeSelectorAtom(source: string, start: number, end: number): boolean {
+  let cursor = skipSelectorSpace(source, start + 1, end);
+  cursor = scanAttributeName(source, cursor, end - 1);
+  if (cursor === -1) {
+    return false;
+  }
+  cursor = skipSelectorSpace(source, cursor, end);
+  if (cursor === end - 1) {
+    return true;
+  }
+  const char = source[cursor];
+  if (char === '=') {
+    cursor++;
+  } else if (isAttributeOperatorStart(char) && source[cursor + 1] === '=') {
+    cursor += 2;
+  } else {
+    return false;
+  }
+  cursor = skipSelectorSpace(source, cursor, end);
+  if (cursor >= end - 1) {
+    return false;
+  }
+  if (source[cursor] === '\"' || source[cursor] === '\'') {
+    cursor = scanQuotedSelectorText(source, cursor);
+    return cursor !== -1 && scanAttributeTrailingFlag(source, cursor, end) === end - 1;
+  }
+  cursor = scanAttributeIdentifier(source, cursor, end - 1);
+  return cursor !== -1 && scanAttributeTrailingFlag(source, cursor, end) === end - 1;
+}
+
+function scanAttributeSelectorAtom(source: string, start: number): number {
+  let cursor = start + 1;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\"' || char === '\'') {
+      cursor = scanQuotedSelectorText(source, cursor);
+      if (cursor === -1) {
+        return -1;
+      }
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    cursor++;
+    if (char === ']') {
+      return validateAttributeSelectorAtom(source, start, cursor) ? cursor : -1;
+    }
+  }
+  return -1;
+}
+
+function scanPseudoSelectorAtom(source: string, start: number): number {
+  let cursor = start + 1;
+  if (source[cursor] === ':') {
+    cursor++;
+  }
+  if (cursor >= source.length || !isSelectorNameStartCode(source.charCodeAt(cursor), true)) {
+    return -1;
+  }
+  while (cursor < source.length && isSelectorNameCode(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  return cursor < source.length && source[cursor] === '(' ? -1 : cursor;
 }
 
 function scanBasicSelectorAtom(source: string, start: number): number {
   const first = source[start];
   if (first === '*') {
     return start + 1;
+  }
+  if (first === '[') {
+    return scanAttributeSelectorAtom(source, start);
+  }
+  if (first === ':') {
+    return scanPseudoSelectorAtom(source, start);
   }
   let cursor = start;
   if (first === '.' || first === '#') {

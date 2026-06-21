@@ -69,8 +69,10 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     const result = parseFlatCssDeclarationStylesheet('selectors.css', `
       .simple { color: red; }
       #id.card { color: blue; }
+      .a:hover::before { color: magenta; }
       .a > .b + div { color: green; }
       [data-x] { color: black; }
+      .a[data-x] { color: gray; }
       .a > DIV { color: white; }
       .a > { color: yellow; }
       .a > + .b { color: cyan; }
@@ -84,8 +86,10 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     const [
       simpleRule,
       compoundRule,
+      pseudoRule,
       complexRule,
       attributeRule,
+      attributeCompoundRule,
       uppercaseTypeRule,
       danglingCombinatorRule,
       consecutiveCombinatorRule,
@@ -100,6 +104,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     expect(result.diagnostics).toEqual([]);
     expect(isNode(simpleRule, N.Ruleset) && simpleRule.selector).toBe('.simple');
     expect(isNode(attributeRule, N.Ruleset) && attributeRule.selector).toBe('[data-x]');
+    expect(isNode(attributeCompoundRule, N.Ruleset) && isNode(attributeCompoundRule.selector, N.CompoundSelector)).toBe(true);
     expect(isNode(uppercaseTypeRule, N.Ruleset) && uppercaseTypeRule.selector).toBe('.a > DIV');
     expect(isNode(danglingCombinatorRule, N.Ruleset) && danglingCombinatorRule.selector).toBe('.a >');
     expect(isNode(consecutiveCombinatorRule, N.Ruleset) && consecutiveCombinatorRule.selector).toBe('.a > + .b');
@@ -110,16 +115,27 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     expect(isNode(invalidClassHyphenRule, N.Ruleset) && invalidClassHyphenRule.selector).toBe('#id.-');
     expect(isNode(invalidIdHyphenRule, N.Ruleset) && invalidIdHyphenRule.selector).toBe('.a.#-');
     expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    expect(isNode(pseudoRule, N.Ruleset) && isNode(pseudoRule.selector, N.CompoundSelector)).toBe(true);
     expect(isNode(complexRule, N.Ruleset) && isNode(complexRule.selector, N.ComplexSelector)).toBe(true);
     if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
       throw new Error('Expected string-backed compound selector');
+    }
+    if (!isNode(pseudoRule, N.Ruleset) || !isNode(pseudoRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed pseudo compound selector');
+    }
+    if (!isNode(attributeCompoundRule, N.Ruleset) || !isNode(attributeCompoundRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed attribute compound selector');
     }
     if (!isNode(complexRule, N.Ruleset) || !isNode(complexRule.selector, N.ComplexSelector)) {
       throw new Error('Expected string-backed complex selector');
     }
     expect(compoundRule.selector.value).toEqual(['#id', '.card']);
+    expect(pseudoRule.selector.value).toEqual(['.a', ':hover', '::before']);
+    expect(attributeCompoundRule.selector.value).toEqual(['.a', '[data-x]']);
     expect(complexRule.selector.value).toEqual(['.a', '>', '.b', '+', 'div']);
     expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+    expect(serializeTypes(pseudoRule)).not.toContain('(PseudoSelector');
+    expect(serializeTypes(attributeCompoundRule)).not.toContain('(AttributeSelector');
     expect(serializeTypes(complexRule)).not.toContain('(Combinator');
   });
 

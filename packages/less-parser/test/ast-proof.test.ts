@@ -64,22 +64,38 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('selectors.less', `
       @tone: red;
       #id.card { color: @tone; }
+      .link:hover::before { color: @tone; }
       .a > .b + div { width: @size; }
+      [data-x].card { color: black; }
+      .æøå { margin: 0; }
     `);
-    const [, compoundRule, complexRule] = result.tree.rules;
+    const [, compoundRule, pseudoRule, complexRule, attributeRule, unicodeRule] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    expect(isNode(pseudoRule, N.Ruleset) && isNode(pseudoRule.selector, N.CompoundSelector)).toBe(true);
     expect(isNode(complexRule, N.Ruleset) && isNode(complexRule.selector, N.ComplexSelector)).toBe(true);
+    expect(isNode(attributeRule, N.Ruleset) && isNode(attributeRule.selector, N.CompoundSelector)).toBe(true);
+    expect(isNode(unicodeRule, N.Ruleset) && unicodeRule.selector).toBe('.æøå');
     if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
       throw new Error('Expected string-backed compound selector');
+    }
+    if (!isNode(pseudoRule, N.Ruleset) || !isNode(pseudoRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed pseudo compound selector');
     }
     if (!isNode(complexRule, N.Ruleset) || !isNode(complexRule.selector, N.ComplexSelector)) {
       throw new Error('Expected string-backed complex selector');
     }
+    if (!isNode(attributeRule, N.Ruleset) || !isNode(attributeRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed attribute compound selector');
+    }
     expect(compoundRule.selector.value).toEqual(['#id', '.card']);
+    expect(pseudoRule.selector.value).toEqual(['.link', ':hover', '::before']);
     expect(complexRule.selector.value).toEqual(['.a', '>', '.b', '+', 'div']);
+    expect(attributeRule.selector.value).toEqual(['[data-x]', '.card']);
     expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+    expect(serializeTypes(pseudoRule)).not.toContain('(PseudoSelector');
+    expect(serializeTypes(attributeRule)).not.toContain('(AttributeSelector');
     expect(serializeTypes(complexRule)).not.toContain('(Combinator');
     expect(serializeTypes(result.tree)).toContainString(`
           value: '@tone'

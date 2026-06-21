@@ -153,6 +153,36 @@ with `--no-verify` after the explicit gates pass.
   parsed top-level rules / 415 warnings to 1267 parsed top-level rules / 400
   warnings. No speed claim is made.
 
+- Latest pass: scanner-first cheap selector atom expansion.
+- Verdict: accepted as a parser coverage and object-avoidance slice, not a
+  measured performance pass. The shared selector scanner now recognizes
+  pseudo-no-parens, attribute selector atoms, and pragmatic non-ASCII names as
+  cheap string atoms. CSS/Less parsers reuse those atoms inside existing
+  `CompoundSelector` / `ComplexSelector` / `SelectorList` containers and do not
+  allocate `BasicSelector`, `PseudoSelector`, attribute selector, or combinator
+  leaves for this cheap path.
+- New traversal: bounded character scans inside a single selector atom for
+  quoted attribute text and pseudo names. The scanner still runs only on an
+  already-sliced selector header; it does not walk AST nodes, source parents,
+  side maps, or Chevrotain productions. Pseudo functions and unclosed
+  attributes remain rejected instead of broadening raw structured support.
+- New node/materialization: no new node family was added. Newly accepted
+  selector pieces are strings; existing selector containers are materialized
+  only when a selector has compound, complex, or list structure that needs an
+  owning AST boundary.
+- Render/eval path: parse-only slice. String selector atoms render through the
+  existing string-backed selector-container paths and pass through eval/resolve
+  unchanged.
+- Helper/API surface: private scanner helpers only; no public export or
+  language-profile surface was added.
+- Metadata mutations: none. String selector atoms have no parent/source
+  metadata.
+- Evidence: focused parser selector-scanner tests, CSS AST/corpus tests, and
+  Less AST/corpus tests passed after rebuilding `@jesscss/parser` before
+  dependent package tests. The Less AST corpus gate moved from 1281 parsed
+  top-level rules / 388 warnings to 1295 parsed top-level rules / 372 warnings
+  with zero errors/thrown failures. No speed claim is made.
+
 - Latest pass: scanner-first Less mixin rest/default-comma parameters.
 - Verdict: accepted as a parser coverage slice, not a measured performance
   pass. Cheap Less mixin definitions now parse `...` and `@name...` parameters
