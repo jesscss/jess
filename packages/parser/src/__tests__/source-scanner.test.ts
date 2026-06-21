@@ -22,10 +22,47 @@ describe('source scanner helpers', () => {
     expect(findBalancedBlockEnd(source, start)).toBe(source.indexOf('} .b'));
   });
 
+  test('does not let unterminated comment-like text inside url consume a block', () => {
+    const source = '.a { background: url(a/*); color: red; }';
+    const start = findTopLevelBlockStart(source, 0);
+
+    expect(findBalancedBlockEnd(source, start)).toBe(source.lastIndexOf('}'));
+    expect(findStatementEnd(source, source.indexOf('background'), source.lastIndexOf('}')))
+      .toBe(source.indexOf('; color'));
+  });
+
   test('ignores block starts inside selector parens and brackets', () => {
     const source = '.a:is([data-x="{"]) { color: red; }';
 
     expect(findTopLevelBlockStart(source, 0)).toBe(source.indexOf('{ color'));
+  });
+
+  test('does not treat comment-like selector text inside parens as top-level trivia', () => {
+    const source = ':not(div/*)*/) { color: red; }';
+    const start = findTopLevelBlockStart(source, 0);
+
+    expect(start).toBe(source.indexOf('{ color'));
+    expect(findBalancedBlockEnd(source, start)).toBe(source.lastIndexOf('}'));
+  });
+
+  test('skips closed comments inside delimiter contexts', () => {
+    const selectorSource = '.a:is(/*){*/ div) { color: red; }';
+    const selectorStart = findTopLevelBlockStart(selectorSource, 0);
+    expect(selectorStart).toBe(selectorSource.indexOf('{ color'));
+    expect(findBalancedBlockEnd(selectorSource, selectorStart)).toBe(selectorSource.lastIndexOf('}'));
+
+    const valueSource = '.a { color: rgb(/*{*/ 1 2 3); background: blue; }';
+    const blockStart = findTopLevelBlockStart(valueSource, 0);
+    const blockEnd = findBalancedBlockEnd(valueSource, blockStart);
+    const statementStart = valueSource.indexOf('color');
+    expect(findStatementEnd(valueSource, statementStart, blockEnd)).toBe(valueSource.indexOf('; background'));
+
+    const spacedUrlSource = '.a { background: url (/*{*/ x); color: red; }';
+    const spacedUrlBlockStart = findTopLevelBlockStart(spacedUrlSource, 0);
+    const spacedUrlBlockEnd = findBalancedBlockEnd(spacedUrlSource, spacedUrlBlockStart);
+    const spacedUrlStatementStart = spacedUrlSource.indexOf('background');
+    expect(findStatementEnd(spacedUrlSource, spacedUrlStatementStart, spacedUrlBlockEnd))
+      .toBe(spacedUrlSource.indexOf('; color'));
   });
 
   test('finds delimiters only at top-level delimiter depth', () => {

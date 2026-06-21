@@ -56,7 +56,15 @@ export function skipQuotedSourceString(source: string, offset: number, end = sou
 
 function skipBlockComment(source: string, offset: number, end: number): number {
   const commentEnd = source.indexOf('*/', offset + 2);
-  return commentEnd === -1 || commentEnd >= end ? end : commentEnd + 2;
+  return commentEnd === -1 || commentEnd >= end ? offset : commentEnd + 2;
+}
+
+function skipBlockCommentOutsideDelimiter(source: string, offset: number, end: number): number {
+  const commentEnd = source.indexOf('*/', offset + 2);
+  if (commentEnd === -1 || commentEnd >= end) {
+    return end;
+  }
+  return commentEnd + 2;
 }
 
 function skipEscapedCharacter(offset: number): number {
@@ -71,6 +79,23 @@ function isClosingDelimiter(char: string): boolean {
   return char === ')' || char === ']';
 }
 
+function opensUrlFunction(source: string, openParenOffset: number): boolean {
+  let cursor = openParenOffset - 1;
+  if (cursor < 0 || isSourceWhitespace(source.charCodeAt(cursor))) {
+    return false;
+  }
+  const end = cursor + 1;
+  while (cursor >= 0) {
+    const code = source.charCodeAt(cursor);
+    const isNameCode = (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 45;
+    if (!isNameCode) {
+      break;
+    }
+    cursor--;
+  }
+  return source.slice(cursor + 1, end).toLowerCase() === 'url';
+}
+
 /**
  * Find the next top-level `{`, ignoring strings, comments, escapes, and
  * brackets/parens before it.
@@ -78,6 +103,7 @@ function isClosingDelimiter(char: string): boolean {
 export function findTopLevelBlockStart(source: string, offset: number, end = source.length): number {
   let cursor = offset;
   let depth = 0;
+  let urlDepth = 0;
   while (cursor < end) {
     const char = source[cursor];
     if (char === '\"' || char === '\'') {
@@ -89,12 +115,25 @@ export function findTopLevelBlockStart(source: string, offset: number, end = sou
       continue;
     }
     if (char === '/' && source[cursor + 1] === '*') {
-      cursor = skipBlockComment(source, cursor, end);
-      continue;
+      const commentEnd = urlDepth > 0
+        ? cursor
+        : depth === 0
+          ? skipBlockCommentOutsideDelimiter(source, cursor, end)
+          : skipBlockComment(source, cursor, end);
+      if (commentEnd !== cursor) {
+        cursor = commentEnd;
+        continue;
+      }
     }
     if (isOpeningDelimiter(char)) {
       depth++;
+      if (char === '(' && urlDepth === 0 && opensUrlFunction(source, cursor)) {
+        urlDepth = depth;
+      }
     } else if (isClosingDelimiter(char)) {
+      if (char === ')' && depth === urlDepth) {
+        urlDepth = 0;
+      }
       depth = Math.max(0, depth - 1);
     } else if (char === '{' && depth === 0) {
       return cursor;
@@ -113,6 +152,8 @@ export function findTopLevelBlockStart(source: string, offset: number, end = sou
 export function findBalancedBlockEnd(source: string, blockStart: number, end = source.length): number {
   let cursor = blockStart + 1;
   let depth = 1;
+  let delimiterDepth = 0;
+  let urlDepth = 0;
   while (cursor < end) {
     const char = source[cursor];
     if (char === '\"' || char === '\'') {
@@ -124,12 +165,29 @@ export function findBalancedBlockEnd(source: string, blockStart: number, end = s
       continue;
     }
     if (char === '/' && source[cursor + 1] === '*') {
-      cursor = skipBlockComment(source, cursor, end);
-      continue;
+      const commentEnd = urlDepth > 0
+        ? cursor
+        : delimiterDepth === 0
+          ? skipBlockCommentOutsideDelimiter(source, cursor, end)
+          : skipBlockComment(source, cursor, end);
+      if (commentEnd !== cursor) {
+        cursor = commentEnd;
+        continue;
+      }
     }
-    if (char === '{') {
+    if (char === '(' || char === '[') {
+      delimiterDepth++;
+      if (char === '(' && urlDepth === 0 && opensUrlFunction(source, cursor)) {
+        urlDepth = delimiterDepth;
+      }
+    } else if (char === ')' || char === ']') {
+      if (char === ')' && delimiterDepth === urlDepth) {
+        urlDepth = 0;
+      }
+      delimiterDepth = Math.max(0, delimiterDepth - 1);
+    } else if (char === '{' && delimiterDepth === 0) {
       depth++;
-    } else if (char === '}') {
+    } else if (char === '}' && delimiterDepth === 0) {
       depth--;
       if (depth === 0) {
         return cursor;
@@ -159,6 +217,7 @@ export function findTopLevelDelimiter(
   }
   let cursor = start;
   let depth = 0;
+  let urlDepth = 0;
   while (cursor < end) {
     const char = source[cursor];
     if (char === '\"' || char === '\'') {
@@ -170,12 +229,25 @@ export function findTopLevelDelimiter(
       continue;
     }
     if (char === '/' && source[cursor + 1] === '*') {
-      cursor = skipBlockComment(source, cursor, end);
-      continue;
+      const commentEnd = urlDepth > 0
+        ? cursor
+        : depth === 0
+          ? skipBlockCommentOutsideDelimiter(source, cursor, end)
+          : skipBlockComment(source, cursor, end);
+      if (commentEnd !== cursor) {
+        cursor = commentEnd;
+        continue;
+      }
     }
     if (char === '(' || char === '[' || char === '{') {
       depth++;
+      if (char === '(' && urlDepth === 0 && opensUrlFunction(source, cursor)) {
+        urlDepth = depth;
+      }
     } else if (char === ')' || char === ']' || char === '}') {
+      if (char === ')' && depth === urlDepth) {
+        urlDepth = 0;
+      }
       depth = Math.max(0, depth - 1);
     } else if (char === delimiterChar && depth === 0) {
       return cursor;
