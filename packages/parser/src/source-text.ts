@@ -19,6 +19,20 @@ export interface ScannerParseResult<T> {
   diagnostics: readonly ParserDiagnostic[];
 }
 
+/** Append one offset-only parser diagnostic, allocating the array only on first use. */
+export function appendParserDiagnostic(
+  diagnostics: ParserDiagnostic[] | undefined,
+  severity: ParserDiagnostic['severity'],
+  code: string,
+  message: string,
+  start: number,
+  end: number
+): ParserDiagnostic[] {
+  const output = diagnostics ?? [];
+  output.push({ severity, code, message, start, end });
+  return output;
+}
+
 export class LineMap {
   readonly #lineStarts: number[];
 

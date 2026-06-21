@@ -591,6 +591,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/parser':
+        specifier: workspace:*
+        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -598,9 +601,6 @@ importers:
         specifier: ~0.37.0
         version: 0.37.0
     devDependencies:
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared

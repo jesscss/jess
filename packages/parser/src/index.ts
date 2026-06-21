@@ -7,6 +7,10 @@ export {
 } from './parser.js';
 
 export {
+  findTrailingImportantStart
+} from './declaration-scanner.js';
+
+export {
   findBalancedBlockEnd,
   findStatementEnd,
   findTopLevelBlockStart,
@@ -20,6 +24,7 @@ export {
 export {
   LineMap,
   SourceText,
+  appendParserDiagnostic,
   type ParserDiagnostic,
   type ScannerParseResult,
   type SourcePosition

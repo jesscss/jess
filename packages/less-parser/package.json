@@ -38,11 +38,11 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "known-css-properties": "~0.37.0"
   },
   "devDependencies": {
-    "@jesscss/parser": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "tsx": "~4.21.0"

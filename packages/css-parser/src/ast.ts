@@ -13,13 +13,15 @@ import {
   type Stylesheet
 } from '@jesscss/core';
 import {
+  appendParserDiagnostic,
   findBalancedBlockEnd,
   findStatementEnd,
+  findTrailingImportantStart,
   findTopLevelBlockStart,
   findTopLevelDelimiter,
   SourceText,
-  type ParserDiagnostic,
   type ScannerParseResult,
+  type ParserDiagnostic,
   skipSourceTrivia
 } from '@jesscss/parser';
 
@@ -27,34 +29,12 @@ export type FlatCssDeclarationStylesheetResult = ScannerParseResult<Stylesheet>;
 
 const EMPTY_DIAGNOSTICS: readonly ParserDiagnostic[] = [];
 
-type CheapSelectorComponent =
+export type CheapSelectorComponent =
   | string[]
   | ' '
   | '>'
   | '+'
   | '~';
-
-function findImportantStart(value: string): number {
-  const trimmed = value.trimEnd();
-  const marker = '!important';
-  if (!trimmed.toLowerCase().endsWith(marker)) {
-    return -1;
-  }
-  return trimmed.length - marker.length;
-}
-
-function pushDiagnostic(
-  diagnostics: ParserDiagnostic[] | undefined,
-  severity: ParserDiagnostic['severity'],
-  code: string,
-  message: string,
-  start: number,
-  end: number
-): ParserDiagnostic[] {
-  const output = diagnostics ?? [];
-  output.push({ severity, code, message, start, end });
-  return output;
-}
 
 type DiagnosticSink = (
   severity: ParserDiagnostic['severity'],
@@ -87,7 +67,7 @@ function parseDeclarationNodes(
         declarations.push(decl({ name, value: valueText }));
       } else {
         const trimmedValue = valueText.trim();
-        const importantStart = findImportantStart(trimmedValue);
+        const importantStart = findTrailingImportantStart(trimmedValue);
         declarations.push(decl({
           name,
           value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
@@ -203,10 +183,17 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): Selecto
   }));
 }
 
-function parseCheapSelector(selector: string): string | Selector {
+/**
+ * Tokenize only cheap selector structures that are safe to share across
+ * CSS-family parser proofs.
+ *
+ * This helper returns strings and combinator markers only. Language packages
+ * decide whether to materialize those components into core selector nodes.
+ */
+export function scanCheapSelectorComponents(selector: string): CheapSelectorComponent[] | undefined {
   const source = selector.trim();
   if (!source) {
-    return selector;
+    return undefined;
   }
   const components: CheapSelectorComponent[] = [];
   let cursor = 0;
@@ -222,7 +209,7 @@ function parseCheapSelector(selector: string): string | Selector {
     const char = source[cursor];
     if (char === '>' || char === '+' || char === '~') {
       if (components.length === 0 || lastWasCombinator) {
-        return selector;
+        return undefined;
       }
       components.push(char);
       cursor++;
@@ -236,13 +223,25 @@ function parseCheapSelector(selector: string): string | Selector {
     }
     const compoundResult = scanCompoundSelector(source, cursor);
     if (!compoundResult) {
-      return selector;
+      return undefined;
     }
     components.push(compoundResult.component);
     cursor = compoundResult.end;
     lastWasCombinator = false;
   }
   if (components.length === 0 || lastWasCombinator) {
+    return undefined;
+  }
+  return components;
+}
+
+function parseCheapSelector(selector: string): string | Selector {
+  const source = selector.trim();
+  if (!source) {
+    return selector;
+  }
+  const components = scanCheapSelectorComponents(source);
+  if (!components) {
     return selector;
   }
   if (components.length === 1) {
@@ -305,7 +304,7 @@ function pushSkippedStatementDiagnostic(
     return diagnostics;
   }
   const isMalformedAtRule = source[skipSourceTrivia(source, start, end)] === '@';
-  return pushDiagnostic(
+  return appendParserDiagnostic(
     diagnostics,
     'warning',
     isMalformedAtRule ? 'css-flat-malformed-at-rule-statement' : 'css-flat-unsupported-statement',
@@ -334,7 +333,7 @@ export function parseFlatCssDeclarationStylesheet(
   const source = sourceText.text;
   let diagnostics: ParserDiagnostic[] | undefined;
   const addDiagnostic: DiagnosticSink = (severity, code, message, start, end): void => {
-    diagnostics = pushDiagnostic(diagnostics, severity, code, message, start, end);
+    diagnostics = appendParserDiagnostic(diagnostics, severity, code, message, start, end);
   };
   const children: Node[] = [];
   let cursor = 0;
@@ -358,7 +357,7 @@ export function parseFlatCssDeclarationStylesheet(
     if (blockStart === -1) {
       const trailing = source.slice(cursor).trim();
       if (trailing) {
-        diagnostics = pushDiagnostic(
+        diagnostics = appendParserDiagnostic(
           diagnostics,
           'warning',
           'css-flat-unsupported-trailing-source',
@@ -371,7 +370,7 @@ export function parseFlatCssDeclarationStylesheet(
     }
     const blockEnd = findBalancedBlockEnd(source, blockStart);
     if (blockEnd === -1) {
-      diagnostics = pushDiagnostic(
+      diagnostics = appendParserDiagnostic(
         diagnostics,
         'error',
         'css-flat-unclosed-block',
@@ -388,7 +387,7 @@ export function parseFlatCssDeclarationStylesheet(
         rules: rules(parseDeclarationNodes(source, blockStart + 1, blockEnd, addDiagnostic))
       }));
     } else if (selector) {
-      diagnostics = pushDiagnostic(
+      diagnostics = appendParserDiagnostic(
         diagnostics,
         'warning',
         selector[0] === '@' ? 'css-flat-unsupported-at-rule' : 'css-flat-unsupported-nested-block',
