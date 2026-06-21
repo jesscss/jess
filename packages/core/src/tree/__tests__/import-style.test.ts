@@ -3314,15 +3314,26 @@ describe('Style import', () => {
         })
       ]);
       const directCrawlHits: string[] = [];
+      let directBucketReadCount = 0;
       const nestedArrayPathCalls: unknown[] = [];
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const originalFindMixin = RulesClass.prototype.findMixin;
+      const rulesPrototype = RulesClass.prototype as unknown as {
+        getCallableEntriesForKey(this: Rules, key: string, updateFrameMissCoverage?: boolean): unknown[];
+      };
+      const originalGetCallableEntriesForKey = rulesPrototype.getCallableEntriesForKey;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#Namespace' || key === '.mixin') {
           directCrawlHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
+      };
+      rulesPrototype.getCallableEntriesForKey = function(key, updateFrameMissCoverage) {
+        if (this === node && key === '#Namespace' && updateFrameMissCoverage !== false) {
+          directBucketReadCount++;
+        }
+        return originalGetCallableEntriesForKey.call(this, key, updateFrameMissCoverage);
       };
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== node && Array.isArray(args[0])) {
@@ -3346,9 +3357,11 @@ describe('Style import', () => {
         ));
         expect(generatedFallbackArrayPathCalls).toEqual([]);
         expect(directCrawlHits).toEqual([]);
+        expect(directBucketReadCount).toBe(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
         RulesClass.prototype.findMixin = originalFindMixin;
+        rulesPrototype.getCallableEntriesForKey = originalGetCallableEntriesForKey;
       }
     });
 

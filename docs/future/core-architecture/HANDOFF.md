@@ -112,47 +112,55 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: Reference lookup-strategy cache deletion.
-- Verdict: accepted as a narrow Reference/direct lookup machinery cut, not a
-  speed claim. `lookupResolvedReference(...)` already fetches the singleton
-  strategy before source-static handle probing; the second
-  `getCachedReferenceLookupStrategy(...)` call and per-`Reference`
-  `_lookupStrategy` field duplicated `lookupType` state on every reference
-  node. The pass reuses the existing local strategy/handle-strategy values and
-  deletes the node-local strategy cache helper/field.
-- Architecture surface: `lookupResolvedReference(...)`,
-  `ReferenceRulesLookupHandle`, source-static handle tests, and the private
-  `Reference` instance fields used by lookup.
-- Separation/duplication: deleted private helper
-  `getCachedReferenceLookupStrategy(...)` and the `_lookupStrategy` field
-  because they repeated the already-computed singleton strategy and cached
-  handle `lookupType`. The remaining `_rulesLookupHandle` owns stale-handle
-  validation; no second strategy cache remains on `Reference`.
-- Cumulative node weight: one retained field is removed from every
-  `Reference` instance. No production node, map, set, side table, wrapper, or
-  retained cache was added.
-- New traversal: none.
-- Review-flagged allocations: deletes one retained per-reference field and the
-  cache write/read branch in `getCachedReferenceLookupStrategy(...)`; no
-  replacement object, map, side table, helper ladder, copied node, or
-  materialized surface is added.
+- Latest pass: callable namespace lookup stays on frames for local/targeted
+  namespace starts while ruleset namespace paths use offset-aware frame/bucket
+  lookup.
+- Verdict: accepted as a binding/lookup port from the less-v5 lookup work, not a
+  speed claim. The pass keeps local, targeted, restricted, and reference-import
+  namespace starts on prepared scope-frame/callable-bucket lookup instead of
+  reopening broad `Rules.findMixinsFast(...)` crawls. It also fixes the
+  over-cut case where a frame-covered ruleset namespace lookup was treated as a
+  definite miss before exact ruleset-path candidates and callable namespace
+  unions were checked.
+- Architecture surface: `Rules.findMixin(...)`,
+  `Rules.findMixinNamespacePathFast(...)`,
+  `Rules.findRulesetNamespacePathFast(...)`,
+  `Rules.findCompoundPrefixCallableRulesetPathFast(...)`,
+  `Rules.findCallableDescendantsWithinMixinNamespaces(...)`, and the focused
+  `ScopeFrame callable buckets` / `namespace fast path` tests.
+- Separation/duplication: ruleset namespace lookup now reuses callable buckets
+  with path offsets instead of selector rescans and remainder array/slice
+  fallbacks. The branch intentionally does not import less-v5 node-shape drift:
+  `Ruleset` and `Mixin` remain `Rules` subclasses with `.rules` arrays.
+- Cumulative node weight: no production AST node, retained map, set, side table,
+  wrapper `Rules`, or compatibility shim was added. The new arrays are returned
+  result arrays or existing `prefixMatches`/test-observation arrays.
+- New traversal: added/extended loops only inside lookup over existing callable
+  buckets, scope-frame chains, and child-entry surfaces. These replace broader
+  selector/key-path rescans and broad namespace-start crawls; the fact needed is
+  not available on one scalar edge because namespace paths may consume an offset
+  inside the same key array.
+- Review-flagged allocations: `collectCallableBucketRulesetPrefixMatches(...)`
+  creates a result array only when a matching ruleset prefix exists; test arrays
+  record forbidden broad lookup calls. No retained allocation or hot-path side
+  cache was added.
 - New node/materialization: none.
-- Render path: unchanged. Reference render/eval still uses the existing raw
-  lookup and finalization paths; this patch only removes redundant strategy
-  storage before lookup dispatch.
-- Helper/API surface: deletes private helper
-  `getCachedReferenceLookupStrategy(...)`; no public API or compatibility shim
-  is added.
+- Render path: unchanged except that render/eval namespace calls resolve through
+  narrower lookup. The pass does not create nodes to stringify.
+- Helper/API surface: one private bucket helper was added for prefix matches,
+  and existing private helpers gained a `pathStart` offset. No public API or
+  compatibility surface was added.
 - Metadata mutations: none added. No source/root/parent metadata changed.
-- Routine error control: none added.
-- Review-flagged diff tokens: [cache] and [helper] refer to deleted
-  `_lookupStrategy` / `getCachedReferenceLookupStrategy(...)` machinery;
-  [object] appears in test assertions and docs prose; [materialized array/object]
-  is the `isMixinEntryArray(...)` type guard over an existing
-  returned array and does not allocate or materialize a replacement value. No
-  production allocation replacement was added.
-- Evidence: focused reference cache tests and `@jesscss/core` build passed in
-  this scanner-first parser branch. Run `git diff --check` and
+- Routine error control: none added in production. The four
+  `[routine error control]` hits are test-only `try/finally` blocks that restore
+  `Rules.findMixinsFast` / `Rules.findMixin` after instrumentation.
+- Review-flagged diff tokens: [loop/traversal] and [array helper] refer to
+  bounded lookup over existing buckets/results; [materialized array/object]
+  refers to returned match arrays and test observation arrays, not eval/render
+  node materialization.
+- Evidence: `pnpm --filter @jesscss/core build`, `git diff --check`, focused
+  red-set namespace tests, broader mixin lookup tests, and focused reference
+  lookup tests passed in this scanner-first parser branch. Run
   `verify:aggressive-cutting-review` before committing this pass.
 
 - Latest pass: direct variable occurrence current-cell projection.
