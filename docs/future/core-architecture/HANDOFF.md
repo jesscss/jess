@@ -103,6 +103,32 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: array-path callable namespace union dedupe deletion.
+- Verdict: accepted as a narrow post-result dedupe cut. `findMixin(array)` can
+  legitimately union compound-prefix ruleset results with callable namespace
+  results, but covered producers must be disjoint by construction. This pass
+  removes the identity scan that treated duplicates as an expected runtime
+  outcome. No speed claim.
+- New traversal: removed the nested identity scan over the existing compound
+  union. The remaining loop only appends already-produced callable namespace
+  results when both producers are semantically active.
+- Review-flagged allocations: no new allocation family. The existing copy-on-
+  append remains when compound-prefix entries are borrowed; this preserves the
+  borrowed array and is not a dedupe structure.
+- New node/materialization: none.
+- Render path: unchanged. The tests exercise parser/render behavior only to
+  prove Less lookup semantics still render the same output.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: deleted duplicate-check branching and one nested scan; no
+  new arrays beyond the pre-existing copy-on-append path.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "ruleset namespace path preserves callable namespace unions|real Less stable namespaces avoid direct-crawl|type=mixin ignores compound-prefix ruleset ambiguity|compound-prefix ruleset lookup uses callable buckets|ruleset namespace path lookup uses callable buckets|compound-prefix ruleset lookup reuses path offsets|mixin-ruleset calls with args"`
+  passed. Full `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`,
+  `pnpm --filter @jesscss/core build`, `git diff --check`, and
+  `pnpm run verify:aggressive-cutting-review` also passed before committing.
+
 - Latest pass: callable ruleset namespace lookup fallback deletion.
 - Verdict: accepted as a bounded registryless lookup cut, not a completion of
   the namespace lane. Namespaced mixin-ruleset calls with args still use

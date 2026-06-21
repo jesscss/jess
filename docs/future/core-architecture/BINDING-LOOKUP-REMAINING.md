@@ -1592,6 +1592,11 @@ lane.
   calling nested `findMixin(...)`. A focused mixin test guards the covered-miss
   case; reference-import descendant positives inside namespace mixin bodies
   remain unclaimed/open.
+- Array-path callable namespace unioning no longer performs post-result identity
+  dedupe between compound-prefix ruleset results and callable namespace results.
+  Covered producers are expected to be disjoint; if future evidence finds a
+  duplicate, that is a missing ownership/frame fact, not a reason to restore
+  result dedupe.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old
@@ -1643,13 +1648,15 @@ lane.
 
 ## Remaining Work Clusters
 
-Current audit: all named binding / lookup / registryless architecture clusters
-above are closed or rejected with repo evidence. Do not reseed declaration,
-property, scope-frame/current-cell, callable namespace, reference-import,
-leaky/searchScope, reference-handle, or simple-read tasks from older prose
+Current audit: most named binding / lookup / registryless architecture clusters
+above are closed or rejected with repo evidence, but current code evidence still
+shows retained callable bridge surfaces. Do not reseed declaration, property,
+scope-frame/current-cell, reference-handle, or simple-read tasks from older prose
 unless new code evidence contradicts the checked items. The remaining open
-binding work is none: item 86 records the broad changed-baseline result and
-isolates the exact non-binding blockers.
+binding work is the callable bridge audit: `Rules.findMixinsFast(...)`,
+`findMixinsFastForUncoveredCallable(...)`, array-path namespace starts, fallback
+frames, and any public array/string conversion that can still act as a broad
+second producer for a modeled lookup.
 
 Closed cluster map:
 

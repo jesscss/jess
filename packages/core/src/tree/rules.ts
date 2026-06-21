@@ -3469,22 +3469,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let compoundUnion = compoundPrefixFast.entries;
         let compoundUnionOwned = compoundPrefixFast.owned;
         if (fast !== undefined && fast.length > 0) {
+          if (!compoundUnionOwned) {
+            compoundUnion = [...compoundUnion];
+            compoundUnionOwned = true;
+          }
           for (let i = 0; i < fast.length; i++) {
-            const node = fast[i]!;
-            let found = false;
-            for (let existing = 0; existing < compoundUnion.length; existing++) {
-              if (compoundUnion[existing] === node) {
-                found = true;
-                break;
-              }
-            }
-            if (!found) {
-              if (!compoundUnionOwned) {
-                compoundUnion = [...compoundUnion];
-                compoundUnionOwned = true;
-              }
-              compoundUnion.push(node);
-            }
+            compoundUnion.push(fast[i]!);
           }
         }
         return compoundUnion;
