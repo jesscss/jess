@@ -12,6 +12,31 @@ benchmark-first design/tradeoff work.
 Within each row, prefer structural facts, straight loops, fewer branches, fewer
 function calls, and fewer conversions.
 
+## Clone / Derive Contract
+
+`clone`, `derive`, and placement copy helpers are one architecture surface, not
+separate per-node inventions. Use this contract when reviewing or changing any
+node family:
+
+- `derive*` is the primitive construction path for a node family. It accepts
+  explicit semantic fields, constructs the same node family directly, and
+  carries only required source/options/tree-context/placement metadata.
+- `clone(...)` is a cold/public convenience policy over `derive*`: it derives
+  from the node's current fields, optionally applying the requested child clone
+  policy first.
+- `cloneForPlacement(...)` is placement ownership policy over `clone`/`derive`:
+  comment stripping, inert leaf reuse, render metadata transfer, and freezing.
+  It should not invent a second reconstruction model.
+- `derive*` should not call `clone()` and then patch fields. That copies old
+  state before replacing it and obscures whether the result comes from source
+  fields, evaluated fields, or a mixed mutation surface.
+- `clone()` should not use generic constructor reconstruction for direct-field
+  nodes. Direct-field families need a family-owned `derive*`/`withParts` path.
+- Generic helpers such as `copyWithReusableLeaves(...)` are transitional. Move
+  node-specific copy behavior into family-owned derive/clone methods, then
+  delete generic constructor-copy branches when focused tests prove the family
+  no longer needs them.
+
 Use sub-agents as accelerators for independent evidence, not as unmanaged
 editors. Useful assignments include: audit one open row for remaining
 string/capture/copy paths, identify focused tests for a node family, compare
