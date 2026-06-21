@@ -69,29 +69,18 @@ describe('parseLessAstStylesheet', () => {
     const [, compoundRule, complexRule] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
-    expect(serializeTypes(compoundRule)).toContainString(`
-      selector:
-        (CompoundSelector
-          value:
-            [
-              (BasicSelector '#id')
-              (BasicSelector '.card')
-            ]
-        )
-    `);
-    expect(serializeTypes(complexRule)).toContainString(`
-      selector:
-        (ComplexSelector
-          value:
-            [
-              (BasicSelector '.a')
-              (Combinator '>')
-              (BasicSelector '.b')
-              (Combinator '+')
-              (BasicSelector 'div')
-            ]
-        )
-    `);
+    expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    expect(isNode(complexRule, N.Ruleset) && isNode(complexRule.selector, N.ComplexSelector)).toBe(true);
+    if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed compound selector');
+    }
+    if (!isNode(complexRule, N.Ruleset) || !isNode(complexRule.selector, N.ComplexSelector)) {
+      throw new Error('Expected string-backed complex selector');
+    }
+    expect(compoundRule.selector.value).toEqual(['#id', '.card']);
+    expect(complexRule.selector.value).toEqual(['.a', '>', '.b', '+', 'div']);
+    expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+    expect(serializeTypes(complexRule)).not.toContain('(Combinator');
     expect(serializeTypes(result.tree)).toContainString(`
           value: '@tone'
     `);
@@ -137,16 +126,12 @@ describe('parseLessAstStylesheet', () => {
     expect(isNode(width, N.Declaration)).toBe(true);
     expect(isNode(compoundRule, N.Ruleset)).toBe(true);
     expect(width?.value).toBe('@size');
-    expect(serializeTypes(compoundRule)).toContainString(`
-      selector:
-        (CompoundSelector
-          value:
-            [
-              (BasicSelector '#id')
-              (BasicSelector '.card')
-            ]
-        )
-    `);
+    expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed nested compound selector');
+    }
+    expect(compoundRule.selector.value).toEqual(['#id', '.card']);
+    expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
     expect(outer.toTrimmedString()).toBe([
       '.outer {',
       '  color: red;',

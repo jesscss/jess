@@ -109,29 +109,18 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     expect(isNode(doubleHyphenTypeRule, N.Ruleset) && doubleHyphenTypeRule.selector).toBe('--.foo');
     expect(isNode(invalidClassHyphenRule, N.Ruleset) && invalidClassHyphenRule.selector).toBe('#id.-');
     expect(isNode(invalidIdHyphenRule, N.Ruleset) && invalidIdHyphenRule.selector).toBe('.a.#-');
-    expect(serializeTypes(compoundRule)).toContainString(`
-      selector:
-        (CompoundSelector
-          value:
-            [
-              (BasicSelector '#id')
-              (BasicSelector '.card')
-            ]
-        )
-    `);
-    expect(serializeTypes(complexRule)).toContainString(`
-      selector:
-        (ComplexSelector
-          value:
-            [
-              (BasicSelector '.a')
-              (Combinator '>')
-              (BasicSelector '.b')
-              (Combinator '+')
-              (BasicSelector 'div')
-            ]
-        )
-    `);
+    expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
+    expect(isNode(complexRule, N.Ruleset) && isNode(complexRule.selector, N.ComplexSelector)).toBe(true);
+    if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
+      throw new Error('Expected string-backed compound selector');
+    }
+    if (!isNode(complexRule, N.Ruleset) || !isNode(complexRule.selector, N.ComplexSelector)) {
+      throw new Error('Expected string-backed complex selector');
+    }
+    expect(compoundRule.selector.value).toEqual(['#id', '.card']);
+    expect(complexRule.selector.value).toEqual(['.a', '>', '.b', '+', 'div']);
+    expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
+    expect(serializeTypes(complexRule)).not.toContain('(Combinator');
   });
 
   test('parses cheap block at-rules and still rejects nested qualified rules', () => {

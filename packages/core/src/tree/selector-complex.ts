@@ -22,7 +22,7 @@ import { WARN, toDiagnostic } from '../jess-error.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
 /** Components that may appear in a complex or relative selector. */
-export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
+export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand | string;
 export type ComplexSelectorValue = ComplexSelectorComponent[];
 
 const isUnresolvedAmpersand = (part: Node): part is Ampersand => {
@@ -35,8 +35,12 @@ const isComplexSelectorComponentNode = (part: Node): part is ComplexSelectorComp
     && !isNode(part, N.ComplexSelector);
 };
 
-function isComplexSelectorComponent(part: Node): part is ComplexSelectorComponent {
-  return isComplexSelectorComponentNode(part);
+function isComplexSelectorComponent(part: Node | string): part is ComplexSelectorComponent {
+  return typeof part === 'string' || isComplexSelectorComponentNode(part);
+}
+
+export function isStringCombinator(value: string): boolean {
+  return value === ' ' || value === '>' || value === '+' || value === '~' || value === '|';
 }
 
 /**
@@ -65,6 +69,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private ownComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {
+    if (typeof component === 'string') {
+      return component;
+    }
     const owned = component.canReuseAsLeaf() ? component.reuseAsLeaf() : component.cloneForPlacement();
     if (!isComplexSelectorComponentNode(owned)) {
       throw new TypeError('Expected complex selector component copy');
@@ -81,7 +88,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     for (let i = 0; i < value.length; i++) {
       const component = value[i]!;
       ownedValue[i] = this.isSourceComponent(component, sourceValue) ? this.ownComponent(component) : component;
-      if (component.hoistToRoot) {
+      if (typeof component !== 'string' && component.hoistToRoot) {
         hoistToRoot = true;
       }
     }
@@ -107,7 +114,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   private createEvaluatedComponentSurface(
-    value: Node[],
+    value: Array<Node | string>,
     sourceValue: readonly ComplexSelectorComponent[]
   ): this {
     return this.withComponents(this.compactComplexComponents(value), sourceValue);
@@ -131,6 +138,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
     const emitComponent = (component: ComplexSelectorComponent) => {
+      if (typeof component === 'string') {
+        w.add(component);
+        return;
+      }
       const savedBoundaryTrivia = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
@@ -145,37 +156,37 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     };
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
-      if (!isNode(component, N.Combinator)) {
+      if (!(isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component)))) {
         options.ampersandFirst = isFirstSelector;
         isFirstSelector = false;
       }
-      if (isNode(component, N.Combinator)) {
+      if (isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component))) {
         if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.value;
+        let co = typeof component === 'string' ? component : component.value;
         if (co !== ' ') {
           if (co !== '|') {
-            w.add(i === 0 ? `${co} ` : ` ${co} `, component);
+            w.add(i === 0 ? `${co} ` : ` ${co} `, typeof component === 'string' ? this : component);
           } else {
-            w.add(co, component);
+            w.add(co, typeof component === 'string' ? this : component);
           }
         } else {
           const prev = value[i - 1];
           const next = value[i + 1];
-          const tokens = options.trivia && prev && next
+          const tokens = options.trivia && prev instanceof Node && next instanceof Node
             ? consumeTriviaBetween(options.trivia, prev, next, options)
             : undefined;
-          const coStart = component.location[0];
+          const coStart = typeof component === 'string' ? undefined : component.location[0];
           const spaceBeforeTrivia = coStart !== undefined
             && tokens?.[0]?.startOffset !== undefined
             && coStart < tokens[0]!.startOffset!;
           if (spaceBeforeTrivia) {
-            w.add(' ', component);
+            w.add(' ', typeof component === 'string' ? this : component);
           }
           emitTriviaTokens(tokens, options);
           if (!spaceBeforeTrivia) {
-            w.add(' ', component);
+            w.add(' ', typeof component === 'string' ? this : component);
           }
         }
       } else {
@@ -223,6 +234,15 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let visibleKeySet = library.getBitset();
     let requiredKeySet = library.getBitset();
     for (const component of value) {
+      if (typeof component === 'string') {
+        const componentKeySet = library.getBitset([component]);
+        keySet = keySet.or(componentKeySet);
+        if (!isStringCombinator(component)) {
+          visibleKeySet = visibleKeySet.or(componentKeySet);
+        }
+        requiredKeySet = requiredKeySet.or(componentKeySet);
+        continue;
+      }
       if (isNode(component, N.Combinator)) {
         component.keySetLibrary ??= library;
         keySet = keySet.or(component.keySet);
@@ -255,8 +275,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Node[]>).then(value => this.finalizeComponents(context, value, true))
-      : this.finalizeComponents(context, evaluatedValue as Node[], true);
+      ? (evaluatedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, true))
+      : this.finalizeComponents(context, evaluatedValue as Array<Node | string>, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -266,15 +286,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Node[]>).then(value => this.finalizeComponents(context, value, false))
-      : this.finalizeComponents(context, resolvedValue as Node[], false);
+      ? (resolvedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, false))
+      : this.finalizeComponents(context, resolvedValue as Array<Node | string>, false);
   }
 
-  private evaluateComponentsSync(context: Context, resolve: boolean): Node[] {
+  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Node | string> {
     const currentValue = this.value;
-    const evaluatedValue = new Array<Node>(currentValue.length);
+    const evaluatedValue = new Array<Node | string>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const component = currentValue[i]!;
+      if (typeof component === 'string') {
+        evaluatedValue[i] = component;
+        continue;
+      }
       const out = resolve ? component.resolve(context) : component.eval(context);
       if (!(out instanceof Node)) {
         if (out !== null && typeof out === 'object') {
@@ -288,11 +312,15 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return evaluatedValue;
   }
 
-  private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Node[]> {
+  private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Node | string>> {
     const currentValue = this.value;
-    const evaluatedValue = new Array<Node>(currentValue.length);
+    const evaluatedValue = new Array<Node | string>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const component = currentValue[i]!;
+      if (typeof component === 'string') {
+        evaluatedValue[i] = component;
+        continue;
+      }
       const out = resolve ? component.resolve(context) : component.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -308,12 +336,16 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   private evaluateComponentsRest(
     context: Context,
     resolve: boolean,
-    evaluatedValue: Node[],
+    evaluatedValue: Array<Node | string>,
     start: number
-  ): MaybePromise<Node[]> {
+  ): MaybePromise<Array<Node | string>> {
     const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const component = currentValue[i]!;
+      if (typeof component === 'string') {
+        evaluatedValue[i] = component;
+        continue;
+      }
       const out = resolve ? component.resolve(context) : component.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -330,7 +362,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return value instanceof Selector || value instanceof Nil;
   }
 
-  private finalizeComponents(context: Context, evaluatedValue: Node[], evaluated: boolean): Node {
+  private finalizeComponents(context: Context, evaluatedValue: Array<Node | string>, evaluated: boolean): Node {
     const currentValue = this.value;
     const value = this.compactSelectorParts(context, evaluatedValue);
     this.compactCombinators(value);
@@ -357,7 +389,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       : this.withComponents(this.compactComplexComponents(value), currentValue);
   }
 
-  private finalizeSingleComponent(only: Node, evaluated: boolean): Node {
+  private finalizeSingleComponent(only: Node | string, evaluated: boolean): Node {
+    if (typeof only === 'string') {
+      return this.withComponents([only], this.value);
+    }
     if (only instanceof Nil) {
       return only;
     }
@@ -374,27 +409,30 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return collapsed;
   }
 
-  private compactSelectorParts(context: Context, evaluatedValue: Node[]): Node[] {
+  private compactSelectorParts(context: Context, evaluatedValue: Array<Node | string>): Array<Node | string> {
     let hasOtherSelectorParts = false;
     let unresolvedAmpersandCount = 0;
     for (let i = 0; i < evaluatedValue.length; i++) {
       const part = evaluatedValue[i]!;
-      if (isUnresolvedAmpersand(part)) {
+      if (typeof part !== 'string' && isUnresolvedAmpersand(part)) {
         unresolvedAmpersandCount++;
-      } else if (!isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand)) {
+      } else if (
+        typeof part === 'string'
+        || (!isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand))
+      ) {
         hasOtherSelectorParts = true;
       }
     }
     if (hasOtherSelectorParts && unresolvedAmpersandCount > 0) {
       this.emitParentlessAmpersandWarnings(context, evaluatedValue);
     }
-    const value: Node[] = [];
+    const value: Array<Node | string> = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       const part = evaluatedValue[i]!;
-      if (isNode(part, N.Nil)) {
+      if (typeof part !== 'string' && isNode(part, N.Nil)) {
         continue;
       }
-      if (hasOtherSelectorParts && isUnresolvedAmpersand(part)) {
+      if (typeof part !== 'string' && hasOtherSelectorParts && isUnresolvedAmpersand(part)) {
         continue;
       }
       value.push(part);
@@ -420,27 +458,32 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
   }
 
-  private compactCombinators(value: Node[]): void {
+  private compactCombinators(value: Array<Node | string>): void {
     let outIndex = 0;
     for (let i = 0; i < value.length; i++) {
       const part = value[i]!;
-      if (isNode(part, N.Combinator)) {
+      if (isNode(part, N.Combinator) || (typeof part === 'string' && isStringCombinator(part))) {
         const prev = outIndex > 0 ? value[outIndex - 1] : undefined;
-        let next: Node | undefined;
+        let next: Node | string | undefined;
         for (let j = i + 1; j < value.length; j++) {
           const candidate = value[j]!;
-          if (!isNode(candidate, N.Combinator)) {
+          if (!(isNode(candidate, N.Combinator) || (typeof candidate === 'string' && isStringCombinator(candidate)))) {
             next = candidate;
             break;
           }
         }
         if (i === 0) {
-          if (next && !isNode(next, N.Combinator)) {
+          if (next && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))) {
             value[outIndex++] = part;
           }
           continue;
         }
-        if (prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator)) {
+        if (
+          prev
+          && next
+          && !(isNode(prev, N.Combinator) || (typeof prev === 'string' && isStringCombinator(prev)))
+          && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))
+        ) {
           value[outIndex++] = part;
         }
         continue;
@@ -450,7 +493,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     value.length = outIndex;
   }
 
-  private compactComplexComponents(items: Node[]): ComplexSelectorValue {
+  private compactComplexComponents(items: Array<Node | string>): ComplexSelectorValue {
     const value: ComplexSelectorComponent[] = [];
     for (let i = 0; i < items.length; i++) {
       const component = items[i]!;

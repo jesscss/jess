@@ -5,6 +5,7 @@ import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { Ruleset } from '../ruleset.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 let context: Context;
@@ -628,9 +629,18 @@ describe('Rule', () => {
     expect(ownedBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(body.value[0]?.parent).toBe(body);
+    expect(body.rules[0]?.parent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('composes string-backed complex selectors without materializing leaves', () => {
+    const parent = sel(['.parent', '>', '.scope']);
+    const child = sel(['.item', '+', '.next']);
+
+    const composed = Ruleset.composeSelector(child, parent);
+
+    expect(composed.toTrimmedString()).toBe('.parent > .scope .item + .next');
   });
 
   it('renders already evaluated rulesets without re-entering eval', async () => {
@@ -815,7 +825,7 @@ describe('Rule', () => {
 
     expect(sourceBodyRenderCalls).toBe(0);
     expect(nestedBody.parent).toBe(node);
-    expect(nestedBody.value[0]?.parent).toBe(nestedBody);
+    expect(nestedBody.rules[0]?.parent).toBe(nestedBody);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });

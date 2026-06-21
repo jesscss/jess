@@ -8,8 +8,8 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Combinator } from './combinator.js';
-import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
-import { CompoundSelector } from './selector-compound.js';
+import { ComplexSelector, isStringCombinator, type ComplexSelectorComponent } from './selector-complex.js';
+import { CompoundSelector, type CompoundSelectorComponent } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -313,6 +313,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   private static _ownComplexComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {
+    if (typeof component === 'string') {
+      return component;
+    }
     const owned = component.cloneForPlacement();
     if (
       owned instanceof SimpleSelector
@@ -347,7 +350,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       ? child.value.map(component => Ruleset._ownComplexComponent(component))
       : [Ruleset._ownComplexComponent(Ruleset._toComplexComponent(child))];
 
-    const childStartsWithCombinator = trailing.length > 0 && isNode(trailing[0]!, N.Combinator);
+    const childStartsWithCombinator = trailing.length > 0 && Ruleset._isCombinatorComponent(trailing[0]!);
     const merged = childStartsWithCombinator
       ? [...leading, ...trailing]
       : [...leading, Combinator.create(' '), ...trailing];
@@ -420,11 +423,11 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       const suffix = value.slice(1);
       // Simple / Compound parent — splice directly into the compound.
       if (!isNode(parent, N.ComplexSelector) && !isNode(parent, N.SelectorList)) {
-        const parentComponents: SimpleSelector[] = isNode(parent, N.CompoundSelector)
+        const parentComponents: CompoundSelectorComponent[] = isNode(parent, N.CompoundSelector)
           ? parent.value
           : [Ruleset._toSimpleSelector(parent)];
         const merged = [...parentComponents, ...suffix];
-        if (merged.length === 1) {
+        if (merged.length === 1 && typeof merged[0] !== 'string') {
           return attachSelectorBitLibrary(merged[0]!, library);
         }
         return attachSelectorBitLibrary(CompoundSelector.create(merged).inherit(compound), library);
@@ -435,18 +438,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         const parentParts = parent.value.slice();
         let lastIdx = -1;
         for (let i = parentParts.length - 1; i >= 0; i--) {
-          if (!isNode(parentParts[i]!, N.Combinator)) {
+          if (!Ruleset._isCombinatorComponent(parentParts[i]!)) {
             lastIdx = i;
             break;
           }
         }
         if (lastIdx !== -1 && suffix.length > 0) {
           const lastPart = parentParts[lastIdx]!;
-          const existing: SimpleSelector[] = isNode(lastPart, N.CompoundSelector)
+          const existing: CompoundSelectorComponent[] = isNode(lastPart, N.CompoundSelector)
             ? lastPart.value
-            : [Ruleset._toSimpleSelector(lastPart)];
+            : typeof lastPart === 'string'
+              ? [lastPart]
+              : [Ruleset._toSimpleSelector(lastPart)];
           const merged = [...existing, ...suffix];
-          parentParts[lastIdx] = merged.length === 1
+          parentParts[lastIdx] = merged.length === 1 && typeof merged[0] !== 'string'
             ? Ruleset._toComplexComponent(merged[0]!)
             : CompoundSelector.create(merged);
         }
@@ -457,7 +462,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
     // General path: walk value, substituting each `&` in place.
     // Simple/Compound parents splice; Complex/List parents wrap in `:is()`.
-    const newComponents: SimpleSelector[] = [];
+    const newComponents: CompoundSelectorComponent[] = [];
     for (const comp of value) {
       if (isNode(comp, N.Ampersand)) {
         if (isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
@@ -467,7 +472,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         } else {
           newComponents.push(Ruleset._toSimpleSelector(parent));
         }
-      } else if (comp.hasFlag(F_AMPERSAND)) {
+      } else if (typeof comp !== 'string' && comp.hasFlag(F_AMPERSAND)) {
         // `&` is nested deeper (e.g. inside a pseudo arg).
         const sub = Ruleset._substituteAmpersand(comp, parent);
         if (isNode(sub, N.CompoundSelector)) {
@@ -479,7 +484,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         newComponents.push(comp);
       }
     }
-    if (newComponents.length === 1) {
+    if (newComponents.length === 1 && typeof newComponents[0] !== 'string') {
       return attachSelectorBitLibrary(newComponents[0]!, library);
     }
     return attachSelectorBitLibrary(CompoundSelector.create(newComponents).inherit(compound), library);
@@ -509,7 +514,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
           // Simple or Compound parent: single-component insertion, always safe.
           newParts.push(Ruleset._toComplexComponent(parent));
         }
-      } else if (!isNode(part, N.Combinator) && part.hasFlag(F_AMPERSAND)) {
+      } else if (!Ruleset._isCombinatorComponent(part) && typeof part !== 'string' && part.hasFlag(F_AMPERSAND)) {
         const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
         const allowSmartSpliceInPlace = i === 0 && !rightTight;
         const sub = Ruleset._substituteAmpersand(
@@ -558,11 +563,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return false;
     }
     const c = parts[idx];
-    if (!c || !isNode(c, N.Combinator)) {
+    if (!c || !Ruleset._isCombinatorComponent(c)) {
       return false;
     }
-    const v = String((c as Combinator).valueOf() ?? '');
+    const v = String(typeof c === 'string' ? c : (c as Combinator).valueOf() ?? '');
     return v.trim().length > 0;
+  }
+
+  private static _isCombinatorComponent(component: ComplexSelectorComponent): boolean {
+    return isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component));
   }
 
   private static _wrapIs(selector: Selector): PseudoSelector {
@@ -824,8 +833,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
    * Make authored selector nodes printable while keeping implicit ampersands
    * invisible so nested output stays short.
    */
-  private static ensureSelectorVisible(sel: Selector | Nil, restored?: Selector[]): void {
-    if (!sel || sel instanceof Nil) {
+  private static ensureSelectorVisible(sel: Selector | Nil | string, restored?: Selector[]): void {
+    if (!sel || typeof sel === 'string' || sel instanceof Nil) {
       return;
     }
     if (isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -854,8 +863,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
   }
 
-  private static needsVisibleSelectorClone(sel: Selector | Nil): boolean {
-    if (!sel || sel instanceof Nil) {
+  private static needsVisibleSelectorClone(sel: Selector | Nil | string): boolean {
+    if (!sel || typeof sel === 'string' || sel instanceof Nil) {
       return false;
     }
     if (!(isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) && !sel.hasFlag(F_VISIBLE)) {

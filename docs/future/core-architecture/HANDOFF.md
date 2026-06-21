@@ -103,6 +103,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: string-token selector containers for scanner-first AST proofs.
+- Verdict: accepted as a parser object-reduction slice, not a measured
+  performance pass. CSS/Less scanner-first AST construction now keeps cheap
+  compound/complex selector pieces as strings inside existing `CompoundSelector`
+  and `ComplexSelector` nodes instead of allocating `BasicSelector` and
+  `Combinator` leaves for each token.
+- New traversal: no new tree traversal was added. Existing selector eval and
+  render loops now skip string components directly instead of calling node
+  methods on them. Existing ruleset selector-visibility recursion returns
+  immediately for string selector pieces.
+- New node/materialization: no new node family was added. The slice removes
+  eager selector leaf materialization in the CSS/Less AST builders for the cheap
+  selector subset. It retains the existing selector container nodes because they
+  are the actual AST shape for compound and complex selectors.
+- Render/eval path: string selector components write directly to the active
+  writer and survive selector-container eval/resolve unchanged. Ruleset
+  composition now treats string selector pieces as selector components when
+  composing parent/child complex selectors, and string selector tokens
+  contribute to selector keysets. There is no Chevrotain deferred-field parsing
+  in this path.
+- Helper/API surface: `scanCheapSelectorComponents(...)` moved to
+  `@jesscss/parser` so CSS and Less share the string-token scanner without
+  Less importing CSS parser internals. The helper returns plain string tokens;
+  language AST builders decide whether to keep a whole selector string, build a
+  selector container with string components, or reject the header for a later
+  slice.
+- Metadata mutations: no new parent/source metadata mutation was added. String
+  selector pieces have no parent/source/visibility flags; visibility helpers
+  skip them.
+- Flagged materialized arrays/objects: the verifier flags widened array types
+  and evaluation arrays in existing selector methods plus widened ruleset
+  composition arrays. Those arrays already existed for selector eval/resolve and
+  parent/child selector composition; this pass changes their element type so
+  they can carry strings and avoid allocating leaf nodes in parser output.
+- Evidence: CSS and Less AST proof tests failed first on eager
+  `BasicSelector`/`Combinator` leaves, then passed after the change. A reviewer
+  found partial string-awareness in selector keysets and ruleset composition;
+  focused core tests now cover string-backed compound/complex keysets and
+  string-backed complex selector composition. Parser scanner tests,
+  CSS AST/corpus/local fixture tests, Less AST proof, Less source-scanner
+  corpus, and parser/core/css-parser/less-parser builds passed. No speed claim
+  is made without benchmark/profile evidence.
+
 - Latest pass: `Rules.value` payload deletion.
 - Verdict: accepted as an AST ownership correction and hot-path source-of-truth
   cleanup, not a measured performance pass. `Rules` now owns only `.rules`;

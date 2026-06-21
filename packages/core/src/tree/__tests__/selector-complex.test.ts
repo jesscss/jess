@@ -301,6 +301,16 @@ describe('Complex selector', () => {
       // visibleKeySet excludes combinators
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
+
+    test('string-backed complex', async () => {
+      const sel1 = sel(['.one', '>', '.two', '+', 'div']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('.one > .two + div');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', 'div']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+    });
+
     test('nested complex (w/ relative :is)', async () => {
       let sel2 = sel([
         compound([

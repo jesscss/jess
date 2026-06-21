@@ -2,10 +2,8 @@ import {
   VarDeclaration,
   atrule,
   atrulestatement,
-  co,
   compound,
   decl,
-  el,
   mixin,
   rules,
   ruleset,
@@ -15,7 +13,7 @@ import {
   type Selector,
   type Stylesheet
 } from '@jesscss/core';
-import { parseCheapAtRulePrelude, scanCheapSelectorComponents, type CheapSelectorComponent } from '@jesscss/css-parser';
+import { parseCheapAtRulePrelude } from '@jesscss/css-parser';
 import {
   SourceText,
   appendParserDiagnostic,
@@ -24,7 +22,9 @@ import {
   findTrailingImportantStart,
   findTopLevelBlockStart,
   findTopLevelDelimiter,
+  scanCheapSelectorComponents,
   skipSourceTrivia,
+  type CheapSelectorComponent,
   type ParserDiagnostic,
   type ScannerParseResult,
   type SourceScannerOptions
@@ -53,13 +53,13 @@ function isLessNameCode(code: number): boolean {
   );
 }
 
-function materializeCheapCompound(component: readonly string[]): Selector {
+function materializeCheapCompound(component: readonly string[]): string | Selector {
   return component.length === 1
-    ? el(component[0]!)
-    : compound(component.map(atom => el(atom)));
+    ? component[0]!
+    : compound([...component]);
 }
 
-function materializeCheapSelector(components: CheapSelectorComponent[]): Selector {
+function materializeCheapSelector(components: CheapSelectorComponent[]): string | Selector {
   if (components.length === 1) {
     const only = components[0]!;
     if (Array.isArray(only)) {
@@ -68,7 +68,7 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): Selecto
   }
   return sel(components.map((component) => {
     if (typeof component === 'string') {
-      return co(component);
+      return component;
     }
     return materializeCheapCompound(component);
   }));

@@ -275,6 +275,15 @@ describe('Compound Selector', () => {
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
+    test('string-backed compound', async () => {
+      const sel1 = compound(['a', '#id', '.class']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('a#id.class');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+    });
+
     test('nested compound', async () => {
       /** :is(a)#id:is(.one.two) */
       const sel1 = pseudo({ name: ':is', arg: el('a') });

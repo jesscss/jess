@@ -11,6 +11,11 @@ export {
 } from './declaration-scanner.js';
 
 export {
+  scanCheapSelectorComponents,
+  type CheapSelectorComponent
+} from './selector-scanner.js';
+
+export {
   findBalancedBlockEnd,
   findStatementEnd,
   findTopLevelBlockStart,
