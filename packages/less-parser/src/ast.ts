@@ -31,6 +31,7 @@ import {
   findTopLevelDelimiter,
   scanCheapAtRulePrelude,
   scanCheapSelectorComponents,
+  skipQuotedSourceString,
   skipSourceTrivia,
   type CheapAtRulePreludeToken,
   type CheapSelectorComponent,
@@ -178,6 +179,108 @@ type CheapMixinHeader = {
   params?: ReturnType<typeof list>;
 };
 
+/** Find a mixin-call `)` without allocating tokens or accepting malformed suffixes. */
+function findCheapCallCloseParen(source: string, open: number): number {
+  let cursor = open + 1;
+  let expectedClose = '';
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\"' || char === '\'') {
+      cursor = skipQuotedSourceString(source, cursor, source.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '*') {
+      const commentEnd = source.indexOf('*/', cursor + 2);
+      cursor = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '/') {
+      cursor += 2;
+      while (cursor < source.length) {
+        const code = source.charCodeAt(cursor);
+        if (code === 10 || code === 13) {
+          break;
+        }
+        cursor++;
+      }
+      continue;
+    }
+    if (char === '(') {
+      expectedClose += ')';
+    } else if (char === '[') {
+      expectedClose += ']';
+    } else if (char === '{') {
+      expectedClose += '}';
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (!expectedClose) {
+        if (char !== ')') {
+          return -1;
+        }
+        return cursor;
+      }
+      if (expectedClose[expectedClose.length - 1] !== char) {
+        return -1;
+      }
+      expectedClose = expectedClose.slice(0, -1);
+    }
+    cursor++;
+  }
+  return -1;
+}
+
+function hasBalancedCheapArgumentText(source: string): boolean {
+  let cursor = 0;
+  let expectedClose = '';
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\"' || char === '\'') {
+      cursor = skipQuotedSourceString(source, cursor, source.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '*') {
+      const commentEnd = source.indexOf('*/', cursor + 2);
+      if (commentEnd === -1) {
+        return false;
+      }
+      cursor = commentEnd + 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '/') {
+      cursor += 2;
+      while (cursor < source.length) {
+        const code = source.charCodeAt(cursor);
+        if (code === 10 || code === 13) {
+          break;
+        }
+        cursor++;
+      }
+      continue;
+    }
+    if (char === '(') {
+      expectedClose += ')';
+    } else if (char === '[') {
+      expectedClose += ']';
+    } else if (char === '{') {
+      expectedClose += '}';
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (!expectedClose || expectedClose[expectedClose.length - 1] !== char) {
+        return false;
+      }
+      expectedClose = expectedClose.slice(0, -1);
+    }
+    cursor++;
+  }
+  return expectedClose.length === 0;
+}
+
 function parseCheapMixinParam(source: string): VarDeclaration | undefined {
   const text = source.trim();
   if (text[0] !== '@') {
@@ -227,6 +330,49 @@ function parseCheapMixinParams(source: string): ReturnType<typeof list> | undefi
     }
   }
   return params.length ? list(params, separator ? { sep: separator } : undefined) : undefined;
+}
+
+function parseCheapMixinCallArgs(source: string): ReturnType<typeof list> | undefined {
+  const text = source.trim();
+  if (!text) {
+    return undefined;
+  }
+  const semi = findTopLevelDelimiter(text, ';', 0, text.length, LESS_SCANNER_OPTIONS);
+  const comma = findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS);
+  if (semi !== -1 && comma !== -1) {
+    return undefined;
+  }
+  const separator = semi !== -1
+    ? ';'
+    : comma !== -1
+      ? ','
+      : undefined;
+  const args: Node[] = [];
+  let cursor = 0;
+  while (cursor <= text.length) {
+    const end = separator
+      ? findTopLevelDelimiter(text, separator, cursor, text.length, LESS_SCANNER_OPTIONS)
+      : -1;
+    const partEnd = end === -1 ? text.length : end;
+    const arg = text.slice(cursor, partEnd).trim();
+    if (
+      !arg
+      || arg.endsWith('...')
+      || findTopLevelDelimiter(arg, ':', 0, arg.length, LESS_SCANNER_OPTIONS) !== -1
+      || !hasBalancedCheapArgumentText(arg)
+    ) {
+      return undefined;
+    }
+    args.push(any(arg));
+    if (!separator || end === -1) {
+      break;
+    }
+    cursor = end + 1;
+    if (cursor >= text.length) {
+      return undefined;
+    }
+  }
+  return list(args, separator ? { sep: separator } : undefined);
 }
 
 function isCheapMixinName(source: string): boolean {
@@ -428,16 +574,23 @@ function parseCheapMixinCallStatement(source: string, start: number, end: number
   if (callText[cursor] !== '(') {
     return undefined;
   }
-  cursor = skipSourceTrivia(callText, cursor + 1, callText.length, LESS_SCANNER_OPTIONS);
-  if (callText[cursor] !== ')') {
+  const argsStart = cursor + 1;
+  const argsEnd = findCheapCallCloseParen(callText, cursor);
+  if (argsEnd === -1) {
     return undefined;
   }
-  cursor = skipSourceTrivia(callText, cursor + 1, callText.length, LESS_SCANNER_OPTIONS);
+  const argsText = callText.slice(argsStart, argsEnd);
+  const args = parseCheapMixinCallArgs(argsText);
+  if (argsText.trim() && !args) {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(callText, argsEnd + 1, callText.length, LESS_SCANNER_OPTIONS);
   if (cursor !== callText.length) {
     return undefined;
   }
   return call({
-    name: ref({ key: name }, { type: 'mixin-ruleset', role: 'name' })
+    name: ref({ key: name }, { type: 'mixin-ruleset', role: 'name' }),
+    ...(args && { args })
   }, importantStart === -1 ? undefined : { markImportant: true });
 }
 
@@ -557,8 +710,9 @@ function parseLessNodes(
  * This is a scanner-first parser proof, not a compatibility parser. It accepts
  * cheap qualified rules, nested cheap qualified rules, ordinary declarations,
  * simple `@name:` variables, detached ruleset variables, cheap mixin
- * definitions, parameterless mixin calls, and statement/block at-rules. Values
- * stay as strings until a later decision proves typed parsing is necessary.
+ * definitions, cheap parenthesized mixin calls, and statement/block at-rules.
+ * Values stay as strings until a later decision proves typed parsing is
+ * necessary.
  */
 export function parseLessAstStylesheet(
   filePath: string,
