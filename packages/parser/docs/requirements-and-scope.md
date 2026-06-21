@@ -412,6 +412,13 @@ create a `Sequence` merely to represent default single-spaced declaration value
 segments when a plain array plus `valueSpans` and trivia can preserve the same
 serialization and semantics.
 
+Sequence therefore stays in core for now, but new scanner-first and progressive
+parser slices should move away from using it as the default declaration-value
+container. Before a new parser path creates `Sequence`, it should identify the
+specific runtime behavior it needs from that node. If the value is only ordered
+segments with default CSS spacing, prefer `value: string | (string | Node)[]`
+and optional `valueSpans`.
+
 ### R9. Visitor Support Is Conditional
 
 Less supports visitors, but Jess does not need to preserve every leaf-level

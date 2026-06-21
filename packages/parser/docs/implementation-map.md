@@ -204,6 +204,12 @@ not need a wrapper `Sequence` node just to preserve source ranges. Keep
 comparison semantics, rest arguments, evaluation behavior, or another proven
 semantic need.
 
+Do not delete `Sequence` as part of this parser slice. The target is to stop
+making it the default declaration-value representation in new scanner-first
+paths. A new parser path should create `Sequence` only after it proves that a
+plain `value: string | (string | Node)[]` plus `valueSpans` and trivia cannot
+produce the same serialized result and runtime behavior.
+
 If a registry remains necessary, use field terminology:
 
 ```ts
