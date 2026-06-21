@@ -103,6 +103,39 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: collapsed render frame rollback after reference-import lookup cuts.
+- Verdict: accepted as a correctness fix for the binding/lookup branch fallout,
+  not a performance pass. The seven binding/lookup commits are already on
+  `feature/less-v5-alpha-readiness`; focused proof exposed that
+  `1e840ab9e` left a render regression where a reference-import `Rules`
+  wrapper could open or replace a collapsed frame, emit no visible CSS, and
+  leave the replacement frame behind for the next declaration. The serializer
+  now restores the existing frame/header arrays from snapshots when a child
+  container or child `Rules` wrapper emits nothing, instead of restoring only
+  array length. No speed claim.
+- New traversal: none. The pass does not add a node walk or lookup path.
+- Review-flagged allocations: two rollback snapshots use the existing
+  `saveArrayState(...)` helper only around paths that may roll back after
+  `ensureRenderedFrames(...)`; they replace incorrect length-only rollback
+  state, not normal successful emission.
+- New node/materialization: none.
+- Render path: successful rendering still writes strings directly. The added
+  snapshots are used only on no-output rollback paths after a child render
+  touched frame state.
+- Helper/API surface: none added. A parent-aware composed-selector cache detour
+  was rejected and removed because the failure reproduced without it.
+- Metadata mutations: frame/header array restoration is the intended render
+  state rollback for hidden/reference children that emit no CSS. No source,
+  parent, frozen, or node ownership metadata changed.
+- Evidence: `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/import-style.test.ts -t "repeated reference/multiple imports keep import-site-local parent chains"`,
+  full `import-style.test.ts`, `nesting-collapse.test.ts`,
+  `ruleset.test.ts -t "collapse|composed|selector"`, the targeted
+  `reference.test.ts` lookup slice, full `mixin.test.ts`, `@jesscss/core`
+  build, `git diff --check`, and `pnpm run verify:aggressive-cutting-review`
+  passed. The first full mixin attempt failed because `@jesscss/core build`
+  was run concurrently and removed `lib` while Vitest imported through
+  `css-parser/lib`; rerunning after the build passed `199/199`.
+
 - Latest pass: policy-gated namespace-start broad fallback deletion.
 - Verdict: accepted as a narrow second-producer cut. `local: true` and
   `hasTarget: true` no longer disable frame-owned callable namespace-start
