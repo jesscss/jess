@@ -9,8 +9,10 @@ import {
   list,
   mixin,
   nil,
+  num,
   paren,
   query,
+  quoted,
   rest,
   rules,
   ruleset,
@@ -438,7 +440,7 @@ type CheapMixinHeader = {
   name: string;
   params?: ReturnType<typeof list>;
 };
-type CheapMixinParam = VarDeclaration | ReturnType<typeof rest>;
+type CheapMixinParam = Node;
 
 type GuardedHeader = {
   body: string;
@@ -554,10 +556,6 @@ function hasBalancedCheapArgumentText(source: string): boolean {
   return hasBalancedCheapDelimitedText(source, true);
 }
 
-function hasBalancedCheapFunctionArgumentText(source: string): boolean {
-  return hasBalancedCheapDelimitedText(source, false);
-}
-
 function findTopLevelWhen(source: string): number {
   let cursor = 0;
   let expectedClose = '';
@@ -642,13 +640,26 @@ function isCheapGuardText(source: string): boolean {
   return text.charCodeAt(conditionStart) === 40 && hasBalancedCheapArgumentText(text);
 }
 
+function parseCheapMixinLiteralParam(text: string): Node | undefined {
+  if (
+    !text
+    || text.endsWith('...')
+    || findTopLevelDelimiter(text, ':', 0, text.length, LESS_SCANNER_OPTIONS) !== -1
+  ) {
+    return undefined;
+  }
+  return parseCheapQuotedFunctionArg(text)
+    ?? parseCheapNumberFunctionArg(text)
+    ?? parseCheapIdentFunctionArg(text);
+}
+
 function parseCheapMixinParam(source: string): CheapMixinParam | undefined {
   const text = source.trim();
   if (text === '...') {
     return rest();
   }
   if (text[0] !== '@') {
-    return undefined;
+    return parseCheapMixinLiteralParam(text);
   }
   if (text.endsWith('...')) {
     const nameLimit = text.length - 3;
@@ -684,7 +695,7 @@ function hasCheapMixinParamDefault(source: string): boolean {
   return findTopLevelDelimiter(source, ':', 0, source.length, LESS_SCANNER_OPTIONS) !== -1;
 }
 
-function isCheapMixinParamText(source: string): boolean {
+function isCheapMixinDeclarationParamText(source: string): boolean {
   const text = source.trimStart();
   if (text === '...') {
     return true;
@@ -735,7 +746,7 @@ function parseCheapCommaMixinParams(source: string): CheapMixinParam[] | undefin
     if (
       comma !== -1
       && hasCheapMixinParamDefault(candidate)
-      && !isCheapMixinParamText(nextSegment)
+      && !isCheapMixinDeclarationParamText(nextSegment)
     ) {
       current = candidate;
       cursor = comma + 1;
@@ -1238,43 +1249,141 @@ function readCheapFunctionName(source: string): CheapMixinName | undefined {
   return { name: source.slice(0, nameEnd), end: nameEnd };
 }
 
+function parseCheapQuotedFunctionArg(text: string): Node | undefined {
+  const quote = text[0];
+  if ((quote !== '"' && quote !== '\'') || skipQuotedSourceString(text, 0, text.length) !== text.length) {
+    return undefined;
+  }
+  return quoted(any(text.slice(1, -1), { role: 'any' }), { quote });
+}
+
+function parseCheapVariableFunctionArg(text: string): Node | undefined {
+  if (text[0] !== '@') {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < text.length && isLessNameCode(text.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  return nameEnd > 1 && nameEnd === text.length
+    ? ref({ key: text.slice(1) }, { type: 'variable' })
+    : undefined;
+}
+
+function parseCheapNumberFunctionArg(text: string): Node | undefined {
+  let cursor = text[0] === '-' || text[0] === '+' ? 1 : 0;
+  let digits = 0;
+  while (cursor < text.length) {
+    const code = text.charCodeAt(cursor);
+    if (code < 48 || code > 57) {
+      break;
+    }
+    cursor++;
+    digits++;
+  }
+  if (text[cursor] === '.') {
+    cursor++;
+    while (cursor < text.length) {
+      const code = text.charCodeAt(cursor);
+      if (code < 48 || code > 57) {
+        break;
+      }
+      cursor++;
+      digits++;
+    }
+  }
+  return digits > 0 && cursor === text.length ? num(Number(text)) : undefined;
+}
+
+function parseCheapIdentFunctionArg(text: string): Node | undefined {
+  if (!text) {
+    return undefined;
+  }
+  for (let i = 0; i < text.length; i++) {
+    if (!isLessNameCode(text.charCodeAt(i))) {
+      return undefined;
+    }
+  }
+  return any(text, { role: 'ident' });
+}
+
+function parseCheapFunctionCallArgList(source: string): Node[] | undefined {
+  const items: Node[] = [];
+  let cursor = 0;
+  while (cursor <= source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, LESS_SCANNER_OPTIONS);
+    const itemEnd = comma === -1 ? source.length : comma;
+    const item = parseCheapFunctionCallArg(source.slice(cursor, itemEnd));
+    if (!item) {
+      return undefined;
+    }
+    items.push(item);
+    if (comma === -1) {
+      return items;
+    }
+    cursor = comma + 1;
+    if (cursor >= source.length) {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function parseCheapEscapedParenFunctionArg(text: string): Node | undefined {
+  if (!text.startsWith('~(')) {
+    return undefined;
+  }
+  const close = findCheapCallCloseParen(text, 1);
+  if (close !== text.length - 1) {
+    return undefined;
+  }
+  const inner = text.slice(2, close).trim();
+  if (!inner) {
+    return paren(undefined, { escaped: true });
+  }
+  const items = parseCheapFunctionCallArgList(inner);
+  return items ? paren(list(items), { escaped: true }) : undefined;
+}
+
+function parseCheapFunctionCallArg(source: string): Node | undefined {
+  const text = source.trim();
+  return parseCheapEscapedParenFunctionArg(text)
+    ?? parseCheapQuotedFunctionArg(text)
+    ?? parseCheapVariableFunctionArg(text)
+    ?? parseCheapNumberFunctionArg(text)
+    ?? parseCheapIdentFunctionArg(text);
+}
+
 function parseCheapFunctionCallArgs(source: string): ReturnType<typeof list> | undefined {
   const text = source.trim();
   if (!text) {
     return undefined;
   }
   const semi = findTopLevelDelimiter(text, ';', 0, text.length, LESS_SCANNER_OPTIONS);
-  const comma = findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS);
-  const separator = semi !== -1
-    ? ';'
-    : comma !== -1
-      ? ','
-      : undefined;
   const args: Node[] = [];
-  let cursor = 0;
-  while (cursor <= text.length) {
-    const end = separator
-      ? findTopLevelDelimiter(text, separator, cursor, text.length, LESS_SCANNER_OPTIONS)
-      : -1;
-    const partEnd = end === -1 ? text.length : end;
-    const arg = text.slice(cursor, partEnd).trim();
-    if (
-      !arg
-      || !hasBalancedCheapFunctionArgumentText(arg)
-      || (separator === ';' && !hasNoEmptyTopLevelCommaArms(arg))
-    ) {
-      return undefined;
+  if (semi !== -1) {
+    let cursor = 0;
+    while (cursor <= text.length) {
+      const end = findTopLevelDelimiter(text, ';', cursor, text.length, LESS_SCANNER_OPTIONS);
+      const partEnd = end === -1 ? text.length : end;
+      const segment = text.slice(cursor, partEnd);
+      const items = parseCheapFunctionCallArgList(segment);
+      if (!items?.length) {
+        return undefined;
+      }
+      args.push(items.length === 1 ? items[0]! : list(items));
+      if (end === -1) {
+        break;
+      }
+      cursor = end + 1;
+      if (cursor >= text.length) {
+        return undefined;
+      }
     }
-    args.push(any(arg, { role: 'ident' }));
-    if (!separator || end === -1) {
-      break;
-    }
-    cursor = end + 1;
-    if (cursor >= text.length) {
-      return undefined;
-    }
+    return list(args, { sep: ';' });
   }
-  return list(args, separator ? { sep: separator } : undefined);
+  const items = parseCheapFunctionCallArgList(text);
+  return items ? list(items) : undefined;
 }
 
 function parseCheapFunctionCallStatement(source: string, start: number, end: number): Node | undefined {

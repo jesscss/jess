@@ -429,8 +429,20 @@ describe('parseLessAstStylesheet', () => {
       .commaDefault(@margin: 2, 2, 2, 2) {
         margin: @margin;
       }
+
+      .case(1) {
+        case: 1;
+      }
+
+      .mixout('left') {
+        left: 1;
+      }
+
+      .border-side(left, @width) {
+        border-left: @width;
+      }
     `);
-    const [paint, theme, trail, defaulted, resty, all, commaDefault] = result.tree.rules;
+    const [paint, theme, trail, defaulted, resty, all, commaDefault, numericCase, quotedCase, mixedPattern] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(paint, N.Mixin)).toBe(true);
@@ -440,6 +452,9 @@ describe('parseLessAstStylesheet', () => {
     expect(isNode(resty, N.Mixin)).toBe(true);
     expect(isNode(all, N.Mixin)).toBe(true);
     expect(isNode(commaDefault, N.Mixin)).toBe(true);
+    expect(isNode(numericCase, N.Mixin)).toBe(true);
+    expect(isNode(quotedCase, N.Mixin)).toBe(true);
+    expect(isNode(mixedPattern, N.Mixin)).toBe(true);
     if (
       !isNode(paint, N.Mixin)
       || !isNode(theme, N.Mixin)
@@ -448,6 +463,9 @@ describe('parseLessAstStylesheet', () => {
       || !isNode(resty, N.Mixin)
       || !isNode(all, N.Mixin)
       || !isNode(commaDefault, N.Mixin)
+      || !isNode(numericCase, N.Mixin)
+      || !isNode(quotedCase, N.Mixin)
+      || !isNode(mixedPattern, N.Mixin)
     ) {
       throw new Error('Expected parameterized Less mixin definition');
     }
@@ -501,6 +519,12 @@ describe('parseLessAstStylesheet', () => {
     expect(commaDefault.params?.sep).toBe(',');
     expect(commaDefault.params?.items).toHaveLength(1);
     expect(commaDefault.params?.items[0]?.toTrimmedString()).toBe('$margin: 2, 2, 2, 2');
+    expect(numericCase.params?.items[0]?.type).toBe('Num');
+    expect(numericCase.params?.items[0]?.valueOf()).toBe(1);
+    expect(quotedCase.params?.items[0]?.type).toBe('Quoted');
+    expect(quotedCase.params?.items[0]?.toTrimmedString()).toBe('\'left\'');
+    expect(mixedPattern.params?.items.map(item => item.type)).toEqual(['Any', 'VarDeclaration']);
+    expect(mixedPattern.params?.items.map(item => item.toTrimmedString())).toEqual(['left', '$width']);
     expect(serializeTypes(result.tree)).toContain('(Rest');
   });
 
@@ -793,12 +817,14 @@ describe('parseLessAstStylesheet', () => {
       store(5);
       store("bird");
       test-atrule("@charset"; '"utf-8"');
+      grouped(a, b; c);
+      escaped(~(a, b); c);
       e('/* anything to unquote */');
     `);
-    const [collapse, storeVar, storeNumber, storeString, atRule, escape] = result.tree.rules;
+    const [collapse, storeVar, storeNumber, storeString, atRule, grouped, escaped, escape] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
-    for (const node of [collapse, storeVar, storeNumber, storeString, atRule, escape]) {
+    for (const node of [collapse, storeVar, storeNumber, storeString, atRule, grouped, escaped, escape]) {
       expect(isNode(node, N.Call)).toBe(true);
       if (!isNode(node, N.Call) || !isNode(node.name, N.Reference)) {
         throw new Error('Expected root function call with reference name');
@@ -813,17 +839,23 @@ describe('parseLessAstStylesheet', () => {
       || !isNode(storeNumber, N.Call)
       || !isNode(storeString, N.Call)
       || !isNode(atRule, N.Call)
+      || !isNode(grouped, N.Call)
+      || !isNode(escaped, N.Call)
       || !isNode(escape, N.Call)
       || !isNode(collapse.name, N.Reference)
       || !isNode(storeVar.name, N.Reference)
       || !isNode(storeNumber.name, N.Reference)
       || !isNode(storeString.name, N.Reference)
       || !isNode(atRule.name, N.Reference)
+      || !isNode(grouped.name, N.Reference)
+      || !isNode(escaped.name, N.Reference)
       || !isNode(escape.name, N.Reference)
       || !isNode(storeVar.args, N.List)
       || !isNode(storeNumber.args, N.List)
       || !isNode(storeString.args, N.List)
       || !isNode(atRule.args, N.List)
+      || !isNode(grouped.args, N.List)
+      || !isNode(escaped.args, N.List)
       || !isNode(escape.args, N.List)
     ) {
       throw new Error('Expected concrete root function call shapes');
@@ -832,14 +864,26 @@ describe('parseLessAstStylesheet', () => {
     expect(collapse.name.key).toBe('test-collapse');
     expect(collapse.args).toBeUndefined();
     expect(storeVar.name.key).toBe('store');
-    expect(storeVar.args.items.map(item => item.valueOf())).toEqual(['@var']);
-    expect(storeNumber.args.items.map(item => item.valueOf())).toEqual(['5']);
-    expect(storeString.args.items.map(item => item.valueOf())).toEqual(['"bird"']);
+    expect(storeVar.args.items[0]?.type).toBe('Reference');
+    expect(isNode(storeVar.args.items[0], N.Reference) && storeVar.args.items[0].options.type).toBe('variable');
+    expect(isNode(storeVar.args.items[0], N.Reference) && storeVar.args.items[0].key).toBe('var');
+    expect(storeNumber.args.items[0]?.type).toBe('Num');
+    expect(storeNumber.args.items[0]?.valueOf()).toBe(5);
+    expect(storeString.args.items[0]?.type).toBe('Quoted');
+    expect(storeString.args.items[0]?.toTrimmedString()).toBe('"bird"');
     expect(atRule.name.key).toBe('test-atrule');
     expect(atRule.args.sep).toBe(';');
-    expect(atRule.args.items.map(item => item.valueOf())).toEqual(['"@charset"', '\'"utf-8"\'']);
+    expect(atRule.args.items.map(item => item.toTrimmedString())).toEqual(['"@charset"', '\'"utf-8"\'']);
+    expect(grouped.args.sep).toBe(';');
+    expect(grouped.args.items[0]?.type).toBe('List');
+    expect(isNode(grouped.args.items[0], N.List) && grouped.args.items[0].items.map(item => item.valueOf())).toEqual(['a', 'b']);
+    expect(grouped.args.items[1]?.valueOf()).toBe('c');
+    expect(escaped.args.sep).toBe(';');
+    expect(escaped.args.items[0]?.type).toBe('Paren');
+    expect(escaped.args.items[0]?.toTrimmedString()).toBe('~(a, b)');
+    expect(escaped.args.items[1]?.valueOf()).toBe('c');
     expect(escape.name.key).toBe('e');
-    expect(escape.args.items.map(item => item.valueOf())).toEqual(['\'/* anything to unquote */\'']);
+    expect(escape.args.items.map(item => item.toTrimmedString())).toEqual(['\'/* anything to unquote */\'']);
 
     const serialized = serializeTypes(result.tree, { showOptions: true });
     expect(serialized).toContain('type: \'function\'');
@@ -853,10 +897,14 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('function-blocks.less', `
       each(@list, { color: @value; });
       if((false), {g: 7});
+      func(a b);
+      func(rgb(1, 2, 3));
     `);
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
+      'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement'
     ]);

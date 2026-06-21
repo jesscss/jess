@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less function-arg tightening and pattern params.
+- Verdict: accepted as a parse-coverage correction after review, not a
+  measured performance pass. Root function-call arguments no longer store
+  already-recognized variables, quoted strings, numbers, mixed comma/semicolon
+  groups, or escaped parens as inert `Any` strings. Cheap mixin definition
+  pattern params such as `.m(1)`, `.mixout('left')`, and
+  `.border-side(left, @width)` now parse into existing core `Num`, `Quoted`,
+  `Any`, and `VarDeclaration(paramVar)` shapes.
+- New traversal: no tree traversal. The existing statement/mixin header
+  scanners parse already-sliced argument/parameter arms only.
+- New node/materialization: no new node family. Accepted function args create
+  existing `Reference(type=variable)`, `Quoted`, `Num`, nested `List`, `Paren`,
+  and atom `Any` nodes. Function args with block bodies, sequences, or nested
+  function expressions remain unsupported so structured values are not smuggled
+  through `Any`.
+- Render path: parse-only slice. No function evaluation, mixin matching,
+  fallback rendering, callable lookup, or output work was added.
+- Helper/API surface: private Less AST helpers only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none beyond normal core-node construction/adoption.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus moved from 1344 parsed top-level rules /
+  154 warnings to 1352 parsed top-level rules / 121 warnings with zero
+  errors/thrown failures. Remaining warning counts are 97 unsupported block
+  headers, 23 unsupported statements, and 1 empty declaration name. No speed
+  claim is made.
+
 - Latest pass: scanner-first Less root function-call statements.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Root statements such as `test-collapse()`, `store(@var)`,
