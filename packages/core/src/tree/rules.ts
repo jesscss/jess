@@ -3431,7 +3431,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         }
-        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+        if (
+          namespaceMixins === undefined
+          && !namespaceMixinMissCovered
+          && (!this._scopeFrame || options.hasTarget || options.local)
+        ) {
           namespaceMixins = this.findMixinsFast(keys[0]!, {
             hasTarget: options.hasTarget,
             local: options.local,

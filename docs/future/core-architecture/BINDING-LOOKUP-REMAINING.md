@@ -1602,6 +1602,14 @@ lane.
   `findRulesetNamespacePathFast(...)`. If a `ScopeFrame` exists, exact
   remainder matches must come from the prepared callable frame or visible frame
   collectors; the direct bucket fallback is retained only for no-frame callers.
+- Frame-owned array-path mixin namespace starts no longer reopen the broad
+  `this.findMixinsFast(keys[0]!, ...)` crawl after current frame lookup has a
+  usable `ScopeFrame`. The broad start fallback remains only for no-frame,
+  targeted, or local callers; framed namespace starts must resolve through the
+  frame hit/miss, narrow uncovered-child/reference-import helpers, or explicit
+  unsupported return. Full `mixin.test.ts` plus the focused stable namespace /
+  reference-import namespace / fallback namespace / mixin-ruleset matrix stayed
+  green.
 - `setDefined` assignment no longer imports or calls exported
   `findVariableDeclarationAssignmentLookup` /
   `findPropertyDeclarationAssignmentLookup` wrappers. The old

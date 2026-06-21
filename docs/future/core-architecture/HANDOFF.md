@@ -103,6 +103,29 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: frame-owned array-path mixin namespace broad-start fallback deletion.
+- Verdict: accepted as a narrow second-producer cut. When `findMixin(array)`
+  has a current `ScopeFrame`, namespace mixin starts no longer reopen
+  `this.findMixinsFast(keys[0]!, ...)` as a broad start-key crawl after frame
+  lookup and the narrow uncovered child/reference-import helpers fail to
+  produce a modeled result. The broad fallback remains only for no-frame,
+  targeted, or local callers. No speed claim.
+- New traversal: none. The pass deletes one broad crawl branch for framed
+  namespace starts and keeps existing frame/narrow-helper traversal unchanged.
+- Review-flagged allocations: none added.
+- New node/materialization: none.
+- Render path: unchanged. This pass only changes callable namespace lookup
+  routing.
+- Helper/API surface: none added.
+- Metadata mutations: none.
+- Routine error control: none added.
+- Allocation changes: no new arrays or objects.
+- Evidence: focused
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts -t "stable namespaces avoid direct-crawl|reference-import namespace-start misses avoid broad|fallback namespace reference-import offset|guarded namespace|namespace path|compound-prefix|selector-list prefix|mixin-ruleset calls with args|namespace fast path"`
+  passed, and full
+  `pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts`
+  passed (`195/195`).
+
 - Latest pass: frame-owned exact ruleset namespace direct-bucket fallback deletion.
 - Verdict: accepted as a narrow second-producer cut. `findRulesetNamespacePathFast(...)`
   no longer calls `scope.getCallableEntriesForKey(segment)` as an exact
