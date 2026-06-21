@@ -183,6 +183,82 @@ describe('parseLessAstStylesheet', () => {
     `);
   });
 
+  test('parses cheap Less mixin definition parameters without fallback parsing', () => {
+    const result = parseLessAstStylesheet('mixin-params.less', `
+      .paint(@tone; @size) {
+        color: @tone;
+        width: @size;
+      }
+
+      #theme(@mode, @contrast) {
+        color: @mode;
+      }
+
+      .trail(@tone;) {
+        color: @tone;
+      }
+    `);
+    const [paint, theme, trail] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(paint, N.Mixin)).toBe(true);
+    expect(isNode(theme, N.Mixin)).toBe(true);
+    expect(isNode(trail, N.Mixin)).toBe(true);
+    if (!isNode(paint, N.Mixin) || !isNode(theme, N.Mixin) || !isNode(trail, N.Mixin)) {
+      throw new Error('Expected parameterized Less mixin definition');
+    }
+    expect(paint.name?.valueOf()).toBe('.paint');
+    expect(isNode(paint.params, N.List)).toBe(true);
+    expect(paint.params?.sep).toBe(';');
+    expect(paint.params?.items.map(item => item.toTrimmedString())).toEqual(['$tone', '$size']);
+    expect(serializeTypes(paint)).toContainString(`
+        params:
+          (List
+            items:
+              [
+                (VarDeclaration
+                  name:
+                    (Any [role=property] 'tone')
+                  value:
+                    (Nil '')
+                )
+                (VarDeclaration
+                  name:
+                    (Any [role=property] 'size')
+                  value:
+                    (Nil '')
+                )
+              ]
+          )
+    `);
+    expect(theme.name?.valueOf()).toBe('#theme');
+    expect(theme.params?.sep).toBe(',');
+    expect(theme.params?.items.map(item => item.toTrimmedString())).toEqual(['$mode', '$contrast']);
+    expect(trail.params?.sep).toBe(';');
+    expect(trail.params?.items.map(item => item.toTrimmedString())).toEqual(['$tone']);
+  });
+
+  test('keeps unsupported Less mixin parameter forms out of the cheap AST path', () => {
+    const result = parseLessAstStylesheet('unsupported-mixin-params.less', `
+      .badDefault(@tone: red) { color: @tone; }
+      .badRest(@args...) { color: red; }
+      .badMixed(@a; @b, @c) { color: @a; }
+      .badGuard(@a) when (@enabled) { color: @a; }
+      .1(@a) { color: red; }
+      .-(@a) { color: red; }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header',
+      'less-ast-unsupported-block-header'
+    ]);
+  });
+
   test('diagnoses malformed Less at-rule blocks without fallback parsing', () => {
     const result = parseLessAstStylesheet('unsupported.less', `
       @ {
@@ -305,7 +381,7 @@ describe('parseLessAstStylesheet', () => {
 
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
-      .mixin(@x) { color: @x; }
+      .mixin(@x: red) { color: @x; }
       .a {
         .b when (@enabled) { color: blue; }
         color: red;

@@ -5,7 +5,9 @@ import {
   atrulestatement,
   compound,
   decl,
+  list,
   mixin,
+  nil,
   rules,
   ruleset,
   sel,
@@ -146,7 +148,71 @@ function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclarati
   });
 }
 
-function parseParameterlessMixinName(header: string): string | undefined {
+type CheapMixinHeader = {
+  name: string;
+  params?: ReturnType<typeof list>;
+};
+
+function parseCheapMixinParam(source: string): VarDeclaration | undefined {
+  const text = source.trim();
+  if (text[0] !== '@') {
+    return undefined;
+  }
+  let nameEnd = 1;
+  while (nameEnd < text.length && isLessNameCode(text.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  if (nameEnd === 1 || text.slice(nameEnd).trim()) {
+    return undefined;
+  }
+  return new VarDeclaration({
+    name: any(text.slice(1, nameEnd), { role: 'property' }),
+    value: nil()
+  }, { paramVar: true });
+}
+
+function parseCheapMixinParams(source: string): ReturnType<typeof list> | undefined {
+  const text = source.trim();
+  if (!text) {
+    return undefined;
+  }
+  const separator = findTopLevelDelimiter(text, ';', 0, text.length, LESS_SCANNER_OPTIONS) !== -1
+    ? ';'
+    : findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS) !== -1
+      ? ','
+      : undefined;
+  const params: VarDeclaration[] = [];
+  let cursor = 0;
+  while (cursor <= text.length) {
+    const end = separator
+      ? findTopLevelDelimiter(text, separator, cursor, text.length, LESS_SCANNER_OPTIONS)
+      : -1;
+    const partEnd = end === -1 ? text.length : end;
+    const param = parseCheapMixinParam(text.slice(cursor, partEnd));
+    if (!param) {
+      return undefined;
+    }
+    params.push(param);
+    if (!separator || end === -1) {
+      break;
+    }
+    cursor = end + 1;
+    if (cursor >= text.length) {
+      break;
+    }
+  }
+  return params.length ? list(params, separator ? { sep: separator } : undefined) : undefined;
+}
+
+function isCheapMixinName(source: string): boolean {
+  const components = scanCheapSelectorComponents(source);
+  return components?.length === 1
+    && Array.isArray(components[0])
+    && components[0].length === 1
+    && components[0][0] === source;
+}
+
+function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
   const source = header.trim();
   const first = source[0];
   if (first !== '.' && first !== '#') {
@@ -159,32 +225,46 @@ function parseParameterlessMixinName(header: string): string | undefined {
   if (nameEnd === 1) {
     return undefined;
   }
+  const name = source.slice(0, nameEnd);
+  if (!isCheapMixinName(name)) {
+    return undefined;
+  }
   let cursor = nameEnd;
   cursor = skipSourceTrivia(source, cursor, source.length, LESS_SCANNER_OPTIONS);
   if (source[cursor] !== '(') {
     return undefined;
   }
   cursor = skipSourceTrivia(source, cursor + 1, source.length, LESS_SCANNER_OPTIONS);
-  if (source[cursor] !== ')') {
+  const paramsStart = cursor;
+  const paramsEnd = source.lastIndexOf(')');
+  if (paramsEnd === -1) {
     return undefined;
   }
-  cursor = skipSourceTrivia(source, cursor + 1, source.length, LESS_SCANNER_OPTIONS);
-  return cursor === source.length ? source.slice(0, nameEnd) : undefined;
+  cursor = skipSourceTrivia(source, paramsEnd + 1, source.length, LESS_SCANNER_OPTIONS);
+  if (cursor !== source.length) {
+    return undefined;
+  }
+  const params = parseCheapMixinParams(source.slice(paramsStart, paramsEnd));
+  return paramsStart === paramsEnd || params ? {
+    name,
+    ...(params && { params })
+  } : undefined;
 }
 
-function parseParameterlessMixinBlock(
+function parseCheapMixinBlock(
   source: string,
   start: number,
   blockStart: number,
   blockEnd: number,
   addDiagnostic: DiagnosticSink
 ): Node | undefined {
-  const name = parseParameterlessMixinName(source.slice(start, blockStart));
-  if (!name) {
+  const header = parseCheapMixinHeader(source.slice(start, blockStart));
+  if (!header) {
     return undefined;
   }
   return mixin({
-    name: any(name, { role: 'name' }),
+    name: any(header.name, { role: 'name' }),
+    ...(header.params && { params: header.params }),
     rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
   });
 }
@@ -251,7 +331,7 @@ function parseLessBlockNode(
     );
     return undefined;
   }
-  const mixinDefinition = parseParameterlessMixinBlock(source, start, blockStart, blockEnd, addDiagnostic);
+  const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic);
   if (mixinDefinition) {
     return mixinDefinition;
   }
