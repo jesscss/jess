@@ -505,10 +505,76 @@ describe('parseLessAstStylesheet', () => {
     `);
   });
 
+  test('parses namespaced Less mixin calls as reference key arrays', () => {
+    const result = parseLessAstStylesheet('namespaced-mixin-calls.less', `
+      #ns.mixin(1);
+      #library.core.colors();
+      #theme.dark.navbar() !important;
+
+      .a {
+        #theme.dark.navbar.colors(dark);
+      }
+    `);
+    const [namespaceCall, libraryCall, themedCall, rule] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(namespaceCall, N.Call)).toBe(true);
+    expect(isNode(libraryCall, N.Call)).toBe(true);
+    expect(isNode(themedCall, N.Call)).toBe(true);
+    expect(isNode(rule, N.Ruleset)).toBe(true);
+    if (
+      !isNode(namespaceCall, N.Call)
+      || !isNode(libraryCall, N.Call)
+      || !isNode(themedCall, N.Call)
+      || !isNode(rule, N.Ruleset)
+    ) {
+      throw new Error('Expected namespaced Less mixin calls');
+    }
+    expect(isNode(namespaceCall.name, N.Reference)).toBe(true);
+    expect(isNode(libraryCall.name, N.Reference)).toBe(true);
+    expect(isNode(themedCall.name, N.Reference)).toBe(true);
+    if (
+      !isNode(namespaceCall.name, N.Reference)
+      || !isNode(libraryCall.name, N.Reference)
+      || !isNode(themedCall.name, N.Reference)
+    ) {
+      throw new Error('Expected namespaced Less mixin call references');
+    }
+    expect(namespaceCall.name.key).toEqual(['#ns', '.mixin']);
+    expect(libraryCall.name.key).toEqual(['#library', '.core', '.colors']);
+    expect(themedCall.name.key).toEqual(['#theme', '.dark', '.navbar']);
+    expect(themedCall.options.markImportant).toBe(true);
+
+    const [nested] = rule.rules.rules;
+    expect(isNode(nested, N.Call)).toBe(true);
+    if (!isNode(nested, N.Call) || !isNode(nested.name, N.Reference)) {
+      throw new Error('Expected nested namespaced Less mixin call');
+    }
+    expect(nested.name.key).toEqual(['#theme', '.dark', '.navbar', '.colors']);
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Call
+        name:
+          (Reference [role=name]
+            key:
+              ['#ns', '.mixin']
+          )
+        args:
+          (List
+            items:
+              [
+                (Any '1')
+              ]
+          )
+      )
+    `);
+  });
+
   test('keeps unsupported Less mixin call forms out of the cheap AST path', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
       .empty(,);
       .suffix(a) b;
+      #ns .spaced();
+      #ns.mixin extra;
       .emptySemiComma(a; ,);
       .trailingSemiComma(a; b,);
       .doubleSemiComma(a; b,, c);
@@ -521,6 +587,8 @@ describe('parseLessAstStylesheet', () => {
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
+      'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',
       'less-ast-unsupported-statement',

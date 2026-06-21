@@ -535,20 +535,48 @@ type CheapMixinName = {
   end: number;
 };
 
-function readCheapMixinName(source: string): CheapMixinName | undefined {
-  const first = source[0];
+type CheapMixinReferenceName = {
+  key: string | string[];
+  end: number;
+};
+
+function readCheapMixinName(source: string, offset = 0): CheapMixinName | undefined {
+  const first = source[offset];
   if (first !== '.' && first !== '#') {
     return undefined;
   }
-  let nameEnd = 1;
+  let nameEnd = offset + 1;
   while (nameEnd < source.length && isLessNameCode(source.charCodeAt(nameEnd))) {
     nameEnd++;
   }
-  if (nameEnd === 1) {
+  if (nameEnd === offset + 1) {
     return undefined;
   }
-  const name = source.slice(0, nameEnd);
+  const name = source.slice(offset, nameEnd);
   return isCheapMixinName(name) ? { name, end: nameEnd } : undefined;
+}
+
+function readCheapMixinReferenceName(source: string): CheapMixinReferenceName | undefined {
+  const keys: string[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const segment = readCheapMixinName(source, cursor);
+    if (!segment) {
+      break;
+    }
+    keys.push(segment.name);
+    cursor = segment.end;
+    if (source[cursor] !== '.' && source[cursor] !== '#') {
+      break;
+    }
+  }
+  if (!keys.length) {
+    return undefined;
+  }
+  return {
+    key: keys.length === 1 ? keys[0]! : keys,
+    end: cursor
+  };
 }
 
 function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
@@ -731,11 +759,10 @@ function parseCheapMixinCallStatement(source: string, start: number, end: number
   const text = source.slice(start, end).trim();
   const importantStart = findTrailingImportantStart(text);
   const callText = importantStart === -1 ? text : text.slice(0, importantStart).trimEnd();
-  const callee = readCheapMixinName(callText);
+  const callee = readCheapMixinReferenceName(callText);
   if (!callee) {
     return undefined;
   }
-  const { name } = callee;
   let cursor = skipSourceTrivia(callText, callee.end, callText.length, LESS_SCANNER_OPTIONS);
   if (callText[cursor] !== '(') {
     return undefined;
@@ -755,7 +782,7 @@ function parseCheapMixinCallStatement(source: string, start: number, end: number
     return undefined;
   }
   return call({
-    name: ref({ key: name }, { type: 'mixin-ruleset', role: 'name' }),
+    name: ref({ key: callee.key }, { type: 'mixin-ruleset', role: 'name' }),
     ...(args && { args })
   }, importantStart === -1 ? undefined : { markImportant: true });
 }
