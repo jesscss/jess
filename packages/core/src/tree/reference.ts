@@ -42,6 +42,7 @@ import { MixinCollection } from './util/callable-collection.js';
 import {
   getCallableEntryGuard,
   getCallableEntryParams,
+  isCallableEntry,
   type MixinEntry
 } from './util/callable-entry.js';
 import type { JsFunction } from './js-function.js';
@@ -1999,19 +2000,6 @@ function isReferenceHandleLookupStrategy(
   }
 }
 
-function getCachedReferenceLookupStrategy(
-  referenceNode: Reference,
-  lookupType: LookupType
-): ReferenceLookupStrategy {
-  const cached = referenceNode._lookupStrategy;
-  if (cached?.lookupType === lookupType) {
-    return cached;
-  }
-  const strategy = getReferenceLookupStrategy(lookupType);
-  referenceNode._lookupStrategy = strategy;
-  return strategy;
-}
-
 function lookupResolvedReference(args: {
   referenceNode: Reference;
   resolvedTarget: unknown;
@@ -2060,10 +2048,8 @@ function lookupResolvedReference(args: {
       };
     }
   }
-  const strategy = getCachedReferenceLookupStrategy(referenceNode, lookupType);
-  const handleStrategy = isReferenceHandleLookupStrategy(strategy)
-    ? strategy
-    : undefined;
+  const strategy = uncachedStrategy;
+  const handleStrategy = uncachedHandleStrategy;
 
   const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
@@ -2669,6 +2655,11 @@ function getMixinReferenceCandidateGuard(candidate: MixinEntry): Node | undefine
   return getCallableEntryGuard(candidate);
 }
 
+function isMixinEntryArray(value: unknown): value is MixinEntry[] {
+  return Array.isArray(value)
+    && value.every(item => isNode(item, N.Ruleset) || isCallableEntry(item));
+}
+
 function getOptionalMixinFallbackCandidateText(
   candidate: MixinEntry,
   valueKey: NormalizedLookupKey
@@ -3148,12 +3139,12 @@ function finalizeReferenceLookupResult(
   if (
     lookupType === 'mixin'
     && fallbackValue === true
-    && isArray(returnVal)
+    && isMixinEntryArray(returnVal)
   ) {
     const {
       candidates: filtered,
       fallbackText
-    } = filterOptionalMixinFallbackCandidates(returnVal as MixinEntry[], valueKey);
+    } = filterOptionalMixinFallbackCandidates(returnVal, valueKey);
     if (filtered === undefined || filtered.length === 0) {
       if (fallbackText) {
         context.popReference();
@@ -3557,7 +3548,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  _lookupStrategy: ReferenceLookupStrategy | undefined;
   readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
   readonly rawKey: ReferenceValue['rawKey'];

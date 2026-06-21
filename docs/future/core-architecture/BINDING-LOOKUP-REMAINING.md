@@ -192,19 +192,19 @@ null child entries prevent recursive rediscovery, and ruleset path misses skip
 mixin-only child surfaces.
 
 4. [x] Retry `ReferencePlan` only for source-static facts. Scope:
-`_lookupStrategy`, key node identity, read mode, target presence, `inCall`, and
+reference lookup policy, key node identity, read mode, target presence, `inCall`, and
 static parent/start shape. Goal: cache repeated preparation only when generated
 control/mixin surfaces cannot change the facts. Acceptance: control loop matrix
 plus variable/property/function/callable handle tests. Current evidence:
 source-static variable/property/function/mixin reads now read an already-written
-trivial `RulesLookupHandle` before rebuilding `_lookupStrategy`; contextual
+trivial `RulesLookupHandle` before rebuilding lookup policy; contextual
 start, read mode, target/filter, leaky/search-scope, interpolated, and
 nontrivial handle shapes still fall through to normal preparation. The
 source-static read now validates the stored handle fields directly and reuses
 the shared freshness tail, so it no longer allocates a temporary
 `RulesLookupHandleShape` object just to re-read a covered handle. Focused
 reference tests prove cached variable handles avoid current-binding map rereads,
-source-static handles read before rebuilding lookup strategy, unstable facts
+source-static handles read before rebuilding lookup policy, unstable facts
 rebuild normally, and property/declaration assignment constraints still reuse
 source-static handles.
 
@@ -485,7 +485,7 @@ into the generic shape.
 21. [x] Split source-static handle readers by lookup family instead of
 branching through `lookupTypeUsesDeclarationConstraints(...)`. Scope:
 `tryReadSourceStaticRulesLookupHandle(...)`, source-static variable/property/
-declaration/function/callable reads, and `_lookupStrategy` rebuild avoidance.
+declaration/function/callable reads, and lookup-policy rebuild avoidance.
 Goal: assign the reader/checker for declaration-capable references up front so
 function/callable source-static reads do not evaluate declaration-constraint
 eligibility or helper branches. Acceptance: focused source-static handle tests
@@ -495,8 +495,9 @@ reader path. Current evidence: the old generic
 `tryReadSourceStaticRulesLookupHandle(...)` is gone. Each lookup strategy now
 owns `tryReadSourceStaticHandle`, with declaration/property/variable readers
 doing declaration-constraint checks and function/mixin/mixin-ruleset readers
-using only common handle freshness. The early read still uses an uncached
-strategy lookup, so a source-static cache hit does not rebuild `_lookupStrategy`.
+using only common handle freshness. The early read uses the computed strategy
+without storing it on `Reference`, so a source-static cache hit does not rebuild
+lookup policy.
 Focused source-static/function/callable handle tests and
 `verify:binding-lookup-hot-paths` passed.
 
@@ -626,7 +627,7 @@ the stale object-call and arg-type names. This is handle-allocation
 code-path evidence only, not a measured speed claim.
 
 30. [x] Finish source-static `ReferencePlan` retry only for stable facts after
-the strategy read/write split. Scope: `_lookupStrategy`, source-static key
+the strategy read/write split. Scope: reference lookup policy, source-static key
 identity, target/filter/read-mode/leaky/search-scope disqualifiers, handle
 shape, and source-static strategy readers. Goal: prove repeated source-static
 references can reuse only stable plan facts without caching generated or live
@@ -634,8 +635,8 @@ surface state. Acceptance: control/mixin loop matrix plus variable/property/
 function/callable handle tests showing dynamic surfaces still fall through.
 Current evidence: source-static readers are strategy-owned positional calls;
 the existing stable source-static test proves a written handle can read before
-rebuilding `_lookupStrategy`, while the new unstable-facts test proves
-read-mode and semantic-filter changes still rebuild the lookup strategy rather
+rebuilding lookup policy, while the new unstable-facts test proves
+read-mode and semantic-filter changes still rebuild handle state rather
 than reusing stale plan facts.
 
 31. [x] Split or prove handle-prep eligibility by strategy so no-handle and
@@ -1285,7 +1286,7 @@ probe and avoid preparing the full `RulesLookupHandleShape`. The cached
 variable-handle test now asserts zero `currentBindingsByName.get` reads on
 reuse, while parent-frame and child-frame current-binding invalidation tests
 still pass. The existing source-static handle matrix proves variable,
-property, function, and callable handles read before rebuilding `_lookupStrategy`;
+property, function, and callable handles read before rebuilding lookup policy;
 unstable reference facts still rebuild normally.
 
 70. [x] Delete terminal namespace fallback proved redundant by the final
@@ -1454,7 +1455,7 @@ continue to use offset/remainder-entry traversal; `collectKeyRemainder(...)`
 remains a cold unsupported fallback edge.
 
 81. [x] Slim reference handle shape and prep for source-static reads. Scope:
-`_lookupStrategy`, source-static key normalization, target/filter facts,
+reference lookup policy, source-static key normalization, target/filter facts,
 handle readers/writers by family, and repeated handle access. Goal: repeated
 source-static reads use assigned strategy functions and minimal fields without
 per-lookup shape objects. Acceptance: focused variable/property/function/
@@ -1463,7 +1464,7 @@ generic wrapper-returning handle APIs. Current evidence: declaration-family
 source-static reads now delay declaration constraint snapshot creation until
 after common handle shape/version validation. The source-static matrix proves
 variable/property/function/callable reads reuse handles before rebuilding
-`_lookupStrategy`, unstable facts still rebuild, and the hot-path verifier
+lookup policy, unstable facts still rebuild, and the hot-path verifier
 continues to reject generic handle reader/writer object shapes.
 
 82. [x] Finish leaky/searchScope fallback bridge deletion or unsupported-state
@@ -1835,7 +1836,7 @@ Safe cleanup order:
   fallback signal. Focused mixin tests prove positive namespace paths and
   definite miss paths avoid nested array materialization.
 - Source-static variable/property/function/mixin references now try the stored
-  rules lookup handle after reference env prep and before `_lookupStrategy`
+  rules lookup handle after reference env prep and before lookup-policy
   rebuild. The early path accepts only trivial source-static handle shapes and
   still uses the normal handle reader for version, live-binding, and occurrence
   freshness.

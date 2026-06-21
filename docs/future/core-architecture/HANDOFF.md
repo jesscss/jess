@@ -112,6 +112,49 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Reference lookup-strategy cache deletion.
+- Verdict: accepted as a narrow Reference/direct lookup machinery cut, not a
+  speed claim. `lookupResolvedReference(...)` already fetches the singleton
+  strategy before source-static handle probing; the second
+  `getCachedReferenceLookupStrategy(...)` call and per-`Reference`
+  `_lookupStrategy` field duplicated `lookupType` state on every reference
+  node. The pass reuses the existing local strategy/handle-strategy values and
+  deletes the node-local strategy cache helper/field.
+- Architecture surface: `lookupResolvedReference(...)`,
+  `ReferenceRulesLookupHandle`, source-static handle tests, and the private
+  `Reference` instance fields used by lookup.
+- Separation/duplication: deleted private helper
+  `getCachedReferenceLookupStrategy(...)` and the `_lookupStrategy` field
+  because they repeated the already-computed singleton strategy and cached
+  handle `lookupType`. The remaining `_rulesLookupHandle` owns stale-handle
+  validation; no second strategy cache remains on `Reference`.
+- Cumulative node weight: one retained field is removed from every
+  `Reference` instance. No production node, map, set, side table, wrapper, or
+  retained cache was added.
+- New traversal: none.
+- Review-flagged allocations: deletes one retained per-reference field and the
+  cache write/read branch in `getCachedReferenceLookupStrategy(...)`; no
+  replacement object, map, side table, helper ladder, copied node, or
+  materialized surface is added.
+- New node/materialization: none.
+- Render path: unchanged. Reference render/eval still uses the existing raw
+  lookup and finalization paths; this patch only removes redundant strategy
+  storage before lookup dispatch.
+- Helper/API surface: deletes private helper
+  `getCachedReferenceLookupStrategy(...)`; no public API or compatibility shim
+  is added.
+- Metadata mutations: none added. No source/root/parent metadata changed.
+- Routine error control: none added.
+- Review-flagged diff tokens: [cache] and [helper] refer to deleted
+  `_lookupStrategy` / `getCachedReferenceLookupStrategy(...)` machinery;
+  [object] appears in test assertions and docs prose; [materialized array/object]
+  is the `isMixinEntryArray(...)` type guard over an existing
+  returned array and does not allocate or materialize a replacement value. No
+  production allocation replacement was added.
+- Evidence: focused reference cache tests and `@jesscss/core` build passed in
+  this scanner-first parser branch. Run `git diff --check` and
+  `verify:aggressive-cutting-review` before committing this pass.
+
 - Latest pass: direct variable occurrence current-cell projection.
 - Verdict: accepted as a narrow declaration binding/direct lookup unification
   slice, not a speed claim. Covered current static variable occurrences now
