@@ -6,6 +6,9 @@ import {
   call,
   compound,
   decl,
+  el,
+  extend,
+  ExtendFlag,
   list,
   mixin,
   nil,
@@ -22,6 +25,7 @@ import {
   stylesheet,
   ref,
   type AtRulePrelude,
+  type ComplexSelectorComponent,
   type Node,
   type Selector,
   type Stylesheet
@@ -225,6 +229,26 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): string 
   return typeof components[0] === 'string' ? rel(value) : sel(value);
 }
 
+function materializeCheapExtendTarget(components: CheapSelectorComponent[]): Selector {
+  if (components.length === 1) {
+    const only = components[0]!;
+    if (Array.isArray(only)) {
+      return only.length === 1
+        ? el(only[0]!)
+        : compound(only.map(component => el(component)));
+    }
+  }
+  const value = components.map((component): ComplexSelectorComponent => {
+    if (typeof component === 'string') {
+      return component;
+    }
+    return component.length === 1
+      ? el(component[0]!)
+      : compound(component.map(item => el(item)));
+  });
+  return typeof components[0] === 'string' ? rel(value) : sel(value);
+}
+
 function parseCheapLessSelectorList(selector: string, context: LessAstParseContext): string | Selector | undefined {
   const selectorList = scanCheapSelectorListComponents(selector, {
     ...LESS_SCANNER_OPTIONS,
@@ -235,6 +259,66 @@ function parseCheapLessSelectorList(selector: string, context: LessAstParseConte
   }
   const items = selectorList.map(materializeCheapSelector);
   return items.length > 1 ? sellist(items) : items[0];
+}
+
+function parseCheapLessExtendTargetList(source: string): Array<{ target: Selector; flag: ExtendFlag }> | undefined {
+  const targets: Array<{ target: Selector; flag: ExtendFlag }> = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, LESS_SCANNER_OPTIONS);
+    const targetEnd = comma === -1 ? source.length : comma;
+    let targetText = source.slice(cursor, targetEnd).trim();
+    let flag = ExtendFlag.Exact;
+    const lower = targetText.toLowerCase();
+    if (lower.endsWith('!all') && isLessHeaderSpace(targetText.charCodeAt(targetText.length - 5))) {
+      targetText = targetText.slice(0, -4).trimEnd();
+      flag = ExtendFlag.All;
+    } else if (lower.endsWith('all') && isLessHeaderSpace(targetText.charCodeAt(targetText.length - 4))) {
+      targetText = targetText.slice(0, -3).trimEnd();
+      flag = ExtendFlag.All;
+    }
+    const target = scanCheapSelectorComponents(targetText, LESS_SCANNER_OPTIONS);
+    if (!target) {
+      return undefined;
+    }
+    targets.push({ target: materializeCheapExtendTarget(target), flag });
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+  }
+  return targets.length > 0 ? targets : undefined;
+}
+
+type AttachedExtendHeader = {
+  selector: string;
+  extends: Array<{ target: Selector; flag: ExtendFlag }>;
+};
+
+function parseAttachedExtendHeader(selector: string): AttachedExtendHeader | undefined {
+  const source = selector.trim();
+  if (findTopLevelDelimiter(source, ',', 0, source.length, LESS_SCANNER_OPTIONS) !== -1) {
+    return undefined;
+  }
+  const marker = ':extend(';
+  if (!source.endsWith(')')) {
+    return undefined;
+  }
+  const markerStart = source.indexOf(marker);
+  if (markerStart <= 0) {
+    return undefined;
+  }
+  const argsStart = markerStart + marker.length;
+  const argsEnd = findCheapCallCloseParen(source, argsStart - 1);
+  if (argsEnd !== source.length - 1) {
+    return undefined;
+  }
+  const header = source.slice(0, markerStart).trimEnd();
+  if (!header) {
+    return undefined;
+  }
+  const extendTargets = parseCheapLessExtendTargetList(source.slice(argsStart, argsEnd));
+  return extendTargets ? { selector: header, extends: extendTargets } : undefined;
 }
 
 function findTopLevelParenOpen(text: string): number {
@@ -1141,6 +1225,20 @@ function parseLessBlockNode(
   const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic, selector, guard);
   if (mixinDefinition) {
     return mixinDefinition;
+  }
+  const attachedExtend = parseAttachedExtendHeader(selector);
+  if (attachedExtend) {
+    const parsedSelector = parseCheapLessSelectorList(attachedExtend.selector, context);
+    if (parsedSelector !== undefined) {
+      return ruleset({
+        selector: parsedSelector,
+        ...(guard && { guard }),
+        rules: [
+          ...attachedExtend.extends.map(item => extend({ target: item.target, flag: item.flag })),
+          ...parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic, NESTED_PARSE_CONTEXT)
+        ]
+      });
+    }
   }
   const parsedSelector = context.allowKeyframeSelectors && !guard
     ? parseKeyframeSelectorList(selector)

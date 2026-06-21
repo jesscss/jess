@@ -1,5 +1,5 @@
 import { parseLessAstStylesheet } from '../src/index.js';
-import { N, RelativeSelector, isNode, serializeTypes } from '@jesscss/core';
+import { ExtendFlag, N, RelativeSelector, isNode, serializeTypes } from '@jesscss/core';
 
 describe('parseLessAstStylesheet', () => {
   test('returns a string-backed core Stylesheet for cheap Less declarations', () => {
@@ -259,6 +259,54 @@ describe('parseLessAstStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+  });
+
+  test('parses single-selector attached extends without fallback parsing', () => {
+    const result = parseLessAstStylesheet('attached-extend.less', `
+      .a:extend(.x all) {
+        color: blue;
+      }
+
+      .b:extend(.x, .y, .z !all) {
+      }
+
+      .c:extend(.x), .d {
+        color: red;
+      }
+    `);
+    const [a, b] = result.tree.rules;
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header'
+    ]);
+    expect(isNode(a, N.Ruleset)).toBe(true);
+    expect(isNode(b, N.Ruleset)).toBe(true);
+    if (!isNode(a, N.Ruleset) || !isNode(b, N.Ruleset)) {
+      throw new Error('Expected attached extend rulesets');
+    }
+    expect(a.selector).toBe('.a');
+    expect(isNode(a.rules[0], N.Extend)).toBe(true);
+    expect(isNode(a.rules[1], N.Declaration)).toBe(true);
+    if (!isNode(a.rules[0], N.Extend)) {
+      throw new Error('Expected first attached extend');
+    }
+    expect(a.rules[0].target.valueOf()).toBe('.x');
+    expect(a.rules[0].flag).toBe(ExtendFlag.All);
+    expect(b.selector).toBe('.b');
+    expect(isNode(b.rules[0], N.Extend)).toBe(true);
+    expect(isNode(b.rules[1], N.Extend)).toBe(true);
+    expect(isNode(b.rules[2], N.Extend)).toBe(true);
+    if (!isNode(b.rules[0], N.Extend) || !isNode(b.rules[1], N.Extend) || !isNode(b.rules[2], N.Extend)) {
+      throw new Error('Expected target-list attached extends');
+    }
+    expect(b.rules[0].target.valueOf()).toBe('.x');
+    expect(b.rules[0].flag).toBe(ExtendFlag.Exact);
+    expect(b.rules[1].target.valueOf()).toBe('.y');
+    expect(b.rules[1].flag).toBe(ExtendFlag.Exact);
+    expect(b.rules[2].target.valueOf()).toBe('.z');
+    expect(b.rules[2].flag).toBe(ExtendFlag.All);
+    const serialized = serializeTypes(result.tree);
+    expect(serialized).toContain('(Extend');
   });
 
   test('parses plain ampersand blocks as scope Rules without selector materialization', () => {
