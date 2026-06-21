@@ -64,6 +64,10 @@ function isLessNameCode(code: number): boolean {
   );
 }
 
+function isLessHeaderSpace(code: number): boolean {
+  return code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
+}
+
 function materializeCheapAtRulePreludeToken(token: CheapAtRulePreludeToken): string | Node {
   return typeof token === 'string' ? token : paren(any(token[1]));
 }
@@ -191,6 +195,11 @@ type CheapMixinHeader = {
   params?: ReturnType<typeof list>;
 };
 
+type GuardedHeader = {
+  body: string;
+  guard?: string;
+};
+
 /** Find a mixin-call `)` without allocating tokens or accepting malformed suffixes. */
 function findCheapCallCloseParen(source: string, open: number): number {
   let cursor = open + 1;
@@ -291,6 +300,90 @@ function hasBalancedCheapArgumentText(source: string): boolean {
     cursor++;
   }
   return expectedClose.length === 0;
+}
+
+function findTopLevelWhen(source: string): number {
+  let cursor = 0;
+  let expectedClose = '';
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\"' || char === '\'') {
+      cursor = skipQuotedSourceString(source, cursor, source.length);
+      continue;
+    }
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '*') {
+      const commentEnd = source.indexOf('*/', cursor + 2);
+      cursor = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+    if (char === '/' && source[cursor + 1] === '/') {
+      cursor += 2;
+      while (cursor < source.length) {
+        const code = source.charCodeAt(cursor);
+        if (code === 10 || code === 13) {
+          break;
+        }
+        cursor++;
+      }
+      continue;
+    }
+    if (char === '(') {
+      expectedClose += ')';
+    } else if (char === '[') {
+      expectedClose += ']';
+    } else if (char === '{') {
+      expectedClose += '}';
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (!expectedClose || expectedClose[expectedClose.length - 1] !== char) {
+        return -1;
+      }
+      expectedClose = expectedClose.slice(0, -1);
+    } else if (
+      !expectedClose
+      && source.startsWith('when', cursor)
+      && cursor > 0
+      && isLessHeaderSpace(source.charCodeAt(cursor - 1))
+      && (
+        cursor + 4 >= source.length
+        || isLessHeaderSpace(source.charCodeAt(cursor + 4))
+        || source.charCodeAt(cursor + 4) === 40
+      )
+    ) {
+      return cursor;
+    }
+    cursor++;
+  }
+  return -1;
+}
+
+function splitGuardedHeader(header: string): GuardedHeader {
+  const source = header.trim();
+  const whenStart = findTopLevelWhen(source);
+  if (whenStart === -1) {
+    return { body: source };
+  }
+  const body = source.slice(0, whenStart).trimEnd();
+  const guard = source.slice(whenStart + 4).trim();
+  if (!body || !isCheapGuardText(guard)) {
+    return { body: source };
+  }
+  return { body, guard };
+}
+
+function isCheapGuardText(source: string): boolean {
+  const text = source.trim();
+  let conditionStart = 0;
+  if (
+    text.startsWith('not')
+    && (text.length === 3 || isLessHeaderSpace(text.charCodeAt(3)))
+  ) {
+    conditionStart = skipSourceTrivia(text, 3, text.length, LESS_SCANNER_OPTIONS);
+  }
+  return text.charCodeAt(conditionStart) === 40 && hasBalancedCheapArgumentText(text);
 }
 
 function parseCheapMixinParam(source: string): VarDeclaration | undefined {
@@ -494,15 +587,18 @@ function parseCheapMixinBlock(
   start: number,
   blockStart: number,
   blockEnd: number,
-  addDiagnostic: DiagnosticSink
+  addDiagnostic: DiagnosticSink,
+  headerText?: string,
+  guard?: string
 ): Node | undefined {
-  const header = parseCheapMixinHeader(source.slice(start, blockStart));
+  const header = parseCheapMixinHeader(headerText ?? source.slice(start, blockStart));
   if (!header) {
     return undefined;
   }
   return mixin({
     name: any(header.name, { role: 'name' }),
     ...(header.params && { params: header.params }),
+    ...(guard && { guard }),
     rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
   });
 }
@@ -545,11 +641,25 @@ function parseLessBlockNode(
   blockEnd: number,
   addDiagnostic: DiagnosticSink
 ): Node | undefined {
-  const selector = source.slice(start, blockStart).trim();
+  const { body: selector, guard } = splitGuardedHeader(source.slice(start, blockStart));
   if (!selector) {
+    addDiagnostic(
+      'warning',
+      'less-ast-unsupported-block-header',
+      'Less AST parser skipped a block with an unsupported header.',
+      start,
+      blockEnd + 1
+    );
     return undefined;
   }
   if (selector === '&') {
+    if (guard) {
+      return ruleset({
+        selector: nil(),
+        guard,
+        rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+      });
+    }
     return rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic));
   }
   const variableName = parseLessVariableBlockName(source, start, blockStart);
@@ -573,7 +683,7 @@ function parseLessBlockNode(
     );
     return undefined;
   }
-  const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic);
+  const mixinDefinition = parseCheapMixinBlock(source, start, blockStart, blockEnd, addDiagnostic, selector, guard);
   if (mixinDefinition) {
     return mixinDefinition;
   }
@@ -590,6 +700,7 @@ function parseLessBlockNode(
   }
   return ruleset({
     selector: parsedSelector,
+    ...(guard && { guard }),
     rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
   });
 }

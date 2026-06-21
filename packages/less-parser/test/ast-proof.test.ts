@@ -191,6 +191,61 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(result.tree)).not.toContain('selector: \'&\'');
   });
 
+  test('parses cheap guarded Less blocks as string-backed guards without fallback parsing', () => {
+    const result = parseLessAstStylesheet('guarded.less', `
+      .enabled when (@enabled = true) {
+        color: green;
+      }
+
+      .paint(@tone) when (@tone = red) {
+        color: @tone;
+      }
+
+      & when (@debug = 1) {
+        .debug { outline: 1px solid red; }
+      }
+
+      .negated when not (@debug) {
+        display: none;
+      }
+
+      div when {
+        color: blue;
+      }
+    `);
+    const [guardedRule, guardedMixin, guardedScope, negated, whenSelector] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(guardedRule, N.Ruleset)).toBe(true);
+    expect(isNode(guardedMixin, N.Mixin)).toBe(true);
+    expect(isNode(guardedScope, N.Ruleset)).toBe(true);
+    expect(isNode(negated, N.Ruleset)).toBe(true);
+    expect(isNode(whenSelector, N.Ruleset)).toBe(true);
+    if (
+      !isNode(guardedRule, N.Ruleset)
+      || !isNode(guardedMixin, N.Mixin)
+      || !isNode(guardedScope, N.Ruleset)
+      || !isNode(negated, N.Ruleset)
+      || !isNode(whenSelector, N.Ruleset)
+    ) {
+      throw new Error('Expected guarded Less block nodes');
+    }
+
+    expect(guardedRule.selector).toBe('.enabled');
+    expect(guardedRule.guard).toBe('(@enabled = true)');
+    expect(guardedMixin.name?.valueOf()).toBe('.paint');
+    expect(guardedMixin.guard).toBe('(@tone = red)');
+    expect(isNode(guardedScope.selector, N.Nil)).toBe(true);
+    expect(guardedScope.guard).toBe('(@debug = 1)');
+    expect(isNode(guardedScope.rules.rules[0], N.Ruleset)).toBe(true);
+    expect(negated.selector).toBe('.negated');
+    expect(negated.guard).toBe('not (@debug)');
+    expect(isNode(whenSelector.selector, N.ComplexSelector)).toBe(true);
+    expect(whenSelector.guard).toBeUndefined();
+    expect(serializeTypes(result.tree)).not.toContain('(Condition');
+    expect(serializeTypes(result.tree)).not.toContain('selector: \'&\'');
+  });
+
   test('parses parameterless Less mixin definitions without fallback parsing', () => {
     const result = parseLessAstStylesheet('mixin-definition.less', `
       .paint() {
@@ -296,14 +351,12 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-params.less', `
       .badRest(@args...) { color: red; }
       .badMixed(@a; @b, @c) { color: @a; }
-      .badGuard(@a) when (@enabled) { color: @a; }
       .1(@a) { color: red; }
       .-(@a) { color: red; }
     `);
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
-      'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
@@ -645,7 +698,7 @@ describe('parseLessAstStylesheet', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
       .mixin(@x...) { color: @x; }
       .a {
-        .b when (@enabled) { color: blue; }
+        .b:hover(.c) { color: blue; }
         color: red;
       }
     `);
@@ -663,7 +716,6 @@ describe('parseLessAstStylesheet', () => {
       ''
     ].join('\n'));
     expect(serializeTypes(result.tree)).not.toContain('.mixin(@x...)');
-    expect(serializeTypes(result.tree)).not.toContain('when (@enabled)');
   });
 
   test('parses detached ruleset variable values as string-backed mixins', () => {

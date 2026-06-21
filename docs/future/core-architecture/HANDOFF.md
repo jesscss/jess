@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first string-backed Less guards.
+- Verdict: accepted as a parser coverage and object-reduction slice, not a
+  measured performance pass. Cheap guarded Less block headers with
+  parenthesized conditions now attach a string `guard` field to existing
+  `Ruleset`/`Mixin` nodes instead of allocating `Condition(Any(...))` wrappers
+  during the structural parse.
+- New traversal: one file-local linear header scan finds a top-level `when`
+  suffix while respecting quotes, comments, and balanced brackets. It runs only
+  on a block header already sliced by the source scanner. No tree traversal,
+  parent walk, side-map lookup, or Chevrotain fallback was added.
+- New node/materialization: no new node family or structural facade was added.
+  Guarded rulesets and mixins reuse existing core nodes. `& when (...) { ... }`
+  becomes an existing nil-selector `Ruleset` so the guard has an owning node
+  without creating a fake ampersand selector.
+- Render/eval path: mixin syntax can write string guards directly. Ruleset
+  evaluation and callable mixin guard lookup throw hydration-required
+  `TypeError`s if a string guard reaches eval; those are exceptional
+  unsupported execution boundaries for the parse-only proof, not routine
+  miss/control flow. Guard evaluation hydration remains a later parser/eval
+  integration slice.
+- Helper/API surface: no public parser API was added. Core `MixinValue` and
+  `RulesetValue` were widened in place so existing AST nodes own the deferred
+  field instead of introducing `Progressive*` or island objects.
+- Metadata mutations: none beyond normal constructor adoption for existing
+  node fields. String guards have no parent/source metadata.
+- Evidence: focused Less AST/corpus tests, focused core ruleset/mixin/condition
+  tests, including explicit mixin string-guard failure, core build,
+  less-parser build, package export verification, and the
+  aggressive-cutting review gate passed after this prosecution. The Less corpus
+  gate moved from 1161 parsed top-level rules / 523 warnings to 1250 parsed
+  top-level rules / 425 warnings. No speed claim is made.
+
 - Latest pass: implicit `.value` child fallback cut.
 - Verdict: accepted as an AST ownership cleanup and parser-shape prerequisite,
   not a measured performance pass. Base `Node` no longer treats every node with

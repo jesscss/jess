@@ -42,7 +42,7 @@ export type RulesetValue = {
    * generalize nodes for the `frames` property in Context
    */
   rules: Rules;
-  guard?: Condition | Nil;
+  guard?: Condition | Nil | string;
   /**
    * When this ruleset is extended, we store its selector before the first extend.
    * Nested rulesets' implicit & (selectorContainer → parent value) use this when set, so they
@@ -120,7 +120,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   declare _selectorCacheOwner?: Ruleset;
 
   constructor(value: RulesetValue, options?: RulesetOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+    if (options?.hasDefault === undefined && value.guard instanceof Node && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
     super(NO_VALUE, options, location);
@@ -227,15 +227,33 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     cloneFn ??= n => n.clone(deep);
-    const clonePart = <T extends Node | string | undefined>(part: T): T => (
-      deep && part instanceof Node ? cloneFn(part) as T : part
-    );
+    const cloneNodePart = <T extends Node>(part: T): T => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn is the node-clone contract and preserves the field's node family for direct-field clones.
+      return cloneFn(part) as T;
+    };
+    let selector = this.selector;
+    if (deep && selector instanceof Node) {
+      selector = cloneNodePart(selector);
+    }
+    let rules = this.rules;
+    if (deep) {
+      rules = cloneNodePart(rules);
+    }
+    let guard = this.guard;
+    if (deep && guard instanceof Node) {
+      guard = cloneNodePart(guard);
+    }
+    let selectorBeforeExtend = this.selectorBeforeExtend;
+    if (deep && selectorBeforeExtend instanceof Node) {
+      selectorBeforeExtend = cloneNodePart(selectorBeforeExtend);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- clone preserves the concrete runtime node surface; TypeScript cannot express constructor-polymorphic `this` here.
     const node = new Ruleset(
       {
-        selector: clonePart(this.selector),
-        rules: clonePart(this.rules),
-        guard: clonePart(this.guard),
-        selectorBeforeExtend: clonePart(this.selectorBeforeExtend)
+        selector,
+        rules,
+        guard,
+        selectorBeforeExtend
       },
       this._options ? { ...this._options } : undefined,
       this._location?.length ? this._location : undefined,
@@ -570,7 +588,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return v.trim().length > 0;
   }
 
-  private static _isCombinatorComponent(component: ComplexSelectorComponent): boolean {
+  private static _isCombinatorComponent(component: ComplexSelectorComponent): component is Combinator | string {
     return isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component));
   }
 
@@ -717,6 +735,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const { guard } = this;
     if (!guard) {
       return this.evalNilSelectorBodyForRender(context);
+    }
+    if (typeof guard === 'string') {
+      throw new TypeError('String-backed ruleset guards must be hydrated before evaluation');
     }
     if (guard instanceof Nil) {
       return guard;
@@ -1602,6 +1623,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     // Evaluate guard at definition time (not call time like mixins)
     // This is different from mixins because rulesets can't use caller scope for guards
     if (guard) {
+      if (typeof guard === 'string') {
+        throw new TypeError('String-backed ruleset guards must be hydrated before evaluation');
+      }
       const guardResult = guard instanceof Condition
         ? guard.evaluateBoolean(context)
         : (guard as Node).eval(context);

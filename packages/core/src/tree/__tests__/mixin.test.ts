@@ -6018,6 +6018,29 @@ describe('Mixin', () => {
       `);
     });
 
+    it('fails explicitly when a string-backed mixin guard reaches evaluation before hydration', async () => {
+      const root = rules([
+        mixin({
+          name: any('.guarded'),
+          guard: '(@enabled)',
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      await expect(renderNodeToString(root, context)).rejects.toThrow(
+        'String-backed mixin guards must be hydrated before evaluation'
+      );
+    });
+
     it('does not copy static bool guards before evaluating candidates', async () => {
       const originalCopy = Bool.prototype.cloneForPlacement;
       let guardCopies = 0;

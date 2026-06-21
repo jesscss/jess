@@ -38,7 +38,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * - A rest is a rest parameter.
    */
   params?: List<Node>;
-  guard?: Condition;
+  guard?: Condition | string;
 }
 
 export type MixinOptions = {
@@ -89,7 +89,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+    if (options?.hasDefault === undefined && value.guard instanceof Node && callableGuardContainsDefault(value.guard)) {
       options = { ...options, hasDefault: true };
     }
     super(NO_VALUE, options, location);
@@ -130,9 +130,12 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     throw new TypeError('Expected mixin params copy');
   }
 
-  private ownGuard(value: Condition | undefined): Condition | undefined {
+  private ownGuard(value: MixinValue['guard']): MixinValue['guard'] {
     if (!value) {
       return undefined;
+    }
+    if (typeof value === 'string') {
+      return value;
     }
     const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
     if (owned instanceof Condition) {
@@ -166,15 +169,33 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     cloneFn ??= n => n.clone(deep);
-    const clonePart = <T extends Node | undefined>(part: T): T => (
-      deep && part instanceof Node ? cloneFn(part) as T : part
-    );
+    const cloneNodePart = <T extends Node>(part: T): T => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn is the node-clone contract and preserves the field's node family for direct-field clones.
+      return cloneFn(part) as T;
+    };
+    let name = this.name;
+    if (deep && name instanceof Node) {
+      name = cloneNodePart(name);
+    }
+    let rules = this.rules;
+    if (deep) {
+      rules = cloneNodePart(rules);
+    }
+    let params = this.params;
+    if (deep && params instanceof Node) {
+      params = cloneNodePart(params);
+    }
+    let guard = this.guard;
+    if (deep && guard instanceof Node) {
+      guard = cloneNodePart(guard);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- clone preserves the concrete runtime node surface; TypeScript cannot express constructor-polymorphic `this` here.
     return new Mixin(
       {
-        name: clonePart(this.name),
-        rules: clonePart(this.rules),
-        params: clonePart(this.params),
-        guard: clonePart(this.guard)
+        name,
+        rules,
+        params,
+        guard
       },
       this._options ? { ...this._options } : undefined,
       this._location?.length ? this._location : undefined,
@@ -221,7 +242,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     }
     if (guard) {
       w.add(' when ');
-      guard.writeSyntax(options);
+      if (typeof guard === 'string') {
+        w.add(guard, this);
+      } else {
+        guard.writeSyntax(options);
+      }
     }
     if (name || params || guard) {
       w.add(' ');

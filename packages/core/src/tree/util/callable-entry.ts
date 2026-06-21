@@ -10,7 +10,7 @@ type CallableEntryValue = {
   name?: unknown;
   params?: List<Node>;
   rules: Rules;
-  guard?: Node;
+  guard?: Node | string;
 };
 
 export type CallableRulesEntry = {
@@ -54,12 +54,19 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
   return false;
 }
 
+function requireHydratedCallableGuard(guard: Node | string | undefined): Node | undefined {
+  if (typeof guard === 'string') {
+    throw new TypeError('String-backed mixin guards must be hydrated before evaluation');
+  }
+  return guard;
+}
+
 export function callableRulesEntry(
   value: CallableEntryValue,
   parent?: Node,
   index?: number
 ): CallableRulesEntry {
-  const hasDefault = callableGuardContainsDefault(value.guard);
+  const hasDefault = isNode(value.guard) && callableGuardContainsDefault(value.guard);
   return {
     kind: 'callable-rules',
     value,
@@ -96,7 +103,7 @@ export function getCallableEntryParams(entry: CallableEntry): List<Node> | undef
 }
 
 export function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
-  return isNode(entry, N.Mixin)
+  return requireHydratedCallableGuard(isNode(entry, N.Mixin)
     ? entry.guard
-    : entry.value.guard;
+    : entry.value.guard);
 }
