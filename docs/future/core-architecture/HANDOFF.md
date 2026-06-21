@@ -103,6 +103,28 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: scanner-first Less spread mixin call arguments.
+- Verdict: accepted as a parse-coverage slice, not a measured performance
+  pass. Mixin call arguments `@name...` and bare `...` now become existing
+  `Rest` nodes in the scanner-first call path. Invalid trailing ellipsis text
+  such as `foo...` remains unsupported.
+- New traversal: no tree traversal. The existing call-argument loop adds one
+  suffix check for the already-sliced argument arm.
+- New node/materialization: no new node family. Accepted `@name...` creates
+  the existing `Rest(Reference(type=variable))` shape used by the current
+  Less parser; bare `...` creates the existing nameless `Rest`.
+- Render path: parse-only slice. No evaluation, callable matching, or render
+  path work was added.
+- Helper/API surface: one private Less AST helper only; no public parser API,
+  plugin registry, or shared profile surface was added.
+- Metadata mutations: none. The new nodes have no source/parent metadata beyond
+  normal construction/adoption through the existing `List`.
+- Evidence: focused Less AST proof and corpus tests passed after updating the
+  corpus gate. The Less AST corpus stayed at 1341 parsed top-level rules and
+  moved from 183 warnings to 161 warnings with zero errors/thrown failures.
+  Remaining warning counts are 130 unsupported block headers, 30 unsupported
+  statements, and 1 empty declaration name. No speed claim is made.
+
 - Latest pass: scanner-first Less namespace-combinator mixin calls.
 - Verdict: accepted as a parse-coverage slice, not a measured performance
   pass. Less mixin call statements such as `#theme > .mixin()` and

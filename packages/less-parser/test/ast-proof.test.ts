@@ -579,12 +579,28 @@ describe('parseLessAstStylesheet', () => {
       .semiNamed(@tone: red; @shadow: 1px 2px, blue);
       .semiList(1px, 2px; 3px);
       .semiTrail(1px;);
+      .spread(@items...);
+      .spreadSemi(0; @items...);
+      .spreadMixed(@items..., @tone: red);
+      .spreadAnon(...);
 
       .a {
         .nested(rgb(10, 20, 30), "{");
       }
     `);
-    const [withArgs, theme, named, semiNamed, semiList, semiTrail, rule] = result.tree.rules;
+    const [
+      withArgs,
+      theme,
+      named,
+      semiNamed,
+      semiList,
+      semiTrail,
+      spread,
+      spreadSemi,
+      spreadMixed,
+      spreadAnon,
+      rule
+    ] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(withArgs, N.Call)).toBe(true);
@@ -601,6 +617,10 @@ describe('parseLessAstStylesheet', () => {
       || !isNode(semiNamed, N.Call)
       || !isNode(semiList, N.Call)
       || !isNode(semiTrail, N.Call)
+      || !isNode(spread, N.Call)
+      || !isNode(spreadSemi, N.Call)
+      || !isNode(spreadMixed, N.Call)
+      || !isNode(spreadAnon, N.Call)
       || !isNode(rule, N.Ruleset)
     ) {
       throw new Error('Expected argument-bearing Less mixin calls');
@@ -618,6 +638,10 @@ describe('parseLessAstStylesheet', () => {
       || !isNode(semiNamed.args, N.List)
       || !isNode(semiList.args, N.List)
       || !isNode(semiTrail.args, N.List)
+      || !isNode(spread.args, N.List)
+      || !isNode(spreadSemi.args, N.List)
+      || !isNode(spreadMixed.args, N.List)
+      || !isNode(spreadAnon.args, N.List)
     ) {
       throw new Error('Expected Less mixin call argument lists');
     }
@@ -639,6 +663,20 @@ describe('parseLessAstStylesheet', () => {
     expect(semiList.args.items.map(item => item.valueOf())).toEqual(['1px, 2px', '3px']);
     expect(semiTrail.args.sep).toBe(';');
     expect(semiTrail.args.items.map(item => item.valueOf())).toEqual(['1px']);
+    expect(spread.args.items[0]?.type).toBe('Rest');
+    expect(isNode(spread.args.items[0], N.Rest)).toBe(true);
+    expect(isNode(spread.args.items[0], N.Rest) && isNode(spread.args.items[0].node, N.Reference)).toBe(true);
+    if (!isNode(spread.args.items[0], N.Rest) || !isNode(spread.args.items[0].node, N.Reference)) {
+      throw new Error('Expected named spread argument to wrap a variable reference');
+    }
+    expect(spread.args.items[0].node.key).toBe('items');
+    expect(spread.args.items[0].node.options.type).toBe('variable');
+    expect(spreadSemi.args.sep).toBe(';');
+    expect(spreadSemi.args.items.map(item => item.type)).toEqual(['Any', 'Rest']);
+    expect(spreadMixed.args.sep).toBe(',');
+    expect(spreadMixed.args.items.map(item => item.type)).toEqual(['Rest', 'VarDeclaration']);
+    expect(spreadAnon.args.items[0]?.type).toBe('Rest');
+    expect(isNode(spreadAnon.args.items[0], N.Rest) && spreadAnon.args.items[0].node).toBeUndefined();
 
     const [nested] = rule.rules.rules;
     expect(isNode(nested, N.Call)).toBe(true);
@@ -756,7 +794,7 @@ describe('parseLessAstStylesheet', () => {
       .emptySemiComma(a; ,);
       .trailingSemiComma(a; b,);
       .doubleSemiComma(a; b,, c);
-      .rest(@items...);
+      .badSpread(foo...);
       .bad([oops)]);
       .deprecated;
       #theme > .mixin;

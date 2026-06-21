@@ -814,10 +814,27 @@ function parseCheapMixinCallArgs(source: string): ReturnType<typeof list> | unde
     const arg = text.slice(cursor, partEnd).trim();
     if (
       !arg
-      || arg.endsWith('...')
       || !hasBalancedCheapArgumentText(arg)
       || (separator === ';' && !hasNoEmptyTopLevelCommaArms(arg))
     ) {
+      return undefined;
+    }
+    const spread = parseCheapMixinCallSpreadArg(arg);
+    if (spread) {
+      args.push(spread);
+      if (!separator || end === -1) {
+        break;
+      }
+      cursor = end + 1;
+      if (cursor >= text.length) {
+        if (separator === ';') {
+          break;
+        }
+        return undefined;
+      }
+      continue;
+    }
+    if (arg.endsWith('...')) {
       return undefined;
     }
     const namedColon = findTopLevelDelimiter(arg, ':', 0, arg.length, LESS_SCANNER_OPTIONS);
@@ -853,6 +870,24 @@ function parseCheapMixinCallArgs(source: string): ReturnType<typeof list> | unde
     }
   }
   return list(args, separator ? { sep: separator } : undefined);
+}
+
+function parseCheapMixinCallSpreadArg(arg: string): ReturnType<typeof rest> | undefined {
+  if (arg === '...') {
+    return rest();
+  }
+  if (!arg.endsWith('...') || arg[0] !== '@') {
+    return undefined;
+  }
+  const nameLimit = arg.length - 3;
+  let nameEnd = 1;
+  while (nameEnd < nameLimit && isLessNameCode(arg.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  if (nameEnd === 1 || nameEnd !== nameLimit) {
+    return undefined;
+  }
+  return rest(ref({ key: arg.slice(1, nameEnd) }, { type: 'variable' }));
 }
 
 function hasNoEmptyTopLevelCommaArms(source: string): boolean {
