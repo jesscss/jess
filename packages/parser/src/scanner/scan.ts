@@ -210,7 +210,7 @@ export function scanString(
   };
 }
 
-/** Scans `//` comments when the active language profile enables them. */
+/** Scans `//` comments when the active scanner options enable them. */
 export function scanLineComment(
   cursor: ScannerCursor
 ): CommentScanResult | undefined {

@@ -137,6 +137,68 @@ function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOption
   return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
 }
 
+function isPageSelectorNameCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 95
+  );
+}
+
+function isPagePseudoName(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return normalized === 'first' || normalized === 'left' || normalized === 'right' || normalized === 'blank';
+}
+
+function isCheapPageSelector(text: string): boolean {
+  let cursor = 0;
+  while (cursor < text.length && isPageSelectorNameCode(text.charCodeAt(cursor))) {
+    cursor++;
+  }
+  while (cursor < text.length) {
+    if (text[cursor] !== ':') {
+      return false;
+    }
+    cursor++;
+    const pseudoStart = cursor;
+    while (cursor < text.length && isPageSelectorNameCode(text.charCodeAt(cursor))) {
+      cursor++;
+    }
+    if (cursor === pseudoStart || !isPagePseudoName(text.slice(pseudoStart, cursor))) {
+      return false;
+    }
+  }
+  return cursor > 0;
+}
+
+function parseCheapPagePrelude(text: string): AtRulePrelude | undefined {
+  const source = text.trim();
+  if (!source) {
+    return undefined;
+  }
+  const items: Node[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length);
+    const end = comma === -1 ? source.length : comma;
+    const item = source.slice(cursor, end).trim();
+    if (!isCheapPageSelector(item)) {
+      return undefined;
+    }
+    items.push(any(item, { role: 'ident' }));
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+    if (skipSourceTrivia(source, cursor) >= source.length) {
+      return undefined;
+    }
+  }
+  return items.length === 0 ? undefined : list(items);
+}
+
 function materializeCheapCompound(component: string[]): string | Selector {
   return component.length === 1
     ? component[0]!
@@ -228,7 +290,9 @@ function parseBlockAtRuleNode(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
+  const prelude = name.toLowerCase() === '@page'
+    ? parseCheapPagePrelude(preludeText)
+    : parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
   if (preludeText && !prelude) {
     return undefined;
   }

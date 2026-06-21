@@ -784,7 +784,7 @@ export function varFunction(this: C, T: TokenMap) {
     } else {
       let { startOffset, startLine, startColumn } = prop;
       args.adopt(propNode);
-      args.value.unshift(propNode);
+      args.items.unshift(propNode);
       args.location[0] = startOffset;
       args.location[1] = startLine!;
       args.location[2] = startColumn!;

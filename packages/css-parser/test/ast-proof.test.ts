@@ -250,6 +250,76 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
+  test('parses cheap page at-rule selectors as existing ident list preludes', () => {
+    const result = parseFlatCssDeclarationStylesheet('page.css', `
+      @page :left { background: black }
+      @page Test:First, :right { margin: 1cm; }
+      @page { @top-left { content: "chapter"; } }
+    `);
+    const [leftPage, namedPage, pageWithMarginBox] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(leftPage, N.AtRule)).toBe(true);
+    expect(isNode(namedPage, N.AtRule)).toBe(true);
+    expect(isNode(pageWithMarginBox, N.AtRule)).toBe(true);
+    if (!isNode(leftPage, N.AtRule) || !isNode(namedPage, N.AtRule) || !isNode(pageWithMarginBox, N.AtRule)) {
+      throw new Error('Expected page at-rules');
+    }
+    expect(leftPage.name).toBe('@page');
+    expect(isNode(leftPage.prelude, N.List)).toBe(true);
+    expect(isNode(namedPage.prelude, N.List)).toBe(true);
+    if (!isNode(leftPage.prelude, N.List) || !isNode(namedPage.prelude, N.List)) {
+      throw new Error('Expected page selector prelude lists');
+    }
+    expect(leftPage.prelude.items.map(item => item.valueOf())).toEqual([':left']);
+    expect(namedPage.prelude.items.map(item => item.valueOf())).toEqual(['Test:First', ':right']);
+    expect(serializeTypes(leftPage)).toContainString(`
+      prelude:
+        (List
+          items:
+            [
+              (Any [role=ident] ':left')
+            ]
+        )
+    `);
+    expect(leftPage.toTrimmedString()).toBe([
+      '@page :left {',
+      '  background: black;',
+      '}',
+      ''
+    ].join('\n'));
+    const [marginBox] = pageWithMarginBox.rules;
+    expect(isNode(marginBox, N.AtRule)).toBe(true);
+    if (!isNode(marginBox, N.AtRule)) {
+      throw new Error('Expected page margin box at-rule');
+    }
+    expect(marginBox.name).toBe('@top-left');
+    expect(serializeTypes(marginBox)).toContainString(`
+      rules:
+        [
+          (Declaration
+            name: 'content'
+            value: '"chapter"'
+          )
+        ]
+    `);
+  });
+
+  test('diagnoses malformed page selector lists instead of dropping empty branches', () => {
+    const result = parseFlatCssDeclarationStylesheet('page.css', `
+      @page Test:first, { margin: 1cm; }
+      @page , :left { margin: 1cm; }
+      @page :foo { margin: 1cm; }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-at-rule'
+    ]);
+  });
+
   test('preserves empty rulesets instead of treating them as unsupported blocks', () => {
     const result = parseFlatCssDeclarationStylesheet('empty.css', `
       .empty {}
