@@ -298,16 +298,22 @@ function parseCheapMixinParam(source: string): VarDeclaration | undefined {
   if (text[0] !== '@') {
     return undefined;
   }
+  const colon = findTopLevelDelimiter(text, ':', 0, text.length, LESS_SCANNER_OPTIONS);
+  const nameLimit = colon === -1 ? text.length : colon;
   let nameEnd = 1;
-  while (nameEnd < text.length && isLessNameCode(text.charCodeAt(nameEnd))) {
+  while (nameEnd < nameLimit && isLessNameCode(text.charCodeAt(nameEnd))) {
     nameEnd++;
   }
-  if (nameEnd === 1 || text.slice(nameEnd).trim()) {
+  if (nameEnd === 1 || text.slice(nameEnd, nameLimit).trim()) {
+    return undefined;
+  }
+  const defaultValue = colon === -1 ? undefined : text.slice(colon + 1).trim();
+  if (defaultValue !== undefined && (!defaultValue || !hasBalancedCheapArgumentText(defaultValue))) {
     return undefined;
   }
   return new VarDeclaration({
     name: any(text.slice(1, nameEnd), { role: 'property' }),
-    value: nil()
+    value: defaultValue ?? nil()
   }, { paramVar: true });
 }
 

@@ -241,14 +241,19 @@ describe('parseLessAstStylesheet', () => {
       .trail(@tone;) {
         color: @tone;
       }
+
+      .defaulted(@tone: red; @shadow : 1px 2px, blue) {
+        color: @tone;
+      }
     `);
-    const [paint, theme, trail] = result.tree.rules;
+    const [paint, theme, trail, defaulted] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(paint, N.Mixin)).toBe(true);
     expect(isNode(theme, N.Mixin)).toBe(true);
     expect(isNode(trail, N.Mixin)).toBe(true);
-    if (!isNode(paint, N.Mixin) || !isNode(theme, N.Mixin) || !isNode(trail, N.Mixin)) {
+    expect(isNode(defaulted, N.Mixin)).toBe(true);
+    if (!isNode(paint, N.Mixin) || !isNode(theme, N.Mixin) || !isNode(trail, N.Mixin) || !isNode(defaulted, N.Mixin)) {
       throw new Error('Expected parameterized Less mixin definition');
     }
     expect(paint.name?.valueOf()).toBe('.paint');
@@ -280,11 +285,15 @@ describe('parseLessAstStylesheet', () => {
     expect(theme.params?.items.map(item => item.toTrimmedString())).toEqual(['$mode', '$contrast']);
     expect(trail.params?.sep).toBe(';');
     expect(trail.params?.items.map(item => item.toTrimmedString())).toEqual(['$tone']);
+    expect(defaulted.params?.sep).toBe(';');
+    expect(defaulted.params?.items.map(item => item.toTrimmedString())).toEqual([
+      '$tone: red',
+      '$shadow: 1px 2px, blue'
+    ]);
   });
 
   test('keeps unsupported Less mixin parameter forms out of the cheap AST path', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-params.less', `
-      .badDefault(@tone: red) { color: @tone; }
       .badRest(@args...) { color: red; }
       .badMixed(@a; @b, @c) { color: @a; }
       .badGuard(@a) when (@enabled) { color: @a; }
@@ -294,7 +303,6 @@ describe('parseLessAstStylesheet', () => {
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
-      'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
@@ -593,7 +601,7 @@ describe('parseLessAstStylesheet', () => {
 
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
-      .mixin(@x: red) { color: @x; }
+      .mixin(@x...) { color: @x; }
       .a {
         .b when (@enabled) { color: blue; }
         color: red;
@@ -612,7 +620,7 @@ describe('parseLessAstStylesheet', () => {
       '}',
       ''
     ].join('\n'));
-    expect(serializeTypes(result.tree)).not.toContain('.mixin(@x)');
+    expect(serializeTypes(result.tree)).not.toContain('.mixin(@x...)');
     expect(serializeTypes(result.tree)).not.toContain('when (@enabled)');
   });
 
