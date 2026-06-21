@@ -5,6 +5,7 @@ import {
   compound,
   decl,
   el,
+  mixin,
   rules,
   ruleset,
   sel,
@@ -108,6 +109,38 @@ function parseLessVariableDeclaration(
     name,
     value: importantStart === -1 ? trimmedValue : trimmedValue.slice(0, importantStart).trimEnd(),
     ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
+  });
+}
+
+function parseLessVariableBlockName(source: string, start: number, blockStart: number): string | undefined {
+  if (source[start] !== '@') {
+    return undefined;
+  }
+  const colon = findTopLevelDelimiter(source, ':', start, blockStart, LESS_SCANNER_OPTIONS);
+  if (colon === -1) {
+    return undefined;
+  }
+  let nameEnd = start + 1;
+  while (nameEnd < colon && isLessNameCode(source.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  const name = source.slice(start + 1, nameEnd);
+  if (!name || source.slice(nameEnd, colon).trim() || source.slice(colon + 1, blockStart).trim()) {
+    return undefined;
+  }
+  return name;
+}
+
+function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclaration {
+  const bodyRules = rules(body, {
+    rulesVisibility: {
+      Mixin: 'private',
+      VarDeclaration: 'private'
+    }
+  });
+  return new VarDeclaration({
+    name,
+    value: mixin({ rules: bodyRules })
   });
 }
 
@@ -232,7 +265,13 @@ function parseLessNodes(
     }
     const selector = source.slice(cursor, blockStart).trim();
     if (selector) {
-      if (selector[0] === '@') {
+      const variableName = parseLessVariableBlockName(source, cursor, blockStart);
+      if (variableName) {
+        children.push(createDetachedRulesetVariable(
+          variableName,
+          parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+        ));
+      } else if (selector[0] === '@') {
         addDiagnostic(
           'warning',
           'less-ast-unsupported-at-rule',
@@ -330,7 +369,13 @@ export function parseLessAstStylesheet(
       break;
     }
     const selector = source.slice(cursor, blockStart).trim();
-    if (selector && selector[0] !== '@') {
+    const variableName = parseLessVariableBlockName(source, cursor, blockStart);
+    if (selector && variableName) {
+      children.push(createDetachedRulesetVariable(
+        variableName,
+        parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+      ));
+    } else if (selector && selector[0] !== '@') {
       const parsedSelector = parseCheapLessSelector(selector);
       if (parsedSelector === undefined) {
         diagnostics = appendParserDiagnostic(

@@ -222,6 +222,59 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(result.tree)).not.toContain('when (@enabled)');
   });
 
+  test('parses detached ruleset variable values as string-backed mixins', () => {
+    const result = parseLessAstStylesheet('detached-ruleset.less', `
+      @ruleset: {
+        color: black;
+        .nested { width: @size; }
+      };
+    `);
+    const [rulesetVariable] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(rulesetVariable, N.VarDeclaration)).toBe(true);
+    if (!isNode(rulesetVariable, N.VarDeclaration) || !isNode(rulesetVariable.value, N.Mixin)) {
+      throw new Error('Expected detached ruleset variable with anonymous mixin value');
+    }
+    expect(rulesetVariable.value.rules.options.rulesVisibility).toEqual({
+      Declaration: 'public',
+      Mixin: 'private',
+      Ruleset: 'public',
+      VarDeclaration: 'private'
+    });
+    expect(serializeTypes(rulesetVariable)).toContainString(`
+      (VarDeclaration
+        name: 'ruleset'
+        value:
+          (Mixin
+            rules:
+              (Rules
+                rules:
+                  [
+                    (Declaration
+                      name: 'color'
+                      value: 'black'
+                    )
+                    (Ruleset
+                      selector: '.nested'
+                      rules:
+                        (Rules
+                          rules:
+                            [
+                              (Declaration
+                                name: 'width'
+                                value: '@size'
+                              )
+                            ]
+                        )
+                    )
+                  ]
+              )
+          )
+      )
+    `);
+  });
+
   test('diagnoses empty declaration names inside rulesets', () => {
     const result = parseLessAstStylesheet('empty-name.less', '.a { : red; color: green; }');
     const [rule] = result.tree.rules;
