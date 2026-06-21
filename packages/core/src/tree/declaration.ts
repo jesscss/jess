@@ -2,6 +2,7 @@ import {
   Node,
   F_STATIC,
   defineType,
+  NO_VALUE,
   type LocationInfo
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -520,19 +521,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value.value, options, location);
-    this.name = value.name;
-    this.important = value.important;
+    super(NO_VALUE, options, location);
+    this.name = this._processNodes(value.name);
+    this.value = this._processNodes(value.value);
+    this.important = this._processNodes(value.important);
     this._treeContext = treeContext;
-    if (value.name instanceof Node) {
-      this.adopt(value.name);
-    }
-    if (value.important instanceof Node) {
-      this.adopt(value.important);
-    }
   }
 
-  override *children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+  override* children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
     const childValues = reverse
       ? [this.important, this.value, this.name]
       : [this.name, this.value, this.important];
@@ -550,6 +546,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     cloneFn ??= n => n.clone(deep);
     const clonePart = <T extends Node | string | undefined>(part: T): T => (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete node field type supplied by this declaration part.
       deep && part instanceof Node ? cloneFn(part) as T : part
     );
     return this.withParts({
@@ -616,7 +613,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private withParts(value: DeclarationValue): this {
-    const Ctor = this.constructor as new (
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Derived declarations must preserve concrete subclasses such as VarDeclaration and CustomDeclaration.
+    const Ctor = this.constructor as unknown as new (
       value: DeclarationValue,
       options?: Opts,
       location?: LocationInfo,
