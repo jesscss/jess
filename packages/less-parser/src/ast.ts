@@ -144,6 +144,51 @@ function createDetachedRulesetVariable(name: string, body: Node[]): VarDeclarati
   });
 }
 
+function parseLessBlockNode(
+  source: string,
+  start: number,
+  blockStart: number,
+  blockEnd: number,
+  addDiagnostic: DiagnosticSink
+): Node | undefined {
+  const selector = source.slice(start, blockStart).trim();
+  if (!selector) {
+    return undefined;
+  }
+  const variableName = parseLessVariableBlockName(source, start, blockStart);
+  if (variableName) {
+    return createDetachedRulesetVariable(
+      variableName,
+      parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
+    );
+  }
+  if (selector[0] === '@') {
+    addDiagnostic(
+      'warning',
+      'less-ast-unsupported-at-rule',
+      'Less AST parser skipped an at-rule block.',
+      start,
+      blockEnd + 1
+    );
+    return undefined;
+  }
+  const parsedSelector = parseCheapLessSelector(selector);
+  if (parsedSelector === undefined) {
+    addDiagnostic(
+      'warning',
+      'less-ast-unsupported-block-header',
+      'Less AST parser skipped a block with an unsupported header.',
+      start,
+      blockEnd + 1
+    );
+    return undefined;
+  }
+  return ruleset({
+    selector: parsedSelector,
+    rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
+  });
+}
+
 function parseAtRuleStatement(source: string, start: number, end: number): Node | undefined {
   const textEnd = source[end - 1] === ';' ? end - 1 : end;
   const textStart = skipSourceTrivia(source, start, textEnd, LESS_SCANNER_OPTIONS);
@@ -263,40 +308,9 @@ function parseLessNodes(
       );
       break;
     }
-    const selector = source.slice(cursor, blockStart).trim();
-    if (selector) {
-      const variableName = parseLessVariableBlockName(source, cursor, blockStart);
-      if (variableName) {
-        children.push(createDetachedRulesetVariable(
-          variableName,
-          parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
-        ));
-      } else if (selector[0] === '@') {
-        addDiagnostic(
-          'warning',
-          'less-ast-unsupported-at-rule',
-          'Less AST parser skipped an at-rule block.',
-          cursor,
-          blockEnd + 1
-        );
-      } else {
-        const parsedSelector = parseCheapLessSelector(selector);
-        if (parsedSelector === undefined) {
-          addDiagnostic(
-            'warning',
-            'less-ast-unsupported-block-header',
-            'Less AST parser skipped a block with an unsupported header.',
-            cursor,
-            blockEnd + 1
-          );
-          cursor = blockEnd + 1;
-          continue;
-        }
-        children.push(ruleset({
-          selector: parsedSelector,
-          rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-        }));
-      }
+    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+    if (blockNode) {
+      children.push(blockNode);
     }
     cursor = blockEnd + 1;
   }
@@ -368,40 +382,9 @@ export function parseLessAstStylesheet(
       );
       break;
     }
-    const selector = source.slice(cursor, blockStart).trim();
-    const variableName = parseLessVariableBlockName(source, cursor, blockStart);
-    if (selector && variableName) {
-      children.push(createDetachedRulesetVariable(
-        variableName,
-        parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic)
-      ));
-    } else if (selector && selector[0] !== '@') {
-      const parsedSelector = parseCheapLessSelector(selector);
-      if (parsedSelector === undefined) {
-        diagnostics = appendParserDiagnostic(
-          diagnostics,
-          'warning',
-          'less-ast-unsupported-block-header',
-          'Less AST parser skipped a block with an unsupported header.',
-          cursor,
-          blockEnd + 1
-        );
-        cursor = blockEnd + 1;
-        continue;
-      }
-      children.push(ruleset({
-        selector: parsedSelector,
-        rules: rules(parseLessNodes(source, blockStart + 1, blockEnd, addDiagnostic))
-      }));
-    } else if (selector) {
-      diagnostics = appendParserDiagnostic(
-        diagnostics,
-        'warning',
-        'less-ast-unsupported-at-rule',
-        'Less AST parser skipped an at-rule block.',
-        cursor,
-        blockEnd + 1
-      );
+    const blockNode = parseLessBlockNode(source, cursor, blockStart, blockEnd, addDiagnostic);
+    if (blockNode) {
+      children.push(blockNode);
     }
     cursor = blockEnd + 1;
   }
