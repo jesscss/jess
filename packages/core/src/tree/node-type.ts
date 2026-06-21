@@ -106,6 +106,7 @@ export const nodeTypeBits: Record<string, number> = {
   Declaration: N.Declaration,
   VarDeclaration: N.VarDeclaration,
   Rules: N.Rules,
+  Stylesheet: N.Rules,
   Collection: N.Collection,
   Ruleset: N.Ruleset,
   AtRule: N.AtRule,

@@ -105,7 +105,7 @@ function setParent(node: Node, parent: Node | undefined): void {
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
-  return node?.type === 'Rules';
+  return node instanceof Node && (node.nodeType & nodeTypeBits.Rules) !== 0;
 }
 
 function sourceRootOf(node: Node): Rules | undefined {
@@ -555,6 +555,9 @@ export abstract class Node<
   get rulesParent(): Rules | undefined {
     let possibleRules: Node | undefined = this.parent;
     while (possibleRules && possibleRules.type !== 'Rules') {
+      if (isRulesNode(possibleRules)) {
+        break;
+      }
       possibleRules = possibleRules.parent;
     }
     return isRulesNode(possibleRules) ? possibleRules : undefined;

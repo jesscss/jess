@@ -103,6 +103,33 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: slim `Stylesheet extends Rules` root.
+- Verdict: accepted as an AST-shape prerequisite for scanner-first compiler
+  parse results, not a performance pass. The node adds no document services,
+  side tables, diagnostics, source storage, or island/probe machinery; it is
+  only a distinct root type over the existing `Rules` body contract.
+- New traversal: no new walk is added. The existing `rulesParent` ancestor climb
+  keeps its original loop shape and now stops when it reaches any rules-like
+  node, so `Stylesheet` is treated as a valid `Rules` ancestor instead of being
+  skipped by a literal `type === 'Rules'` check.
+- Review-flagged allocations: none added.
+- New node/materialization: one public `Stylesheet` node exists only when a
+  parser intentionally constructs a stylesheet root; nested containers remain
+  ordinary `Rules` / `Ruleset` / `AtRule` surfaces.
+- Render path: unchanged. `Stylesheet` inherits direct `Rules` serialization and
+  the focused test proves it renders the existing body shape.
+- Helper/API surface: one `stylesheet(...)` factory/export is added so parser
+  packages can return the documented core root node. No `N.Stylesheet` bit or
+  parallel `StructuralDocument` API is added.
+- Metadata mutations: no provenance, parent, frozen, location, line/column, or
+  packed-span metadata is added. Parent/source-root behavior only recognizes the
+  rules-like subclass already in the tree.
+- Evidence: focused `stylesheet.test.ts`, full `rules.test.ts` /
+  `node-mutation.test.ts` slice, `@jesscss/core` build,
+  `verify:package-exports`, `verify:public-packages`, `git diff --check`, and
+  `verify:aggressive-cutting-review` passed after sub-agent review flagged the
+  missing `rulesParent` contract and the test was extended.
+
 - Latest pass: collapsed render frame rollback after reference-import lookup cuts.
 - Verdict: accepted as a correctness fix for the binding/lookup branch fallout,
   not a performance pass. The seven binding/lookup commits are already on
