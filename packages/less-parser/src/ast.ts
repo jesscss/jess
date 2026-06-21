@@ -8,15 +8,17 @@ import {
   list,
   mixin,
   nil,
+  paren,
+  query,
   rules,
   ruleset,
   sel,
   stylesheet,
+  type AtRulePrelude,
   type Node,
   type Selector,
   type Stylesheet
 } from '@jesscss/core';
-import { parseCheapAtRulePrelude } from '@jesscss/css-parser';
 import {
   SourceText,
   appendParserDiagnostic,
@@ -25,8 +27,10 @@ import {
   findTrailingImportantStart,
   findTopLevelBlockStart,
   findTopLevelDelimiter,
+  scanCheapAtRulePrelude,
   scanCheapSelectorComponents,
   skipSourceTrivia,
+  type CheapAtRulePreludeToken,
   type CheapSelectorComponent,
   type ParserDiagnostic,
   type ScannerParseResult,
@@ -54,6 +58,25 @@ function isLessNameCode(code: number): boolean {
     || code === 45
     || code === 95
   );
+}
+
+function materializeCheapAtRulePreludeToken(token: CheapAtRulePreludeToken): string | Node {
+  return typeof token === 'string' ? token : paren(any(token[1]));
+}
+
+function materializeCheapAtRulePreludeNode(token: CheapAtRulePreludeToken): Node {
+  return typeof token === 'string' ? any(token) : paren(any(token[1]));
+}
+
+function parseCheapAtRulePrelude(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const tokens = scanCheapAtRulePrelude(text, options);
+  if (!tokens) {
+    return undefined;
+  }
+  if (tokens.length === 1) {
+    return materializeCheapAtRulePreludeToken(tokens[0]!);
+  }
+  return query(tokens.map(materializeCheapAtRulePreludeNode));
 }
 
 function materializeCheapCompound(component: readonly string[]): string | Selector {
@@ -245,10 +268,12 @@ function parseCheapMixinHeader(header: string): CheapMixinHeader | undefined {
     return undefined;
   }
   const params = parseCheapMixinParams(source.slice(paramsStart, paramsEnd));
-  return paramsStart === paramsEnd || params ? {
-    name,
-    ...(params && { params })
-  } : undefined;
+  return paramsStart === paramsEnd || params
+    ? {
+        name,
+        ...(params && { params })
+      }
+    : undefined;
 }
 
 function parseCheapMixinBlock(

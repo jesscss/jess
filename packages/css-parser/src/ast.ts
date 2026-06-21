@@ -22,13 +22,14 @@ import {
   findTrailingImportantStart,
   findTopLevelBlockStart,
   findTopLevelDelimiter,
+  scanCheapAtRulePrelude,
   scanCheapSelectorComponents,
   SourceText,
   type ScannerParseResult,
   type ParserDiagnostic,
   type SourceScannerOptions,
   type CheapSelectorComponent,
-  skipQuotedSourceString,
+  type CheapAtRulePreludeToken,
   skipSourceTrivia
 } from '@jesscss/parser';
 
@@ -102,144 +103,23 @@ function isCssNameCode(code: number): boolean {
   );
 }
 
-function isPreludeAtomText(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    if (!isCssNameCode(text.charCodeAt(i))) {
-      return false;
-    }
-  }
-  return true;
+function materializeCheapAtRulePreludeToken(token: CheapAtRulePreludeToken): string | Node {
+  return typeof token === 'string' ? token : paren(any(token[1]));
 }
 
-function isSimpleParenPreludeText(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const code = text.charCodeAt(i);
-    if (
-      isCssNameCode(code)
-      || (code >= 48 && code <= 57)
-      || code === 32
-      || code === 9
-      || code === 10
-      || code === 13
-      || code === 12
-      || char === ':'
-      || char === '.'
-    ) {
-      continue;
-    }
-    return false;
-  }
-  return true;
+function materializeCheapAtRulePreludeNode(token: CheapAtRulePreludeToken): Node {
+  return typeof token === 'string' ? any(token) : paren(any(token[1]));
 }
 
-function parseParenthesizedPreludeAtom(text: string): Node | undefined {
-  if (text.length < 2 || text[0] !== '(' || text[text.length - 1] !== ')') {
+export function parseCheapAtRulePrelude(text: string, options?: SourceScannerOptions): AtRulePrelude | undefined {
+  const tokens = scanCheapAtRulePrelude(text, options);
+  if (!tokens) {
     return undefined;
   }
-  const inner = text.slice(1, -1).trim();
-  if (!isSimpleParenPreludeText(inner)) {
-    return undefined;
+  if (tokens.length === 1) {
+    return materializeCheapAtRulePreludeToken(tokens[0]!);
   }
-  return paren(any(inner));
-}
-
-function readPreludeToken(
-  source: string,
-  start: number,
-  options?: SourceScannerOptions
-): [token: string, next: number] | undefined {
-  let cursor = skipSourceTrivia(source, start, source.length, options);
-  if (cursor >= source.length) {
-    return undefined;
-  }
-  if (source[cursor] !== '(') {
-    const tokenStart = cursor;
-    while (cursor < source.length) {
-      const code = source.charCodeAt(cursor);
-      if (isSourceSelectorWhitespace(code)) {
-        break;
-      }
-      if (source[cursor] === '(' || source[cursor] === ')' || source[cursor] === ',') {
-        return undefined;
-      }
-      cursor++;
-    }
-    const token = source.slice(tokenStart, cursor);
-    return token ? [token, cursor] : undefined;
-  }
-  const tokenStart = cursor;
-  let depth = 0;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    if (char === '"' || char === '\'') {
-      cursor = skipQuotedSourceString(source, cursor, source.length);
-      continue;
-    }
-    if (char === '\\') {
-      cursor += 2;
-      continue;
-    }
-    if (char === '(') {
-      depth++;
-    } else if (char === ')') {
-      depth--;
-      if (depth === 0) {
-        cursor++;
-        return [source.slice(tokenStart, cursor), cursor];
-      }
-    }
-    cursor++;
-  }
-  return undefined;
-}
-
-/**
- * Tokenize a deliberately tiny at-rule prelude subset into existing core nodes.
- *
- * Bare atoms stay strings. Simple balanced parenthesized atoms become
- * `Paren(Any(...))`; whitespace-separated top-level sequences become
- * `QueryCondition`. Commas, interpolation, nested conditions, and
- * general-enclosed syntax return `undefined` so callers can warn instead of
- * hiding unsupported structure as raw text.
- */
-export function parseCheapAtRulePrelude(
-  text: string,
-  options?: SourceScannerOptions
-): AtRulePrelude | undefined {
-  const source = text.trim();
-  if (!source) {
-    return undefined;
-  }
-  if (isPreludeAtomText(source)) {
-    return source;
-  }
-  const parenAtom = parseParenthesizedPreludeAtom(source);
-  if (parenAtom) {
-    return parenAtom;
-  }
-  const parts: Node[] = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const read = readPreludeToken(source, cursor, options);
-    if (!read) {
-      return undefined;
-    }
-    const [token, next] = read;
-    const node = parseParenthesizedPreludeAtom(token) ?? (isPreludeAtomText(token) ? any(token) : undefined);
-    if (!node) {
-      return undefined;
-    }
-    parts.push(node);
-    cursor = skipSourceTrivia(source, next, source.length, options);
-  }
-  return parts.length > 1 ? query(parts) : parts[0];
+  return query(tokens.map(materializeCheapAtRulePreludeNode));
 }
 
 function materializeCheapCompound(component: string[]): string | Selector {
@@ -277,10 +157,6 @@ function parseCheapSelector(selector: string): string | Selector {
     return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
   }
   return materializeCheapSelector(components);
-}
-
-function isSourceSelectorWhitespace(code: number): boolean {
-  return code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
 }
 
 function parseStatementNode(

@@ -16,6 +16,11 @@ export {
 } from './selector-scanner.js';
 
 export {
+  scanCheapAtRulePrelude,
+  type CheapAtRulePreludeToken
+} from './prelude-scanner.js';
+
+export {
   findBalancedBlockEnd,
   findStatementEnd,
   findTopLevelBlockStart,
