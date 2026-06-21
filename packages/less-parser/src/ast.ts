@@ -3,6 +3,7 @@ import {
   any,
   atrule,
   atrulestatement,
+  call,
   compound,
   decl,
   list,
@@ -14,6 +15,7 @@ import {
   ruleset,
   sel,
   stylesheet,
+  ref,
   type AtRulePrelude,
   type Node,
   type Selector,
@@ -399,6 +401,42 @@ function parseAtRuleStatement(source: string, start: number, end: number): Node 
   });
 }
 
+function parseCheapMixinCallStatement(source: string, start: number, end: number): Node | undefined {
+  const text = source.slice(start, end).trim();
+  const first = text[0];
+  if (first !== '.' && first !== '#') {
+    return undefined;
+  }
+  const importantStart = findTrailingImportantStart(text);
+  const callText = importantStart === -1 ? text : text.slice(0, importantStart).trimEnd();
+  let nameEnd = 1;
+  while (nameEnd < callText.length && isLessNameCode(callText.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  if (nameEnd === 1) {
+    return undefined;
+  }
+  const name = callText.slice(0, nameEnd);
+  if (!isCheapMixinName(name)) {
+    return undefined;
+  }
+  let cursor = skipSourceTrivia(callText, nameEnd, callText.length, LESS_SCANNER_OPTIONS);
+  if (callText[cursor] !== '(') {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(callText, cursor + 1, callText.length, LESS_SCANNER_OPTIONS);
+  if (callText[cursor] !== ')') {
+    return undefined;
+  }
+  cursor = skipSourceTrivia(callText, cursor + 1, callText.length, LESS_SCANNER_OPTIONS);
+  if (cursor !== callText.length) {
+    return undefined;
+  }
+  return call({
+    name: ref({ key: name }, { type: 'mixin-ruleset', role: 'name' })
+  }, importantStart === -1 ? undefined : { markImportant: true });
+}
+
 function parseLessStatementNode(
   source: string,
   start: number,
@@ -410,6 +448,10 @@ function parseLessStatementNode(
     const statement = parseAtRuleStatement(source, start, end + 1);
     if (statement) {
       return statement;
+    }
+    const mixinCall = parseCheapMixinCallStatement(source, start, end);
+    if (mixinCall) {
+      return mixinCall;
     }
     if (source.slice(start, end).trim()) {
       const isMalformedAtRule = source[skipSourceTrivia(source, start, end, LESS_SCANNER_OPTIONS)] === '@';
@@ -510,8 +552,9 @@ function parseLessNodes(
  *
  * This is a scanner-first parser proof, not a compatibility parser. It accepts
  * cheap qualified rules, nested cheap qualified rules, ordinary declarations,
- * simple `@name:` variables, and statement-form at-rules. Values stay as strings
- * until a later decision proves typed parsing is necessary.
+ * simple `@name:` variables, detached ruleset variables, cheap mixin
+ * definitions, parameterless mixin calls, and statement/block at-rules. Values
+ * stay as strings until a later decision proves typed parsing is necessary.
  */
 export function parseLessAstStylesheet(
   filePath: string,

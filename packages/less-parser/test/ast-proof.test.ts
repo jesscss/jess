@@ -259,6 +259,67 @@ describe('parseLessAstStylesheet', () => {
     ]);
   });
 
+  test('parses parameterless Less mixin calls without fallback parsing', () => {
+    const result = parseLessAstStylesheet('mixin-calls.less', `
+      .paint();
+      #theme() !important;
+
+      .a {
+        .nested();
+      }
+    `);
+    const [paint, theme, rule] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(paint, N.Call)).toBe(true);
+    expect(isNode(theme, N.Call)).toBe(true);
+    expect(isNode(rule, N.Ruleset)).toBe(true);
+    if (!isNode(paint, N.Call) || !isNode(theme, N.Call) || !isNode(rule, N.Ruleset)) {
+      throw new Error('Expected parameterless Less mixin calls');
+    }
+    expect(isNode(paint.name, N.Reference)).toBe(true);
+    expect(isNode(theme.name, N.Reference)).toBe(true);
+    if (!isNode(paint.name, N.Reference) || !isNode(theme.name, N.Reference)) {
+      throw new Error('Expected Less mixin call references');
+    }
+    expect(paint.name.key).toBe('.paint');
+    expect(paint.name.options.type).toBe('mixin-ruleset');
+    expect(paint.name.options.role).toBe('name');
+    expect(paint.args).toBeUndefined();
+    expect(theme.name.key).toBe('#theme');
+    expect(theme.name.options.type).toBe('mixin-ruleset');
+    expect(theme.name.options.role).toBe('name');
+    expect(theme.options.markImportant).toBe(true);
+
+    const [nested] = rule.rules.rules;
+    expect(isNode(nested, N.Call)).toBe(true);
+    if (!isNode(nested, N.Call) || !isNode(nested.name, N.Reference)) {
+      throw new Error('Expected nested parameterless mixin call');
+    }
+    expect(nested.name.key).toBe('.nested');
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Call
+        name:
+          (Reference [role=name]
+            key: '.paint'
+          )
+      )
+    `);
+  });
+
+  test('keeps unsupported Less mixin call forms out of the cheap AST path', () => {
+    const result = parseLessAstStylesheet('unsupported-mixin-calls.less', `
+      .withArgs(@tone);
+      .deprecated;
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-statement',
+      'less-ast-unsupported-statement'
+    ]);
+  });
+
   test('diagnoses malformed Less at-rule blocks without fallback parsing', () => {
     const result = parseLessAstStylesheet('unsupported.less', `
       @ {
