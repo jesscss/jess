@@ -61,8 +61,8 @@ export function renderParserDiagnostic(
   source: SourceText,
   diagnostic: ParserDiagnostic
 ): RenderedParserDiagnostic {
-  const start = source.offsetToLineColumn(diagnostic.start);
-  const end = source.offsetToLineColumn(diagnostic.end);
+  const start = source.offsetToPosition(diagnostic.start);
+  const end = source.offsetToPosition(diagnostic.end);
 
   return {
     ...diagnostic,

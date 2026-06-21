@@ -952,8 +952,8 @@ function structuralFedBlockCommentsBetween(
       return { reason: 'unterminated block comments require canonical trivia preservation' };
     }
     if (next) {
-      const commentEnd = document.source.offsetToLineColumn(Math.max(trivia.start, trivia.end - 1));
-      const nextStart = document.source.offsetToLineColumn(next.start);
+      const commentEnd = document.source.offsetToPosition(Math.max(trivia.start, trivia.end - 1));
+      const nextStart = document.source.offsetToPosition(next.start);
       if (commentEnd.line === nextStart.line) {
         return { reason: 'inline block comments require canonical trivia preservation' };
       }
@@ -993,7 +993,7 @@ function collectStructuralFedDeprecationWarnings(
       const name = structuralFieldText(document, node, 'name', 'mixin-name');
       if (name !== undefined && !name.includes('(') && scannerNativeNoArgMixinReferenceKey(name)) {
         const offset = Math.max(node.start, node.end - 1);
-        const position = document.source.offsetToLineColumn(offset);
+        const position = document.source.offsetToPosition(offset);
         warnings.push({
           code: 'parse/deprecated',
           phase: 'parse',
@@ -2957,8 +2957,8 @@ function locationFromRange(
   endExclusive: number
 ): LocationInfo {
   const end = Math.max(start, endExclusive - 1);
-  const startPos = document.source.offsetToLineColumn(start);
-  const endPos = document.source.offsetToLineColumn(end);
+  const startPos = document.source.offsetToPosition(start);
+  const endPos = document.source.offsetToPosition(end);
   return [start, startPos.line, startPos.column, end, endPos.line, endPos.column];
 }
 

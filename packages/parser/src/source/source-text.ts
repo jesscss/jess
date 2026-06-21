@@ -1,15 +1,12 @@
-import { LineMap, type LineColumn } from './line-map.js';
+import { LineMap, type SourcePosition } from './line-map.js';
 
 /**
- * Metadata carried with immutable source text for caching and diagnostics.
+ * Immutable source version used for cache and invalidation keys.
  *
- * `version` participates in island cache keys, so callers should change it
- * whenever the backing text changes even if the same file path is reused.
+ * Callers should change this whenever the backing text changes even if the
+ * same file path is reused.
  */
-export type SourceTextOptions = {
-  filePath?: string;
-  version?: string | number;
-};
+export type SourceTextVersion = string | number;
 
 /**
  * Cold source-size report used by parser performance guards.
@@ -33,14 +30,14 @@ export type SourceTextStats = {
 export class SourceText {
   readonly text: string;
   readonly filePath?: string;
-  readonly version: string | number;
+  readonly version: SourceTextVersion;
 
   #lineMap: LineMap | undefined;
 
-  constructor(text: string, options: SourceTextOptions = {}) {
+  constructor(text: string, filePath?: string, version: SourceTextVersion = 0) {
     this.text = text;
-    this.filePath = options.filePath;
-    this.version = options.version ?? 0;
+    this.filePath = filePath;
+    this.version = version;
   }
 
   get length(): number {
@@ -79,13 +76,13 @@ export class SourceText {
   }
 
   /** Converts an offset to a 1-based human/editor position. */
-  offsetToLineColumn(offset: number): LineColumn {
-    return this.lineMap.offsetToLineColumn(offset);
+  offsetToPosition(offset: number): SourcePosition {
+    return this.lineMap.offsetToPosition(offset);
   }
 
   /** Converts a 1-based human/editor position back to a UTF-16 offset. */
-  lineColumnToOffset(line: number, column: number): number {
-    return this.lineMap.lineColumnToOffset(line, column);
+  positionToOffset(line: number, column: number): number {
+    return this.lineMap.positionToOffset(line, column);
   }
 
   /** Throws when a half-open range is outside this source. */

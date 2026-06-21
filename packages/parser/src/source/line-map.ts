@@ -1,5 +1,5 @@
 /** 1-based source location used by rendered diagnostics and editor services. */
-export type LineColumn = {
+export type SourcePosition = {
   line: number;
   column: number;
 };
@@ -17,7 +17,7 @@ export class LineMap {
     this.lineStarts = computeLineStarts(text);
   }
 
-  offsetToLineColumn(offset: number): LineColumn {
+  offsetToPosition(offset: number): SourcePosition {
     assertOffset(offset, this.text.length);
 
     let low = 0;
@@ -41,7 +41,7 @@ export class LineMap {
     };
   }
 
-  lineColumnToOffset(line: number, column: number): number {
+  positionToOffset(line: number, column: number): number {
     if (!Number.isInteger(line) || line < 1 || line > this.lineStarts.length) {
       throw new RangeError(`Line ${line} is outside the source range.`);
     }

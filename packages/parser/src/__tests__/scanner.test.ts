@@ -49,7 +49,7 @@ describe('scanner performance guard stats', () => {
 
 describe('scanner diagnostics', () => {
   test('renders diagnostic line and column from source offsets lazily', () => {
-    const source = new SourceText('a\n  @', { filePath: 'style.less' });
+    const source = new SourceText('a\n  @', 'style.less');
     const diagnostic: ParserDiagnostic = {
       code: 'expected-ident',
       severity: 'error',
