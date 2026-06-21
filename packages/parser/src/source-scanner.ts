@@ -6,13 +6,24 @@
  * string/comment/delimiter walking.
  */
 
+/** Optional scanner behavior for CSS-family languages with extra trivia forms. */
+export type SourceScannerOptions = {
+  /** Treat `//` through line end as trivia/comment text. */
+  readonly lineComments?: boolean;
+};
+
 /** Return whether `code` is stylesheet source whitespace handled by cheap scanners. */
 export function isSourceWhitespace(code: number): boolean {
   return code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
 }
 
 /** Skip whitespace and block comments from `offset` up to `end`. */
-export function skipSourceTrivia(source: string, offset: number, end = source.length): number {
+export function skipSourceTrivia(
+  source: string,
+  offset: number,
+  end = source.length,
+  options?: SourceScannerOptions
+): number {
   let cursor = offset;
   while (cursor < end) {
     const code = source.charCodeAt(cursor);
@@ -23,6 +34,10 @@ export function skipSourceTrivia(source: string, offset: number, end = source.le
     if (source[cursor] === '/' && source[cursor + 1] === '*') {
       const commentEnd = source.indexOf('*/', cursor + 2);
       cursor = commentEnd === -1 || commentEnd >= end ? end : commentEnd + 2;
+      continue;
+    }
+    if (options?.lineComments && source[cursor] === '/' && source[cursor + 1] === '/') {
+      cursor = skipLineComment(source, cursor, end);
       continue;
     }
     break;
@@ -67,6 +82,18 @@ function skipBlockCommentOutsideDelimiter(source: string, offset: number, end: n
   return commentEnd + 2;
 }
 
+function skipLineComment(source: string, offset: number, end: number): number {
+  let cursor = offset + 2;
+  while (cursor < end) {
+    const code = source.charCodeAt(cursor);
+    if (code === 10 || code === 13) {
+      break;
+    }
+    cursor++;
+  }
+  return cursor;
+}
+
 function skipEscapedCharacter(offset: number): number {
   return offset + 2;
 }
@@ -100,7 +127,12 @@ function opensUrlFunction(source: string, openParenOffset: number): boolean {
  * Find the next top-level `{`, ignoring strings, comments, escapes, and
  * brackets/parens before it.
  */
-export function findTopLevelBlockStart(source: string, offset: number, end = source.length): number {
+export function findTopLevelBlockStart(
+  source: string,
+  offset: number,
+  end = source.length,
+  options?: SourceScannerOptions
+): number {
   let cursor = offset;
   let depth = 0;
   let urlDepth = 0;
@@ -124,6 +156,10 @@ export function findTopLevelBlockStart(source: string, offset: number, end = sou
         cursor = commentEnd;
         continue;
       }
+    }
+    if (options?.lineComments && char === '/' && source[cursor + 1] === '/' && urlDepth === 0) {
+      cursor = skipLineComment(source, cursor, end);
+      continue;
     }
     if (isOpeningDelimiter(char)) {
       depth++;
@@ -149,7 +185,12 @@ export function findTopLevelBlockStart(source: string, offset: number, end = sou
  * `blockStart` must already point at an opening brace. This helper intentionally
  * trusts the caller so hot scanner paths do not repeat a check they just made.
  */
-export function findBalancedBlockEnd(source: string, blockStart: number, end = source.length): number {
+export function findBalancedBlockEnd(
+  source: string,
+  blockStart: number,
+  end = source.length,
+  options?: SourceScannerOptions
+): number {
   let cursor = blockStart + 1;
   let depth = 1;
   let delimiterDepth = 0;
@@ -174,6 +215,10 @@ export function findBalancedBlockEnd(source: string, blockStart: number, end = s
         cursor = commentEnd;
         continue;
       }
+    }
+    if (options?.lineComments && char === '/' && source[cursor + 1] === '/' && urlDepth === 0) {
+      cursor = skipLineComment(source, cursor, end);
+      continue;
     }
     if (char === '(' || char === '[') {
       delimiterDepth++;
@@ -210,7 +255,8 @@ export function findTopLevelDelimiter(
   source: string,
   delimiterChar: string,
   start: number,
-  end: number
+  end: number,
+  options?: SourceScannerOptions
 ): number {
   if (delimiterChar.length !== 1) {
     throw new TypeError('findTopLevelDelimiter expects a single-character delimiter.');
@@ -239,6 +285,10 @@ export function findTopLevelDelimiter(
         continue;
       }
     }
+    if (options?.lineComments && char === '/' && source[cursor + 1] === '/' && urlDepth === 0) {
+      cursor = skipLineComment(source, cursor, end);
+      continue;
+    }
     if (char === '(' || char === '[' || char === '{') {
       depth++;
       if (char === '(' && urlDepth === 0 && opensUrlFunction(source, cursor)) {
@@ -258,7 +308,12 @@ export function findTopLevelDelimiter(
 }
 
 /** Find the first top-level semicolon in a statement span, or return `end`. */
-export function findStatementEnd(source: string, start: number, end: number): number {
-  const semi = findTopLevelDelimiter(source, ';', start, end);
+export function findStatementEnd(
+  source: string,
+  start: number,
+  end: number,
+  options?: SourceScannerOptions
+): number {
+  const semi = findTopLevelDelimiter(source, ';', start, end, options);
   return semi === -1 ? end : semi;
 }

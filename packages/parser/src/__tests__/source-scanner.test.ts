@@ -22,6 +22,23 @@ describe('source scanner helpers', () => {
     expect(findBalancedBlockEnd(source, start)).toBe(source.indexOf('} .b'));
   });
 
+  test('line comments are opt-in trivia for Less-family scanners', () => {
+    const source = '.a // { ignored\n{ color: red; // } ignored\n  background: blue; }';
+    const options = { lineComments: true };
+    const start = findTopLevelBlockStart(source, 0, source.length, options);
+
+    expect(start).toBe(source.indexOf('{ color'));
+    expect(findBalancedBlockEnd(source, start, source.length, options)).toBe(source.lastIndexOf('}'));
+    expect(findStatementEnd(source, source.indexOf('color'), source.lastIndexOf('}'), options))
+      .toBe(source.indexOf('; //'));
+  });
+
+  test('line comments are not skipped unless requested', () => {
+    const source = '.a // { css keeps this as source text\n{ color: red; }';
+
+    expect(findTopLevelBlockStart(source, 0)).toBe(source.indexOf('{ css'));
+  });
+
   test('does not let unterminated comment-like text inside url consume a block', () => {
     const source = '.a { background: url(a/*); color: red; }';
     const start = findTopLevelBlockStart(source, 0);

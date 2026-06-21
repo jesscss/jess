@@ -13,7 +13,8 @@ export {
   findTopLevelDelimiter,
   isSourceWhitespace,
   skipQuotedSourceString,
-  skipSourceTrivia
+  skipSourceTrivia,
+  type SourceScannerOptions
 } from './source-scanner.js';
 
 export {
