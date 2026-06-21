@@ -336,15 +336,38 @@ describe('parseLessAstStylesheet', () => {
       .defaulted(@tone: red; @shadow : 1px 2px, blue) {
         color: @tone;
       }
+
+      .resty(@head, @tail...) {
+        width: @head;
+      }
+
+      .all(...) {
+        color: red;
+      }
+
+      .commaDefault(@margin: 2, 2, 2, 2) {
+        margin: @margin;
+      }
     `);
-    const [paint, theme, trail, defaulted] = result.tree.rules;
+    const [paint, theme, trail, defaulted, resty, all, commaDefault] = result.tree.rules;
 
     expect(result.diagnostics).toEqual([]);
     expect(isNode(paint, N.Mixin)).toBe(true);
     expect(isNode(theme, N.Mixin)).toBe(true);
     expect(isNode(trail, N.Mixin)).toBe(true);
     expect(isNode(defaulted, N.Mixin)).toBe(true);
-    if (!isNode(paint, N.Mixin) || !isNode(theme, N.Mixin) || !isNode(trail, N.Mixin) || !isNode(defaulted, N.Mixin)) {
+    expect(isNode(resty, N.Mixin)).toBe(true);
+    expect(isNode(all, N.Mixin)).toBe(true);
+    expect(isNode(commaDefault, N.Mixin)).toBe(true);
+    if (
+      !isNode(paint, N.Mixin)
+      || !isNode(theme, N.Mixin)
+      || !isNode(trail, N.Mixin)
+      || !isNode(defaulted, N.Mixin)
+      || !isNode(resty, N.Mixin)
+      || !isNode(all, N.Mixin)
+      || !isNode(commaDefault, N.Mixin)
+    ) {
       throw new Error('Expected parameterized Less mixin definition');
     }
     expect(paint.name?.valueOf()).toBe('.paint');
@@ -381,18 +404,37 @@ describe('parseLessAstStylesheet', () => {
       '$tone: red',
       '$shadow: 1px 2px, blue'
     ]);
+    expect(resty.params?.sep).toBe(',');
+    expect(resty.params?.items.map(item => item.type)).toEqual(['VarDeclaration', 'Rest']);
+    expect(resty.params?.items[0]?.toTrimmedString()).toBe('$head');
+    expect(isNode(resty.params?.items[1], N.Rest)).toBe(true);
+    if (!isNode(resty.params?.items[1], N.Rest)) {
+      throw new Error('Expected named rest parameter');
+    }
+    expect(resty.params.items[1].node).toBe('tail');
+    expect(isNode(all.params?.items[0], N.Rest)).toBe(true);
+    if (!isNode(all.params?.items[0], N.Rest)) {
+      throw new Error('Expected anonymous rest parameter');
+    }
+    expect(all.params.items[0].node).toBeUndefined();
+    expect(commaDefault.params?.sep).toBe(',');
+    expect(commaDefault.params?.items).toHaveLength(1);
+    expect(commaDefault.params?.items[0]?.toTrimmedString()).toBe('$margin: 2, 2, 2, 2');
+    expect(serializeTypes(result.tree)).toContain('(Rest');
   });
 
   test('keeps unsupported Less mixin parameter forms out of the cheap AST path', () => {
     const result = parseLessAstStylesheet('unsupported-mixin-params.less', `
-      .badRest(@args...) { color: red; }
       .badMixed(@a; @b, @c) { color: @a; }
+      .badDefaultComma(@a: 1, , @b) { color: @a; }
+      .badRestOrder(@a..., @b) { color: @b; }
       .1(@a) { color: red; }
       .-(@a) { color: red; }
     `);
 
     expect(result.tree.rules).toEqual([]);
     expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
       'less-ast-unsupported-block-header',
@@ -800,7 +842,7 @@ describe('parseLessAstStylesheet', () => {
 
   test('diagnoses unsupported Less block headers instead of creating raw selector rulesets', () => {
     const result = parseLessAstStylesheet('unsupported-block.less', `
-      .mixin(@x...) { color: @x; }
+      .mixin(@x, , @y) { color: @x; }
       .a {
         .b:hover(.c) { color: blue; }
         color: red;
@@ -819,7 +861,7 @@ describe('parseLessAstStylesheet', () => {
       '}',
       ''
     ].join('\n'));
-    expect(serializeTypes(result.tree)).not.toContain('.mixin(@x...)');
+    expect(serializeTypes(result.tree)).not.toContain('.mixin(@x, , @y)');
   });
 
   test('parses detached ruleset variable values as string-backed mixins', () => {

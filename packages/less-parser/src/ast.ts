@@ -11,6 +11,7 @@ import {
   nil,
   paren,
   query,
+  rest,
   rules,
   ruleset,
   sel,
@@ -218,6 +219,7 @@ type CheapMixinHeader = {
   name: string;
   params?: ReturnType<typeof list>;
 };
+type CheapMixinParam = VarDeclaration | ReturnType<typeof rest>;
 
 type GuardedHeader = {
   body: string;
@@ -410,10 +412,24 @@ function isCheapGuardText(source: string): boolean {
   return text.charCodeAt(conditionStart) === 40 && hasBalancedCheapArgumentText(text);
 }
 
-function parseCheapMixinParam(source: string): VarDeclaration | undefined {
+function parseCheapMixinParam(source: string): CheapMixinParam | undefined {
   const text = source.trim();
+  if (text === '...') {
+    return rest();
+  }
   if (text[0] !== '@') {
     return undefined;
+  }
+  if (text.endsWith('...')) {
+    const nameLimit = text.length - 3;
+    let nameEnd = 1;
+    while (nameEnd < nameLimit && isLessNameCode(text.charCodeAt(nameEnd))) {
+      nameEnd++;
+    }
+    if (nameEnd === 1 || nameEnd !== nameLimit) {
+      return undefined;
+    }
+    return rest(text.slice(1, nameEnd));
   }
   const colon = findTopLevelDelimiter(text, ':', 0, text.length, LESS_SCANNER_OPTIONS);
   const nameLimit = colon === -1 ? text.length : colon;
@@ -434,6 +450,89 @@ function parseCheapMixinParam(source: string): VarDeclaration | undefined {
   }, { paramVar: true });
 }
 
+function hasCheapMixinParamDefault(source: string): boolean {
+  return findTopLevelDelimiter(source, ':', 0, source.length, LESS_SCANNER_OPTIONS) !== -1;
+}
+
+function isCheapMixinParamText(source: string): boolean {
+  const text = source.trimStart();
+  if (text === '...') {
+    return true;
+  }
+  if (text[0] !== '@') {
+    return false;
+  }
+  if (text.endsWith('...')) {
+    const nameLimit = text.length - 3;
+    let nameEnd = 1;
+    while (nameEnd < nameLimit && isLessNameCode(text.charCodeAt(nameEnd))) {
+      nameEnd++;
+    }
+    return nameEnd > 1 && nameEnd === nameLimit;
+  }
+  const colon = findTopLevelDelimiter(text, ':', 0, text.length, LESS_SCANNER_OPTIONS);
+  const nameLimit = colon === -1 ? text.length : colon;
+  let nameEnd = 1;
+  while (nameEnd < nameLimit && isLessNameCode(text.charCodeAt(nameEnd))) {
+    nameEnd++;
+  }
+  if (nameEnd === 1 || text.slice(nameEnd, nameLimit).trim()) {
+    return false;
+  }
+  const defaultValue = colon === -1 ? undefined : text.slice(colon + 1).trim();
+  return defaultValue === undefined || (!!defaultValue && hasBalancedCheapArgumentText(defaultValue));
+}
+
+function parseCheapCommaMixinParams(source: string): CheapMixinParam[] | undefined {
+  const params: CheapMixinParam[] = [];
+  let cursor = 0;
+  let segmentStart = 0;
+  let current = '';
+  while (cursor <= source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length, LESS_SCANNER_OPTIONS);
+    const segmentEnd = comma === -1 ? source.length : comma;
+    const segment = source.slice(segmentStart, segmentEnd);
+    const nextStart = comma === -1 ? source.length : comma + 1;
+    const nextComma = comma === -1
+      ? -1
+      : findTopLevelDelimiter(source, ',', nextStart, source.length, LESS_SCANNER_OPTIONS);
+    const nextSegmentEnd = nextComma === -1 ? source.length : nextComma;
+    const nextSegment = comma === -1 ? '' : source.slice(nextStart, nextSegmentEnd);
+    if (!segment.trim() || (comma !== -1 && !nextSegment.trim())) {
+      return undefined;
+    }
+    const candidate = current ? `${current},${segment}` : segment;
+    if (
+      comma !== -1
+      && hasCheapMixinParamDefault(candidate)
+      && !isCheapMixinParamText(nextSegment)
+    ) {
+      current = candidate;
+      cursor = comma + 1;
+      segmentStart = cursor;
+      continue;
+    }
+    const param = parseCheapMixinParam(candidate);
+    if (!param) {
+      return undefined;
+    }
+    if (param.type === 'Rest' && comma !== -1) {
+      return undefined;
+    }
+    params.push(param);
+    if (comma === -1) {
+      break;
+    }
+    current = '';
+    cursor = comma + 1;
+    segmentStart = cursor;
+    if (cursor >= source.length) {
+      return undefined;
+    }
+  }
+  return params;
+}
+
 function parseCheapMixinParams(source: string): ReturnType<typeof list> | undefined {
   const text = source.trim();
   if (!text) {
@@ -444,7 +543,11 @@ function parseCheapMixinParams(source: string): ReturnType<typeof list> | undefi
     : findTopLevelDelimiter(text, ',', 0, text.length, LESS_SCANNER_OPTIONS) !== -1
       ? ','
       : undefined;
-  const params: VarDeclaration[] = [];
+  if (separator === ',') {
+    const params = parseCheapCommaMixinParams(text);
+    return params?.length ? list(params, { sep: ',' }) : undefined;
+  }
+  const params: CheapMixinParam[] = [];
   let cursor = 0;
   while (cursor <= text.length) {
     const end = separator
@@ -453,6 +556,9 @@ function parseCheapMixinParams(source: string): ReturnType<typeof list> | undefi
     const partEnd = end === -1 ? text.length : end;
     const param = parseCheapMixinParam(text.slice(cursor, partEnd));
     if (!param) {
+      return undefined;
+    }
+    if (param.type === 'Rest' && separator && end !== -1) {
       return undefined;
     }
     params.push(param);

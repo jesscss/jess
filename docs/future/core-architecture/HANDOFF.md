@@ -153,6 +153,37 @@ with `--no-verify` after the explicit gates pass.
   parsed top-level rules / 415 warnings to 1267 parsed top-level rules / 400
   warnings. No speed claim is made.
 
+- Latest pass: scanner-first Less mixin rest/default-comma parameters.
+- Verdict: accepted as a parser coverage slice, not a measured performance
+  pass. Cheap Less mixin definitions now parse `...` and `@name...` parameters
+  into existing core `Rest` nodes inside the existing params `List`, and
+  comma-separated definitions keep top-level comma runs inside a default value
+  when the next comma arm is not another parameter. No progressive/raw/island
+  node was added.
+- New traversal: one file-local top-level comma splitter over an already-sliced
+  mixin parameter string. It uses the existing source-scanner delimiter helper
+  and a boolean-only param-text classifier to inspect the next arm without
+  allocating throwaway params; it does not walk AST nodes, parent chains, side
+  maps, or Chevrotain productions. The parser rejects empty comma arms and
+  non-final rest parameters instead of widening the cheap path past Less
+  syntax.
+- New node/materialization: named and anonymous rest params allocate existing
+  `Rest` nodes because current core callable matching already represents
+  definition rest parameters that way. Default values remain source-backed
+  strings on `VarDeclaration.value`; comma-heavy defaults do not allocate value
+  nodes.
+- Render/eval path: parse-only slice. It does not add evaluation, lookup, or
+  render materialization paths. Existing `Rest` string serialization remains
+  core debt shared with the Chevrotain parser and is not claimed as Less source
+  round-tripping in this pass.
+- Helper/API surface: private parser helpers only; no public export or registry
+  surface was added.
+- Metadata mutations: none. Parsed params are adopted through the existing
+  `List`/`Mixin` constructors.
+- Evidence: focused Less AST proof tests passed, and the Less AST corpus gate
+  moved from 1267 parsed top-level rules / 400 warnings to 1281 parsed top-level
+  rules / 388 warnings with zero errors/thrown failures. No speed claim is made.
+
 - Latest pass: scanner-first string-backed Less guards.
 - Verdict: accepted as a parser coverage and object-reduction slice, not a
   measured performance pass. Cheap guarded Less block headers with
