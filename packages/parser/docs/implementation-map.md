@@ -58,8 +58,8 @@ or enriching a real AST node?
 | `ParserDiagnostic` | Diagnostics are output records, not AST nodes. | Keep. |
 | `TriviaRun` | Trivia can be document-wide and may not belong on every AST node. | Keep provisionally; consider packing. |
 | `StructuralContainerNode` / `StructuralStatementNode` | Possible value only for an editor/probe broad parse that deliberately avoids AST construction. For compile/parser replacement, value over existing AST nodes with deferred fields is unproven. | Provisional; likely loses to AST nodes for CSS/Less parser proof. |
-| `StructuralDocument` | Possible value as a cold editor/probe facade. It is an AST-like parallel document tree if used as the compile parse result. | Provisional; keep out of compile path unless it beats existing AST nodes with deferred fields on correctness, clarity, and measured cost. |
-| `Stylesheet extends Rules` | Gives the compiler a real top-level AST/document node without a parallel structural facade. Root-only source/span/diagnostic/trivia state can live here or in a document context attached here. | Preferred target for compiler parse results when plain `Rules` is too weak, but it must stay slim and avoid eager maps/indexes. |
+| `StructuralDocument` | Possible value as a cold editor/probe facade. It is an AST-like parallel document tree if used as the compile parse result. | Keep out of compile path unless it beats existing AST nodes with deferred fields on correctness, clarity, and measured cost. |
+| `Stylesheet extends Rules` | Gives the compiler a real top-level AST/document node without a parallel structural facade. The first core implementation is deliberately just a semantic `Rules` root; root-only source/span/diagnostic/trivia state must be added only when a caller proves the need. | Current preferred target for compiler parse results when plain `Rules` is too weak. Keep slim and avoid eager maps/indexes. |
 | `FieldRangeTable` | Avoids per-node offset fields, but makes debugging harder and adds lookup machinery. Node-owned compact state may be better. | Provisional; compare against AST-owned state. |
 | `RawIslandNode` | No clear value over a string field plus AST-owned state. It duplicates the idea of "this field is unparsed." | Delete/replace unless a concrete caller proves object identity is needed. |
 | `IslandKind` | No clear value if node type plus field name selects the parser. It is a shadow AST taxonomy. | Delete by default. |
@@ -134,13 +134,15 @@ classes with string fields and node-owned field state.
 
 If the parse result needs document-level behavior beyond a `Rules` list,
 `Stylesheet extends Rules` is a cleaner candidate than `StructuralDocument`.
-The root stylesheet can own source identity, packed span storage, document
-diagnostics, trivia, lazy line maps, and other root-only services while still
-being the AST node that render/eval/serialize starts from. Nested containers
-should not inherit that document payload unless they genuinely need it.
+The initial core node should remain only a semantic root over a `rules` array.
+It can later own source identity, packed span storage, document diagnostics,
+trivia, lazy line maps, and other root-only services, but each addition must
+replace a heavier service or satisfy a concrete compiler/editor requirement.
+Nested containers should not inherit that document payload unless they
+genuinely need it.
 
-The `Stylesheet` node should be a smaller replacement for `StructuralDocument`,
-not a renamed copy. Root facts should be sparse and compact:
+`Stylesheet` should not be a renamed `StructuralDocument`. Root facts, when
+added, should be sparse and compact:
 
 - source identity/reference, not copied source slices
 - optional packed field spans, not one object per deferred field

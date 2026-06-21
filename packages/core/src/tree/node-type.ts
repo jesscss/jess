@@ -109,6 +109,9 @@ export const nodeTypeBits: Record<string, number> = {
   Declaration: N.Declaration,
   VarDeclaration: N.VarDeclaration,
   Rules: N.Rules,
+  // Concrete root identity is `type === 'Stylesheet'`; the 32-bit mask has no
+  // spare concrete bit, so Stylesheet participates in rules checks only.
+  Stylesheet: N.Rules,
   Collection: N.Collection,
   Ruleset: N.Ruleset | N.Rules,
   AtRule: N.AtRule | N.Rules,
