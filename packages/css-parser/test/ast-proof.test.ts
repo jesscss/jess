@@ -25,7 +25,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     }
 
     expect(firstRule.selector).toBe('.a');
-    const [color, background, custom] = firstRule.rules.rules;
+    const [color, background, custom] = firstRule.rules;
     expect(isNode(color, N.Declaration)).toBe(true);
     expect(isNode(background, N.Declaration)).toBe(true);
     expect(isNode(custom, N.Declaration)).toBe(true);
@@ -65,7 +65,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
-  test('materializes only cheap structured selectors', () => {
+  test('keeps atomic selectors as strings and materializes cheap selector structure', () => {
     const result = parseFlatCssDeclarationStylesheet('selectors.css', `
       .simple { color: red; }
       #id.card { color: blue; }
@@ -74,6 +74,7 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       [data-x] { color: black; }
       .a[data-x] { color: gray; }
       .a > DIV { color: white; }
+      .a, .b { color: black; }
       .a > { color: yellow; }
       .a > + .b { color: cyan; }
       #id.1bad { color: pink; }
@@ -90,33 +91,27 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       complexRule,
       attributeRule,
       attributeCompoundRule,
-      uppercaseTypeRule,
-      danglingCombinatorRule,
-      consecutiveCombinatorRule,
-      invalidClassRule,
-      invalidTypeRule,
-      bareHyphenTypeRule,
-      doubleHyphenTypeRule,
-      invalidClassHyphenRule,
-      invalidIdHyphenRule
+      selectorListRule
     ] = result.tree.rules;
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector'
+    ]);
     expect(isNode(simpleRule, N.Ruleset) && simpleRule.selector).toBe('.simple');
     expect(isNode(attributeRule, N.Ruleset) && attributeRule.selector).toBe('[data-x]');
     expect(isNode(attributeCompoundRule, N.Ruleset) && isNode(attributeCompoundRule.selector, N.CompoundSelector)).toBe(true);
-    expect(isNode(uppercaseTypeRule, N.Ruleset) && uppercaseTypeRule.selector).toBe('.a > DIV');
-    expect(isNode(danglingCombinatorRule, N.Ruleset) && danglingCombinatorRule.selector).toBe('.a >');
-    expect(isNode(consecutiveCombinatorRule, N.Ruleset) && consecutiveCombinatorRule.selector).toBe('.a > + .b');
-    expect(isNode(invalidClassRule, N.Ruleset) && invalidClassRule.selector).toBe('#id.1bad');
-    expect(isNode(invalidTypeRule, N.Ruleset) && invalidTypeRule.selector).toBe('123.foo');
-    expect(isNode(bareHyphenTypeRule, N.Ruleset) && bareHyphenTypeRule.selector).toBe('-.foo');
-    expect(isNode(doubleHyphenTypeRule, N.Ruleset) && doubleHyphenTypeRule.selector).toBe('--.foo');
-    expect(isNode(invalidClassHyphenRule, N.Ruleset) && invalidClassHyphenRule.selector).toBe('#id.-');
-    expect(isNode(invalidIdHyphenRule, N.Ruleset) && invalidIdHyphenRule.selector).toBe('.a.#-');
     expect(isNode(compoundRule, N.Ruleset) && isNode(compoundRule.selector, N.CompoundSelector)).toBe(true);
     expect(isNode(pseudoRule, N.Ruleset) && isNode(pseudoRule.selector, N.CompoundSelector)).toBe(true);
     expect(isNode(complexRule, N.Ruleset) && isNode(complexRule.selector, N.ComplexSelector)).toBe(true);
+    expect(isNode(selectorListRule, N.Ruleset) && isNode(selectorListRule.selector, N.SelectorList)).toBe(true);
     if (!isNode(compoundRule, N.Ruleset) || !isNode(compoundRule.selector, N.CompoundSelector)) {
       throw new Error('Expected string-backed compound selector');
     }
@@ -129,14 +124,33 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     if (!isNode(complexRule, N.Ruleset) || !isNode(complexRule.selector, N.ComplexSelector)) {
       throw new Error('Expected string-backed complex selector');
     }
+    if (!isNode(selectorListRule, N.Ruleset) || !isNode(selectorListRule.selector, N.SelectorList)) {
+      throw new Error('Expected string-backed selector list');
+    }
     expect(compoundRule.selector.value).toEqual(['#id', '.card']);
     expect(pseudoRule.selector.value).toEqual(['.a', ':hover', '::before']);
     expect(attributeCompoundRule.selector.value).toEqual(['.a', '[data-x]']);
     expect(complexRule.selector.value).toEqual(['.a', '>', '.b', '+', 'div']);
+    expect(selectorListRule.selector.value).toEqual(['.a', '.b']);
     expect(serializeTypes(compoundRule)).not.toContain('(BasicSelector');
     expect(serializeTypes(pseudoRule)).not.toContain('(PseudoSelector');
     expect(serializeTypes(attributeCompoundRule)).not.toContain('(AttributeSelector');
     expect(serializeTypes(complexRule)).not.toContain('(Combinator');
+    expect(serializeTypes(selectorListRule)).toContain('(SelectorList');
+    expect(serializeTypes(selectorListRule)).not.toContain('(BasicSelector');
+  });
+
+  test('diagnoses malformed selector-list boundaries instead of dropping empty branches', () => {
+    const result = parseFlatCssDeclarationStylesheet('selector-list-boundary.css', `
+      .a, { color: red; }
+      .b,   { color: blue; }
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-selector',
+      'css-flat-unsupported-selector'
+    ]);
   });
 
   test('parses cheap block at-rules and still rejects nested qualified rules', () => {

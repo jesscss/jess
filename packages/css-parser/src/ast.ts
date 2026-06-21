@@ -9,6 +9,7 @@ import {
   query,
   ruleset,
   sel,
+  sellist,
   type AtRulePrelude,
   stylesheet,
   type Node,
@@ -40,6 +41,11 @@ import {
 export type FlatCssDeclarationStylesheetResult = ScannerParseResult<Stylesheet>;
 
 const EMPTY_DIAGNOSTICS: readonly ParserDiagnostic[] = [];
+const DECLARATION_FIELD_COUNT = 3;
+const DECLARATION_NAME_FIELD = 0;
+const DECLARATION_VALUE_FIELD = 1;
+const RULESET_FIELD_COUNT = 4;
+const RULESET_SELECTOR_FIELD = 0;
 
 type DiagnosticSink = (
   severity: ParserDiagnostic['severity'],
@@ -88,8 +94,8 @@ function parseDeclarationNodes(
           ...(importantStart !== -1 && { important: trimmedValue.slice(importantStart) })
         });
       }
-      setFieldSpan(node, 'name', nameStart, nameEnd);
-      setFieldSpan(node, 'value', valueStart, valueEnd);
+      setFieldSpan(node, DECLARATION_NAME_FIELD, DECLARATION_FIELD_COUNT, nameStart, nameEnd);
+      setFieldSpan(node, DECLARATION_VALUE_FIELD, DECLARATION_FIELD_COUNT, valueStart, valueEnd);
       declarations.push(node);
     } else if (source.slice(cursor, statementEnd).trim()) {
       addDiagnostic(
@@ -151,7 +157,7 @@ function materializeCheapCompound(component: string[]): string | Selector {
     : compound(component);
 }
 
-function materializeCheapSelector(components: CheapSelectorComponent[]): string | Selector {
+function materializeCheapSelectorBranch(components: CheapSelectorComponent[]): string | Selector {
   if (components.length === 1) {
     const only = components[0]!;
     if (Array.isArray(only)) {
@@ -166,7 +172,7 @@ function materializeCheapSelector(components: CheapSelectorComponent[]): string 
   }));
 }
 
-function parseCheapSelector(selector: string): string | Selector | undefined {
+function parseCheapSelectorBranch(selector: string): string | Selector | undefined {
   const source = selector.trim();
   if (!source) {
     return undefined;
@@ -177,9 +183,35 @@ function parseCheapSelector(selector: string): string | Selector | undefined {
   }
   if (components.length === 1) {
     const only = components[0]!;
-    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
+    return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelectorBranch(components);
   }
-  return materializeCheapSelector(components);
+  return materializeCheapSelectorBranch(components);
+}
+
+function parseCheapSelector(selector: string): string | Selector | undefined {
+  const source = selector.trim();
+  if (!source) {
+    return undefined;
+  }
+  const items: Array<string | Selector> = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const comma = findTopLevelDelimiter(source, ',', cursor, source.length);
+    const itemEnd = comma === -1 ? source.length : comma;
+    const item = parseCheapSelectorBranch(source.slice(cursor, itemEnd));
+    if (item === undefined) {
+      return undefined;
+    }
+    items.push(item);
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+    if (skipSourceTrivia(source, cursor, source.length) >= source.length) {
+      return undefined;
+    }
+  }
+  return items.length === 1 ? items[0]! : sellist(items);
 }
 
 function parseStatementNode(
@@ -366,7 +398,7 @@ function parseCssNodes(
           selector,
           rules
         });
-        setFieldSpan(node, 'selector', headerStart, headerEnd);
+        setFieldSpan(node, RULESET_SELECTOR_FIELD, RULESET_FIELD_COUNT, headerStart, headerEnd);
         children.push(node);
       }
     }
@@ -375,16 +407,8 @@ function parseCssNodes(
   return children;
 }
 
-function setFieldSpan(node: Node, field: string, start: number, end: number): void {
-  const childKeys = (node.constructor as typeof Node).childKeys;
-  if (!childKeys) {
-    return;
-  }
-  const index = childKeys.indexOf(field);
-  if (index === -1) {
-    return;
-  }
-  setPackedFieldSpan(node.fieldSpans ??= createPackedFieldSpans(childKeys.length), index, start, end);
+function setFieldSpan(node: Node, fieldIndex: number, fieldCount: number, start: number, end: number): void {
+  setPackedFieldSpan(node.fieldSpans ??= createPackedFieldSpans(fieldCount), fieldIndex, start, end);
 }
 
 function trimStartOffset(source: string, start: number, end: number): number {
