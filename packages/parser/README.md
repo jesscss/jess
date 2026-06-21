@@ -145,6 +145,9 @@ Start with these package-local docs:
 - [docs/STRUCTURAL-SCHEMA.md](docs/STRUCTURAL-SCHEMA.md) maps the current
   structural schema, side tables, services, and allocations back to those
   requirements.
+- [docs/implementation-map.md](docs/implementation-map.md) accounts for the
+  objects created by structural parsing and on-demand services, including the
+  current cleanup pressure points.
 
 ## Current Status
 
