@@ -493,7 +493,7 @@ describe('scss-parser (ast serialize)', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Reference
                   key: 'x'

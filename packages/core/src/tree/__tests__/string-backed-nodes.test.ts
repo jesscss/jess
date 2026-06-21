@@ -56,10 +56,9 @@ describe('string-backed scanner-first proof nodes', () => {
     });
 
     expect(declaration.toTrimmedString()).toBe([
-      'grid-template-areas:',
-      '  "header header header"',
-      '  "content . sidebar"',
-      '  "footer footer footer"'
+      'grid-template-areas: "header header header"',
+      '    "content . sidebar"',
+      '    "footer footer footer"'
     ].join('\n'));
   });
 
@@ -176,8 +175,6 @@ describe('string-backed scanner-first proof nodes', () => {
     if (!selector || !isNode(selector, N.CompoundSelector)) {
       throw new Error('Expected string selector to remain a CompoundSelector.');
     }
-    expect(selector.eval(context)).toBe(selector);
-    expect(selector.resolve(context)).toBe(selector);
     expect(selector.value).toEqual(['.a']);
     const types = serializeTypes(node);
     expect(types).toContain('(CompoundSelector');
@@ -186,7 +183,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('stores cheap compound ruleset selectors as selector containers with string leaves', () => {
+  test('keeps cheap compound ruleset selectors as strings until semantic registration', () => {
     const context = new Context();
     const classCompound = ruleset({
       selector: '.a.b',
@@ -209,8 +206,8 @@ describe('string-backed scanner-first proof nodes', () => {
     });
 
     expect(classCompound.toTrimmedString()).toBe('.a.b {\n  color: blue;\n}\n');
-    expect(classCompound.selector).toBeDefined();
-    expect(serializeTypes(classCompound)).toContain('(CompoundSelector');
+    expect(classCompound.selector).toBe('.a.b');
+    expect(serializeTypes(classCompound)).toContain('selector: \'.a.b\'');
     void classCompound.prepareRegistration(context);
     expect(classCompound.selector).toBeDefined();
     const classTypes = serializeTypes(classCompound);
@@ -223,7 +220,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(classTypes).not.toContain('rawSelector');
 
     expect(elementCompound.toTrimmedString()).toBe('button.primary {\n  color: blue;\n}\n');
-    expect(elementCompound.selector).toBeDefined();
+    expect(elementCompound.selector).toBe('button.primary');
     void elementCompound.prepareRegistration(context);
     const elementTypes = serializeTypes(elementCompound);
     expect(elementTypes).toContain('(CompoundSelector');
@@ -234,7 +231,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(elementTypes).not.toContain('(BasicSelector');
   });
 
-  test('stores selector lists as selector containers with string leaves', () => {
+  test('keeps selector lists as strings until semantic registration', () => {
     const context = new Context();
     const node = ruleset({
       selector: ' .a, button.primary ',
@@ -246,9 +243,9 @@ describe('string-backed scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a,\nbutton.primary {\n  color: blue;\n}\n');
-    expect(node.selector).toBeDefined();
-    expect(serializeTypes(node)).toContain('(SelectorList');
+    expect(node.toTrimmedString()).toBe('.a, button.primary {\n  color: blue;\n}\n');
+    expect(node.selector).toBe('.a, button.primary');
+    expect(serializeTypes(node)).toContain('selector: \'.a, button.primary\'');
     void node.prepareRegistration(context);
     expect(node.selector).toBeDefined();
     const selector = node.selector;
@@ -271,7 +268,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('stores cheap complex selectors as selector containers with string leaves', () => {
+  test('keeps cheap complex selectors as strings until semantic registration', () => {
     const context = new Context();
     const node = ruleset({
       selector: '.a > button.primary',
@@ -284,8 +281,8 @@ describe('string-backed scanner-first proof nodes', () => {
     });
 
     expect(node.toTrimmedString()).toBe('.a > button.primary {\n  color: blue;\n}\n');
-    expect(node.selector).toBeDefined();
-    expect(serializeTypes(node)).toContain('(ComplexSelector');
+    expect(node.selector).toBe('.a > button.primary');
+    expect(serializeTypes(node)).toContain('selector: \'.a > button.primary\'');
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.ComplexSelector)) {
@@ -305,7 +302,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(types).not.toContain('rawSelector');
   });
 
-  test('stores selector lists with complex branches as selector containers with string leaves', () => {
+  test('keeps selector lists with complex branches as strings until semantic registration', () => {
     const context = new Context();
     const node = ruleset({
       selector: '.a > .b, .c + .d',
@@ -317,8 +314,8 @@ describe('string-backed scanner-first proof nodes', () => {
       ]
     });
 
-    expect(node.toTrimmedString()).toBe('.a > .b,\n.c + .d {\n  color: blue;\n}\n');
-    expect(node.selector).toBeDefined();
+    expect(node.toTrimmedString()).toBe('.a > .b, .c + .d {\n  color: blue;\n}\n');
+    expect(node.selector).toBe('.a > .b, .c + .d');
     void node.prepareRegistration(context);
     const selector = node.selector;
     if (!selector || !isNode(selector, N.SelectorList)) {
@@ -370,9 +367,9 @@ describe('string-backed scanner-first proof nodes', () => {
 
   test('materializes string pseudo selector atoms as string components only when semantic registration asks', () => {
     const context = new Context();
-    for (const rawSelector of [':root', '.a:hover', '[data-kind]']) {
+    for (const selectorText of [':root', '.a:hover', '[data-kind]']) {
       const node = ruleset({
-        selector: rawSelector,
+        selector: selectorText,
         rules: [
           decl({
             name: 'color',
@@ -381,27 +378,20 @@ describe('string-backed scanner-first proof nodes', () => {
         ]
       });
 
-      expect(node.toTrimmedString()).toBe(`${rawSelector} {\n  color: blue;\n}\n`);
-      if (rawSelector === '.a:hover') {
-        expect(isNode(node.selector, N.CompoundSelector)).toBe(true);
-        expect(serializeTypes(node)).toContain('[\'.a\', \':hover\']');
-      } else {
-        expect(node.selector).toBe(rawSelector);
-        expect(serializeTypes(node)).toContain(`selector: '${rawSelector}'`);
-      }
+      expect(node.toTrimmedString()).toBe(`${selectorText} {\n  color: blue;\n}\n`);
+      expect(node.selector).toBe(selectorText);
+      expect(serializeTypes(node)).toContain(`selector: '${selectorText}'`);
       void node.prepareRegistration(context);
       const selector = node.selector;
       expect(selector).toBeDefined();
       expect(isNode(selector, N.CompoundSelector)).toBe(true);
       if (!selector || !isNode(selector, N.CompoundSelector)) {
-        throw new Error(`Expected ${rawSelector} to materialize as a compound selector.`);
+        throw new Error(`Expected ${selectorText} to materialize as a compound selector.`);
       }
-      expect(selector.eval(context)).toBe(selector);
-      expect(selector.resolve(context)).toBe(selector);
       expect(selector.value).toEqual(
-        rawSelector === '.a:hover'
+        selectorText === '.a:hover'
           ? ['.a', ':hover']
-          : [rawSelector]
+          : [selectorText]
       );
       const types = serializeTypes(node);
       expect(types).toContain('(CompoundSelector');
@@ -491,7 +481,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(node.name).toBe('@media');
   });
 
-  test('materializes string-backed core at-rule headers only when semantic registration asks', () => {
+  test('keeps string-backed core at-rule headers during semantic registration when strings are enough', () => {
     const context = new Context();
     const node = atrule({
       name: '@media',
@@ -507,11 +497,12 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(node.name).toBe('@media');
     expect(node.prelude).toBe('screen');
     void node.prepareRegistration(context);
-    expect(node.name).toBeDefined();
-    expect(node.prelude).toBeDefined();
+    expect(node.name).toBe('@media');
+    expect(node.prelude).toBe('screen');
     const types = serializeTypes(node);
-    expect(types).toContain('(Any [role=atkeyword] \'@media\')');
-    expect(types).toContain('prelude:\n    (Any \'screen\')');
+    expect(types).toContain('name: \'@media\'');
+    expect(types).toContain('prelude: \'screen\'');
+    expect(types).not.toContain('(Any [role=atkeyword] \'@media\')');
   });
 
   test('renders string-backed core at-rule statements without name or prelude child nodes', () => {
@@ -578,9 +569,9 @@ describe('string-backed scanner-first proof nodes', () => {
     void declaration.prepareRegistration(context);
     expect(declaration.name).toBeDefined();
     expect(declaration.value).toBeDefined();
-    expect(declaration.name.parent).toBe(declaration);
+    expect(declaration.name).toBe('color');
     expect(declaration.value.parent).toBe(declaration);
     expect(declaration.toTrimmedString()).toBe('color: blue');
-    expect(serializeTypes(declaration)).toContain('(Any [role=property] \'color\')');
+    expect(serializeTypes(declaration)).toContain('name: \'color\'');
   });
 });

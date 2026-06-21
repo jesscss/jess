@@ -7,13 +7,16 @@
  * drift as the scanner-first subset widens.
  */
 
+const RAW_NAME_START_SOURCE = String.raw`[-_a-zA-Z\x80-\uFFFF]`;
+const RAW_NAME_BODY_SOURCE = String.raw`[-_a-zA-Z0-9\x80-\uFFFF]*`;
+const RAW_NAME_SOURCE = String.raw`${RAW_NAME_START_SOURCE}${RAW_NAME_BODY_SOURCE}`;
 const RAW_ATTRIBUTE_SELECTOR_SOURCE =
-  String.raw`\[-?[-_a-zA-Z][\w-]*(?:[ \t]*[~|^$*]?=[ \t]*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|-?[_a-zA-Z][\w-]*))?(?:[ \t]+[is])?[ \t]*\]`;
-const RAW_PSEUDO_SELECTOR_SOURCE = String.raw`:{1,2}-?[_a-zA-Z][\w-]*`;
+  String.raw`\[-?${RAW_NAME_SOURCE}(?:[ \t]*[~|^$*]?=[ \t]*(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|-?${RAW_NAME_SOURCE}))?(?:[ \t]+[is])?[ \t]*\]`;
+const RAW_PSEUDO_SELECTOR_SOURCE = String.raw`:{1,2}-?${RAW_NAME_SOURCE}`;
 const RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE =
-  String.raw`(?:[.#][-_a-zA-Z][\w-]*|${RAW_PSEUDO_SELECTOR_SOURCE}|${RAW_ATTRIBUTE_SELECTOR_SOURCE})`;
+  String.raw`(?:[.#]${RAW_NAME_SOURCE}|${RAW_PSEUDO_SELECTOR_SOURCE}|${RAW_ATTRIBUTE_SELECTOR_SOURCE})`;
 const RAW_SELECTOR_BRANCH_SOURCE =
-  String.raw`(?:(?:[-_a-zA-Z][\w-]*|\*)(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})*|(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})+)`;
+  String.raw`(?:(?:${RAW_NAME_SOURCE}|\*)(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})*|(?:${RAW_SIMPLE_SELECTOR_COMPONENT_SOURCE})+)`;
 const RAW_COMPLEX_SELECTOR_SOURCE =
   String.raw`${RAW_SELECTOR_BRANCH_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)${RAW_SELECTOR_BRANCH_SOURCE})*`;
 const RAW_RELATIVE_SELECTOR_SOURCE =
@@ -26,10 +29,10 @@ const RAW_SELECTOR_BRANCH_PATTERN =
   new RegExp(String.raw`^${RAW_SELECTOR_BRANCH_SOURCE}$`, 'u');
 const RAW_SIMPLE_SELECTOR_PATTERN =
   new RegExp(String.raw`^(?:\*|[-_a-zA-Z][\w-]*|[.#][-_a-zA-Z][\w-]*|${RAW_PSEUDO_SELECTOR_SOURCE}|${RAW_ATTRIBUTE_SELECTOR_SOURCE})$`, 'u');
-const RAW_EXTEND_TARGET_SELECTOR_PATTERN = /^[.#][-_a-zA-Z][\w-]*$/u;
+const RAW_EXTEND_TARGET_SELECTOR_PATTERN = new RegExp(String.raw`^[.#]${RAW_NAME_SOURCE}$`, 'u');
 const RAW_EXTEND_TARGET_COMPLEX_SELECTOR_PATTERN =
-  /^[.#][-_a-zA-Z][\w-]*(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#][-_a-zA-Z][\w-]*)+$/u;
-const RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = /^&:{1,2}[-_a-zA-Z][\w-]*$/u;
+  new RegExp(String.raw`^[.#]${RAW_NAME_SOURCE}(?:(?:[ \t]+|[ \t]*[>+~][ \t]*)[.#]${RAW_NAME_SOURCE})+$`, 'u');
+const RAW_NESTED_AMPERSAND_PSEUDO_SELECTOR_PATTERN = new RegExp(String.raw`^&:{1,2}${RAW_NAME_SOURCE}$`, 'u');
 
 /**
  * @internal Scanner-first admission helper, not a supported public authoring

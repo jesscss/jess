@@ -141,9 +141,9 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
     ? (
         node === options?.atRuleBodyNode
           ? options.atRuleBodyOverride
-          : node.getRenderRules()
+          : node
       )
-    : node.rules;
+    : node;
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -235,21 +235,6 @@ export function flattenVisibleRulesForRender(
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
       }
-      if (isNode(child, N.Rules)) {
-        if (!child.visible && !child.fullRender && !hasPrintableTrivia(child, options)) {
-          continue;
-        }
-        if (hasLeadingBlockComment(child, options)) {
-          pushContainer(child);
-          continue;
-        }
-        if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
-          pushContainer(child);
-          continue;
-        }
-        iterateRules(child, allowTransparentFlatten, forceLeadingLeaves);
-        continue;
-      }
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
@@ -296,6 +281,18 @@ export function flattenVisibleRulesForRender(
       if (child.visible || child.fullRender || hasPrintableTrivia(child, options)) {
         if (isNode(child, N.Ruleset | N.AtRule)) {
           pushContainer(child);
+          continue;
+        }
+        if (isNode(child, N.Rules)) {
+          if (hasLeadingBlockComment(child, options)) {
+            pushContainer(child);
+            continue;
+          }
+          if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+            pushContainer(child);
+            continue;
+          }
+          iterateRules(child, allowTransparentFlatten, forceLeadingLeaves);
           continue;
         }
         pushLeaf(child, forceLeadingLeaves);

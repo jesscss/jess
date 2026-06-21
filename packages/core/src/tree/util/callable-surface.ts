@@ -1,6 +1,5 @@
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
-import { Comment } from '../comment.js';
-import { F_STATIC, Node } from '../node.js';
+import { F_VISIBLE, Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
@@ -23,53 +22,8 @@ export function getRootSourceRules(rules: Rules): Rules {
   return current;
 }
 
-function copyCallableAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const copied = node.derive();
-  return copied instanceof Node ? copied : undefined;
-}
-
-function copyCallableCommentNode(node: Comment): Node {
-  return new Comment(
-    node.value,
-    node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location,
-    node.sourceRoot?._treeContext
-  ).inherit(node);
-}
-
-function copyCallableReusableLeaf(node: Node): Node | undefined {
-  return node.canReuseAsLeaf() ? node.reuseAsLeaf() : undefined;
-}
-
-function copyCallableRulesNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return copyCallableCommentNode(node);
-  }
-  const copiedAmpersand = copyCallableAmpersand(node);
-  if (copiedAmpersand) {
-    return copiedAmpersand;
-  }
-  const reusableLeaf = copyCallableReusableLeaf(node);
-  if (reusableLeaf) {
-    return reusableLeaf;
-  }
-  return node.clone(true, copyCallableRulesNode);
-}
-
-function copyCallableRulesChildren(sourceRules: Rules): Node[] {
-  const source = sourceRules.rules;
-  const out = new Array<Node>(source.length);
-  for (let i = 0; i < source.length; i++) {
-    out[i] = copyCallableRulesNode(source[i]!);
-  }
-  return out;
-}
-
-function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
-  const output = sourceRules.derive([]);
+function createShallowCallableRulesSurface(sourceRules: Rules): Rules {
+  const output = createDerivedRulesSurface(sourceRules);
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
@@ -78,32 +32,12 @@ function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
   return output;
 }
 
-function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
-  if (!sourceRules.hasFlag(F_STATIC)) {
-    return false;
-  }
-  const value = sourceRules.rules;
-  for (let i = 0; i < value.length; i++) {
-    const child = value[i]!;
-    if (
-      child.type === 'Ruleset'
-      || child.type === 'AtRule'
-      || child.options?.assign !== undefined
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-  return sourceRules.derive();
+  return createShallowCallableRulesSurface(sourceRules);
 }
 
 export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-  return canReuseStaticCallableChildren(sourceRules)
-    ? createStaticCallableRulesSurface(sourceRules)
-    : sourceRules.derive(copyCallableRulesChildren(sourceRules));
+  return createShallowCallableRulesSurface(sourceRules);
 }
 
 type DerivedRulesSurfaceOptions = {
@@ -129,6 +63,7 @@ function createDerivedRulesSurface(
     sourceLocation,
     sourceRules._treeContext
   ).inherit(sourceRules);
+  output.addFlag(F_VISIBLE);
   output.scopeFrame = undefined;
   if (options?.rulesOptions || options?.markMixinOutput) {
     output.options = {

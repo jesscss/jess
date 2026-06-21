@@ -51,7 +51,7 @@ describe('serializeTypes coverage', () => {
                         )
                       args:
                         (List
-                          items:
+                          value:
                             [
                               (Reference
                                 target:
@@ -125,7 +125,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=name] '.mixin')
         params:
           (List
-            items:
+            value:
               [
                 (VarDeclaration
                   name:
@@ -221,7 +221,7 @@ describe('serializeTypes coverage', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Color
                   node: 'red'
@@ -387,7 +387,7 @@ test('rest parameter in mixin', () => {
         (Any [role=name] '.mixin')
       params:
         (List
-          items:
+          value:
             [
               (Rest
                 node: 'args'
@@ -452,7 +452,7 @@ test('static rgb() is preserved as Call node', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Num 255)
                 (Num 0)
@@ -474,7 +474,7 @@ test('rgb() with variable creates Call node', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Reference
                   key: 'r'
@@ -498,7 +498,7 @@ test('static hsl() is preserved as Call node', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Num 120)
                 (Dimension
@@ -974,7 +974,7 @@ test('chained mixin calls - with arguments', () => {
                       )
                     args:
                       (List
-                        items:
+                        value:
                           [
                             (VarDeclaration
                               name:
@@ -1020,7 +1020,7 @@ test('chained mixin calls - complex chain with accessors', () => {
                                       )
                                     args:
                                       (List
-                                        items:
+                                        value:
                                           [
                                             (VarDeclaration
                                               name:

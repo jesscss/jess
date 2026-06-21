@@ -79,14 +79,14 @@ describe('AtRule', () => {
     const node = atrule({
       name: '@media',
       prelude: 'screen',
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('.inside')]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         })
-      ])
+      ]
     });
 
     expect(node.name).toBe('@media');
@@ -110,14 +110,14 @@ describe('AtRule', () => {
     const node = atrule({
       name: '@media',
       prelude: 'screen',
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('.inside')]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         })
-      ])
+      ]
     });
     const evaluated = await node.eval(context);
 
@@ -1900,7 +1900,7 @@ describe('AtRule', () => {
 
   it('normalizes leading prelude whitespace when writing direct leaf at-rules', () => {
     const writer = new CountingWriter();
-    const node = atrule({
+    const node = atrulestatement({
       name: any('@namespace', { role: 'atkeyword' }),
       prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
     });
@@ -1913,7 +1913,7 @@ describe('AtRule', () => {
   });
 
   it('normalizes leading prelude whitespace when rendering evaluated leaf at-rules', () => {
-    const node = atrule({
+    const node = atrulestatement({
       name: any('@impor', { role: 'atkeyword' }),
       prelude: quoted(any('impor-typo-dont-parse-as-@import.less'))
     });

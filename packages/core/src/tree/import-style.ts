@@ -631,9 +631,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return [];
     }
     if (isNode(postlude, N.List)) {
-      return postlude.items;
+      return postlude.value;
     }
-    return isNode(postlude, N.Sequence) ? postlude.items : [postlude];
+    return isNode(postlude, N.Sequence) ? postlude.value : [postlude];
   }
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
@@ -1348,7 +1348,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (isNode(current, N.Call)) {
         const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.args?.items ?? [];
+          const args = current.args?.value ?? [];
           const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);

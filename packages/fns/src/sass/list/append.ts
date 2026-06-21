@@ -15,7 +15,7 @@ const append = defineFunction(
   function(list: Node, val: Node, separator?: Quoted): Node {
     const info = getSassListInfo(list);
     const sep = resolveSassSeparator(separator, info.sep);
-    return createSassListResult([...info.items, val], sep, info.bracketed);
+    return createSassListResult([...info.value, val], sep, info.bracketed);
   },
   {
     params: [

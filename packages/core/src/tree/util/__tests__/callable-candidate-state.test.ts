@@ -102,19 +102,20 @@ describe('callable candidate state helper', () => {
     expect(state.definitionFrame).toBeUndefined();
   });
 
-  it('copies string-backed at-rules inside owned callable-rules surfaces', () => {
+  it('wraps string-backed at-rules in shallow callable-rules surfaces', () => {
     const callSiteRules = rules([]);
+    const mediaRule = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        new Declaration({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
     const sourceRules = rules([
-      atrule({
-        name: '@media',
-        prelude: 'screen',
-        rules: [
-          new Declaration({
-            name: 'color',
-            value: ['blue']
-          })
-        ]
-      })
+      mediaRule
     ]);
     const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules });
 
@@ -128,6 +129,8 @@ describe('callable candidate state helper', () => {
     });
 
     expect(state.rules).not.toBe(sourceRules);
+    expect(state.rules.rules[0]).toBe(mediaRule);
+    expect(mediaRule.parent).toBe(sourceRules);
     expect(state.rules.toString()).toContain('@media screen');
     expect(state.rules.toString()).toContain('color: blue;');
     const types = serializeTypes(state.rules);

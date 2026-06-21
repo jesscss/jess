@@ -137,6 +137,115 @@ function parseCheapAtRulePreludeList(text: string, options?: SourceScannerOption
   return items ? list(items.map(materializeCheapAtRulePreludeListItem)) : undefined;
 }
 
+function isMediaRangeValueCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || (code >= 48 && code <= 57)
+    || code === 45
+    || code === 46
+    || code === 95
+    || code === 37
+  );
+}
+
+function readMediaRangeAtom(source: string, start: number): [value: string, next: number] | undefined {
+  let cursor = start;
+  while (cursor < source.length && isMediaRangeValueCode(source.charCodeAt(cursor))) {
+    cursor++;
+  }
+  return cursor === start ? undefined : [source.slice(start, cursor), cursor];
+}
+
+function readMediaRangeOperator(source: string, start: number): [value: string, next: number] | undefined {
+  const char = source[start];
+  if (char !== '<' && char !== '>' && char !== '=') {
+    return undefined;
+  }
+  if (char === '=') {
+    return source[start + 1] === '=' ? undefined : ['=', start + 1];
+  }
+  const next = source[start + 1] === '=' ? start + 2 : start + 1;
+  return [source.slice(start, next), next];
+}
+
+function isMediaRangeIdentifierAtom(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return (
+    (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 95
+    || (
+      code === 45
+      && value.length > 1
+      && (
+        (value.charCodeAt(1) >= 65 && value.charCodeAt(1) <= 90)
+        || (value.charCodeAt(1) >= 97 && value.charCodeAt(1) <= 122)
+        || value.charCodeAt(1) === 45
+        || value.charCodeAt(1) === 95
+      )
+    )
+  );
+}
+
+function mediaRangeAtomNode(value: string): Node {
+  return isMediaRangeIdentifierAtom(value) ? any(value, { role: 'ident' }) : any(value);
+}
+
+function isSupportedMediaRangeParts(parts: readonly Node[]): boolean {
+  if (parts.length === 3) {
+    return (
+      isMediaRangeIdentifierAtom(parts[0]!.valueOf())
+      !== isMediaRangeIdentifierAtom(parts[2]!.valueOf())
+    );
+  }
+  if (parts.length !== 5) {
+    return false;
+  }
+  const firstOperator = parts[1]!.valueOf();
+  const secondOperator = parts[3]!.valueOf();
+  return (
+    firstOperator[0] === secondOperator[0]
+    && firstOperator !== '='
+    && secondOperator !== '='
+    && isMediaRangeIdentifierAtom(parts[2]!.valueOf())
+  );
+}
+
+function parseCheapMediaRangePrelude(text: string): AtRulePrelude | undefined {
+  const source = text.trim();
+  if (source.length < 3 || source[0] !== '(' || source[source.length - 1] !== ')') {
+    return undefined;
+  }
+  const inner = source.slice(1, -1);
+  const parts: Node[] = [];
+  let cursor = skipSourceTrivia(inner, 0);
+  let expectAtom = true;
+  while (cursor < inner.length) {
+    if (expectAtom) {
+      const atom = readMediaRangeAtom(inner, cursor);
+      if (!atom) {
+        return undefined;
+      }
+      parts.push(mediaRangeAtomNode(atom[0]));
+      cursor = atom[1];
+    } else {
+      const operator = readMediaRangeOperator(inner, cursor);
+      if (!operator) {
+        return undefined;
+      }
+      parts.push(any(operator[0], { role: 'operator' }));
+      cursor = operator[1];
+    }
+    cursor = skipSourceTrivia(inner, cursor);
+    expectAtom = !expectAtom;
+  }
+  if (expectAtom || !isSupportedMediaRangeParts(parts)) {
+    return undefined;
+  }
+  return paren(query(parts));
+}
+
 function isPageSelectorNameCode(code: number): boolean {
   return (
     (code >= 65 && code <= 90)
@@ -290,9 +399,14 @@ function parseBlockAtRuleNode(
     return undefined;
   }
   const preludeText = source.slice(nameEnd, blockStart).trim();
-  const prelude = name.toLowerCase() === '@page'
-    ? parseCheapPagePrelude(preludeText)
-    : parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
+  const lowerName = name.toLowerCase();
+  let prelude: AtRulePrelude | undefined;
+  if (lowerName === '@page') {
+    prelude = parseCheapPagePrelude(preludeText);
+  } else {
+    prelude = lowerName === '@media' ? parseCheapMediaRangePrelude(preludeText) : undefined;
+    prelude ??= parseCheapAtRulePrelude(preludeText) ?? parseCheapAtRulePreludeList(preludeText);
+  }
   if (preludeText && !prelude) {
     return undefined;
   }

@@ -183,6 +183,14 @@ describe('parseFlatCssDeclarationStylesheet', () => {
         .inside { color: red; }
       }
 
+      @media (width > 0) {
+        .range { color: purple; }
+      }
+
+      @media (100em < width < 200em) {}
+
+      @media (height > -100px) {}
+
       .outer {
         .nested { color: blue; }
       }
@@ -194,10 +202,18 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     const { tree: root } = result;
 
     expect(result.diagnostics).toEqual([]);
-    expect(root.rules).toHaveLength(3);
-    const [media, outer, kept] = root.rules;
+    expect(root.rules).toHaveLength(6);
+    const [media, rangeMedia, chainedRangeMedia, signedRangeMedia, outer, kept] = root.rules;
     expect(isNode(media, N.AtRule)).toBe(true);
-    if (!isNode(media, N.AtRule)) {
+    expect(isNode(rangeMedia, N.AtRule)).toBe(true);
+    expect(isNode(chainedRangeMedia, N.AtRule)).toBe(true);
+    expect(isNode(signedRangeMedia, N.AtRule)).toBe(true);
+    if (
+      !isNode(media, N.AtRule)
+      || !isNode(rangeMedia, N.AtRule)
+      || !isNode(chainedRangeMedia, N.AtRule)
+      || !isNode(signedRangeMedia, N.AtRule)
+    ) {
       throw new Error('Expected block at-rule');
     }
     expect(media.name).toBe('@media');
@@ -219,6 +235,58 @@ describe('parseFlatCssDeclarationStylesheet', () => {
       '}',
       ''
     ].join('\n'));
+    expect(serializeTypes(rangeMedia)).toContainString(`
+      prelude:
+        (Paren
+          node:
+            (QueryCondition
+              value:
+                [
+                  (Any [role=ident] 'width')
+                  (Any [role=operator] '>')
+                  (Any '0')
+                ]
+            )
+        )
+    `);
+    expect(rangeMedia.toTrimmedString()).toBe([
+      '@media (width > 0) {',
+      '  .range {',
+      '    color: purple;',
+      '  }',
+      '}',
+      ''
+    ].join('\n'));
+    expect(serializeTypes(chainedRangeMedia)).toContainString(`
+      prelude:
+        (Paren
+          node:
+            (QueryCondition
+              value:
+                [
+                  (Any '100em')
+                  (Any [role=operator] '<')
+                  (Any [role=ident] 'width')
+                  (Any [role=operator] '<')
+                  (Any '200em')
+                ]
+            )
+        )
+    `);
+    expect(serializeTypes(signedRangeMedia)).toContainString(`
+      prelude:
+        (Paren
+          node:
+            (QueryCondition
+              value:
+                [
+                  (Any [role=ident] 'height')
+                  (Any [role=operator] '>')
+                  (Any '-100px')
+                ]
+            )
+        )
+    `);
     expect(isNode(outer, N.Ruleset)).toBe(true);
     if (!isNode(outer, N.Ruleset)) {
       throw new Error('Expected outer ruleset');
@@ -250,6 +318,21 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     ].join('\n'));
   });
 
+  test('diagnoses malformed media ranges instead of widening raw preludes', () => {
+    const result = parseFlatCssDeclarationStylesheet('media-range.css', `
+      @media (width == 0) {}
+      @media (100em < width > 200em) {}
+      @media (1 < 2) {}
+    `);
+
+    expect(result.tree.rules).toEqual([]);
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-at-rule',
+      'css-flat-unsupported-at-rule'
+    ]);
+  });
+
   test('parses cheap page at-rule selectors as existing ident list preludes', () => {
     const result = parseFlatCssDeclarationStylesheet('page.css', `
       @page :left { background: black }
@@ -271,12 +354,12 @@ describe('parseFlatCssDeclarationStylesheet', () => {
     if (!isNode(leftPage.prelude, N.List) || !isNode(namedPage.prelude, N.List)) {
       throw new Error('Expected page selector prelude lists');
     }
-    expect(leftPage.prelude.items.map(item => item.valueOf())).toEqual([':left']);
-    expect(namedPage.prelude.items.map(item => item.valueOf())).toEqual(['Test:First', ':right']);
+    expect(leftPage.prelude.value.map(item => item.valueOf())).toEqual([':left']);
+    expect(namedPage.prelude.value.map(item => item.valueOf())).toEqual(['Test:First', ':right']);
     expect(serializeTypes(leftPage)).toContainString(`
       prelude:
         (List
-          items:
+          value:
             [
               (Any [role=ident] ':left')
             ]

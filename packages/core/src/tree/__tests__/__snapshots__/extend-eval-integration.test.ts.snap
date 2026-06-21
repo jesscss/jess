@@ -502,7 +502,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
           (Paren
             node:
               (QueryCondition
-                items:
+                value:
                   [
                     (Keyword [role=keyword] 'tv')
                   ]
@@ -588,7 +588,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                     (Paren
                       node:
                         (QueryCondition
-                          items:
+                          value:
                             [
                               (Keyword [role=keyword] 'plasma')
                             ]
@@ -1352,7 +1352,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
           (Paren
             node:
               (QueryCondition
-                items:
+                value:
                   [
                     (Keyword [role=keyword] 'tv')
                   ]
@@ -1419,7 +1419,7 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
                     (Paren
                       node:
                         (QueryCondition
-                          items:
+                          value:
                             [
                               (Keyword [role=keyword] 'plasma')
                             ]

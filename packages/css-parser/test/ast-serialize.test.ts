@@ -97,7 +97,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=atkeyword] '@page')
         prelude:
           (List
-            items:
+            value:
               [
                 (Any [role=ident] 'Test:first')
               ]
@@ -275,7 +275,7 @@ describe('serializeTypes coverage', () => {
         name: 'color'
         args:
           (List
-            items:
+            value:
               [
                 (Color
                   node: 'plum'
@@ -492,7 +492,7 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] 'm')
         value:
           (List
-            items:
+            value:
               [
                 (Num 1)
                 (Num 2)

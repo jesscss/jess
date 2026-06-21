@@ -1,3 +1,4 @@
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { type Context } from '../context.js';
 import {
   defineType,
@@ -7,6 +8,7 @@ import {
   type NodeOptions
 } from './node.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
+import { type RenderBuffer } from './util/render-buffer.js';
 
 export type AtRuleStatementField = string | Node;
 
@@ -14,6 +16,10 @@ export type AtRuleStatementValue = {
   name: AtRuleStatementField;
   prelude?: AtRuleStatementField;
 };
+
+function trimLeadingHeaderWhitespace(text: string): string {
+  return text.replace(/^\s+/u, '');
+}
 
 /**
  * Statement-form at-rule such as `@charset "utf-8";` or `@import "x.css";`.
@@ -42,7 +48,6 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this.name = this._processNodes(value.name);
     this.prelude = this._processNodes(value.prelude);
     this._treeContext = treeContext;
-    this.addFlag(F_STATIC);
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): AtRuleStatement {
@@ -60,8 +65,63 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     ).inherit(this);
   }
 
-  override resolve(_context: Context): this {
-    return this;
+  override resolve(context: Context): MaybePromise<AtRuleStatement> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
+    return this.eval(context);
+  }
+
+  protected override evalNode(context: Context): MaybePromise<AtRuleStatement> {
+    const evalField = (field: AtRuleStatementField): MaybePromise<AtRuleStatementField> => (
+      field instanceof Node ? field.eval(context) : field
+    );
+    const finish = (
+      name: AtRuleStatementField,
+      prelude: AtRuleStatementField | undefined
+    ): AtRuleStatement => {
+      if (name === this.name && prelude === this.prelude) {
+        return this;
+      }
+      return new AtRuleStatement(
+        {
+          name,
+          ...(prelude !== undefined && { prelude })
+        },
+        this._options ? { ...this._options } : undefined,
+        this._location?.length ? this._location : undefined,
+        this._treeContext
+      ).inherit(this);
+    };
+    const name = evalField(this.name);
+    if (isThenable(name)) {
+      return name.then((evaluatedName) => {
+        const prelude = this.prelude === undefined ? undefined : evalField(this.prelude);
+        return isThenable(prelude)
+          ? prelude.then(evaluatedPrelude => finish(evaluatedName, evaluatedPrelude))
+          : finish(evaluatedName, prelude);
+      });
+    }
+    const prelude = this.prelude === undefined ? undefined : evalField(this.prelude);
+    return isThenable(prelude)
+      ? prelude.then(evaluatedPrelude => finish(name, evaluatedPrelude))
+      : finish(name, prelude);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): MaybePromise<string>;
+  override render(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (this.hasFlag(F_STATIC)) {
+      return super.render(context, bufferOrOptions as RenderBuffer, options);
+    }
+    const evaluated = this.eval(context);
+    return isThenable(evaluated)
+      ? evaluated.then(node => this.renderOutput(context, node, bufferOrOptions, options))
+      : this.renderOutput(context, evaluated, bufferOrOptions, options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -77,12 +137,20 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       : `${String(this.name.valueOf())} ${String(this.prelude.valueOf())}`;
   }
 
-  private writeField(field: AtRuleStatementField, options: FinalPrintOptions): void {
-    if (field instanceof Node) {
-      field.toTrimmedString(options);
+  private writeField(field: AtRuleStatementField, options: FinalPrintOptions, trimLeading = false): void {
+    if (typeof field === 'string') {
+      options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(field) : field, this);
       return;
     }
-    options.writer.add(field, this);
+    const scalarValue = (field as { value?: unknown }).value;
+    if (typeof scalarValue === 'string') {
+      options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(scalarValue) : scalarValue, field);
+      return;
+    }
+    if (field instanceof Node) {
+      field.writeSyntax(options);
+      return;
+    }
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -90,7 +158,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this.writeField(this.name, options);
     if (this.prelude !== undefined && this.prelude !== '') {
       writer.add(' ');
-      this.writeField(this.prelude, options);
+      this.writeField(this.prelude, options, true);
     }
     writer.add(';', this);
   }

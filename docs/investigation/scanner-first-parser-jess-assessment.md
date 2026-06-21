@@ -28,14 +28,12 @@ whether that payload is one child node, one token-like value, or one homogeneous
 list of children, the default shape should be `.value`. Alternate child names
 such as `left`/`right`, `name`/`value`, `selector`/`rules`, or
 `guard`/`body` are justified when the node has multiple distinct roles.
-Legacy names such as `List.items`, `Sequence.items`,
-`CompoundSelector.components`, and declaration value wrapper fields should be
-treated as shape debt and migration candidates, not as names to preserve by
-default.
-Scanner-first work should not invent more arbitrary list-field names, and the
-implementation plan should include a deliberate audit of where existing
-single-payload node fields can collapse back to `.value` without breaking
-user-visible behavior.
+Legacy single-payload names such as `List.items`, `Sequence.items`,
+`CompoundSelector.components`, and declaration value wrapper fields are shape
+debt. They must not be preserved, reintroduced, or replaced with compatibility
+aliases. Scanner-first work must not invent more arbitrary list-field names; it
+must migrate single-payload nodes to `.value` unless the node has multiple
+semantic fields.
 
 The same rule applies to rules-container bodies. `Rules.rules` is a justified
 role name because rules containers have a distinct body role, but at structural
@@ -485,11 +483,11 @@ scanner-first replacement should evaluate whether that payload can become
 field names are only a way to classify current behavior; they should not
 freeze those names into the next parser architecture.
 
-The first cleanup rule is concrete: single-payload collection nodes should use
+The first cleanup rule is concrete: single-payload collection nodes must use
 `.value` as their storage and traversal surface. Old names such as `.items`,
-`.components`, and `.selectors` should be migrated at callsites, not preserved
-as compatibility aliases. `Rules` is the exception because `.rules` is the
-semantic body contract for rule containers, not an old list alias.
+`.components`, and `.selectors` must be migrated at callsites, not preserved as
+compatibility aliases. `Rules` is the exception because `.rules` is the semantic
+body contract for rule containers, not an old list alias.
 
 `Rules` needs a separate design decision. Today `Ruleset`, `AtRule`, and
 `Mixin` each own a `rules: Rules` node, so the child body is a node wrapper

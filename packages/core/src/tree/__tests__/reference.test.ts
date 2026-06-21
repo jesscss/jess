@@ -1785,8 +1785,8 @@ describe('reference', () => {
       expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
         expect(result.parent).not.toBe(refNode);
-        expect(result.items).toHaveLength(sourceList.items.length);
-        expect(sourceList.items).toHaveLength(2);
+        expect(result.value).toHaveLength(sourceList.value.length);
+        expect(sourceList.value).toHaveLength(2);
         expect(sourceList.frozen).toBe(true);
       }
     });

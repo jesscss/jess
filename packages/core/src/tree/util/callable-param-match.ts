@@ -42,8 +42,8 @@ export function matchCallableParams({
   const bindingRecordsByIndex = new Array<CallableParamBindingRecord | undefined>(params.length);
   const signatureParts: Array<string | undefined> = new Array(params.length);
   let hasRestParam = false;
-  for (let i = 0; i < params.items.length; i++) {
-    if (params.items[i]!.type === 'Rest') {
+  for (let i = 0; i < params.value.length; i++) {
+    if (params.value[i]!.type === 'Rest') {
       hasRestParam = true;
       break;
     }
@@ -52,8 +52,8 @@ export function matchCallableParams({
   const positions = params.length;
   let requiredPositions = 0;
 
-  for (let i = 0; i < params.items.length; i++) {
-    const param = params.items[i]!;
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
     if (isNode(param, N.VarDeclaration)) {
       if (param.value instanceof Nil) {
         requiredPositions++;
@@ -78,8 +78,8 @@ export function matchCallableParams({
     let argValue: Node;
 
     if (isNode(arg, N.VarDeclaration)) {
-      for (let j = 0; j < params.items.length; j++) {
-        const candidate = params.items[j]!;
+      for (let j = 0; j < params.value.length; j++) {
+        const candidate = params.value[j]!;
         if (isNode(candidate, N.VarDeclaration)) {
           if (candidate.name.valueOf() === arg.name.valueOf()) {
             paramIndex = j;
@@ -95,7 +95,7 @@ export function matchCallableParams({
         }
       }
       if (paramIndex >= 0) {
-        param = params.items[paramIndex];
+        param = params.value[paramIndex];
         argValue = arg.value;
       } else {
         match = false;
@@ -103,7 +103,7 @@ export function matchCallableParams({
       }
     } else {
       paramIndex = i;
-      param = params.items[paramIndex];
+      param = params.value[paramIndex];
       if (!param) {
         match = false;
         break;
@@ -167,7 +167,7 @@ export function matchCallableParams({
   if (argPos < requiredPositions) {
     return undefined;
   }
-  if (args.length > 1 && params.items.length === 1 && requiredPositions === 1) {
+  if (args.length > 1 && params.value.length === 1 && requiredPositions === 1) {
     return undefined;
   }
   if (!match) {
@@ -175,7 +175,7 @@ export function matchCallableParams({
   }
 
   for (let i = 0; i < positions; i++) {
-    const param = params.items[i]!;
+    const param = params.value[i]!;
     if (signatureParts[i] !== undefined) {
       continue;
     }

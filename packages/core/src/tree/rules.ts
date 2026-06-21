@@ -390,21 +390,21 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Rules)) {
+  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
     return node;
   }
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
-    return node.rules;
+  if (isNode(node, N.Rules)) {
+    return node;
   }
   return undefined;
 }
 
 function childCallableRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Rules)) {
+  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
     return node;
   }
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
-    return node.rules;
+  if (isNode(node, N.Rules)) {
+    return node;
   }
   return undefined;
 }
@@ -3848,8 +3848,8 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
         return;
       }
-      const isChildRules = isNode(n, N.Rules);
       const isRulesetOrAtRule = isBlockContainer(n);
+      const isChildRules = !isRulesetOrAtRule && isNode(n, N.Rules);
       // Add indentation only for simple nodes (declarations, etc.)
       // Ruleset and AtRule nodes indent themselves in renderOpening
       // Emit directly to preserve source map segments
@@ -5389,9 +5389,15 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       let keepGoing = true;
       while (stack.length > 0 && keepGoing) {
         const node = stack.pop()!;
-        if (isNode(node, N.List) || (assign === '&_:' && isNode(node, N.Sequence))) {
-          for (let i = node.items.length - 1; i >= 0; i--) {
-            stack.push(node.items[i]!);
+        if (isNode(node, N.List)) {
+          for (let i = node.value.length - 1; i >= 0; i--) {
+            stack.push(node.value[i]!);
+          }
+          continue;
+        }
+        if (assign === '&_:' && isNode(node, N.Sequence)) {
+          for (let i = node.value.length - 1; i >= 0; i--) {
+            stack.push(node.value[i]!);
           }
           continue;
         }
@@ -5468,17 +5474,17 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       const container = assign === '&_:'
         ? (isNode(currentValue, N.Sequence) ? currentValue : undefined)
         : (isNode(currentValue, N.List) ? currentValue : undefined);
-      if (!container || container.items.length === 0) {
+      if (!container || container.value.length === 0) {
         return decl;
       }
-      const first = container.items[0];
+      const first = container.value[0];
       if (!isNode(first, N.Reference) || first.options?.type !== 'declaration') {
         return decl;
       }
-      const inlinedItems = new Array<Node>(container.items.length);
+      const inlinedItems = new Array<Node>(container.value.length);
       inlinedItems[0] = copyMergedValue(priorValue);
-      for (let i = 1; i < container.items.length; i++) {
-        inlinedItems[i] = copyMergedValue(container.items[i]!);
+      for (let i = 1; i < container.value.length; i++) {
+        inlinedItems[i] = copyMergedValue(container.value[i]!);
       }
       const inlinedValue = assign === '&_:'
         ? spaced(inlinedItems)
@@ -5534,30 +5540,30 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
         return node;
       }
       const current = declValue;
-      if (!isNode(current, N.List) || current.items.length === 0) {
+      if (!isNode(current, N.List) || current.value.length === 0) {
         return node;
       }
-      const first = current.items[0];
+      const first = current.value[0];
       const isEmptyPlaceholder = Boolean(
         first
         && (
           isNode(first, N.Nil)
-          || (isNode(first, N.List) && first.items.length === 0)
+          || (isNode(first, N.List) && first.value.length === 0)
           || (isNode(first, N.Any) && first.value === '')
         )
       );
       if (!isEmptyPlaceholder) {
         return node;
       }
-      if (current.items.length === 1) {
+      if (current.value.length === 1) {
         return replaceDeclarationValue(node, new Nil());
       }
-      if (current.items.length === 2) {
-        return replaceDeclarationValue(node, copyMergedValue(current.items[1]!));
+      if (current.value.length === 2) {
+        return replaceDeclarationValue(node, copyMergedValue(current.value[1]!));
       }
-      const rest = new Array<Node>(current.items.length - 1);
-      for (let i = 1; i < current.items.length; i++) {
-        rest[i - 1] = copyMergedValue(current.items[i]!);
+      const rest = new Array<Node>(current.value.length - 1);
+      for (let i = 1; i < current.value.length; i++) {
+        rest[i - 1] = copyMergedValue(current.value[i]!);
       }
       return replaceDeclarationValue(node, new List(rest));
     };
@@ -6000,7 +6006,7 @@ function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
   if (!params || params.length === 0) {
     return true;
   }
-  for (const param of params.items) {
+  for (const param of params.value) {
     if (param.type === 'Rest') {
       continue;
     }

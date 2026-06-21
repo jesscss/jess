@@ -17,12 +17,12 @@ const setNth = defineFunction(
     const info = getSassListInfo(list);
     // Sass uses 1-based indexing
     const sassIndex = Math.floor(index);
-    if (sassIndex < 1 || sassIndex > info.items.length) {
-      throw new Error(`List index ${sassIndex} is out of bounds for list of length ${info.items.length}`);
+    if (sassIndex < 1 || sassIndex > info.value.length) {
+      throw new Error(`List index ${sassIndex} is out of bounds for list of length ${info.value.length}`);
     }
     // Convert to 0-based index
     const zeroBasedIndex = sassIndex - 1;
-    const items = [...info.items];
+    const items = [...info.value];
     items[zeroBasedIndex] = value;
     return createSassListResult(items, info.sep, info.bracketed);
   },

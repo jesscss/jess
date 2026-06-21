@@ -18,7 +18,7 @@ const join = defineFunction(
     const right = getSassListInfo(list2);
     const sep = resolveSassSeparator(separator, left.sep ?? right.sep);
     const isBracketed = resolveSassBracketed(bracketed, left.bracketed);
-    return createSassListResult([...left.items, ...right.items], sep, isBracketed);
+    return createSassListResult([...left.value, ...right.value], sep, isBracketed);
   },
   {
     params: [

@@ -485,11 +485,11 @@ describe('parseLessAstStylesheet', () => {
     expect(paint.name?.valueOf()).toBe('.paint');
     expect(isNode(paint.params, N.List)).toBe(true);
     expect(paint.params?.sep).toBe(';');
-    expect(paint.params?.items.map(item => item.toTrimmedString())).toEqual(['$tone', '$size']);
+    expect(paint.params?.value.map(item => item.toTrimmedString())).toEqual(['$tone', '$size']);
     expect(serializeTypes(paint)).toContainString(`
         params:
           (List
-            items:
+            value:
               [
                 (VarDeclaration
                   name:
@@ -508,36 +508,36 @@ describe('parseLessAstStylesheet', () => {
     `);
     expect(theme.name?.valueOf()).toBe('#theme');
     expect(theme.params?.sep).toBe(',');
-    expect(theme.params?.items.map(item => item.toTrimmedString())).toEqual(['$mode', '$contrast']);
+    expect(theme.params?.value.map(item => item.toTrimmedString())).toEqual(['$mode', '$contrast']);
     expect(trail.params?.sep).toBe(';');
-    expect(trail.params?.items.map(item => item.toTrimmedString())).toEqual(['$tone']);
+    expect(trail.params?.value.map(item => item.toTrimmedString())).toEqual(['$tone']);
     expect(defaulted.params?.sep).toBe(';');
-    expect(defaulted.params?.items.map(item => item.toTrimmedString())).toEqual([
+    expect(defaulted.params?.value.map(item => item.toTrimmedString())).toEqual([
       '$tone: red',
       '$shadow: 1px 2px, blue'
     ]);
     expect(resty.params?.sep).toBe(',');
-    expect(resty.params?.items.map(item => item.type)).toEqual(['VarDeclaration', 'Rest']);
-    expect(resty.params?.items[0]?.toTrimmedString()).toBe('$head');
-    expect(isNode(resty.params?.items[1], N.Rest)).toBe(true);
-    if (!isNode(resty.params?.items[1], N.Rest)) {
+    expect(resty.params?.value.map(item => item.type)).toEqual(['VarDeclaration', 'Rest']);
+    expect(resty.params?.value[0]?.toTrimmedString()).toBe('$head');
+    expect(isNode(resty.params?.value[1], N.Rest)).toBe(true);
+    if (!isNode(resty.params?.value[1], N.Rest)) {
       throw new Error('Expected named rest parameter');
     }
-    expect(resty.params.items[1].node).toBe('tail');
-    expect(isNode(all.params?.items[0], N.Rest)).toBe(true);
-    if (!isNode(all.params?.items[0], N.Rest)) {
+    expect(resty.params.value[1].node).toBe('tail');
+    expect(isNode(all.params?.value[0], N.Rest)).toBe(true);
+    if (!isNode(all.params?.value[0], N.Rest)) {
       throw new Error('Expected anonymous rest parameter');
     }
-    expect(all.params.items[0].node).toBeUndefined();
+    expect(all.params.value[0].node).toBeUndefined();
     expect(commaDefault.params?.sep).toBe(',');
-    expect(commaDefault.params?.items).toHaveLength(1);
-    expect(commaDefault.params?.items[0]?.toTrimmedString()).toBe('$margin: 2, 2, 2, 2');
-    expect(numericCase.params?.items[0]?.type).toBe('Num');
-    expect(numericCase.params?.items[0]?.valueOf()).toBe(1);
-    expect(quotedCase.params?.items[0]?.type).toBe('Quoted');
-    expect(quotedCase.params?.items[0]?.toTrimmedString()).toBe('\'left\'');
-    expect(mixedPattern.params?.items.map(item => item.type)).toEqual(['Any', 'VarDeclaration']);
-    expect(mixedPattern.params?.items.map(item => item.toTrimmedString())).toEqual(['left', '$width']);
+    expect(commaDefault.params?.value).toHaveLength(1);
+    expect(commaDefault.params?.value[0]?.toTrimmedString()).toBe('$margin: 2, 2, 2, 2');
+    expect(numericCase.params?.value[0]?.type).toBe('Num');
+    expect(numericCase.params?.value[0]?.valueOf()).toBe(1);
+    expect(quotedCase.params?.value[0]?.type).toBe('Quoted');
+    expect(quotedCase.params?.value[0]?.toTrimmedString()).toBe('\'left\'');
+    expect(mixedPattern.params?.value.map(item => item.type)).toEqual(['Any', 'VarDeclaration']);
+    expect(mixedPattern.params?.value.map(item => item.toTrimmedString())).toEqual(['left', '$width']);
     expect(serializeTypes(result.tree)).toContain('(Rest');
   });
 
@@ -683,44 +683,44 @@ describe('parseLessAstStylesheet', () => {
       throw new Error('Expected Less mixin call argument lists');
     }
     expect(withArgs.args.sep).toBe(',');
-    expect(withArgs.args.items.map(item => item.valueOf())).toEqual(['@tone', '2px']);
+    expect(withArgs.args.value.map(item => item.valueOf())).toEqual(['@tone', '2px']);
     expect(theme.args.sep).toBe(';');
-    expect(theme.args.items.map(item => item.valueOf())).toEqual(['red', 'screen and (min-width: 1px)']);
+    expect(theme.args.value.map(item => item.valueOf())).toEqual(['red', 'screen and (min-width: 1px)']);
     expect(theme.options.markImportant).toBe(true);
     expect(named.args.sep).toBe(',');
-    expect(named.args.items.map(item => item.toTrimmedString())).toEqual(['$tone: red', '$size: 2px']);
-    expect(named.args.items.every(item => isNode(item, N.VarDeclaration))).toBe(true);
+    expect(named.args.value.map(item => item.toTrimmedString())).toEqual(['$tone: red', '$size: 2px']);
+    expect(named.args.value.every(item => isNode(item, N.VarDeclaration))).toBe(true);
     expect(semiNamed.args.sep).toBe(';');
-    expect(semiNamed.args.items.map(item => item.toTrimmedString())).toEqual([
+    expect(semiNamed.args.value.map(item => item.toTrimmedString())).toEqual([
       '$tone: red',
       '$shadow: 1px 2px, blue'
     ]);
-    expect(semiNamed.args.items.every(item => isNode(item, N.VarDeclaration))).toBe(true);
+    expect(semiNamed.args.value.every(item => isNode(item, N.VarDeclaration))).toBe(true);
     expect(semiList.args.sep).toBe(';');
-    expect(semiList.args.items.map(item => item.valueOf())).toEqual(['1px, 2px', '3px']);
+    expect(semiList.args.value.map(item => item.valueOf())).toEqual(['1px, 2px', '3px']);
     expect(semiTrail.args.sep).toBe(';');
-    expect(semiTrail.args.items.map(item => item.valueOf())).toEqual(['1px']);
-    expect(spread.args.items[0]?.type).toBe('Rest');
-    expect(isNode(spread.args.items[0], N.Rest)).toBe(true);
-    expect(isNode(spread.args.items[0], N.Rest) && isNode(spread.args.items[0].node, N.Reference)).toBe(true);
-    if (!isNode(spread.args.items[0], N.Rest) || !isNode(spread.args.items[0].node, N.Reference)) {
+    expect(semiTrail.args.value.map(item => item.valueOf())).toEqual(['1px']);
+    expect(spread.args.value[0]?.type).toBe('Rest');
+    expect(isNode(spread.args.value[0], N.Rest)).toBe(true);
+    expect(isNode(spread.args.value[0], N.Rest) && isNode(spread.args.value[0].node, N.Reference)).toBe(true);
+    if (!isNode(spread.args.value[0], N.Rest) || !isNode(spread.args.value[0].node, N.Reference)) {
       throw new Error('Expected named spread argument to wrap a variable reference');
     }
-    expect(spread.args.items[0].node.key).toBe('items');
-    expect(spread.args.items[0].node.options.type).toBe('variable');
+    expect(spread.args.value[0].node.key).toBe('items');
+    expect(spread.args.value[0].node.options.type).toBe('variable');
     expect(spreadSemi.args.sep).toBe(';');
-    expect(spreadSemi.args.items.map(item => item.type)).toEqual(['Any', 'Rest']);
+    expect(spreadSemi.args.value.map(item => item.type)).toEqual(['Any', 'Rest']);
     expect(spreadMixed.args.sep).toBe(',');
-    expect(spreadMixed.args.items.map(item => item.type)).toEqual(['Rest', 'VarDeclaration']);
-    expect(spreadAnon.args.items[0]?.type).toBe('Rest');
-    expect(isNode(spreadAnon.args.items[0], N.Rest) && spreadAnon.args.items[0].node).toBeUndefined();
+    expect(spreadMixed.args.value.map(item => item.type)).toEqual(['Rest', 'VarDeclaration']);
+    expect(spreadAnon.args.value[0]?.type).toBe('Rest');
+    expect(isNode(spreadAnon.args.value[0], N.Rest) && spreadAnon.args.value[0].node).toBeUndefined();
 
     const [nested] = rule.rules;
     expect(isNode(nested, N.Call)).toBe(true);
     if (!isNode(nested, N.Call) || !isNode(nested.args, N.List)) {
       throw new Error('Expected nested argument-bearing mixin call');
     }
-    expect(nested.args.items.map(item => item.valueOf())).toEqual(['rgb(10, 20, 30)', '"{"']);
+    expect(nested.args.value.map(item => item.valueOf())).toEqual(['rgb(10, 20, 30)', '"{"']);
     expect(serializeTypes(result.tree)).toContainString(`
       (Call
         name:
@@ -729,7 +729,7 @@ describe('parseLessAstStylesheet', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Any '@tone')
                 (Any '2px')
@@ -814,7 +814,7 @@ describe('parseLessAstStylesheet', () => {
           )
         args:
           (List
-            items:
+            value:
               [
                 (Any '1')
               ]
@@ -877,26 +877,26 @@ describe('parseLessAstStylesheet', () => {
     expect(collapse.name.key).toBe('test-collapse');
     expect(collapse.args).toBeUndefined();
     expect(storeVar.name.key).toBe('store');
-    expect(storeVar.args.items[0]?.type).toBe('Reference');
-    expect(isNode(storeVar.args.items[0], N.Reference) && storeVar.args.items[0].options.type).toBe('variable');
-    expect(isNode(storeVar.args.items[0], N.Reference) && storeVar.args.items[0].key).toBe('var');
-    expect(storeNumber.args.items[0]?.type).toBe('Num');
-    expect(storeNumber.args.items[0]?.valueOf()).toBe(5);
-    expect(storeString.args.items[0]?.type).toBe('Quoted');
-    expect(storeString.args.items[0]?.toTrimmedString()).toBe('"bird"');
+    expect(storeVar.args.value[0]?.type).toBe('Reference');
+    expect(isNode(storeVar.args.value[0], N.Reference) && storeVar.args.value[0].options.type).toBe('variable');
+    expect(isNode(storeVar.args.value[0], N.Reference) && storeVar.args.value[0].key).toBe('var');
+    expect(storeNumber.args.value[0]?.type).toBe('Num');
+    expect(storeNumber.args.value[0]?.valueOf()).toBe(5);
+    expect(storeString.args.value[0]?.type).toBe('Quoted');
+    expect(storeString.args.value[0]?.toTrimmedString()).toBe('"bird"');
     expect(atRule.name.key).toBe('test-atrule');
     expect(atRule.args.sep).toBe(';');
-    expect(atRule.args.items.map(item => item.toTrimmedString())).toEqual(['"@charset"', '\'"utf-8"\'']);
+    expect(atRule.args.value.map(item => item.toTrimmedString())).toEqual(['"@charset"', '\'"utf-8"\'']);
     expect(grouped.args.sep).toBe(';');
-    expect(grouped.args.items[0]?.type).toBe('List');
-    expect(isNode(grouped.args.items[0], N.List) && grouped.args.items[0].items.map(item => item.valueOf())).toEqual(['a', 'b']);
-    expect(grouped.args.items[1]?.valueOf()).toBe('c');
+    expect(grouped.args.value[0]?.type).toBe('List');
+    expect(isNode(grouped.args.value[0], N.List) && grouped.args.value[0].value.map(item => item.valueOf())).toEqual(['a', 'b']);
+    expect(grouped.args.value[1]?.valueOf()).toBe('c');
     expect(escaped.args.sep).toBe(';');
-    expect(escaped.args.items[0]?.type).toBe('Paren');
-    expect(escaped.args.items[0]?.toTrimmedString()).toBe('~(a, b)');
-    expect(escaped.args.items[1]?.valueOf()).toBe('c');
+    expect(escaped.args.value[0]?.type).toBe('Paren');
+    expect(escaped.args.value[0]?.toTrimmedString()).toBe('~(a, b)');
+    expect(escaped.args.value[1]?.valueOf()).toBe('c');
     expect(escape.name.key).toBe('e');
-    expect(escape.args.items.map(item => item.toTrimmedString())).toEqual(['\'/* anything to unquote */\'']);
+    expect(escape.args.value.map(item => item.toTrimmedString())).toEqual(['\'/* anything to unquote */\'']);
 
     const serialized = serializeTypes(result.tree, { showOptions: true });
     expect(serialized).toContain('type: \'function\'');
@@ -1115,8 +1115,8 @@ describe('parseLessAstStylesheet', () => {
       throw new Error('Expected comma-list AtRule prelude');
     }
     expect(media.prelude.sep).toBeUndefined();
-    expect(media.prelude.items[0]?.toTrimmedString()).toBe('screen and (min-width: 1px)');
-    expect(media.prelude.items[1]?.toTrimmedString()).toBe('print');
+    expect(media.prelude.value[0]?.toTrimmedString()).toBe('screen and (min-width: 1px)');
+    expect(media.prelude.value[1]?.toTrimmedString()).toBe('print');
     expect(media.toTrimmedString()).toBe([
       '@media screen and (min-width: 1px), print {',
       '  .inside {',
