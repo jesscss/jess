@@ -14,6 +14,14 @@ import { isSubsetOf, isDisjoint } from './bitset.js';
 function shareKeySetLibrary(a: Selector, b: Selector): boolean {
   return !!a.keySetLibrary && a.keySetLibrary === b.keySetLibrary;
 }
+
+function selectorListItemForMatch(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
+function normalizedSelectorListItemValueForMatch(item: SelectorList['value'][number]): string {
+  return typeof item === 'string' ? item : normalizeSelectorForExtend(item).valueOf();
+}
 /**
  * Helper functions for extend operations that eliminate genuine code duplication
  * These preserve all original logic while extracting commonly repeated patterns
@@ -816,8 +824,8 @@ export function selectorMatchesExtendTarget(
     return true;
   }
   if (isNode(selector, N.SelectorList)) {
-    return (selector as SelectorList).value.some((item: Selector) => {
-      const comparison = selectorCompare(item, target);
+    return selector.value.some(item => {
+      const comparison = selectorCompare(selectorListItemForMatch(item), target);
       return partial ? comparison.locations.length > 0 : comparison.hasWholeMatch;
     });
   }
@@ -916,7 +924,7 @@ function tryFastPathExtendMatch(
   if (isNode(find, N.SelectorList)) {
     // Check if target matches any item in the find list
     for (let i = 0; i < find.value.length; i++) {
-      const listItem = find.value[i]!;
+      const listItem = selectorListItemForMatch(find.value[i]!);
       const result = tryFastPathExtendMatch(target, listItem, basePath);
       if (result && result.length > 0) {
         // Found a match with one of the list items
@@ -930,7 +938,7 @@ function tryFastPathExtendMatch(
   if (isNode(target, N.SelectorList) && target.value.length <= 3) {
     const locations: ExtendLocation[] = [];
     for (let i = 0; i < target.value.length; i++) {
-      const childResult = tryFastPathExtendMatch(target.value[i]!, find, [...basePath, i]);
+      const childResult = tryFastPathExtendMatch(selectorListItemForMatch(target.value[i]!), find, [...basePath, i]);
       if (childResult) {
         locations.push(...childResult);
       }
@@ -1253,7 +1261,7 @@ function searchWithinSelectorList(
 ): void {
   for (let index = 0; index < selectorList.value.length; index++) {
     currentPath.push(index);
-    searchWithinSelector(selectorList.value[index]!, target, currentPath, locations);
+    searchWithinSelector(selectorListItemForMatch(selectorList.value[index]!), target, currentPath, locations);
     currentPath.pop();
   }
 }
@@ -1876,9 +1884,11 @@ function normalizeSelector(selector: Selector): Selector {
     const normalizedSelectors: Selector[] = [];
 
     for (const sel of selector.value) {
-      const normalized = normalizeSelector(sel);
+      const normalized = normalizeSelector(selectorListItemForMatch(sel));
       if (isNode(normalized, N.SelectorList)) {
-        normalizedSelectors.push(...normalized.value);
+        for (let i = 0; i < normalized.value.length; i++) {
+          normalizedSelectors.push(selectorListItemForMatch(normalized.value[i]!));
+        }
       } else {
         normalizedSelectors.push(normalized);
       }
@@ -1963,11 +1973,11 @@ export function selectorMatch(
   partial = false,
   context?: Context
 ): {
-    fullMatch: boolean;
-    partialMatch: boolean;
-    matched: Selector[];
-    remainders: Selector[];
-  } {
+  fullMatch: boolean;
+  partialMatch: boolean;
+  matched: Selector[];
+  remainders: Selector[];
+} {
   if (context && find.compare(target, context) === 0) {
     return {
       fullMatch: true,
@@ -2024,10 +2034,21 @@ export function selectorCompare(
   if (isNode(normalizedA, N.SelectorList) && isNode(normalizedB, N.SelectorList)) {
     const aValues = normalizedA.value;
     const bValues = normalizedB.value;
-    // Use a Set for O(N) order-independent comparison instead of O(N log N) sort
     const equivalent = aValues.length === bValues.length && (() => {
-      const aSet = new Set(aValues.map(item => normalizeSelectorForExtend(item as Selector).valueOf()));
-      return bValues.every(item => aSet.has(normalizeSelectorForExtend(item as Selector).valueOf()));
+      for (let bIndex = 0; bIndex < bValues.length; bIndex++) {
+        const bValue = normalizedSelectorListItemValueForMatch(bValues[bIndex]!);
+        let found = false;
+        for (let aIndex = 0; aIndex < aValues.length; aIndex++) {
+          if (normalizedSelectorListItemValueForMatch(aValues[aIndex]!) === bValue) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          return false;
+        }
+      }
+      return true;
     })();
     if (equivalent) {
       return {

@@ -40,6 +40,10 @@ function selectorOrUndefined(value: Selector | Nil | undefined): Selector | unde
   return value instanceof Nil ? undefined : value;
 }
 
+function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
 function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
   const ownSelector: unknown = ruleset.options?.ownSelector;
   return isSelectorValue(ownSelector) ? ownSelector : undefined;
@@ -572,13 +576,16 @@ export function processExtends(context: Context): void {
         fromReferenceScope: fromReferenceScope === true
       };
       if (!partial && isNode(target, N.SelectorList)) {
-        return target.value.map((item) => {
+        const expanded: RootExtendInstruction[] = [];
+        for (const value of target.value) {
+          const item = selectorListItemForRootExtend(value);
           item.keySetLibrary ??= context.selectorBits;
-          return {
+          expanded.push({
             ...base,
             target: item
-          };
-        });
+          });
+        }
+        return expanded;
       }
       target.keySetLibrary ??= context.selectorBits;
       return [{
@@ -749,7 +756,9 @@ export function processExtends(context: Context): void {
           // distinguish "original, untouched" from "added by extend".
           if (selector instanceof SelectorList) {
             for (const item of selector.value) {
-              item.addFlag(F_VISIBLE);
+              if (typeof item !== 'string') {
+                item.addFlag(F_VISIBLE);
+              }
             }
           } else {
             selector.addFlag(F_VISIBLE);

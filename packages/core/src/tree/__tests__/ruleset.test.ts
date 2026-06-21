@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -1254,6 +1254,32 @@ describe('Rule', () => {
     } finally {
       addedLeaf.clone = originalClone;
     }
+  });
+
+  it('filters reference-mode composed selector lists with string-backed siblings', () => {
+    const added = el('.added');
+    added.addFlag(F_EXTENDED);
+    const target = el('.target');
+    target.addFlag(F_EXTEND_TARGET);
+    const parent = sellist(['.untouched', target, added]);
+
+    const addedOnly = Ruleset.filterExtendedForReferenceCompose(parent);
+    expect(addedOnly?.valueOf()).toBe('.added');
+
+    const withUntouched = Ruleset.filterExtendedForReferenceCompose(parent, true);
+    expect(withUntouched?.valueOf()).toBe('.untouched,.added');
+  });
+
+  it('expands generated is() reference-compose lists with string-backed alternatives', () => {
+    const added = el('.added');
+    added.addFlag(F_EXTENDED);
+    const isWrapper = pseudo({ name: ':is', arg: sellist(['.raw', added]) });
+    isWrapper.generated = true;
+    const selector = sel([isWrapper]);
+
+    const expanded = Ruleset.expandGeneratedIsForReferenceCompose(selector);
+
+    expect(expanded?.valueOf()).toBe('.added');
   });
 
   it('streams header selectors without capture scaffolding', () => {

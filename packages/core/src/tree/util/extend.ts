@@ -441,6 +441,10 @@ export function applyExtendsToSelector(
   return selector;
 }
 
+function selectorListItemForExtend(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
 /**
  * Fast-path for applying multiple non-partial extensions of the SAME target in one pass.
  *
@@ -471,7 +475,7 @@ function applyBatchedExtend(
     let anyWholeMatch = false;
 
     for (const item of (selector as SelectorList).value) {
-      const sItem = item as Selector;
+      const sItem = selectorListItemForExtend(item);
       const itemCompare = selectorCompare(sItem, find);
       if (!itemCompare.hasWholeMatch) {
         originalItems.push(sItem);
@@ -877,7 +881,15 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
           }
 
           const argSel = maybeIs.arg;
-          const argList: Selector[] = isNode(argSel, N.SelectorList) ? argSel.value : [expectSelector(argSel)];
+          let argList: Selector[];
+          if (isNode(argSel, N.SelectorList)) {
+            argList = new Array<Selector>(argSel.value.length);
+            for (let i = 0; i < argSel.value.length; i++) {
+              argList[i] = selectorListItemForExtend(argSel.value[i]!);
+            }
+          } else {
+            argList = [expectSelector(argSel)];
+          }
           // If this came from implicit `& ` nesting (both ampersand and the space are invisible),
           // then the prefix is already represented by the parent ruleset context and must not be
           // duplicated in nested output. In that case we drop the prefix entirely.
@@ -1001,7 +1013,11 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
     const arg = selector.arg;
     if (arg && isNode(arg, N.SelectorList)) {
       // Extract all value from the :is() argument
-      return arg.value;
+      const value = new Array<Selector>(arg.value.length);
+      for (let i = 0; i < arg.value.length; i++) {
+        value[i] = selectorListItemForExtend(arg.value[i]!);
+      }
+      return value;
     } else if (arg) {
       // Single selector argument
       return [expectSelector(arg)];
@@ -1011,8 +1027,12 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
   return [selector];
 }
 
-function copySelectorsForPlacement(value: Selector[]): Selector[] {
-  return value.map(selector => copySelectorForExtend(selector));
+function copySelectorsForPlacement(value: readonly SelectorList['value'][number][]): Selector[] {
+  const copied = new Array<Selector>(value.length);
+  for (let i = 0; i < value.length; i++) {
+    copied[i] = copySelectorForExtend(selectorListItemForExtend(value[i]!));
+  }
+  return copied;
 }
 
 function isSimpleSelectorPlacementCopy(node: Node): node is SimpleSelector {
@@ -2152,7 +2172,8 @@ function extendSelectorList(
   const orderedMatchFlags: boolean[] = [];
   const newSelectors: Selector[] = [];
 
-  for (const selector of target.value) {
+  for (const item of target.value) {
+    const selector = selectorListItemForExtend(item);
     const comparison = selectorCompare(selector, find);
     if (!comparison.locations.length || (!comparison.hasWholeMatch && !comparison.hasPartialMatch)) {
       orderedSelectors.push(selector);
@@ -2184,8 +2205,8 @@ function extendSelectorList(
         partial
         && preferIsWrapperInPartialMode
         && extended.value.length === 2
-        && extended.value[0]!.valueOf() === selector.valueOf()
-        && extended.value[1]!.valueOf() === extendWith.valueOf()
+        && selectorListItemForExtend(extended.value[0]!).valueOf() === selector.valueOf()
+        && selectorListItemForExtend(extended.value[1]!).valueOf() === extendWith.valueOf()
       ) {
         const extendWithSelectors = extractSelectorsFromIs(extendWith);
         const isWrapper = createValidatedIsWrapperWithErrors(
@@ -3958,6 +3979,7 @@ function applyExtensionAtPath(
       }
       const index = nextSegment;
       const item = current.value[index];
+      const itemSelector = item === undefined ? undefined : selectorListItemForExtend(item);
 
       // Less parity: for targets like `:is(.a,.b):after` extending `.a`,
       // append to the `:is()` argument list (`:is(.a,.b,.x):after`) instead
@@ -3966,8 +3988,8 @@ function applyExtensionAtPath(
       // value in its parent compound selector.
       if (
         extensionType === 'wrap'
-        && item
-        && isNode(item, N.SimpleSelector)
+        && itemSelector
+        && isNode(itemSelector, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
         && isNode(current.parent, N.PseudoSelector)
         && current.parent.name === ':is'
@@ -3996,9 +4018,9 @@ function applyExtensionAtPath(
       }
 
       // For wrap, wrap the matched list item in :is(matched, extendWith) rather than replacing with extendWith
-      if (extensionType === 'wrap' && item) {
+      if (extensionType === 'wrap' && itemSelector) {
         const newValue = [...current.value];
-        const wrapped = applyExtension(item, matchedNode, extendWith, 'wrap', undefined);
+        const wrapped = applyExtension(itemSelector, matchedNode, extendWith, 'wrap', undefined);
         if (typeof wrapped === 'string') {
           return wrapped;
         }
@@ -4020,7 +4042,7 @@ function applyExtensionAtPath(
         const newValue = [...current.value];
         let changed = false;
         for (const add of additions) {
-          const extensionExists = newValue.some(item => item.valueOf() === add.valueOf());
+          const extensionExists = newValue.some(item => selectorListItemForExtend(item).valueOf() === add.valueOf());
           if (!extensionExists) {
             newValue.push(add);
             changed = true;
@@ -4036,8 +4058,12 @@ function applyExtensionAtPath(
       }
       const index = nextSegment;
       const newValue = [...current.value];
+      const child = newValue[index];
+      if (child === undefined) {
+        return current;
+      }
       const deepResult = applyExtensionAtPath(
-        newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
+        selectorListItemForExtend(child), remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
       );
       if (typeof deepResult === 'string') {
         return deepResult;

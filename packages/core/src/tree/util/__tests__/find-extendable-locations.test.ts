@@ -39,6 +39,20 @@ describe('ExtendLocation API Tests', () => {
       expect(result.locations[0]!.extensionType).toBe('append');
     });
 
+    it('materializes string-backed selector list items before returning extend matches', () => {
+      const selector = sellist(['.a', '.b']);
+      const target = el('.a');
+
+      const result = findExtendableLocations(selector, target);
+
+      expect(result.hasMatches).toBe(true);
+      expect(result.locations).toHaveLength(1);
+      expect(result.locations[0]!.path).toEqual([0]);
+      expect(result.locations[0]!.matchedNode).not.toBe('.a');
+      expect(result.locations[0]!.matchedNode.valueOf()).toBe('.a');
+      expect(result.locations[0]!.extensionType).toBe('replace');
+    });
+
     it('should find target in compound selector component', () => {
       // Selector: .foo:where(.a), Target: .a
       const selector = compound([

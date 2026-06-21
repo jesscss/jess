@@ -219,7 +219,7 @@ describe('Ampersand', () => {
 
   it('derives appended selector-list ampersands without callback array mapping', async () => {
     const parentSelector = sellist([
-      sel([el('.one')]),
+      '.one',
       sel([el('.two')])
     ]);
     const frame = ruleset({

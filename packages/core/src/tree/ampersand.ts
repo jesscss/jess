@@ -210,6 +210,18 @@ function getSelectorSyntaxText(selector: Selector): string {
   return writer.toString();
 }
 
+function selectorListItemForAmpersand(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new BasicSelector(item) : item;
+}
+
+function selectorListValueForAmpersand(value: SelectorList['value']): Selector[] {
+  const selectors = new Array<Selector>(value.length);
+  for (let i = 0; i < value.length; i++) {
+    selectors[i] = selectorListItemForAmpersand(value[i]!);
+  }
+  return selectors;
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -217,10 +229,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.value;
+    return selectorListValueForAmpersand(baseSelector.arg.value);
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.value;
+    return selectorListValueForAmpersand(baseSelector.value);
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
@@ -284,9 +296,11 @@ function mergeAmpersandTemplateSelectorList(
 ): SelectorList {
   const mergedItems: Selector[] = [];
   for (const item of selector.value) {
-    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+    const merged = mergeAmpersandTemplateSelector(selectorListItemForAmpersand(item), placement);
     if (isNode(merged, N.SelectorList)) {
-      mergedItems.push(...merged.value);
+      for (let i = 0; i < merged.value.length; i++) {
+        mergedItems.push(selectorListItemForAmpersand(merged.value[i]!));
+      }
     } else {
       mergedItems.push(merged);
     }
@@ -343,13 +357,8 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
   return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
 }
 
-function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
-  const Ctor = selector.constructor as new (
-    value: unknown,
-    options?: NodeOptions,
-    location?: LocationInfo
-  ) => SimpleSelector;
-  const node = new Ctor(
+function createBasicSelectorLike(selector: SimpleSelector, value: string): BasicSelector {
+  const node = new BasicSelector(
     value,
     { ...selector.options },
     selector.location.length === 0 ? undefined : selector.location
@@ -362,7 +371,7 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
     throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
   }
   return {
-    selector: createSimpleSelectorLike(selector, selector.value + appendValue),
+    selector: createBasicSelectorLike(selector, selector.value + appendValue),
     appended: true
   };
 }
@@ -373,7 +382,7 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
     const items = new Array<Selector>(sourceItems.length);
     for (let i = 0; i < sourceItems.length; i++) {
       const item = sourceItems[i]!;
-      const result = appendSelector(item as Selector, appendValue);
+      const result = appendSelector(selectorListItemForAmpersand(item), appendValue);
       if (!result.appended) {
         throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }

@@ -299,6 +299,10 @@ function copySelectorForExtendRecord(
   return copySelectorForPlacement(selector, library ?? selector.keySetLibrary);
 }
 
+function selectorListItemForExtendRecord(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
 function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean
@@ -354,8 +358,12 @@ function materializeImplicitAmpersands(
     }
 
     if (isNode(node, N.SelectorList)) {
+      const materializedItems = new Array<Selector>(node.value.length);
+      for (let i = 0; i < node.value.length; i++) {
+        materializedItems[i] = materialize(selectorListItemForExtendRecord(node.value[i]!));
+      }
       return attachSelectorBitLibrary(
-        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(materializedItems).inherit(node),
         library
       );
     }
@@ -390,7 +398,7 @@ function hasMaterializableImplicitAmpersand(
     }
 
     if (isNode(node, N.SelectorList)) {
-      return node.value.some(item => visit(item as Selector));
+      return node.value.some(item => visit(selectorListItemForExtendRecord(item)));
     }
 
     return false;

@@ -14,6 +14,7 @@ import {
   rules,
   ruleset,
   sel,
+  sellist,
   stylesheet,
   ref,
   type AtRulePrelude,
@@ -130,6 +131,29 @@ function parseCheapLessSelector(selector: string): string | Selector | undefined
     return Array.isArray(only) && only.length === 1 ? source : materializeCheapSelector(components);
   }
   return materializeCheapSelector(components);
+}
+
+function parseCheapLessSelectorList(selector: string): string | Selector | undefined {
+  const firstComma = findTopLevelDelimiter(selector, ',', 0, selector.length, LESS_SCANNER_OPTIONS);
+  if (firstComma === -1) {
+    return parseCheapLessSelector(selector);
+  }
+  const items: Array<string | Selector> = [];
+  let cursor = 0;
+  while (cursor < selector.length) {
+    const comma = findTopLevelDelimiter(selector, ',', cursor, selector.length, LESS_SCANNER_OPTIONS);
+    const itemEnd = comma === -1 ? selector.length : comma;
+    const item = parseCheapLessSelector(selector.slice(cursor, itemEnd));
+    if (item === undefined) {
+      return undefined;
+    }
+    items.push(item);
+    if (comma === -1) {
+      break;
+    }
+    cursor = comma + 1;
+  }
+  return items.length > 1 ? sellist(items) : items[0];
 }
 
 function parseLessVariableDeclaration(
@@ -715,7 +739,7 @@ function parseLessBlockNode(
   if (mixinDefinition) {
     return mixinDefinition;
   }
-  const parsedSelector = parseCheapLessSelector(selector);
+  const parsedSelector = parseCheapLessSelectorList(selector);
   if (parsedSelector === undefined) {
     addDiagnostic(
       'warning',

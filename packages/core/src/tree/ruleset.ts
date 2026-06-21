@@ -289,14 +289,16 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     // Child is a SelectorList: compose each item independently. Each item
     // carries its own explicit-vs-implicit & semantics.
     if (isNode(child, N.SelectorList)) {
-      const items = (child as SelectorList).value as Selector[];
+      const items = child.value;
       const out: Selector[] = [];
       for (const item of items) {
-        const composed = Ruleset.composeSelector(item, parent);
+        const composed = Ruleset.composeSelector(Ruleset._selectorListItemForCompose(item), parent);
         // A bare-& item substituted with a list parent comes back as a list:
         // flatten its items into the outer result.
         if (isNode(composed, N.SelectorList)) {
-          out.push(...((composed as SelectorList).value as Selector[]));
+          for (const composedItem of composed.value) {
+            out.push(Ruleset._selectorListItemForCompose(composedItem));
+          }
         } else {
           out.push(composed);
         }
@@ -316,6 +318,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
 
     // Implicit descendant compose: `parent child`.
     return attachSelectorBitLibrary(Ruleset._prependParent(parent, child), library);
+  }
+
+  private static _selectorListItemForCompose(item: SelectorList['value'][number]): Selector {
+    return typeof item === 'string' ? new ComplexSelector([item]) : item;
   }
 
   private static _toComplexComponent(selector: Selector): ComplexSelectorComponent {
@@ -949,7 +955,8 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
     if (isNode(sel, N.SelectorList)) {
       for (let i = 0; i < sel.value.length; i++) {
-        if (sel.value[i]!.hasFlag(F_EXTENDED)) {
+        const item = sel.value[i]!;
+        if (typeof item !== 'string' && item.hasFlag(F_EXTENDED)) {
           return true;
         }
       }
@@ -966,6 +973,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     const kept: Selector[] = [];
     let sawAddedSelector = false;
     for (const item of sel.value) {
+      if (typeof item === 'string') {
+        continue;
+      }
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         sawAddedSelector = true;
         const key = item.valueOf();
@@ -978,6 +988,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
     if (!sawAddedSelector) {
       for (const item of sel.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         if (!item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
           continue;
         }
@@ -1014,7 +1027,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     let hasAnyAdded = false;
     for (let i = 0; i < parent.value.length; i++) {
       const item = parent.value[i]!;
-      if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+      if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         hasAnyAdded = true;
         break;
       }
@@ -1023,15 +1036,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return undefined;
     }
     const seen = new Set<string>();
-    const kept: Selector[] = [];
+    const kept: SelectorList['value'] = [];
     for (const item of parent.value) {
       const keepItem = includeUntouchedSiblings
-        ? !item.hasFlag(F_EXTEND_TARGET)
-        : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
+        ? typeof item === 'string' || !item.hasFlag(F_EXTEND_TARGET)
+        : typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
       if (!keepItem) {
         continue;
       }
-      const key = item.valueOf();
+      const key = typeof item === 'string' ? item : item.valueOf();
       if (seen.has(key)) {
         continue;
       }
@@ -1090,14 +1103,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         }
         const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
         for (const item of arg.value) {
-          if (item.hasFlag(F_EXTEND_TARGET)) {
+          if (typeof item !== 'string' && item.hasFlag(F_EXTEND_TARGET)) {
             continue;
           }
+          const selectorItem = Ruleset._selectorListItemForCompose(item);
           alternatives.push({
-            parts: isNode(item, N.ComplexSelector)
-              ? [...item.value]
-              : [Ruleset._toComplexComponent(item)],
-            hasAdded: item.hasFlag(F_EXTENDED)
+            parts: isNode(selectorItem, N.ComplexSelector)
+              ? [...selectorItem.value]
+              : [Ruleset._toComplexComponent(selectorItem)],
+            hasAdded: typeof item !== 'string' && item.hasFlag(F_EXTENDED)
           });
         }
         if (alternatives.length === 0) {

@@ -103,6 +103,56 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: string-backed `SelectorList` items for scanner-first Less selector lists.
+- Verdict: accepted as a parser-shape/object-reduction slice, not a measured
+  performance pass. The Less scanner-first AST path now parses cheap comma
+  selector headers into the existing core `SelectorList` node while keeping
+  cheap selector atoms as strings instead of allocating `BasicSelector` leaves.
+- New traversal: the Less AST builder adds a top-level comma scan over an
+  already-sliced block header. Core `SelectorList` keeps its existing item
+  loops for render, keyset computation, eval/resolve, and flattening, with
+  string-item branches added where those loops previously assumed node items.
+  New selector-list consumer loops are limited to already-list-local paths:
+  implicit-ampersand materialization, selector composition flattening,
+  selector-list extraction from `:is()` during extend normalization, placement
+  copying, batched list extension, root extend-target expansion, ampersand
+  template/appended-selector expansion, and existing selector-list
+  search/compare loops. The compare path intentionally uses direct nested
+  loops over the two list values instead of allocating a temporary hash
+  collection plus mapped arrays. No tree-wide traversal, side-map lookup,
+  generator, or Chevrotain fallback was added.
+- New node/materialization: one existing `SelectorList` node is created when a
+  header is positively recognized as a comma selector list. Cheap atom members
+  remain strings; compound/complex members reuse existing selector containers
+  with string components. A string list item is materialized as an existing
+  `ComplexSelector([item])` only at node-only semantic boundaries:
+  extend-record implicit-ampersand materialization, nested
+  selector composition, extend matching/search/comparison, batched extend
+  application, extend-path application, root extend-target expansion, and
+  implicit-ampersand materialization. Ampersand append materializes string atoms
+  as `BasicSelector` because append semantics require a simple selector, not a
+  complex wrapper. Those boundaries require a real `Selector` because they
+  compare, compose, copy/place, append, or return extend locations over selector
+  nodes. No structural/progressive/raw/island node was added.
+- Render/eval path: string selector-list items write directly to the active
+  writer and pass through eval/resolve unchanged. Node-only extend/trivia paths
+  either skip string items when node metadata is impossible, or materialize only
+  inside cold selector semantics when extend/ampersand logic requires node
+  methods.
+- Helper/API surface: no public helper or export was added. Three private
+  string-to-selector adapters plus one extend-record adapter keep raw strings
+  out of node-only ruleset, ampersand, root-extend, extend-record, and
+  extend-search paths. The existing `SelectorList` value type was widened in
+  place to `Selector | string` items.
+- Metadata mutations: none. String selector-list items have no parent/source
+  metadata.
+- Evidence: focused core selector/ruleset/extend/ampersand tests and focused
+  Less AST/corpus tests passed. A post-fix reviewer found five remaining
+  string-backed selector-list consumer leaks; this pass added regression tests
+  for those paths and guarded them. The Less AST corpus gate moved from 1250
+  parsed top-level rules / 415 warnings to 1267 parsed top-level rules / 400
+  warnings. No speed claim is made.
+
 - Latest pass: scanner-first string-backed Less guards.
 - Verdict: accepted as a parser coverage and object-reduction slice, not a
   measured performance pass. Cheap guarded Less block headers with

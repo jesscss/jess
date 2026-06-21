@@ -94,6 +94,42 @@ describe('parseLessAstStylesheet', () => {
     expect(serializeTypes(result.tree)).not.toContain('(Reference');
   });
 
+  test('parses cheap selector lists without materializing selector leaves', () => {
+    const result = parseLessAstStylesheet('selector-list.less', `
+      h1, h2 > a > p, h3 {
+        color: none;
+      }
+    `);
+    const [rule] = result.tree.rules;
+
+    expect(result.diagnostics).toEqual([]);
+    expect(isNode(rule, N.Ruleset)).toBe(true);
+    if (!isNode(rule, N.Ruleset)) {
+      throw new Error('Expected selector-list ruleset');
+    }
+    expect(isNode(rule.selector, N.SelectorList)).toBe(true);
+    if (!isNode(rule.selector, N.SelectorList)) {
+      throw new Error('Expected string-backed selector list');
+    }
+    expect(rule.selector.value[0]).toBe('h1');
+    expect(isNode(rule.selector.value[1], N.ComplexSelector)).toBe(true);
+    expect(rule.selector.value[1]?.valueOf()).toBe('h2>a>p');
+    expect(rule.selector.value[2]).toBe('h3');
+    expect(rule.toTrimmedString()).toBe([
+      'h1,',
+      'h2 > a > p,',
+      'h3 {',
+      '  color: none;',
+      '}',
+      ''
+    ].join('\n'));
+    const serialized = serializeTypes(rule);
+    expect(serialized).toContain('(SelectorList');
+    expect(serialized).toContain('[\'h1\', ComplexSelector, \'h3\']');
+    expect(serialized).not.toContain('(BasicSelector');
+    expect(serialized).not.toContain('(Combinator');
+  });
+
   test('parses nested Less rulesets without fallback parsing', () => {
     const result = parseLessAstStylesheet('nested.less', `
       .outer {
