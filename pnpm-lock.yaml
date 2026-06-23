@@ -494,6 +494,9 @@ importers:
       color-name:
         specifier: ~2.0.0
         version: 2.0.2
+      parseman:
+        specifier: workspace:*
+        version: link:../../../../oss/parser-thing
     devDependencies:
       '@types/color-name':
         specifier: ^1.1.1
@@ -709,12 +712,18 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/less-parser':
+        specifier: workspace:*
+        version: link:../less-parser
       '@jesscss/parser':
         specifier: workspace:*
         version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
+      parseman:
+        specifier: workspace:*
+        version: link:../../../../oss/parser-thing
     devDependencies:
       sass-spec:
         specifier: github:sass/sass-spec
