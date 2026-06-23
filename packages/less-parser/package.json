@@ -40,7 +40,8 @@
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0",
-    "known-css-properties": "~0.37.0"
+    "known-css-properties": "~0.37.0",
+    "parseman": "workspace:*"
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
