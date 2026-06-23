@@ -27,6 +27,7 @@ export type ParseResult<T extends Node = Node> = {
   tree: T;
   errors: Array<{ message: string; offset?: number }>;
   warnings: Array<{ message: string }>;
+  lexerResult: { errors: Array<unknown> };
   trivia?: undefined;
 };
 
@@ -36,15 +37,21 @@ export type ParseResult<T extends Node = Node> = {
 
 const RULE_MAP: Record<string, string> = {
   stylesheet: 'Stylesheet',
-  main: 'Stylesheet',         // Less `main` ≈ stylesheet at top level
-  declaration: 'anyDeclaration',  // unified: handles VarDeclaration, CustomDeclaration, Declaration
-  declarationList: 'declarationList',   // lowercase — still valid Parséman entry
+  main: 'Stylesheet',
+  declaration: 'anyDeclaration',
+  declarationList: 'declarationList',
   selector: 'LessSelectorList',
   complexSelector: 'LessComplexSelector',
   selectorList: 'LessSelectorList',
   atRule: 'AtRuleBlock',
   value: 'ValueList',
   valueList: 'ValueList',
+  comparison: 'Comparison',
+  guard: 'Guard',
+  guardOr: 'Guard',
+  guardAnd: 'Guard',
+  qualifiedRule: 'Ruleset',
+  mixinOrQualifiedRule: 'Ruleset'
 };
 
 // ---------------------------------------------------------------------------
@@ -67,13 +74,16 @@ export class LessParserParseman {
   parse(text: string): ParseResult<Rules>;
   parse(text: string, rule: 'stylesheet'): ParseResult<Rules>;
   parse(text: string, rule?: string, options?: { context?: unknown }): ParseResult;
+  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
   parse(text: string, rule = 'stylesheet', _options?: { context?: unknown }): ParseResult {
     const grammarRule = RULE_MAP[rule] ?? rule;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    // RuleKeys<LessGrammar> only accepts capital-letter keys; cast needed for lowercase
+    // rules (e.g. anyDeclaration, declarationList) used as entry points.
+
     const doc = this.grammar.parse(grammarRule as any, text);
 
     const tree = doc.tree instanceof Object && '_tag' in doc.tree
-      ? doc.tree as unknown as Node
+      ? doc.tree as Node
       : null;
 
     return {
@@ -82,7 +92,9 @@ export class LessParserParseman {
         message: e.expected?.join(', ') ?? 'Parse error',
         offset: e.span?.start
       })),
-      warnings: []
+      warnings: [],
+      lexerResult: { errors: [] }
     };
   }
+  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 }

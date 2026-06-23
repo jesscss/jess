@@ -14,11 +14,13 @@ export type SyntacticContentAssistSuggestion = {
 };
 
 /**
- * If we're not extending the CSS parser,
- * this is the friendlier interface for returning
- * a CST, as it assigns tokens to the parser automatically.
+ * @deprecated LEGACY — Chevrotain-based CSS parser.
+ * Kept only for benchmarking against CssParser (Parséman).
+ * TO BE DELETED once Parséman integration is complete.
+ *
+ * The replacement is exported as CssParser from ./parseman/index.js.
  */
-export class CssParser {
+export class CssParserChevrotain {
   lexer: Lexer;
   parser: CssRecursiveParser;
 
@@ -71,3 +73,4 @@ export class CssParser {
     return [];
   }
 }
+

@@ -566,7 +566,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     this._treeContext = treeContext;
   }
 
-  override* children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+  override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
     const childValues = reverse
       ? [this.important, this.value, this.name]
       : [this.name, this.value, this.important];
@@ -575,7 +575,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (child instanceof Node) {
         yield child;
         if (deep) {
-          yield* child.children(deep, reverse);
+          yield* child.walk(deep, reverse);
         }
       }
     }

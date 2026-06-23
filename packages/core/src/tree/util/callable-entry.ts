@@ -46,7 +46,7 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
       return true;
     }
   }
-  for (const child of node.children()) {
+  for (const child of node.walk()) {
     if (callableGuardContainsDefault(child, seen)) {
       return true;
     }

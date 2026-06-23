@@ -1,4 +1,4 @@
-import { CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/index.js';
 import { N, isNode, serializeTypes } from '@jesscss/core';
 
 const cssParser = new CssParser();
@@ -18,14 +18,14 @@ describe('serializeTypes coverage', () => {
           [
             (Ruleset
               selector:
-                (BasicSelector 'a')
+                'a'
               rules:
                 [
                   (Declaration
                     name:
-                      (Any [role=property] 'b')
+                      'b'
                     value:
-                      (Any [role=ident] 'c')
+                      'c'
                   )
                 ]
             )
@@ -42,9 +42,9 @@ describe('serializeTypes coverage', () => {
         (ComplexSelector
           value:
             [
-              (BasicSelector 'a')
-              (Combinator '+')
-              (BasicSelector 'b')
+              'a'
+              '+'
+              'b'
             ]
         )
     `);
@@ -80,7 +80,7 @@ describe('serializeTypes coverage', () => {
           attributeValue:
             (Quoted
               value:
-                (Any [role=any] 'bar')
+                'bar'
             )
         )
     `);
@@ -94,7 +94,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          (Any [role=atkeyword] '@page')
+          '@page'
         prelude:
           (List
             value:
@@ -113,15 +113,15 @@ describe('serializeTypes coverage', () => {
         (CompoundSelector
           value:
             [
-              (BasicSelector 'a')
+              'a'
               (PseudoSelector
                 name: ':is'
                 arg:
                   (SelectorList
                     value:
                       [
-                        (BasicSelector 'b')
-                        (BasicSelector 'c')
+                        'b'
+                        'c'
                       ]
                   )
               )
@@ -142,8 +142,8 @@ describe('serializeTypes coverage', () => {
           (CompoundSelector
             value:
               [
-                (BasicSelector '.sel')
-                (BasicSelector '.a')
+                '.sel'
+                '.a'
               ]
           )
       )
@@ -155,8 +155,8 @@ describe('serializeTypes coverage', () => {
           (CompoundSelector
             value:
               [
-                (BasicSelector '.sel')
-                (BasicSelector '.b')
+                '.sel'
+                '.b'
               ]
           )
       )
@@ -178,13 +178,10 @@ describe('serializeTypes coverage', () => {
       (PseudoSelector
         name: ':unknown'
         arg:
-          (Sequence
-            value:
-              [
-                (Any '.sel')
-                (Any '.a')
-              ]
-          )
+          [
+            '.sel'
+            '.a'
+          ]
       )
     `);
   });
@@ -239,7 +236,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Url
         node:
-          (Any [role=urlvalue] 'foo')
+          'foo'
       )
     `);
   });
@@ -250,7 +247,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'w')
+          'w'
         value:
           (Dimension
             number: 10
@@ -260,7 +257,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'z')
+          'z'
         value:
           (Num 2)
     `);
@@ -489,7 +486,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'm')
+          'm'
         value:
           (List
             value:
@@ -503,7 +500,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'n')
+          'n'
         value:
           (Sequence
             value:
@@ -522,7 +519,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          (Any [role=atkeyword] '@media')
+          '@media
     `);
   });
 });

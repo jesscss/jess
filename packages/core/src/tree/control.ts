@@ -194,7 +194,7 @@ function attachIterationFallbackFrame(
     const scopeFrame = node.getScopeFrame();
     scopeFrame.fallbackFrame ??= frame;
   }
-  for (const child of node.children()) {
+  for (const child of node.walk()) {
     attachIterationFallbackFrame(child, frame, seen, true);
   }
 }

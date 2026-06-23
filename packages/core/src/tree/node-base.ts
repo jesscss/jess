@@ -417,8 +417,35 @@ export abstract class Node<
    */
   declare nodeType: number;
 
-  /** Will be copied during inherit */
-  state = F_DEFAULT;
+  /** Bitmask of runtime flags (F_VISIBLE, F_STATIC, etc.). Renamed from `state` to free that name for Parséman. */
+  flags = F_DEFAULT;
+
+  /** Parséman parse-context snapshot stored per node for incremental re-parsing. */
+  state: unknown = undefined;
+
+  /** Discriminant required by Parséman's NodeLike interface. */
+  readonly _tag = 'node' as const;
+
+  /**
+   * Parséman structural children (Node | CSTLeaf | CSTError items in parse order).
+   * Set by buildNode during grammar-driven construction; empty for directly constructed nodes.
+   */
+  private _cstChildren: ReadonlyArray<{ _tag: string }> = [];
+  get children(): ReadonlyArray<{ _tag: string }> {
+    return this._cstChildren;
+  }
+  /** @internal — called by JessParser.buildNode only */
+  _setCstChildren(children: ReadonlyArray<{ _tag: string }>) {
+    this._cstChildren = children;
+  }
+
+  /** Source byte-offset span for Parséman's NodeLike interface. */
+  get span(): { start: number; end: number } {
+    return {
+      start: this._location?.[0] ?? 0,
+      end:   this._location?.[3] ?? 0,
+    };
+  }
 
   /** Runtime tracking: has this node completed registration identity prep? */
   registrationPrepared = false;
@@ -543,25 +570,25 @@ export abstract class Node<
     if (flag === F_STATIC && this.hasFlag(F_NON_STATIC)) {
       return;
     }
-    this.state |= flag;
+    this.flags |= flag;
     // Handle STATIC/NON_STATIC exclusivity
     if (flag === F_NON_STATIC) {
-      this.state &= ~F_STATIC;
+      this.flags &= ~F_STATIC;
     }
   }
 
   /**
-   * Remove a flag from the node's state
+   * Remove a flag from the node's flags
    */
   removeFlag(flag: number) {
-    this.state &= ~flag;
+    this.flags &= ~flag;
   }
 
   /**
    * Check if the node has a specific flag
    */
   hasFlag(flag: number): boolean {
-    return (this.state & flag) !== 0;
+    return (this.flags & flag) !== 0;
   }
 
   /**
@@ -790,7 +817,7 @@ export abstract class Node<
     }
   }
 
-  private *_childrenFromValue(
+  private *_walkFromValue(
     value: unknown,
     deep?: boolean,
     reverse?: boolean
@@ -802,7 +829,7 @@ export abstract class Node<
           if (nodeVal instanceof Node) {
             yield nodeVal;
             if (deep) {
-              yield* nodeVal.children(deep, reverse);
+              yield* nodeVal.walk(deep, reverse);
             }
           }
         }
@@ -812,7 +839,7 @@ export abstract class Node<
           if (nodeVal instanceof Node) {
             yield nodeVal;
             if (deep) {
-              yield* nodeVal.children(deep, reverse);
+              yield* nodeVal.walk(deep, reverse);
             }
           }
         }
@@ -829,7 +856,7 @@ export abstract class Node<
               if (nodeVal instanceof Node) {
                 yield nodeVal;
                 if (deep) {
-                  yield* nodeVal.children(deep, reverse);
+                  yield* nodeVal.walk(deep, reverse);
                 }
               }
             }
@@ -839,7 +866,7 @@ export abstract class Node<
               if (nodeVal instanceof Node) {
                 yield nodeVal;
                 if (deep) {
-                  yield* nodeVal.children(deep, reverse);
+                  yield* nodeVal.walk(deep, reverse);
                 }
               }
             }
@@ -847,7 +874,7 @@ export abstract class Node<
         } else if (childValue instanceof Node) {
           yield childValue;
           if (deep) {
-            yield* childValue.children(deep, reverse);
+            yield* childValue.walk(deep, reverse);
           }
         }
       }
@@ -856,7 +883,7 @@ export abstract class Node<
     if (value instanceof Node) {
       yield value;
       if (deep) {
-        yield* value.children(deep, reverse);
+        yield* value.walk(deep, reverse);
       }
     }
   }
@@ -866,26 +893,26 @@ export abstract class Node<
    */
   * nodes(reverse?: boolean): Generator<Node, void, unknown> {
     yield this;
-    yield* this.children(true, reverse);
+    yield* this.walk(true, reverse);
   }
 
   /**
-  * An iterator for all node children
-  * @todo - Replace `walkNodes` with this?
-  */
-  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+   * An iterator over semantic child nodes (via childKeys), optionally deep.
+   * Renamed from `children()` — use `.children` (property) for the Parséman structural child array.
+   */
+  * walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
     const childKeys = childKeysOf(this);
     if (!childKeys) {
       return;
     }
     if (reverse) {
       for (let i = childKeys.length - 1; i >= 0; i--) {
-        yield* this._childrenFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
+        yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
       }
       return;
     }
     for (let i = 0; i < childKeys.length; i++) {
-      yield* this._childrenFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
+      yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
     }
   }
 
@@ -947,7 +974,7 @@ export abstract class Node<
     // Visit children recursively (Less.js pattern)
     // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
     // to avoid double-visiting. See TreeVisitor._visit() implementation.
-    for (const child of this.children()) {
+    for (const child of this.walk()) {
       if (child.accept) {
         child.accept(visitor);
       } else {

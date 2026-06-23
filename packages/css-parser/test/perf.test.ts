@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveLessTestDataRoot } from './test-data.js';

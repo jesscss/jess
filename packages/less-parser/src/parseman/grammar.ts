@@ -20,7 +20,6 @@ import {
   optional,
   regex,
   literal,
-  oneOrMore,
   scanTo,
   balanced
 } from 'parseman';
@@ -38,7 +37,8 @@ import {
   Declaration, type DeclarationOptions,
   VarDeclaration, type VarDeclarationOptions,
   Reference, type ReferenceValue,
-  Ampersand
+  Ampersand,
+  Color, Paren, Condition, type ConditionOperator
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -60,12 +60,13 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
   return children.filter((c): c is JessNode => c._tag === 'node') as JessNode[];
 }
 
-function leafText(children: ReadonlyArray<Child>): string {
-  return children
-    .filter((c): c is CSTLeaf => c._tag === 'leaf')
-    .map(l => l.value)
-    .join('');
-}
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+// CSS named color keywords (sorted longest-first so regex engine picks the
+// most specific name first; negative lookahead prevents matching 'red' in 'redish').
+const CSS_COLOR_NAMES_RE = /(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|currentcolor|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|yellowgreen|transparent|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![a-zA-Z0-9_-])/i;
 
 // ---------------------------------------------------------------------------
 // LessGrammar
@@ -131,18 +132,50 @@ export class LessGrammar extends CssParser {
     ))
   );
 
-  // ── Override value to add Reference before other value types ─────────────
+  // ── CSS named color keywords → Color nodes ────────────────────────────────
+  NamedColor = regex(CSS_COLOR_NAMES_RE);
+
+  // ── Override value to add Reference and NamedColor ────────────────────────
 
   value = (g: any) => choice(
-    g.Reference,   // @var — before Dimension/Num (no @-prefixed dimensions in CSS)
+    g.Reference,    // @var — before Dimension/Num (no @-prefixed dimensions in CSS)
     g.Dimension,
     g.Num,
-    g.Color,
+    g.Color,        // hex colors
+    g.NamedColor,   // named CSS color keywords (red, blue, etc.)
     g.Url,
     g.Call,
     g.Paren,
     g.Quoted,
     g.anyValue
+  );
+
+  // ── Less comparison expression: @var op value ─────────────────────────────
+  //   Used as an entry point by guards.test.ts: parse('@a = white', 'comparison')
+  Comparison = (g: any) => sequence(
+    g.Reference,
+    regex(/>=|<=|=~|[<>=]/),
+    choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue)
+  );
+
+  // Parenthesized comparison in a guard — produces a Paren(Condition) node
+  GuardCondition = (g: any) => sequence(literal('('), g.Comparison, literal(')'));
+
+  // ── Less guard: when(comparison) ─────────────────────────────────────────
+  //   Handles: when(@a = white)
+  //            when((@a = white) and (@b = black))
+  //            when((@a = white))
+  Guard = (g: any) => sequence(
+    regex(/when/),
+    optional(regex(/not/)),
+    literal('('),
+    many(choice(
+      g.GuardCondition,    // (comparison) → Paren(Condition)
+      g.Comparison,        // bare comparison
+      regex(/default\(\)/),
+      regex(/and|or/)
+    )),
+    literal(')')
   );
 
   // ── Ampersand: & in Less selectors ────────────────────────────────────────
@@ -184,7 +217,7 @@ export class LessGrammar extends CssParser {
 
   // Explicit `any` return avoids structural-type mismatch with CssParser.Declaration
   // which infers a different tuple arity from its sequence() call.
-  /* eslint-disable-next-line @typescript-eslint/no-unsafe-return */
+
   Declaration = (g: any): any => sequence(
     g.ident,
     optional(choice(literal('+_'), literal('+'))),  // Less property merge
@@ -228,13 +261,15 @@ export class LessGrammar extends CssParser {
   );
 
   // ── buildNode ─────────────────────────────────────────────────────────────
-  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/naming-convention */
 
   protected override buildNode(
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
+
     _state: unknown,
+
     _rawChildren: ReadonlyArray<{ _tag: string }>
   ): JessNode {
     const loc = spanToLocation(span);
@@ -246,6 +281,10 @@ export class LessGrammar extends CssParser {
       case 'LessSelectorList':    return this._buildLessSelectorList(children, loc);
       case 'Ruleset':             return this._buildLessRuleset(children, loc) as unknown as JessNode;
       case 'Declaration':         return this._buildLessDeclaration(children, loc);
+      case 'NamedColor':          return this._buildNamedColor(children, loc);
+      case 'GuardCondition':      return new Paren({ node: nodeChildren(children)[0] ?? new Any('', {}, loc) }, {}, loc) as unknown as JessNode;
+      case 'Comparison':          return this._buildComparison(children, loc);
+      case 'Guard':               return this._buildGuard(children, loc);
       default:                    return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -307,24 +346,34 @@ export class LessGrammar extends CssParser {
     for (let i = 0; i < children.length; i++) {
       const c = children[i]!;
       if (c._tag === 'node') {
-        if (prevWasNode) parts.push(' ');
+        if (prevWasNode) {
+          parts.push(' ');
+        }
         parts.push(c as JessNode);
         prevWasNode = true;
       } else if (c._tag === 'leaf' && (c as CSTLeaf).value) {
-        if (i === 0 && hasLeadingCombinator) continue;  // already pushed
+        if (i === 0 && hasLeadingCombinator) {
+          continue;
+        }  // already pushed
         parts.push((c as CSTLeaf).value);
         prevWasNode = false;
       }
     }
 
-    if (parts.length === 0) return new Any('', {}, loc);
-    if (parts.length === 1 && typeof parts[0] !== 'string') return parts[0]!;
+    if (parts.length === 0) {
+      return new Any('', {}, loc);
+    }
+    if (parts.length === 1 && typeof parts[0] !== 'string') {
+      return parts[0]!;
+    }
     return new ComplexSelector(parts as unknown as ComplexSelectorValue, undefined, loc);
   }
 
   private _buildLessSelectorList(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const sels = nodeChildren(children);
-    if (sels.length === 1) return sels[0]!;
+    if (sels.length === 1) {
+      return sels[0]!;
+    }
     return new SelectorList(sels as unknown as (Selector | string)[], undefined, loc);
   }
 
@@ -362,5 +411,46 @@ export class LessGrammar extends CssParser {
       loc
     );
   }
+  private _buildNamedColor(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    return new Color({ node: name }, {}, loc) as unknown as JessNode;
+  }
+
+  private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    // leaves: first is the operator (regex match); nodes: left/right values
+    const left = nodes[0] ?? new Any('', {}, loc);
+    const op = ls.find(l => />=|<=|=~|[<>=]/.test(l.value));
+    const right = nodes[1] ?? new Any('', {}, loc);
+    if (op) {
+      return new Condition(
+        [left, op.value as ConditionOperator, right],
+        {},
+        loc
+      ) as unknown as JessNode;
+    }
+    return new Condition([left], {}, loc) as unknown as JessNode;
+  }
+
+  private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const hasNot = ls.some(l => l.value === 'not');
+    // Find 'and'/'or' leaves to construct multi-condition Condition chains
+    const andOrIdx = ls.findIndex(l => l.value === 'and' || l.value === 'or');
+    if (andOrIdx >= 0 && nodes.length >= 2) {
+      const op = ls[andOrIdx]!.value as ConditionOperator;
+      const left = nodes[0]!;
+      const right = nodes[1]!;
+      return new Condition([left, op, right], { negate: hasNot }, loc) as unknown as JessNode;
+    }
+    if (nodes.length === 1) {
+      return new Condition([nodes[0]!], { negate: hasNot }, loc) as unknown as JessNode;
+    }
+    return new Condition([new Any('', {}, loc)], { negate: hasNot }, loc) as unknown as JessNode;
+  }
+
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 }

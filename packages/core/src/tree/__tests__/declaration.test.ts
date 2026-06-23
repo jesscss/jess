@@ -82,7 +82,7 @@ describe('Declaration', () => {
     expect(node.value).toBe(value);
     expect(node.important).toBe(important);
     expect(node.value).not.toHaveProperty('name');
-    expect([...node.children()]).toEqual([name, value, important]);
+    expect([...node.walk()]).toEqual([name, value, important]);
   });
 
   it('does not allocate options when serializing a default declaration', () => {

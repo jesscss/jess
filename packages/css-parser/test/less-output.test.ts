@@ -1,7 +1,7 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/index.js';
 import { invalidCSSOutput, notSameSerialized } from '@jesscss/shared';
 import { resolveLessTestDataRoot } from './test-data.js';
 

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/index.js';
 
 const cssParser = new CssParser();
 

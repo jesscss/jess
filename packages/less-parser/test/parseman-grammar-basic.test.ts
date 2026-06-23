@@ -9,6 +9,7 @@ import { LessGrammar } from '../src/parseman/grammar.js';
 const g = new LessGrammar();
 
 function parse(input: string, rule: string = 'Stylesheet') {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return g.parse(rule as any, input);
 }
 
@@ -49,6 +50,7 @@ describe('LessGrammar (Parséman) — basic smoke tests', () => {
       const { errors, tree } = parse('@color: red;');
       expect(errors.length).toBe(0);
       expect(tree?.type).toBe('Rules');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((tree as any)?.rules?.[0]?.type).toBe('VarDeclaration');
     });
   });
@@ -94,11 +96,13 @@ describe('LessGrammar (Parséman) — basic smoke tests', () => {
     it('parses +: (comma merge)', () => {
       const { errors, tree } = parse('src+: url(foo)', 'Declaration');
       expect(errors.length).toBe(0);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((tree as any)?.options?.assign).toBe('+,:');
     });
     it('parses +_: (space merge)', () => {
       const { errors, tree } = parse('src+_: format("woff")', 'Declaration');
       expect(errors.length).toBe(0);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((tree as any)?.options?.assign).toBe('+_:');
     });
   });
