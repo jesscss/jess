@@ -30,11 +30,11 @@ describe('Stylesheet', () => {
     const root = stylesheet([
       ruleset({
         selector: '.a',
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: 'red' }),
           decl({ name: 'background', value: 'blue', important: '!important' }),
           decl({ name: '--gap', value: '  1px 2px' })
-        ])
+        ]
       })
     ]);
 
@@ -45,7 +45,7 @@ describe('Stylesheet', () => {
     const stringDeclaration = decl({ name: 'color', value: 'red' });
     const stringRuleset = ruleset({
       selector: '.a',
-      rules: rules([stringDeclaration])
+      rules: [stringDeclaration]
     });
     const context = new Context();
 

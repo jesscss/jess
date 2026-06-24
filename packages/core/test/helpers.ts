@@ -58,9 +58,9 @@ export function createVariableReference(property = 'color', variable = DEFAULT_V
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: property, value: variable })
-      ])
+      ]
     })
   ]);
 }
@@ -69,9 +69,9 @@ export function createOperation(operation = DEFAULT_OPERATION) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: operation })
-      ])
+      ]
     })
   ]);
 }
@@ -80,9 +80,9 @@ export function createVariableInOperation(operation = op([num(1), '+', DEFAULT_V
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: operation })
-      ])
+      ]
     })
   ]);
 }
@@ -91,9 +91,9 @@ export function createCall(functionCall = DEFAULT_CALL) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: functionCall })
-      ])
+      ]
     })
   ]);
 }
@@ -102,9 +102,9 @@ export function createVariableInCall(functionCall = call({ name: 'rgb', args: li
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: functionCall })
-      ])
+      ]
     })
   ]);
 }
@@ -113,9 +113,9 @@ export function createNegative(negValue = DEFAULT_NEGATIVE) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: negValue })
-      ])
+      ]
     })
   ]);
 }
@@ -124,9 +124,9 @@ export function createVariableInNegative(negValue = negative(DEFAULT_VARIABLE)) 
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: negValue })
-      ])
+      ]
     })
   ]);
 }
@@ -135,9 +135,9 @@ export function createParen(parenValue = DEFAULT_PAREN) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: parenValue })
-      ])
+      ]
     })
   ]);
 }
@@ -146,9 +146,9 @@ export function createVariableInParen(parenValue = paren(DEFAULT_VARIABLE)) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: parenValue })
-      ])
+      ]
     })
   ]);
 }
@@ -157,9 +157,9 @@ export function createList(listValue = DEFAULT_LIST) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'shadow', value: listValue })
-      ])
+      ]
     })
   ]);
 }
@@ -168,9 +168,9 @@ export function createVariableInList(listValue = list([DEFAULT_VARIABLE, any('2p
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'shadow', value: listValue })
-      ])
+      ]
     })
   ]);
 }
@@ -179,9 +179,9 @@ export function createSequence(sequenceValue = DEFAULT_SEQUENCE) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: sequenceValue })
-      ])
+      ]
     })
   ]);
 }
@@ -190,9 +190,9 @@ export function createVariableInSequence(sequenceValue = spaced([DEFAULT_VARIABL
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: sequenceValue })
-      ])
+      ]
     })
   ]);
 }
@@ -201,9 +201,9 @@ export function createSquareBlock(squareValue = list([any('1'), any('2')])) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'prop', value: squareValue })
-      ])
+      ]
     })
   ]);
 }
@@ -212,9 +212,9 @@ export function createVariableInSquareBlock(squareValue = list([DEFAULT_VARIABLE
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'prop', value: squareValue })
-      ])
+      ]
     })
   ]);
 }
@@ -242,9 +242,9 @@ export function createGuardWithStatic(guardCondition = condition([num(1), '=', n
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ]),
+      ],
       guard: guardCondition
     })
   ]);
@@ -254,9 +254,9 @@ export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARI
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ]),
+      ],
       guard: guardCondition
     })
   ]);
@@ -286,9 +286,9 @@ export function createSelectorInterpolation(interpolatedNode = interpolated({ so
   return rules([
     ruleset({
       selector: sellist([sel([interpolatedSelector(interpolatedNode)])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ])
+      ]
     })
   ]);
 }
@@ -398,22 +398,22 @@ export const testPatterns = {
     return rules([
       ruleset({
         selector: sellist([sel([el('.container')])]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([sel([el('.nested')])]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sellist([sel([el('.deep')])]),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: sellist([sel([el('.inner')])]),
                     rules: [innerContent]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
   },

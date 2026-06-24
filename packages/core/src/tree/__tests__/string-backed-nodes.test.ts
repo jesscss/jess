@@ -402,19 +402,13 @@ describe('string-backed scanner-first proof nodes', () => {
     }
   });
 
-  test('rejects string-backed core ruleset selectors outside the proven cheap subset', () => {
-    expect(() => ruleset({
-      selector: ':hover(1)',
-      rules: []
-    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
-    expect(() => ruleset({
-      selector: '&:focus, .b',
-      rules: []
-    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
-    expect(() => ruleset({
-      selector: '.a &:focus',
-      rules: []
-    })).toThrow('Ruleset selector is outside the scanner-native selector subset.');
+  test('accepts string-backed ruleset selectors verbatim (the parser is the authority)', () => {
+    // The runtime no longer has an opinion on selector syntax: it stores whatever
+    // string the parser produced, materializing to nodes lazily when needed.
+    for (const selector of [':hover(1)', '&:focus, .b', '.a &:focus', '0%']) {
+      const node = ruleset({ selector, rules: [] });
+      expect(node.selector).toBe(selector);
+    }
   });
 
   test('renders string-backed core at-rules without name or prelude child nodes', () => {

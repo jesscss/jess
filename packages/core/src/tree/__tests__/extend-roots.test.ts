@@ -97,18 +97,18 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         ruleset({
           selector: sellist(['.base']),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist(['.child']),
-          rules: rules([
+          rules: [
             extend({
               target: sellist(['.base']),
               flag: ExtendFlag.Exact
             })
-          ])
+          ]
         })
       ]);
 

@@ -2368,7 +2368,7 @@ describe('reference', () => {
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const originalInherit = MixinClass.prototype.inherit;
       let inheritedMixins = 0;
@@ -4558,14 +4558,14 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('.mk-map'),
-          rules: rules([
+          rules: [
             decl({ name: 'text', value: any('white') }),
             decl({ name: 'background', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'p',
               value: call({
@@ -4580,7 +4580,7 @@ describe('reference', () => {
                 key: quoted('text')
               }, { type: 'index' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4595,17 +4595,17 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('.\\123'),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.\\123' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4623,17 +4623,17 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('#\\31a'),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: el('#\\31a') }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4651,19 +4651,19 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('.a'), el('.\\32b')]),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.a', '.\\32b']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4694,28 +4694,28 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('red') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4738,7 +4738,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4762,18 +4762,18 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4789,7 +4789,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4813,18 +4813,18 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4840,7 +4840,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4855,39 +4855,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4903,7 +4903,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4919,39 +4919,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4967,7 +4967,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4984,24 +4984,24 @@ describe('reference', () => {
         mixin({
           name: any('.mixin-with-directives'),
           params: list([any('keyframeName', { role: 'property' })]),
-          rules: rules([
+          rules: [
             atrule({
               name: any('@keyframes'),
               prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
-              rules: rules([
+              rules: [
                 decl({ name: 'property', value: any('value') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: el('.mixin-with-directives') }, { type: 'mixin-ruleset' }),
               args: list([any('some-name')])
             })
-          ])
+          ]
         })
       ]);
 
@@ -5021,19 +5021,19 @@ describe('reference', () => {
             el('.foo'),
             el('.bbb')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'b', value: any('1') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5060,19 +5060,19 @@ describe('reference', () => {
             el('.foo'),
             el('.bbb')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'b', value: any('1') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5107,17 +5107,17 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: compound([el('.a'), el('.b'), el('.c')]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.out'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: path }, { type: 'mixin-ruleset' })
               })
-            ])
+            ]
           })
         ]);
 
@@ -5154,9 +5154,9 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: compound([el('.a'), el('.b'), el('.c')]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -5192,7 +5192,7 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('.paint'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       setRulesContext(await node.eval(context));
@@ -5361,7 +5361,7 @@ describe('reference', () => {
         decl({ name: 'tone-prop', value: any('orange') }),
         mixin({
           name: any('.tone-mixin'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       node.setFunctionBinding('tone-fn', new JsFunction({
@@ -5703,7 +5703,7 @@ describe('reference', () => {
     it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
       const callable = mixin({
         name: any('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
@@ -5730,7 +5730,7 @@ describe('reference', () => {
       const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
       const callable = mixin({
         name: any('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([ignoredDeclaration, callable]);
       setRulesContext(await node.eval(context));
@@ -5757,7 +5757,7 @@ describe('reference', () => {
     it('static mixin-ruleset handles stay cold while leakyRules disqualifies lookup', async () => {
       const callable = ruleset({
         selector: el('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
@@ -5784,7 +5784,7 @@ describe('reference', () => {
       const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
       const callable = ruleset({
         selector: el('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([ignoredDeclaration, callable]);
       setRulesContext(await node.eval(context));
@@ -5867,11 +5867,11 @@ describe('reference', () => {
         ignoredDeclaration,
         mixin({
           name: any('.paint-mixin'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }),
         ruleset({
           selector: el('.paint-ruleset'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       const root = setRulesContext(await node.eval(context));
@@ -6216,12 +6216,12 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: el('.parameterized-handle'),
-            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+            rules: [decl({ name: 'color', value: any('ruleset') })]
           }),
           mixin({
             name: any('.parameterized-handle'),
             params: list([any('color', { role: 'property' })]),
-            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+            rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -6267,7 +6267,7 @@ describe('reference', () => {
         const node = rules([
           mixin({
             name: any('.callable-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -6343,7 +6343,7 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: el('.ruleset-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -6381,7 +6381,7 @@ describe('reference', () => {
         const node = rules([
           mixin({
             name: any('.callable-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -6393,7 +6393,7 @@ describe('reference', () => {
 
         node.push(mixin({
           name: any('.other-callable'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
@@ -6407,24 +6407,24 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: sel([el('#foo-foo')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'c', value: any('c') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6444,14 +6444,14 @@ describe('reference', () => {
     it('direct complex selector callable lookup consumes compound selector remainder entries', async () => {
       const nestedRuleset = ruleset({
         selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'c', value: any('c') })
-        ])
+        ]
       });
       const node = rules([
         ruleset({
           selector: sel([el('#foo-foo')]),
-          rules: rules([nestedRuleset])
+          rules: [nestedRuleset]
         })
       ]);
 
@@ -6469,24 +6469,24 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: sel([el('#foo-foo')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'c', value: any('c') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6527,39 +6527,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6582,7 +6582,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -6597,28 +6597,28 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6634,7 +6634,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6650,39 +6650,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.warning')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.palette'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('orange') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6698,7 +6698,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6714,28 +6714,28 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     ruleset({
                       selector: el('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6751,7 +6751,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6767,40 +6767,40 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
               params: list([any('mode', { role: 'property' })]),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6816,7 +6816,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6832,25 +6832,25 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
               params: list([any('mode', { role: 'property' })]),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -6868,24 +6868,24 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 

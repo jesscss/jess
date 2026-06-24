@@ -32,10 +32,10 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
 
@@ -47,10 +47,10 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: DEFAULT_VARIABLE }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
 
@@ -62,11 +62,11 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             decl({ name: 'background', value: DEFAULT_VARIABLE }),
             decl({ name: 'width', value: op([num(10), '+', num(5)]) })
-          ])
+          ]
         })
       ]);
 
@@ -80,9 +80,9 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: DEFAULT_VARIABLE })
-          ])
+          ]
         })
       ]);
 
@@ -93,22 +93,22 @@ describe('Flag bubbling', () => {
     test('mayAsync bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+        rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -124,9 +124,9 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })
-          ])
+          ]
         })
       ]);
 
@@ -139,22 +139,22 @@ describe('Flag bubbling', () => {
     test('variable reference bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: list([any('red'), DEFAULT_VARIABLE, any('blue')]) })])
+        rules: [decl({ name: 'color', value: list([any('red'), DEFAULT_VARIABLE, any('blue')]) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -176,22 +176,22 @@ describe('Flag bubbling', () => {
     test('operation bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'width', value: op([num(10), '+', num(5)]) })])
+        rules: [decl({ name: 'width', value: op([num(10), '+', num(5)]) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -213,22 +213,22 @@ describe('Flag bubbling', () => {
     test('function call bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })])
+        rules: [decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -250,25 +250,25 @@ describe('Flag bubbling', () => {
     test('static content maintains clean state through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 

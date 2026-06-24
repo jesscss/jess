@@ -32,10 +32,10 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'width', value: any('10px') })
-        ])
+        ]
       })
     ]);
 
@@ -57,10 +57,10 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: DEFAULT_VARIABLE }),
           decl({ name: 'width', value: any('10px') })
-        ])
+        ]
       })
     ]);
 
@@ -82,9 +82,9 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: op([num(1), '+', num(2)]) })
-        ])
+        ]
       })
     ]);
 
@@ -107,9 +107,9 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })
-        ])
+        ]
       })
     ]);
 
@@ -132,10 +132,10 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'shadow', value: list([any('1px'), any('2px')]) }),
           decl({ name: 'border', value: any('1px solid red') })
-        ])
+        ]
       })
     ]);
 
@@ -160,10 +160,10 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'shadow', value: list([any('1px'), DEFAULT_VARIABLE, any('3px')]) }),
           decl({ name: 'border', value: any('1px solid red') })
-        ])
+        ]
       })
     ]);
 
@@ -188,12 +188,12 @@ describe('Static optimization', () => {
     const tree = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'background', value: DEFAULT_VARIABLE }),
           decl({ name: 'width', value: op([num(10), '+', num(5)]) }),
           decl({ name: 'border', value: any('1px solid') })
-        ])
+        ]
       })
     ]);
 

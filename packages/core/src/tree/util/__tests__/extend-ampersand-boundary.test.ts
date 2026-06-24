@@ -40,12 +40,12 @@ describe('Extend ampersand boundary behavior', () => {
       header,
       ruleset({
         selector: sel([el('.footer'), co(' '), el('.footer-nav')]),
-        rules: rules([
+        rules: [
           extend({
             target: sel([el('.header'), co(' '), el('.header-nav')]),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 

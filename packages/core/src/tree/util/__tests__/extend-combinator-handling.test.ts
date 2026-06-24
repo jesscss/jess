@@ -203,21 +203,21 @@ describe('Combinator Preservation in Extensions', () => {
       // Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
       const nestedExt9 = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const root = rules([
         ruleset({
           selector: el('.ext8'),
-          rules: rules([nestedExt9])
+          rules: [nestedExt9]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
@@ -235,16 +235,16 @@ describe('Combinator Preservation in Extensions', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.zoo'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('>'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
@@ -268,7 +268,7 @@ describe('Combinator Preservation in Extensions', () => {
       });
       const nestedRuleset = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const ext8Body = rules([nestedRuleset]);
       const ext8Ruleset = ruleset({ selector: el('.ext8'), rules: ext8Body });
@@ -277,21 +277,21 @@ describe('Combinator Preservation in Extensions', () => {
         ext8Ruleset,
         ruleset({
           selector: el('.buu'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co(' '), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();

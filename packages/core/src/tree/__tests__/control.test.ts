@@ -133,11 +133,11 @@ describe('Control Nodes', () => {
     const forRule = new For({
       pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
       iterable: { kind: 'node', value: list([any('a')]) },
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
     const whileRule = new While({
       condition: bool(false),
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
 
     expect(ifRule._treeContext).toBe(treeContext);
@@ -150,10 +150,10 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }
       ]
     });
@@ -173,7 +173,7 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }
       ]
     });
@@ -202,11 +202,11 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: conditionNode,
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
           condition: elseIfCondition,
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }
       ]
     });
@@ -221,10 +221,10 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }
       ]
     });
@@ -243,10 +243,10 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: condition([bool(true)]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }
       ]
     });
@@ -264,10 +264,10 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         }
       ]
     });
@@ -299,14 +299,14 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         },
         {
           condition: bool(true),
           rules: selectedRules
         },
         {
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         }
       ]
     });
@@ -330,10 +330,10 @@ describe('Control Nodes', () => {
         branches: [
           {
             condition: bool(false),
-            rules: rules([decl({ name: 'color', value: any('red') })])
+            rules: [decl({ name: 'color', value: any('red') })]
           },
           {
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           }
         ]
       })
@@ -348,7 +348,7 @@ describe('Control Nodes', () => {
       branches: [
         {
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }
       ]
     });
@@ -375,12 +375,12 @@ describe('Control Nodes', () => {
     const root = rules([
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           new If({
             branches: [
               {
                 condition: bool(true),
-                rules: rules([decl({ name: 'color', value: any('red') })])
+                rules: [decl({ name: 'color', value: any('red') })]
               }
             ]
           }),
@@ -397,9 +397,9 @@ describe('Control Nodes', () => {
               }),
               args: list([])
             }),
-            rules: rules([decl({ name: 'height', value: any('1px') })])
+            rules: [decl({ name: 'height', value: any('1px') })]
           })
-        ])
+        ]
       })
     ]);
 
@@ -468,7 +468,7 @@ describe('Control Nodes', () => {
         includeStart: true,
         includeEnd: false
       },
-      rules: rules([])
+      rules: []
     });
 
     expect(node.toTrimmedString()).toContain('$for ([$first, $second] of 1 to <5 step 2)');
@@ -491,7 +491,7 @@ describe('Control Nodes', () => {
         includeStart: true,
         includeEnd: false
       },
-      rules: rules([])
+      rules: []
     });
 
     expect(node.toTrimmedString({ writer })).toContain('$for ($value of 1 to <5 step 2)');
@@ -563,7 +563,7 @@ describe('Control Nodes', () => {
   it('serializes $while source syntax through toTrimmedString()', () => {
     const node = new While({
       condition: bool(true),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString()).toBeString(`
@@ -577,7 +577,7 @@ describe('Control Nodes', () => {
     const writer = new WholeBufferCountingWriter();
     const node = new While({
       condition: bool(true),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString({ writer })).toBeString(`
@@ -597,7 +597,7 @@ describe('Control Nodes', () => {
     };
     const node = new While({
       condition: conditionNode,
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString()).toContain('$while (true)');
@@ -608,7 +608,7 @@ describe('Control Nodes', () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -618,7 +618,7 @@ describe('Control Nodes', () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     const resolved = await node.resolve(context);
@@ -647,7 +647,7 @@ describe('Control Nodes', () => {
     };
     const node = new While({
       condition: bool(false),
-      rules: rules([colorDecl])
+      rules: [colorDecl]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -667,7 +667,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -688,7 +688,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -698,7 +698,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: any('yes') })
-        ])
+        ]
       })
     ]);
 
@@ -718,7 +718,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -728,7 +728,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: ref({ key: 'i' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       makeLoop(
         makePattern(['value'], 'single'),
@@ -756,7 +756,7 @@ describe('Control Nodes', () => {
     const buffer = createRenderBuffer('flat');
     const node = new While({
       condition: bool(true),
-      rules: rules([
+      rules: [
         decl({
           name: 'color',
           value: call({
@@ -769,7 +769,7 @@ describe('Control Nodes', () => {
             args: list([])
           })
         })
-      ])
+      ]
     });
     context.rulesContext = scope;
 
@@ -789,7 +789,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
     node.resolve = () => {
       throw new Error('$while buffer render should use evalNode');
@@ -889,9 +889,9 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -1085,7 +1085,7 @@ describe('Control Nodes', () => {
     const root = rules([
       new While({
         condition: bool(true),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -1151,9 +1151,9 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       ruleset({
         selector: el('.col'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
@@ -1170,7 +1170,7 @@ describe('Control Nodes', () => {
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
         selector: sel([el('.skip')]),
-        rules: rules([decl({ name: 'x', value: new Any('nope') })])
+        rules: [decl({ name: 'x', value: new Any('nope') })]
       }),
       decl({ name: 'two', value: new Any('blue') })
     ]);
@@ -1641,9 +1641,9 @@ describe('Control Nodes', () => {
           source: `.col-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [ref({ key: 'value' }, { type: 'variable' })]
         })),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([
@@ -1656,9 +1656,9 @@ describe('Control Nodes', () => {
           co('+'),
           el('*')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
@@ -1793,7 +1793,7 @@ describe('Control Nodes', () => {
       params: list([
         any('prefix', { role: 'property' })
       ]),
-      rules: rules([
+      rules: [
         new For({
           pattern: {
             kind: 'tuple',
@@ -1818,28 +1818,28 @@ describe('Control Nodes', () => {
           },
           rules: loopRules
         })
-      ])
+      ]
     });
 
     const root = rules([
       loopMixin,
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('a')])
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.b')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('b')])
           })
-        ])
+        ]
       })
     ]);
     context.root = root;

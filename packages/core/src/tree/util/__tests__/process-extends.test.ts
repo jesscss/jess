@@ -22,10 +22,10 @@ describe('processExtends function (eval flow)', () => {
   describe('Basic extend processing', () => {
     it('should extend a simple ruleset', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
@@ -36,14 +36,14 @@ describe('processExtends function (eval flow)', () => {
 
     it('should handle multiple extends on same target', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
@@ -56,7 +56,7 @@ describe('processExtends function (eval flow)', () => {
       const root = rules([
         ruleset({
           selector: el('.foo'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
@@ -69,14 +69,14 @@ describe('processExtends function (eval flow)', () => {
   describe('Extend chaining', () => {
     it('should chain extends when extended selector matches another target', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.bar') })])
+          rules: [extend({ target: el('.bar') })]
         })
       ]);
       const context = new Context();
@@ -91,11 +91,11 @@ describe('processExtends function (eval flow)', () => {
       const root = rules([
         ruleset({
           selector: compound([el('.a'), el('.b')]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([extend({ target: el('.b'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.b'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
@@ -108,7 +108,7 @@ describe('processExtends function (eval flow)', () => {
       const outerRules = rules([
         ruleset({
           selector: sellist([el('.replace'), el('.c')]),
-          rules: rules([])
+          rules: []
         })
       ]);
       const root = rules([
@@ -121,7 +121,7 @@ describe('processExtends function (eval flow)', () => {
         }),
         ruleset({
           selector: el('.rep_ace'),
-          rules: rules([extend({ target: el('.replace'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.replace'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
@@ -145,15 +145,15 @@ describe('processExtends function (eval flow)', () => {
             sel([el('.foo'), co(' '), el('.bar')]),
             sel([el('.foo'), co(' '), el('.baz')])
           ]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: sel([el('.ext1'), co(' '), el('.ext2')]),
-          rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
         }),
         ruleset({
           selector: pseudo({ name: ':is', arg: sellist([el('.ext3'), el('.ext4')]) }),
-          rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
@@ -171,7 +171,7 @@ describe('processExtends function (eval flow)', () => {
       const root = rules([
         ruleset({
           selector: el('.foo'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
@@ -184,14 +184,14 @@ describe('processExtends function (eval flow)', () => {
   describe('Phase 2 iterative processing', () => {
     it('should process extended rulesets in Phase 2', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.bar') })])
+          rules: [extend({ target: el('.bar') })]
         })
       ]);
       const context = new Context();

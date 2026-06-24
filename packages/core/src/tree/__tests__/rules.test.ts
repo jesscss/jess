@@ -723,21 +723,21 @@ describe('Rules', () => {
     const root = rules([
       ruleset({
         selector: any('.a'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([10, 'px']) })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.b'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([20, 'px']) })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.c'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: dimension([30, 'px']) })
-        ])
+        ]
       })
     ]);
 
@@ -760,15 +760,15 @@ describe('Rules', () => {
     const root = rules([
       ruleset({
         selector: any('.same'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       }),
       ruleset({
         selector: any('.same'),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       })
     ]);
 
@@ -1199,20 +1199,20 @@ describe('Rules', () => {
           vardecl({ name: 'z', value: any('transparent') }),
           ruleset({
             selector: el('.scope1'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'z', value: any('black') }),
               ruleset({
                 selector: el('.scope2'),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: el('.scope3'),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'border-color', value: ref('z', { type: 'variable' }) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
         ]);
 
@@ -1301,9 +1301,9 @@ describe('Rules', () => {
         let root = rules([
           ruleset({
             selector: el('.grid'),
-            rules: rules([
+            rules: [
               decl({ name: 'total-width', value: ref('total-width', { type: 'variable' }) })
-            ])
+            ]
           }),
           vardecl({ name: 'base', value: any('1') }),
           vardecl({ name: 'column-width', value: any('6em') }),
@@ -1446,27 +1446,27 @@ describe('Rules', () => {
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({
             selector: sellist([sel([el('.box')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           }),
 
           // .box2 sets the variable with !global (setDefined)
           ruleset({
             selector: sellist([sel([el('.box2')])]),
-            rules: rules([
+            rules: [
               vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
-            ])
+            ]
           }),
 
           // .box3 uses the variable directly and includes the mixin (both should be blue)
           ruleset({
             selector: sellist([sel([el('.box3')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
 
@@ -2511,12 +2511,12 @@ describe('Rules', () => {
     let node = rules([
       ruleset({
         selector: sellist([sel([el('.collapse')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
           rules([
             decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
           ])
-        ])
+        ]
       })
     ]);
     let evald = await node.eval(context);
