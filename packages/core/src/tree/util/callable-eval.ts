@@ -64,7 +64,7 @@ export async function evaluateCallableCollection({
     restrictMixinOutputLookup,
     debugDefaultGuard,
     debugCaller: () => {
-      const callerName = caller?.value?.name;
+      const callerName = caller?.name;
       const raw = callerName?.valueOf?.() ?? callerName ?? caller?.type ?? '<unknown>';
       return String(raw);
     },
@@ -83,7 +83,7 @@ export async function evaluateCallableCollection({
     restrictMixinOutputLookup,
     debugDefaultGuard,
     debugCaller: (() => {
-      const callerName = caller?.value?.name;
+      const callerName = caller?.name;
       const raw = callerName?.valueOf?.() ?? callerName ?? caller?.type ?? '<unknown>';
       return String(raw);
     })(),

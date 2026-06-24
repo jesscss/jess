@@ -18,6 +18,8 @@ export interface Comment extends Node<string, CommentOptions> {
 export class Comment extends Node<string, CommentOptions> {
   static override childKeys = null;
 
+  declare readonly value: string;
+
   override allowRoot = true;
   override allowRuleRoot = true;
   readonly lineComment: boolean;

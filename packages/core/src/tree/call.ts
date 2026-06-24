@@ -11,7 +11,13 @@ import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
-import { Any } from './any.js';
+import { Any, Anonymous, Keyword } from './any.js';
+import { Bool } from './bool.js';
+import { Dimension } from './dimension.js';
+import { Num } from './number.js';
+import { Color } from './color.js';
+import { Sequence } from './sequence.js';
+import { Quoted } from './quoted.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
@@ -245,255 +251,251 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
 }
 
 function getKnownRenderedCallText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Keyword':
-    case 'Anonymous':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Dimension':
-      return typeof node.number === 'number'
-        ? node.toTrimmedString()
-        : undefined;
-    case 'Num':
-      return typeof node.number === 'number' ? `${node.number}` : undefined;
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    case 'List': {
-      const sep = node.options?.sep ?? ',';
-      const joiner = sep === '/' ? ' / ' : `${sep} `;
-      let out = '';
-      for (let i = 0; i < node.value.length; i++) {
-        const text = getKnownRenderedCallText(node.value[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += joiner;
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Sequence': {
-      if (node.preserveWhitespace) {
-        return undefined;
-      }
-      let out = '';
-      for (let i = 0; i < node.value.length; i++) {
-        const text = getKnownRenderedCallText(node.value[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += ' ';
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Paren': {
-      const open = node.options?.delimiter === 'square' ? '[' : '(';
-      const close = node.options?.delimiter === 'square' ? ']' : ')';
-      if (!node.value) {
-        return `${open}${close}`;
-      }
-      const value = getKnownRenderedCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return `${open}${value}${close}`;
-    }
-    case 'Quoted': {
-      const quote = node.quote ?? '"';
-      if (typeof node.value === 'string') {
-        return node.escaped ? node.value : `${quote}${node.value}${quote}`;
-      }
-      const value = getKnownRenderedCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return node.escaped ? value : `${quote}${value}${quote}`;
-    }
-    default:
-      if (node.constructor === QueryCondition) {
-        let out = '';
-        for (let i = 0; i < node.value.length; i++) {
-          const text = getKnownRenderedCallText(node.value[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          if (i > 0) {
-            out += ' ';
-          }
-          out += text;
-        }
-        return out;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownRenderedCallText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownRenderedCallText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownRenderedCallText(node.left);
-        const right = getKnownRenderedCallText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
-      if (node.constructor === Negative) {
-        const value = getKnownRenderedCallText(node.value);
-        return value === undefined ? undefined : `-${value}`;
-      }
-      return undefined;
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
   }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${open}${close}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? node.value : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? value : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownRenderedCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownRenderedCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownRenderedCallText(node.left);
+    const right = getKnownRenderedCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownRenderedCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
 }
 
 function getKnownSourceCallText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Keyword':
-    case 'Anonymous':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Dimension':
-      return typeof node.number === 'number'
-        ? node.toTrimmedString()
-        : undefined;
-    case 'Num':
-      return typeof node.number === 'number' ? `${node.number}` : undefined;
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    case 'List': {
-      const sep = node.options?.sep ?? ',';
-      const joiner = sep === '/' ? ' / ' : `${sep} `;
-      let out = '';
-      for (let i = 0; i < node.value.length; i++) {
-        const text = getKnownSourceCallText(node.value[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += joiner;
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Sequence': {
-      if (node.preserveWhitespace) {
-        return undefined;
-      }
-      let out = '';
-      for (let i = 0; i < node.value.length; i++) {
-        const text = getKnownSourceCallText(node.value[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += ' ';
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Paren': {
-      const open = node.options?.delimiter === 'square' ? '[' : '(';
-      const close = node.options?.delimiter === 'square' ? ']' : ')';
-      if (!node.value) {
-        return `${node.options?.escaped ? '~' : ''}${open}${close}`;
-      }
-      const value = getKnownSourceCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
-    }
-    case 'Quoted': {
-      const quote = node.quote ?? '"';
-      if (typeof node.value === 'string') {
-        return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
-      }
-      const value = getKnownSourceCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
-    }
-    default:
-      if (node.constructor === QueryCondition) {
-        let out = '';
-        for (let i = 0; i < node.value.length; i++) {
-          const text = getKnownSourceCallText(node.value[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          if (i > 0) {
-            out += ' ';
-          }
-          out += text;
-        }
-        return out;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownSourceCallText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownSourceCallText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownSourceCallText(node.left);
-        const right = getKnownSourceCallText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
-      if (node.constructor === Negative) {
-        const value = getKnownSourceCallText(node.value);
-        return value === undefined ? undefined : `-${value}`;
-      }
-      return undefined;
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
   }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownSourceCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownSourceCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownSourceCallText(node.left);
+    const right = getKnownSourceCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownSourceCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
 }
 
 function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {

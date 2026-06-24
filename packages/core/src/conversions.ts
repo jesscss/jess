@@ -54,7 +54,7 @@ export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) =
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   if (unit === 'turn') {
     return new Num(number * 360);
   }
@@ -79,7 +79,7 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   let degrees = number;
 
   if (unit === 'turn') {
@@ -110,7 +110,7 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   let result = number;
 
   if (unit === '%') {
@@ -154,7 +154,7 @@ export const lengthToPx = (baseFontSize: number = 16): ConversionPlugin => (valu
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
 
   switch (unit) {
     case 'px': return new Num(number);
@@ -177,7 +177,7 @@ export const timeToMs = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   if (unit === 'ms') {
     return new Num(number);
   }
@@ -195,7 +195,7 @@ export const frequencyToHz = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   if (unit === 'hz') {
     return new Num(number);
   }
@@ -213,7 +213,7 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   if (unit === 'turn') {
     return new Num(number * 2 * Math.PI);
   }
@@ -258,7 +258,7 @@ export const splitSequence = (): PreprocessParams => {
 
       // Check if this is the last item and it's an Operation (likely a slash)
       if (i === sequence.value.length - 1 && item instanceof Operation) {
-        const [left, , right] = item.value;
+        const { left, right } = item;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)

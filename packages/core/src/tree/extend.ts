@@ -229,14 +229,14 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   // selector (e.g. .issue-2586-somepage .content not just .content).
   if (currentFrame) {
     const rs = currentFrame;
-    const fullSel = rs.value?.selector;
+    const fullSel = rs.selector;
     let usedParentListComposition = false;
     if (!authoredSelector) {
       const ownSel = getRulesetOwnSelector(rs);
       const parentFrame = context.rulesetFrames.at(-2);
       const parentSel = (
         parentFrame && isNode(parentFrame, N.Ruleset)
-          ? parentFrame.value?.selector
+          ? parentFrame.selector
           : undefined
       );
       if (
@@ -263,7 +263,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
       } else {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-        const parentSel = currentFrame.value?.selector;
+        const parentSel = currentFrame.selector;
         if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             copySelectorForExtendRecord(parentSel, selectorBits),
