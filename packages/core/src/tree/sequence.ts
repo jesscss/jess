@@ -105,6 +105,7 @@ function sequenceRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOption
 export class Sequence extends Node<Node[], SequenceOptions> {
   static override childKeys = ['value'] as const;
 
+  declare readonly value: Node[];
   readonly preserveWhitespace: boolean | undefined;
 
   constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
