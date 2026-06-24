@@ -49,6 +49,7 @@
 import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList, type SelectorListItem } from '../selector-list.js';
+import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
@@ -577,7 +578,7 @@ function walkSelectorList(
       hasContentAfter: i < items.length - 1
     };
 
-    const extended = walkNode(item, spec, extendWith, partial, childCtx);
+    const extended = walkNode(selectorListItemForMatch(item), spec, extendWith, partial, childCtx);
 
     if (extended === item) {
       originals.push(item);
@@ -854,7 +855,7 @@ function walkPseudoTailAware(
 
     for (let i = 0; i < items.length; i++) {
       const alt = items[i]!;
-      const extended = walkAlternativeTailAware(alt, spec, extendWith, partial);
+      const extended = walkAlternativeTailAware(selectorListItemForMatch(alt), spec, extendWith, partial);
       if (extended === alt) {
         originals.push(alt);
       } else if (isNode(extended, N.SelectorList)) {
@@ -1029,7 +1030,7 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
       return matched;
     }
 
-    const merged = [...existing.map(s => copySelectorForExtend(s)), ...newItems];
+    const merged = [...existing.map(s => copySelectorForExtend(selectorListItemForMatch(s))), ...newItems];
     const list = SelectorList.create(merged);
     const result = PseudoSelector.create({ name: ':is', arg: list }).inherit(matched);
     result.generated = true;

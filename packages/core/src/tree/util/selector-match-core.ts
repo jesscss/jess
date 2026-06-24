@@ -15,7 +15,7 @@ function shareKeySetLibrary(a: Selector, b: Selector): boolean {
   return !!a.keySetLibrary && a.keySetLibrary === b.keySetLibrary;
 }
 
-function selectorListItemForMatch(item: SelectorList['value'][number]): Selector {
+export function selectorListItemForMatch(item: SelectorList['value'][number]): Selector {
   return typeof item === 'string' ? new ComplexSelector([item]) : item;
 }
 
