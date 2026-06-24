@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { DeclarationFindOptions } from './util/lookup-utils.js';
@@ -265,7 +265,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
-        || node.type === 'InterpolatedSelector'
+        || (typeof node !== 'string' && node.type === 'InterpolatedSelector')
       ) {
         continue;
       }
@@ -1363,11 +1363,11 @@ function getAncestorVariableCurrentBindingFacts(
 }
 
 function areCurrentBindingFactsCurrent(args: {
-  currentBindingKey: string | undefined;
-  currentBindingFrame: ScopeFrame | undefined;
-  currentBindingVersion: number | undefined;
-  currentBindingRestFrames: ScopeFrame[] | undefined;
-  currentBindingRestVersions: number[] | undefined;
+  currentBindingKey?: string;
+  currentBindingFrame?: ScopeFrame;
+  currentBindingVersion?: number;
+  currentBindingRestFrames?: ScopeFrame[];
+  currentBindingRestVersions?: number[];
 }): boolean {
   const {
     currentBindingKey,
@@ -1802,6 +1802,9 @@ function writeFunctionRulesLookupHandle(
     referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  const functionReturnVal: FunctionReferenceLookupReturnValue = (isNode(returnVal, N.Func) || isNode(returnVal, N.JsFunction))
+    ? returnVal
+    : undefined;
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   referenceNode._rulesLookupHandle = {
@@ -1814,7 +1817,7 @@ function writeFunctionRulesLookupHandle(
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: returnVal ?? CACHED_RULES_LOOKUP_MISS
+    returnVal: functionReturnVal ?? CACHED_RULES_LOOKUP_MISS
   };
 }
 
@@ -2313,7 +2316,9 @@ function evaluateReferenceKey(
         const normalizedPart = normalizeReferenceKeyValue(resolvedKey[i]);
         normalized[i] = typeof normalizedPart === 'number'
           ? `${normalizedPart}`
-          : normalizedPart;
+          : Array.isArray(normalizedPart)
+            ? normalizedPart.join(' ')
+            : normalizedPart;
       }
       return [resolvedTarget, normalized];
     }
@@ -2543,7 +2548,7 @@ function isRulesLikeReferenceValue(node: Node): boolean {
  */
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
-function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
+function createRulesLikeReferenceSurface(directValue: MixinEntry | Node): MixinEntry | PreservedRulesLikeValue {
   const descriptors = Object.getOwnPropertyDescriptors(directValue);
   const optionsDescriptor = descriptors._options;
   if (
@@ -2554,9 +2559,9 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
   ) {
     optionsDescriptor.value = { ...optionsDescriptor.value };
   }
-  delete descriptors.sourceNode;
-  delete descriptors.parent;
-  delete descriptors.index;
+  Reflect.deleteProperty(descriptors, 'sourceNode');
+  Reflect.deleteProperty(descriptors, 'parent');
+  Reflect.deleteProperty(descriptors, 'index');
   const preservedValue = Object.create(
     Object.getPrototypeOf(directValue)
   );
@@ -2564,7 +2569,8 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
   Object.defineProperties(preservedValue, descriptors);
-  const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
+  const directNode = isNode(directValue) ? directValue : undefined;
+  const sourceNode = directNode?.sourceNode instanceof Node ? directNode.sourceNode : directNode;
   Object.defineProperties(preservedValue, {
     sourceNode: {
       value: directValue,
@@ -2573,13 +2579,13 @@ function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeV
       configurable: false
     },
     parent: {
-      value: directValue.parent ?? sourceNode.parent,
+      value: (directNode?.parent) ?? sourceNode?.parent,
       writable: true,
       enumerable: false,
       configurable: true
     },
     index: {
-      value: directValue.index ?? sourceNode.index,
+      value: directValue.index ?? sourceNode?.index,
       writable: true,
       enumerable: true,
       configurable: true
@@ -2676,7 +2682,8 @@ function finalizeDirectReferenceResult(
 
 function getMixinReferenceCandidateGuard(candidate: MixinEntry): Node | undefined {
   if (isNode(candidate, N.Ruleset)) {
-    return candidate.guard;
+    const guard = candidate.guard;
+    return isNode(guard) ? guard : undefined;
   }
   return getCallableEntryGuard(candidate);
 }
@@ -2892,6 +2899,7 @@ function finalizeDeclarationReferenceResult(
   if (
     context.calcFrames === 0
     && !hasImportant
+    && isNode(declarationValue)
     && (
       (!isMergedAssign && canReturnReferenceValue(declarationValue))
       || (isMergedAssign && canReturnMergedAssignReferenceValue(declarationValue))
@@ -2919,8 +2927,13 @@ function finalizeDeclarationReferenceResult(
   };
   try {
     if (hasImportant) {
-      context.pushImportantSource(declaration.important);
+      const importantNode = declaration.important instanceof Any ? declaration.important : undefined;
+      context.pushImportantSource(importantNode);
       importantPushed = true;
+    }
+    if (!isNode(declarationValue)) {
+      context.popReference();
+      return new Any(String(declarationValue), { role: referenceNode.role });
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
@@ -3225,7 +3238,7 @@ function resolveRawReferenceLookupTarget(
   context: Context
 ): MaybePromise<unknown> {
   const { target, key } = referenceNode;
-  const lookupType = referenceNode.options.type;
+  const lookupType: LookupType = referenceNode.options.type ?? 'variable';
   context.pushReference();
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
 
@@ -3330,7 +3343,7 @@ function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolea
 
 function finalizeDirectRawRenderValue(
   referenceNode: Reference,
-  returnVal: RulesLookupResult | unknown,
+  returnVal: unknown,
   context: Context
 ): Node | undefined {
   if (!canRenderRawVariableReferenceDirectly(referenceNode)) {
@@ -3689,7 +3702,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const renderOptions = renderBuffer ? options : bufferOrOptions;
+    const renderOptions: PrintOptions | undefined = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
       const rawValue = resolveRawReferenceLookupTarget(this, context);
       if (isThenable(rawValue)) {
