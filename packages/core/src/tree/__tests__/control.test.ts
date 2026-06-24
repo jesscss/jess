@@ -102,8 +102,8 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.node instanceof List) {
-    const values = pattern.node.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.value instanceof List) {
+    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     const [first, ...rest] = values;
     if (!first) {
       throw new Error('Expected at least one binding in block pattern');

@@ -19,8 +19,8 @@ function unwrapListContainer(node: Node): List | Sequence | undefined {
       return inner;
     }
   }
-  if (node instanceof Block && node.node instanceof Node) {
-    const inner = node.node;
+  if (node instanceof Block && node.value instanceof Node) {
+    const inner = node.value;
     if (inner instanceof List || inner instanceof Sequence) {
       return inner;
     }
@@ -44,7 +44,7 @@ export function isBracketedList(node: Node): boolean {
     return node.options?.type === 'square' && unwrapListContainer(node) !== undefined;
   }
   const { parent } = node;
-  if ((parent instanceof Block ? parent.node : parent?.value) !== node) {
+  if ((parent instanceof Block ? parent.value : parent?.value) !== node) {
     return false;
   }
   if (isParenLike(parent)) {

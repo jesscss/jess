@@ -73,8 +73,8 @@ describe('Block', () => {
     const value = any('foo');
     const node = block(value);
 
-    expect(node.node).toBe(value);
-    expect(Block.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Block.childKeys).toEqual(['value']);
   });
 
   it('does not allocate options when rendering block syntax with defaults', () => {
@@ -219,7 +219,7 @@ describe('Block', () => {
     await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
-    const sourceValue = blockNode.node;
+    const sourceValue = blockNode.value;
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.render(context)).toBe('{foo}');
