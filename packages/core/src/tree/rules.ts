@@ -3138,7 +3138,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       }
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
-      const entryRules = entry.rules;
+      const entryRules = entry;
       const childFrame = entryRules._scopeFrame ?? (entryRules.evaluated ? entryRules.getScopeFrame() : undefined);
       let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
