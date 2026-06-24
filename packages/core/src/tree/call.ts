@@ -104,7 +104,8 @@ function emitCallArgSeparator(
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {
-    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    const sepStr = sep ?? ',';
+    options.writer.add(preserveLeadingWhitespace ? sepStr : `${sepStr} `);
   }
   if (leadingTrivia) {
     emitTriviaTokens(
@@ -655,7 +656,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const out = new Array<Node>(source.length);
     let changed = false;
     const evalImmediate = (node: Node): Node => {
-      const evald = node.evaluated ? node : node.evalNode(context);
+      const evald = Node.evalStatic(node, context);
       if (!(evald instanceof Node)) {
         throw new TypeError('Expected sync node result.');
       }
@@ -1462,7 +1463,7 @@ export class Call extends Node<CallValue, CallOptions> {
           const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
           const output = await evaluatedName.evalCall(context, argNodes);
           return this.renderOutput(context, output, bufferOrOptions, options);
-        } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
+        } else if (isNode(evaluatedName, N.Rules | N.Collection) && evaluatedName instanceof Rules) {
           if (state.preservesRulesLikeVariableTarget) {
             const sourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
               ? evaluatedName.sourceNode.parent
@@ -1641,7 +1642,7 @@ export class Call extends Node<CallValue, CallOptions> {
       : directSource ? getKnownSourceCallText(name) : undefined;
     if (nameText !== undefined) {
       w.add(nameText, typeof name === 'string' ? this : name);
-    } else {
+    } else if (typeof name !== 'string') {
       name.writeSyntax(options);
     }
     if (silentFail) {
@@ -1767,12 +1768,12 @@ export class Call extends Node<CallValue, CallOptions> {
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       } else if (isNode(rule, N.Ruleset)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       }
     }
@@ -1826,32 +1827,33 @@ export class Call extends Node<CallValue, CallOptions> {
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       return result;
-    } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
+    } else if ((isNode(n, N.Rules) || isNode(n, N.Collection)) && n instanceof Rules) {
+      const rulesNode = n;
       // PreserveRulesLike variable calls intentionally evaluate from the
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in n && isNode(n.sourceNode)
-          ? n.sourceNode.parent
+        const sourceParent = 'sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
+          ? rulesNode.sourceNode.parent
           : undefined;
         if (sourceParent) {
-          n.parent = sourceParent;
+          rulesNode.parent = sourceParent;
         }
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
       if (args && args.value.length > 0) {
-        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+        throw new ReferenceError(`Cannot call ${rulesNode.type} with arguments`);
       }
       return this.runAsCaller(context, async () => {
         const result = await evaluateCallableCollection({
           context,
           mixinEntries: [
             callableRulesEntry(
-              { rules: n },
-              n.parent,
-              n.index
+              { rules: rulesNode },
+              rulesNode.parent,
+              rulesNode.index
             )
           ],
           args: args?.value ?? []

@@ -15,7 +15,8 @@
     "noEmit": true,
     "paths": {
       "jess": ["./packages/jess/lib"],
-      "@jess/*": ["./packages/*/src"]
+      "@jess/*": ["./packages/*/src"],
+      "@jesscss/css-parser": ["./packages/css-parser/src/index.ts"]
     },
     "plugins": [
   

@@ -36,8 +36,11 @@ function isRulesetValue(value: unknown): value is Ruleset {
   return isNode(value, N.Ruleset);
 }
 
-function selectorOrUndefined(value: Selector | Nil | undefined): Selector | undefined {
-  return value instanceof Nil ? undefined : value;
+function selectorOrUndefined(value: string | Selector | Nil | undefined): Selector | undefined {
+  if (typeof value === 'string' || value instanceof Nil) {
+    return undefined;
+  }
+  return value;
 }
 
 function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
@@ -50,12 +53,11 @@ function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
 }
 
 function setOwnSelectorOption(ruleset: Ruleset, selector: Selector): void {
-  ruleset.options ??= {};
   ruleset.options.ownSelector = selector;
 }
 
 function hasExplicitExtendSelector(node: Node | undefined): boolean {
-  const value: unknown = node?.value;
+  const value: unknown = node && 'value' in node ? node.value : undefined;
   return !!value
     && typeof value === 'object'
     && 'selector' in value
@@ -947,7 +949,7 @@ export function processExtends(context: Context): void {
               previousValues.add(applyInput.valueOf());
             }
             for (const item of newSelector.value) {
-              if (!previousValues.has(item.valueOf())) {
+              if (typeof item !== 'string' && !previousValues.has(item.valueOf())) {
                 item.addFlag(F_EXTENDED);
               }
             }

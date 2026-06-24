@@ -55,6 +55,7 @@ import {
   type ComplexSelectorComponent,
   type Selector,
   type SimpleSelector,
+  type AnyRole,
   isNode,
   N,
   shouldOperateWithMathFrames
@@ -86,7 +87,7 @@ function extendWithSelector(node: ExtendType, selector: Selector | undefined, co
 }
 
 function prependRules(rules: Rules, nodes: Node[], context: TreeContext): Rules {
-  const out = new Rules([...nodes, ...rules.rules], rules.options, rules.location, context);
+  const out = new Rules([...nodes, ...rules.rules], rules.options, rules.location.length ? rules.location : undefined, context);
   out._location = rules._location;
   return out;
 }
@@ -358,7 +359,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    const { target, flag = 1 } = ext.value; // ExtendFlag.Exact = 1
+    const { target, flag = 1 } = ext; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -405,7 +406,7 @@ export function stylesheet(this: P, T: TokenMap): ProductionRule {
       root = new Rules(
         [new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.rules],
         root.options,
-        root.location,
+        root.location.length ? root.location : undefined,
         context!
       );
       let rootLoc = root.location;
@@ -930,14 +931,16 @@ export function mediaConditionWithoutOr(this: P, T: TokenMap) {
 export function mediaFeature(this: P, T: TokenMap) {
   const $ = this;
 
-  const createFeatureIdentNode = (token: IToken, role: 'ident' | 'property') => {
+  function createFeatureIdentNode(token: IToken, role: 'property'): Any<'property'> | Interpolated<'property'>;
+  function createFeatureIdentNode(token: IToken, role: 'ident'): Any<'ident'> | Interpolated<AnyRole>;
+  function createFeatureIdentNode(token: IToken, role: 'ident' | 'property') {
     const location = $.getLocationInfo(token);
     const resolved = getInterpolatedOrString(token.image, location, $.context);
     if (typeof resolved === 'string') {
       return new Any(resolved, { role }, location, $.context);
     }
     return resolved;
-  };
+  }
 
   return (ctx: RuleContext = {}) => $.OR([
     {
@@ -1290,7 +1293,8 @@ export function qualifiedRule(this: P, T: TokenMap): ProductionRule {
     // 1. Extends that should bubble up (from nested rulesets or this ruleset that didn't match)
     // 2. Nothing (if all extends were processed)
     // Restore this ruleset's extendNodes (from selector parsing) to process them
-    const bubblingExtends = ctx.extendNodes; // Extends that should bubble up
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const bubblingExtends = (ctx as { extendNodes?: Extend[] }).extendNodes; // Extends that should bubble up
     ctx.extendNodes = thisExtendNodes;
     // Restore parent's extendNodes after processing this ruleset's extends
     let parentExtendNodes = savedExtendNodes;
@@ -1347,12 +1351,13 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const location: LocationInfo | undefined = node.location.length ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
         if (isNode(node, N.Any) && node.role === 'name') {
           // Create a new Any node with role 'property' for the name
-          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location, $.context);
+          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location.length ? node.location : undefined, $.context);
           const replacement = new VarDeclaration({
             name: nameNode,
             value: new Nil(undefined, undefined, location, $.context)
@@ -1372,14 +1377,15 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const location: LocationInfo | undefined = node.location.length ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
         let replacement: Node | undefined;
         if (isNode(node, N.Any) && node.role === 'name') {
           replacement = new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context);
         } else if (node instanceof Rest) {
-          const restValue = node.node;
+          const restValue = node.value;
           if (typeof restValue === 'string') {
             replacement = new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context);
           }
