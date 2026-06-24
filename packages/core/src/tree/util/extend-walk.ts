@@ -449,7 +449,10 @@ export function extendWithNeedsConflictValidation(extendWith: Selector): boolean
   return false;
 }
 
-function containsAmpersand(sel: Selector): boolean {
+function containsAmpersand(sel: Selector | string): boolean {
+  if (typeof sel === "string") {
+    return sel.includes("&");
+  }
   if (sel instanceof Ampersand) {
     return true;
   }
