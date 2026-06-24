@@ -4,7 +4,7 @@ import { isNode } from './is-node.js';
 
 type StaticRulesLike = {
   hasFlag(flag: number): boolean;
-  value: Node[];
+  rules: Node[];
 };
 
 export function isPlainStaticRuleLeaf(node: Node): boolean {

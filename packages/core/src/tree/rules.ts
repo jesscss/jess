@@ -843,7 +843,7 @@ function setAssignmentTargetBinding(
  * ]
  */
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
-  static override childKeys = ['rules'] as const;
+  static override childKeys: readonly string[] = ['rules'] as const;
 
   readonly rules: Node[];
 
