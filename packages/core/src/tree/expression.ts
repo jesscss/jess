@@ -21,9 +21,9 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node;
+  declare readonly value: Node;
 
   constructor(
     value: Node,
@@ -33,12 +33,11 @@ export class Expression extends Node<Node> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.node = value;
     this.addFlag(F_NON_STATIC);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const out = this.node.eval(context);
+    const out = this.value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
       return out as Promise<Node>;
@@ -57,13 +56,13 @@ export class Expression extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (this.node instanceof List || this.node instanceof Sequence) {
+    if (this.value instanceof List || this.value instanceof Sequence) {
       return isRenderBuffer(bufferOrOptions)
-        ? this.node.render(context, bufferOrOptions, options)
-        : this.node.render(context, bufferOrOptions);
+        ? this.value.render(context, bufferOrOptions, options)
+        : this.value.render(context, bufferOrOptions);
     }
-    if (!this.node.hasFlag(F_MAY_ASYNC)) {
-      const node = this.node.eval(context);
+    if (!this.value.hasFlag(F_MAY_ASYNC)) {
+      const node = this.value.eval(context);
       if (!(node instanceof Node)) {
         throw new TypeError('Expected expression value to evaluate to a node');
       }
@@ -86,7 +85,7 @@ export class Expression extends Node<Node> {
     const w = options.writer;
     w.add('$', this);
     w.add('(');
-    this.node.writeSyntax(options);
+    this.value.writeSyntax(options);
     w.add(')');
   }
 

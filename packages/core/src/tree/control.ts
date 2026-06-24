@@ -281,7 +281,7 @@ function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.node.eval(context), context);
+    yield* resolveEntries(await input.value.eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {

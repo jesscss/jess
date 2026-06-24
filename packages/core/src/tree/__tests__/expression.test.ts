@@ -23,9 +23,9 @@ describe('Expression', () => {
     const rule = expr(child);
 
     expect(rule.toTrimmedString()).toBe('$(foo)');
-    expect(rule.node).toBe(child);
     expect(rule.value).toBe(child);
-    expect(Expression.childKeys).toEqual(['node']);
+    expect(rule.value).toBe(child);
+    expect(Expression.childKeys).toEqual(["value"]);
   });
 
   it('renders resolved expression values through render(context)', async () => {
@@ -70,7 +70,7 @@ describe('Expression', () => {
     let expressionResolveCalls = 0;
     renderedNode.resolve = (renderContext: Context) => {
       expressionResolveCalls++;
-      return renderedNode.node.resolve(renderContext);
+      return renderedNode.value.resolve(renderContext);
     };
     let childResolveCalls = 0;
     const originalChildResolve = expressionChild.resolve;
