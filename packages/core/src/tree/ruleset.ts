@@ -1150,6 +1150,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!rule.hasFlag(F_STATIC)) {
       return false;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const atRule = rule as AtRule;
     if (atRule.getRenderRules().length === 0) {
       return true;
@@ -1924,6 +1925,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         referenceComposeAmpCount > 1
       ) ?? rawParentComposed
       : rawParentComposed;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
     const structuralParent = (
       !parentAtRule?.isRootOnly()
@@ -2171,7 +2173,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
     const ownSelector: Selector | Nil = !(selector instanceof Nil)
-      ? copySelectorForRulesetMetadata(selector)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ? copySelectorForRulesetMetadata(selector) as Selector
       : selector;
     this.attachSelectorBits(ownSelector, selectorBits);
     if (node._options) {
@@ -2372,7 +2375,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     let { guard } = this;
     // Guard was already set to Nil (failed in a previous eval)
     if (guard instanceof Nil) {
-      return finishEvaluatedRules(guard);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return finishEvaluatedRules(guard) as MaybePromise<Rules>;
     }
     // Evaluate guard at definition time (not call time like mixins)
     // This is different from mixins because rulesets can't use caller scope for guards
@@ -2394,11 +2398,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.guard = undefined;
         return undefined;
       };
-      return isThenable(guardResult)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
-        : evalBodyAfterGuard(finishGuard(guardResult));
+        : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
-    return evalBodyAfterGuard(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }
 

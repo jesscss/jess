@@ -2387,8 +2387,8 @@ function isDirectIndexContainerTarget(
     && referenceNode.target !== undefined
     && (
       isNode(resolvedTarget, N.List | N.Sequence | N.Rules)
-      || resolvedTarget instanceof JsArray
-      || resolvedTarget instanceof JsObject
+      || ((resolvedTarget as object) instanceof JsArray)
+      || ((resolvedTarget as object) instanceof JsObject)
     );
 }
 
@@ -2912,7 +2912,8 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    const preservedValue = createRulesLikeReferenceSurface(declarationValue);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const preservedValue = createRulesLikeReferenceSurface(declarationValue as Node);
     context.popReference();
     return preservedValue;
   }

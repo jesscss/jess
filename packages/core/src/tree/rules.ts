@@ -391,7 +391,7 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
+  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) && node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
@@ -401,7 +401,7 @@ function childRulesOf(node: Node): Rules | undefined {
 }
 
 function childCallableRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
+  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule)) && node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
@@ -3759,7 +3759,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isNode(only, N.Any) && only.role === 'any';
     };
     const isBlockContainer = (node: Node): node is Ruleset | AtRule => {
-      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && Boolean(node.rules));
+      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && node instanceof Rules && Boolean(node.rules));
     };
 
     let emittedCount = 0;
@@ -4612,7 +4612,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _isNestableAtRuleBody(): boolean {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
-    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.name.valueOf()) : false;
+    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(String(parentAtRule.name.valueOf())) : false;
   }
 
   /**

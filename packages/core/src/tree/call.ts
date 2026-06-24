@@ -8,7 +8,7 @@ import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOption
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { callableRulesEntry } from './util/callable-entry.js';
+import { callableRulesEntry, type MixinEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
@@ -889,15 +889,17 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
       }
       const rendered = await state.source.renderFinalizedCallSyntax(
-        typeof evaluatedName === 'string' || evaluatedName instanceof Node
+        typeof evaluatedName === 'string' || (evaluatedNameObj instanceof Node)
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
         state,
@@ -1397,9 +1399,11 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj2 = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj2 instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
@@ -1495,12 +1499,16 @@ export class Call extends Node<CallValue, CallOptions> {
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
           isNode(evaluatedName, N.Mixin | N.Ruleset)
-          || evaluatedName instanceof MixinCollection
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          || ((evaluatedName as object) instanceof MixinCollection)
           || Array.isArray(evaluatedName)
         ) {
-          const collection = evaluatedName instanceof MixinCollection
-            ? evaluatedName
-            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName : [evaluatedName]);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const collection = ((evaluatedName as object) instanceof MixinCollection)
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            ? evaluatedName as MixinCollection
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName as MixinEntry[] : [evaluatedName as MixinEntry]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
             try {
               const result = await collection.evalCall(context, state.args);
@@ -1528,7 +1536,8 @@ export class Call extends Node<CallValue, CallOptions> {
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-            || evaluatedName instanceof MixinCollection
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            || ((evaluatedName as object) instanceof MixinCollection)
             || Array.isArray(evaluatedName)
           )
           && (this.options?.silentFail || evaluatedName !== 'calc')
@@ -1767,7 +1776,7 @@ export class Call extends Node<CallValue, CallOptions> {
         rules.rules[index] = replacement;
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, N.AtRule)) {
+      } else if (isNode(rule, N.AtRule) && rule instanceof Rules) {
         if (rule.rules.length) {
           this.makeImportant(rule);
         }

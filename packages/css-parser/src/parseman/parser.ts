@@ -26,7 +26,7 @@ export function parseCss(input: string): ParsemanParseResult {
     tree: doc.tree instanceof Rules ? doc.tree : null,
     errors: doc.errors.map(e => ({
       message: e.message,
-      offset: e.offset
+      offset: e.offset ?? 0
     }))
   };
 }
