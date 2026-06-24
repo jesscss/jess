@@ -237,10 +237,10 @@ export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolea
     }
 
     for (let i = 0; i < a.value.length; i++) {
-      const aItem = a.value[i]!;
+      const aItem = selectorListItemForMatch(a.value[i]!);
       let found = false;
       for (let j = 0; j < b.value.length; j++) {
-        if (componentsMatch(aItem, b.value[j]!)) {
+        if (componentsMatch(aItem, selectorListItemForMatch(b.value[j]!))) {
           found = true;
           break;
         }
@@ -771,7 +771,7 @@ export function findExtendableLocations(
     // Check if target matches any item in the find list
     for (let i = 0; i < find.value.length; i++) {
       const listItem = find.value[i]!;
-      const result = findExtendableLocations(target, listItem);
+      const result = findExtendableLocations(target, selectorListItemForMatch(listItem));
       if (result.hasMatches) {
         targetCache.set(find, result);
         return result;
@@ -1788,7 +1788,7 @@ function searchWithinPseudoSelector(
       // Check if target matches any alternative in the :is() selector list
       currentPath.push('arg');
       for (let altIndex = 0; altIndex < argSelector.value.length; altIndex++) {
-        const alternative = argSelector.value[altIndex]!;
+        const alternative = selectorListItemForMatch(argSelector.value[altIndex]!);
         currentPath.push(altIndex);
         // Direct structural match: use determineExtensionType so we get 'wrap' when inside a compound (not just 'append')
         if (isStructurallyEqual(alternative, target)) {
@@ -1807,7 +1807,7 @@ function searchWithinPseudoSelector(
 
       // Additional optimization: Check if target could be added as new alternative
       // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
-      const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
+      const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(selectorListItemForMatch(alt), target));
       if (canExtendAsList) {
         currentPath.push('arg');
         locations.push(withMatchScope({
