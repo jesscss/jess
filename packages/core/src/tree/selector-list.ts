@@ -22,7 +22,7 @@ import {
 } from './util/trivia.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
-type SelectorListItem = Selector | string;
+export type SelectorListItem = Selector | string;
 
 function emitSelectorListItem(
   item: SelectorListItem,

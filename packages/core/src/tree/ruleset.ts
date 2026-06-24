@@ -16,7 +16,7 @@ import {
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { BasicSelector } from './selector-basic.js';
-import { SelectorList } from './selector-list.js';
+import { SelectorList, type SelectorListItem } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { Ampersand } from './ampersand.js';
 import {
@@ -1467,7 +1467,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         : new Nil();
     }
     const seen = new Set<string>();
-    const kept: Selector[] = [];
+    const kept: SelectorListItem[] = [];
     let sawAddedSelector = false;
     for (const item of sel.value) {
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
@@ -1512,7 +1512,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return sel;
     }
     if (sel instanceof SelectorList) {
-      const kept: Selector[] = [];
+      const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of sel.value) {
         const keepItem = includeUntouchedSiblings
@@ -1542,7 +1542,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     const { arg } = sel;
     if (arg instanceof SelectorList) {
-      const kept: Selector[] = [];
+      const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of arg.value) {
         const keepItem = includeUntouchedSiblings
@@ -1608,7 +1608,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return undefined;
     }
     const seen = new Set<string>();
-    const kept: Selector[] = [];
+    const kept: SelectorListItem[] = [];
     for (const item of parent.value) {
       const keepItem = includeUntouchedSiblings
         ? !item.hasFlag(F_EXTEND_TARGET)
