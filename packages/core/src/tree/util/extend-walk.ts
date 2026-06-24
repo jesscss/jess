@@ -48,7 +48,7 @@
 
 import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
-import { SelectorList } from '../selector-list.js';
+import { SelectorList, type SelectorListItem } from '../selector-list.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
@@ -564,8 +564,8 @@ function walkSelectorList(
   _ctx: WalkContext
 ): Selector {
   const items = list.value;
-  const originals: Selector[] = [];
-  const appended: Selector[] = [];
+  const originals: SelectorListItem[] = [];
+  const appended: SelectorListItem[] = [];
   let anyChanged = false;
 
   for (let i = 0; i < items.length; i++) {
@@ -849,8 +849,8 @@ function walkPseudoTailAware(
   if (isNode(arg, N.SelectorList)) {
     const items = arg.value;
     let anyChanged = false;
-    const originals: Selector[] = [];
-    const appended: Selector[] = [];
+    const originals: SelectorListItem[] = [];
+    const appended: SelectorListItem[] = [];
 
     for (let i = 0; i < items.length; i++) {
       const alt = items[i]!;
@@ -1053,7 +1053,10 @@ export type MatchResult = false | 'local' | 'within-ampersand' | 'crossing';
  * Used to detect same-target nesting (e.g., .bb under .bb) where exact
  * extends should not apply to avoid duplication.
  */
-function parentContainsTarget(parent: Selector, target: Selector): boolean {
+function parentContainsTarget(parent: Selector | string, target: Selector): boolean {
+  if (typeof parent === "string") {
+    return false;
+  }
   const targetVal = target.valueOf();
   if (parent.valueOf() === targetVal) {
     return true;
@@ -1095,13 +1098,16 @@ export function classifyExtendMatch(
 }
 
 function wouldMatchNode(
-  node: Selector,
+  node: Selector | string,
   spec: FindSpec,
   extendWith: Selector,
   partial: boolean,
   ctx: WalkContext,
   parentSelector?: Selector
 ): MatchResult {
+    if (typeof node === "string") {
+      return false;
+    }
   if (spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
