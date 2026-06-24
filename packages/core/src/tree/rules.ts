@@ -652,7 +652,7 @@ export type RulesOptions = {
   referenceMode?: boolean;
 };
 
-export interface Rules extends Node<never, RulesOptions & NodeOptions> {
+export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
@@ -844,7 +844,7 @@ function setAssignmentTargetBinding(
  *   (Declaration background-color: white;)
  * ]
  */
-export class Rules extends Node<never, RulesOptions & NodeOptions> {
+export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   static override childKeys = ['rules'] as const;
 
   readonly rules: Node[];

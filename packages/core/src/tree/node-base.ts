@@ -225,9 +225,8 @@ export const defineType = <
   Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
-  return (...args: Args) => {
-    const node: T extends Class<infer C> ? InstanceType<Class<C, Args>> : never = Reflect.construct(Clazz, args);
-    return node;
+  return (...args: Args): InstanceType<T> => {
+    return Reflect.construct(Clazz, args) as InstanceType<T>;
   };
 };
 
@@ -371,8 +370,8 @@ function visitLeafValues(
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Data = unknown,
-  O extends NodeOptions = NodeOptions
+  out Data = unknown,
+  out O extends NodeOptions = NodeOptions
 > {
   /**
    * Keys of direct instance fields that hold child nodes.
