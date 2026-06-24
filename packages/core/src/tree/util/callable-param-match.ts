@@ -96,7 +96,9 @@ export function matchCallableParams({
       }
       if (paramIndex >= 0) {
         param = params.value[paramIndex];
-        argValue = arg.value;
+        // VarDeclaration.value in callable context is always a Node
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        argValue = arg.value as Node;
       } else {
         match = false;
         break;
@@ -138,7 +140,8 @@ export function matchCallableParams({
       for (let j = argPos; j < args.length; j++) {
         rest[j - argPos] = args[j]!;
       }
-      const restName = param.value ? `${param.value}` : `rest${i}`;
+      const restValue = Reflect.get(param, 'value') as unknown;
+      const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[paramIndex] = {
         name: restName,
         prepareValue: () => createRestBindingValue(rest)
@@ -180,16 +183,20 @@ export function matchCallableParams({
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
+      // VarDeclaration.value in callable context is always a Node
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const paramNodeValue = param.value as Node;
       bindingRecordsByIndex[i] = {
         name: param.name.valueOf(),
-        value: param.value,
+        value: paramNodeValue,
         prepareValue: cloneDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
       };
-      signatureParts[i] = getCallableNodeSignature(param.value);
+      signatureParts[i] = getCallableNodeSignature(paramNodeValue);
     } else if (param.type === 'Rest') {
-      const restName = param.value ? `${param.value}` : `rest${i}`;
+      const restValue = Reflect.get(param, 'value') as unknown;
+      const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[i] = {
         name: restName,
         prepareValue: hasFileContext

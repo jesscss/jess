@@ -295,7 +295,7 @@ function writeRulesRenderOutput(
   directSourceRender: boolean
 ): MaybePromise<string> {
   const prepared = prepareBufferPrintState(context, options);
-  const text = node.type === 'Rules' && !directSourceRender
+  const text = node instanceof Rules && !directSourceRender
     ? (
         node === context.root || source === context.root
           ? node._toDocumentString(prepared)
@@ -1554,7 +1554,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       let selector = node.selector;
-      if (isNode(selector, N.Nil)) {
+      if (!selector || isNode(selector, N.Nil) || typeof selector === 'string') {
         continue;
       }
       const ownSelector = isSelectorLikeNode(node.options.ownSelector)
@@ -1576,13 +1576,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
       if (isNode(selector, N.SelectorList)) {
-        for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
-          this.addDirectCallableSelectorEntries(
-            lookupKey,
-            node,
-            getOrderedSelectorKeys(selector.value[selectorIndex]!),
-            bucket
-          );
+        for (const item of selector.value) {
+          if (typeof item !== 'string') {
+            this.addDirectCallableSelectorEntries(
+              lookupKey,
+              node,
+              getOrderedSelectorKeys(item),
+              bucket
+            );
+          }
         }
         continue;
       }
@@ -1590,7 +1592,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const parentSelector = isNode(node.parent?.parent, N.Ruleset)
           ? (node.parent.parent as Ruleset).selector
           : undefined;
-        const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
+        const parentKeys = parentSelector && !isNode(parentSelector, N.Nil) && typeof parentSelector !== 'string'
           ? getOrderedSelectorKeys(parentSelector)
           : [];
         if (
@@ -2959,7 +2961,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             simpleLookupOptions ??= {
               hasTarget: options.hasTarget,
               local: options.local,
-              includeRulesets: options.terminalMixinOnly !== true,
+              includeRulesets: !options.terminalMixinOnly,
               searchParents: false
             };
             let simpleCallableCovered = false;
@@ -2997,7 +2999,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 resolved = simpleCallableMatches;
               }
             }
-            if (resolved === undefined && options.terminalMixinOnly !== true) {
+            if (resolved === undefined && !options.terminalMixinOnly) {
               const simpleCallableRulesets = ruleset.findVisibleExactCallableRulesetPath(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
@@ -3173,7 +3175,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 fallbackMissCovered = false;
                 break;
               }
-              fallbackFrame = fallbackFrame.fallbackFrame;
+              fallbackFrame = fallbackFrame.fallbackFrame!;
             }
             if (nested === undefined && fallbackMissCovered) {
               descendantMissCovered = true;
@@ -3601,10 +3603,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         for (const importRule of ctx.topImports) {
           if (isNode(importRule, N.AtRule)) {
             const importPrelude = importRule.prelude;
-            if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
+            if (importPrelude && typeof importPrelude !== 'string' && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 importRule.prelude = maybePrelude as Node;
                 importRule.adopt(importRule.prelude);
               }
@@ -3674,7 +3675,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mergedOptions = { ...options, rulesVisibility };
     super();
     this._location = location;
-    this._options = mergedOptions;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this._options = mergedOptions as unknown as typeof this._options;
     this.rules = this._processNodes(value ?? []);
     this._sourceRoot = this;
     this._treeContext = treeContext;
@@ -3904,7 +3906,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         };
         return isThenable(childRule)
           ? childRule.then(finishChildRule)
-          : finishChildRule(childRule);
+          : finishChildRule();
       }
       if (isRulesetOrAtRule) {
         emitLeadingBlockCommentForNode(n);
@@ -3956,7 +3958,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
         return;
       }
-      const output = n.render(context, options);
+      const output = n.render(context!, options);
       const finishOutput = (resolvedOutput: string): void => {
         restorePrintState(options, leafSaved);
         if (!w.hasContentSince(leafMark)) {
@@ -4129,18 +4131,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const iterateRules = (rules: Rules) => {
       for (let n of rules.rules) {
         if (isNode(n, N.Declaration)) {
-          let { value } = n.value;
+          let value = n.value;
           let { important } = n;
           let { name } = n;
           if (convertToPrimitives) {
-            let primitive = value.valueOf();
+            let primitive: string | number | boolean | undefined = value instanceof Node
+              ? value.valueOf()
+              : (Array.isArray(value) ? undefined : value);
             let outputValue = important ? `${primitive} ${important}` : primitive;
             if (outputValue === undefined) {
               continue;
             }
             output.set(name.toString(), outputValue);
           } else {
-            let outputValue = important ? new Sequence([n, important]) : n;
+            let outputValue = important instanceof Node ? new Sequence([n, important]) : n;
             output.set(name.toString(), outputValue);
           }
         } else if (n instanceof Rules) {
@@ -4306,7 +4310,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             if (variableHit.readonly || variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
             }
-            let assignedValue = node.value;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            let assignedValue = node.value as Node;
             if (context) {
               const evaluatedValue = assignedValue.eval(context);
               if (!isThenable(evaluatedValue)) {
@@ -4336,7 +4341,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const result = resultOccurrence.node;
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-          let assignedValue = node.value;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          let assignedValue = node.value as Node;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
             if (!isThenable(evaluatedValue)) {

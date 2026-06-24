@@ -203,12 +203,15 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const explicitWriter = renderBuffer ? undefined : bufferOrOptions?.writer;
-    const printOptions = renderBuffer
+    // bufferOrOptions is PrintOptions | undefined when not a RenderBuffer
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const printOptionsArg = bufferOrOptions as PrintOptions | undefined;
+    const explicitWriter = renderBuffer ? undefined : printOptionsArg?.writer;
+    const printOptions: PrintOptions | undefined = renderBuffer
       ? prepareBufferPrintState(context, options)
       : explicitWriter
-        ? prepareBufferPrintState(context, bufferOrOptions)
-        : bufferOrOptions;
+        ? prepareBufferPrintState(context, printOptionsArg)
+        : printOptionsArg;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
       const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;

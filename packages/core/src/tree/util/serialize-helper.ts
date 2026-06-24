@@ -170,10 +170,12 @@ function containsNodeType(value: unknown, type: string): boolean {
   if (value.type === type) {
     return true;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const childKeys = (value.constructor as typeof Node).childKeys;
   if (!childKeys) {
     return false;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const fields = value as unknown as Record<string, unknown>;
   for (let i = 0; i < childKeys.length; i++) {
     if (containsNodeType(fields[childKeys[i]!], type)) {
@@ -194,8 +196,8 @@ function canMergeSameHeaderRuleset(
   return (
     currentFrame.hasFlag(F_EXTENDED)
     || priorFrame.hasFlag(F_EXTENDED)
-    || Ruleset.hasExtendedTopLevelSelector(currentFrame.selector)
-    || Ruleset.hasExtendedTopLevelSelector(priorFrame.selector)
+    || (currentFrame.selector != null && Ruleset.hasExtendedTopLevelSelector(currentFrame.selector))
+    || (priorFrame.selector != null && Ruleset.hasExtendedTopLevelSelector(priorFrame.selector))
     || isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
     || containsNodeType(currentSelector, 'InterpolatedSelector')
@@ -244,7 +246,7 @@ export function flattenVisibleRulesForRender(
         if (
           ownSelector
           && Ruleset.isBareAmpersandSelector(ownSelector)
-          && !Ruleset.isBareAmpersandSelector(child.selector)
+          && (child.selector == null || !Ruleset.isBareAmpersandSelector(child.selector))
         ) {
           const childRules = getContainerRules(child)!.rules;
           let hasVisibleContainers = false;
@@ -272,6 +274,7 @@ export function flattenVisibleRulesForRender(
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
+        && child.selector != null
         && Ruleset.isBareAmpersandSelector(child.selector)
         && getContainerRules(child)
       ) {
@@ -400,6 +403,7 @@ function getHoistedParent(
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const nextSelector = currentSelector as Selector;
     parentSelector = parentSelector
       ? Ruleset.composeSelector(nextSelector, parentSelector)
@@ -467,7 +471,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (isBareAmp) {
       isTransparentWrapper = true;
     } else {
-      const cached = sel && !(sel instanceof Nil)
+      const cached = sel && !(sel instanceof Nil) && typeof sel !== 'string'
         ? rs.composeHeaderSelector(options, sel, undefined, {
             skipCurrentCachedParent: false,
             skipSameSelectorCompose: false
@@ -491,7 +495,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
     const nodeExtendsReference = isNode(node, N.Ruleset)
-      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.selector));
+      && (node.hasFlag(F_EXTENDED) || (node.selector != null && Ruleset.hasExtendedTopLevelSelector(node.selector)));
     const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;

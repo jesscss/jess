@@ -116,7 +116,8 @@ function setParent(node: Node, parent: Node | undefined): void {
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
-  return node instanceof Node && (node.nodeType & nodeTypeBits.Rules) !== 0;
+  // nodeTypeBits.Rules is always defined; `!` non-null assert: it's set in the table
+  return node instanceof Node && (node.nodeType & nodeTypeBits.Rules!) !== 0;
 }
 
 function hasFrameMetadata(node: Node): node is FrameMetadataNode {
@@ -157,7 +158,8 @@ function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
     return undefined;
   }
   const method = (visitor as { _visit?: unknown })._visit;
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as TreeVisitMethod : undefined;
 }
 
 function hasVisitedNodeSet(visitor: unknown): boolean {
@@ -171,7 +173,8 @@ function getVisitMethod(visitor: unknown): VisitMethod | undefined {
     return undefined;
   }
   const method = (visitor as { visit?: unknown }).visit;
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as VisitMethod : undefined;
 }
 
 function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
@@ -183,7 +186,8 @@ function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMeth
     return undefined;
   }
   const method = visitor[methodName];
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
 /**
@@ -226,6 +230,7 @@ export const defineType = <
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args): InstanceType<T> => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return Reflect.construct(Clazz, args) as InstanceType<T>;
   };
 };
@@ -278,6 +283,7 @@ function hasNodeValue(node: Node): node is ValueBearingNode {
 }
 
 function childKeysOf(node: Node): readonly string[] | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const childKeys = (node.constructor as typeof Node).childKeys;
   if (childKeys === null) {
     return undefined;
@@ -286,6 +292,7 @@ function childKeysOf(node: Node): readonly string[] | undefined {
 }
 
 function readNodeField(node: Node, key: string): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return (node as unknown as Record<string, unknown>)[key];
 }
 
@@ -433,6 +440,7 @@ export abstract class Node<
   get children(): ReadonlyArray<{ _tag: string }> {
     return this._cstChildren;
   }
+
   /** @internal — called by JessParser.buildNode only */
   _setCstChildren(children: ReadonlyArray<{ _tag: string }>) {
     this._cstChildren = children;
@@ -442,7 +450,7 @@ export abstract class Node<
   get span(): { start: number; end: number } {
     return {
       start: this._location?.[0] ?? 0,
-      end:   this._location?.[3] ?? 0,
+      end: this._location?.[3] ?? 0
     };
   }
 
@@ -816,7 +824,7 @@ export abstract class Node<
     }
   }
 
-  private *_walkFromValue(
+  private* _walkFromValue(
     value: unknown,
     deep?: boolean,
     reverse?: boolean
@@ -1026,6 +1034,7 @@ export abstract class Node<
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const Ctor = this.constructor as new (
       value: unknown,
       options?: O,
@@ -1063,7 +1072,8 @@ export abstract class Node<
     if (!hasFrameMetadata(this)) {
       return;
     }
-    const frames = this.frames;
+    const self = this as FrameMetadataNode;
+    const frames = self.frames;
     if (Array.isArray(frames)) {
       const frameCopy = new Array<unknown>(frames.length);
       for (let i = 0; i < frames.length; i++) {
@@ -1092,7 +1102,7 @@ export abstract class Node<
     if (reuseLeaves && this.canReuseAsLeaf()) {
       return this.reuseAsLeaf();
     }
-    const clone = this.clone(true, n => {
+    const clone = this.clone(true, (n) => {
       if (stripComments && n.type === 'Comment') {
         return n.cloneForPlacement(options);
       }

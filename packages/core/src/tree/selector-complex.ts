@@ -29,7 +29,7 @@ const isUnresolvedAmpersand = (part: Node): part is Ampersand => {
   return isNode(part, N.Ampersand) && !part.getResolvedSelector();
 };
 
-const isComplexSelectorComponentNode = (part: Node): part is ComplexSelectorComponent => {
+const isComplexSelectorComponentNode = (part: Node): part is Exclude<ComplexSelectorComponent, string> => {
   return part instanceof Selector
     && !isNode(part, N.SelectorList)
     && !isNode(part, N.ComplexSelector);
@@ -53,7 +53,7 @@ export function isStringCombinator(value: string): boolean {
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
   static override childKeys = ['value'] as const;
 
-  readonly value: ComplexSelectorValue;
+  override readonly value: ComplexSelectorValue;
 
   constructor(
     value: ComplexSelectorValue,
@@ -113,7 +113,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     value: Array<Node | string>,
     sourceValue: readonly ComplexSelectorComponent[]
   ): this {
-    return this.withComponents(this.compactComplexComponents(value), sourceValue);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this.withComponents(this.compactComplexComponents(value), sourceValue) as this;
   }
 
   private collapsedComponent(
@@ -141,11 +142,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       const savedBoundaryTrivia = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
       try {
-        if (component instanceof Selector) {
-          component.writeSyntax(options);
-        } else {
-          component.toTrimmedString(options);
-        }
+        // All non-string ComplexSelectorComponent types extend Selector
+        component.writeSyntax(options);
       } finally {
         options.suppressBoundaryTrivia = savedBoundaryTrivia;
       }
@@ -439,7 +437,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     }
     if (hasOtherSelectorParts && unresolvedAmpersandCount > 0) {
-      this.emitParentlessAmpersandWarnings(context, evaluatedValue);
+      this.emitParentlessAmpersandWarnings(context, evaluatedValue.filter((p): p is Node => typeof p !== 'string'));
     }
     const value: Array<Node | string> = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
@@ -561,6 +559,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
   value: ComplexSelectorValue,
   options?: SelectorParams[1],

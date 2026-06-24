@@ -137,18 +137,24 @@ export class Range extends Node<RangeValue, RangeOptions> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
-  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const printOptions = buffer ? options : bufferOrOptions;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const printOptions = buffer ? options : (bufferOrOptions as PrintOptions | undefined);
     const out = this.scalarRangeText(printOptions);
     if (out !== undefined) {
       return buffer
         ? writeRenderText(buffer, out)
         : (getPrintOptions(printOptions).writer.add(out, this), out);
     }
+    // super.render returns MaybePromise<string>, but Range.render is declared as sync;
+    // Range only contains Dimension/Any children which render synchronously
     return buffer
-      ? super.render(_context, buffer, options)
-      : super.render(_context, printOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ? super.render(_context, buffer, options) as string
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : super.render(_context, printOptions) as string;
   }
 }
 
