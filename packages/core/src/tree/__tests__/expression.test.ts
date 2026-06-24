@@ -25,7 +25,7 @@ describe('Expression', () => {
     expect(rule.toTrimmedString()).toBe('$(foo)');
     expect(rule.value).toBe(child);
     expect(rule.value).toBe(child);
-    expect(Expression.childKeys).toEqual(["value"]);
+    expect(Expression.childKeys).toEqual(['value']);
   });
 
   it('renders resolved expression values through render(context)', async () => {

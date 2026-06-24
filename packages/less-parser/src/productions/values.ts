@@ -103,7 +103,7 @@ function isDivisionLikeNode(node: Node | undefined): boolean {
     return true;
   }
   if (isNode(node, N.Paren) || isNode(node, N.Expression)) {
-    return isDivisionLikeNode(node.node as Node | undefined);
+    return isDivisionLikeNode(node.value as Node | undefined);
   }
   return false;
 }
