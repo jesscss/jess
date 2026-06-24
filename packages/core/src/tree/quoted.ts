@@ -27,6 +27,8 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
+  declare readonly value: string | Any | Interpolated;
+
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 

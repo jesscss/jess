@@ -15,6 +15,8 @@ export interface Combinator extends Selector<Combinators> {
 export class Combinator extends Selector<Combinators> {
   static override childKeys = null;
 
+  declare readonly value: Combinators;
+
   constructor(
     value: Combinators,
     options?: ConstructorParameters<typeof Selector<Combinators>>[1],

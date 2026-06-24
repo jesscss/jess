@@ -13,6 +13,8 @@ export interface Bool extends Node<boolean> {
 export class Bool extends Node<boolean> {
   static override childKeys = null;
 
+  declare readonly value: boolean;
+
   constructor(
     value: boolean,
     options?: NodeOptions,
