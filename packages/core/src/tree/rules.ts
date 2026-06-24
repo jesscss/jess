@@ -2268,13 +2268,13 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
           if (!includeRulesets) {
             return undefined;
           }
-          nestedScope = match.rules;
+          nestedScope = match;
         } else if (isNode(match, N.Mixin)) {
           if (!mixinHasNoRequiredParams(match)) {
             sawDefiniteMiss = true;
             continue;
           }
-          nestedScope = match.rules;
+          nestedScope = match;
         } else {
           return undefined;
         }
