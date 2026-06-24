@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
@@ -64,7 +64,7 @@ function normalizeRulesBody(owner: string, rules: unknown): Node[] {
   return arr;
 }
 
-function makeDirectiveRulesPublic(rules: Rules) {
+function makeDirectiveRulesPublic(rules: Rules<any>) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
@@ -106,7 +106,7 @@ function trimControlTrailingNewline(buffer: RenderBuffer, out: string): string {
 }
 
 async function renderControlRules(
-  rules: Rules,
+  rules: Rules<any>,
   context: Context,
   buffer: RenderBuffer,
   options?: PrintOptions
@@ -116,7 +116,7 @@ async function renderControlRules(
 }
 
 function createDerivedIterationRulesSurface(
-  sourceRules: Rules,
+  sourceRules: Rules<any>,
   childNodes?: Node[]
 ): Rules {
   const sourceOptions = sourceRules.options;
@@ -156,7 +156,7 @@ function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
 
 async function runWithRulesContext<T>(
   context: Context,
-  rulesContext: Rules,
+  rulesContext: Rules<any>,
   run: () => Promise<T>
 ): Promise<T> {
   const savedRulesContext = context.rulesContext;
@@ -172,7 +172,7 @@ function deriveIterationChild(node: Node): Node {
   return copyWithReusableLeaves(node);
 }
 
-function createIterationEvalSurface(sourceRules: Rules): Rules {
+function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
     sourceRules.rules.map(deriveIterationChild)
@@ -203,7 +203,7 @@ function attachIterationFallbackFrame(
   }
 }
 
-function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
+function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rules {
   const stateRules = createDerivedIterationRulesSurface(
     sourceRules
   );
@@ -214,19 +214,19 @@ function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
   return stateRules;
 }
 
-function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rules {
+function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
   const iterationRules = createIterationEvalSurface(sourceRules);
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
   return iterationRules;
 }
 
-function hasIterationStateMutation(rules: Rules): boolean {
+function hasIterationStateMutation(rules: Rules<any>): boolean {
   return rules.rules.some(node => isNode(node, N.VarDeclaration));
 }
 
 async function syncWhileState(
-  stateRules: Rules,
-  iterationRules: Rules,
+  stateRules: Rules<any>,
+  iterationRules: Rules<any>,
   context: Context
 ): Promise<void> {
   const stateFrame = stateRules.getScopeFrame();
@@ -316,7 +316,9 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value, rule.name];
+      if (rule.value instanceof Node) {
+        yield [rule.value, rule.name];
+      }
     }
     return;
   }
@@ -329,7 +331,9 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.value, rule.name];
+      if (rule.value instanceof Node) {
+        yield [rule.value, rule.name];
+      }
     }
     return;
   }
@@ -368,7 +372,7 @@ function getForBindingInfo(pattern: ForPattern): {
 }
 
 async function createForIterationSurface(
-  originalRules: Rules,
+  originalRules: Rules<any>,
   context: Context,
   bindingDecls: VarDeclaration[],
   bindingNames: string[],
@@ -440,7 +444,8 @@ export class If extends Rules<IfValue> {
   override allowRuleRoot = true;
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(normalizeRulesBody('If', value.rules), options, location, treeContext);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('If', value.rules), options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.else = value.else;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -488,8 +493,8 @@ export class If extends Rules<IfValue> {
     this.else.writeBraced(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
+  override evalNode(context: Context): MaybePromise<Rules> {
+    const run = async (): Promise<Rules> => {
       let conditionPasses: boolean;
       if (this.condition instanceof Condition) {
         conditionPasses = await this.condition.evaluateBoolean(context);
@@ -498,10 +503,12 @@ export class If extends Rules<IfValue> {
         conditionPasses = condition instanceof Bool && condition.value === true;
       }
       if (conditionPasses) {
-        return createIterationEvalSurface(this).eval(context);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- eval() returns MaybePromise<Node>; the result is a Rules surface created by createIterationEvalSurface.
+        return createIterationEvalSurface(this).eval(context) as Promise<Rules>;
       }
       if (this.else) {
-        return this.else.eval(context);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- eval() returns MaybePromise<Node>; the else branch evaluates to a Rules node.
+        return this.else.eval(context) as Promise<Rules>;
       }
       return createGeneratedOutputRulesSurface();
     };
@@ -562,7 +569,8 @@ export class For extends Rules<StructuredLoopValue> {
   override allowRuleRoot = true;
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(normalizeRulesBody('For', value.rules), options, location, treeContext);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('For', value.rules), options, location as LocationInfo | undefined, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -581,10 +589,10 @@ export class For extends Rules<StructuredLoopValue> {
     makeDirectiveRulesPublic(this);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  override evalNode(context: Context): MaybePromise<Rules> {
     const { pattern, iterable } = this;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
-    const run = async (): Promise<Node> => {
+    const run = async (): Promise<Rules> => {
       const outputRules: Node[] = [];
       let counter = 1;
       const originalRules = this;
@@ -615,7 +623,8 @@ export class For extends Rules<StructuredLoopValue> {
         return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
-        return outputRules[0]!;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- single iteration result; control-flow confirms it was pushed as a Rules or Node that behaves as Rules.
+        return outputRules[0]! as Rules;
       }
       return createGeneratedOutputRulesSurface(outputRules);
     };
@@ -730,7 +739,8 @@ export class While extends Rules<WhileValue> {
   override allowRuleRoot = true;
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(normalizeRulesBody('While', value.rules), options, location, treeContext);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('While', value.rules), options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
@@ -754,8 +764,8 @@ export class While extends Rules<WhileValue> {
     this.writeBraced(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
+  override evalNode(context: Context): MaybePromise<Rules> {
+    const run = async (): Promise<Rules> => {
       const outputRules: Node[] = [];
       const originalRules = this;
       const stateRules = createWhileStateSurface(originalRules, context);
@@ -792,7 +802,8 @@ export class While extends Rules<WhileValue> {
         return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
-        return outputRules[0]!;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- single iteration result; control-flow confirms it was pushed as a Rules or Node that behaves as Rules.
+        return outputRules[0]! as Rules;
       }
       return createGeneratedOutputRulesSurface(outputRules);
     };
