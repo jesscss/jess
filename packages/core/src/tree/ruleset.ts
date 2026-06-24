@@ -17,6 +17,7 @@ import {
 import { SimpleSelector } from './selector-simple.js';
 import { BasicSelector } from './selector-basic.js';
 import { SelectorList, type SelectorListItem } from './selector-list.js';
+import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { Ampersand } from './ampersand.js';
 import {
@@ -1641,7 +1642,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       let changed = false;
       const seen = new Set<string>();
       for (const item of selector.value) {
-        const next = Ruleset.expandGeneratedIsForReferenceCompose(item) ?? item;
+        const next = Ruleset.expandGeneratedIsForReferenceCompose(selectorListItemForMatch(item)) ?? item;
         const items = isNode(next, N.SelectorList) ? next.value : [next];
         changed ||= next !== item;
         for (const expandedItem of items) {
@@ -1650,7 +1651,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
             continue;
           }
           seen.add(key);
-          expanded.push(expandedItem);
+          expanded.push(selectorListItemForMatch(expandedItem));
         }
       }
       if (!changed) {
@@ -1685,7 +1686,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           alternatives.push({
             parts: isNode(item, N.ComplexSelector)
               ? [...item.value]
-              : [Ruleset._toComplexComponent(item)],
+              : [Ruleset._toComplexComponent(selectorListItemForMatch(item))],
             hasAdded: item.hasFlag(F_EXTENDED)
           });
         }

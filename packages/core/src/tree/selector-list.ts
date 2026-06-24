@@ -108,7 +108,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     const w = printOptions.writer;
     let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
-    const value: Selector[] = [];
+    const value: SelectorListItem[] = [];
     for (const item of this.value) {
       if (isNode(item, N.PseudoSelector) && item.name === ':is') {
         const arg = item.arg;
