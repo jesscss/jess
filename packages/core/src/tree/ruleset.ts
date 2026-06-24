@@ -15,6 +15,7 @@ import {
   type CompoundSelectorComponent
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
+import { BasicSelector } from './selector-basic.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { Ampersand } from './ampersand.js';
@@ -40,7 +41,6 @@ import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments }
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 import {
-  isScannerNativeRawSelector,
   isScannerNativeRawRelativeSelector,
   isScannerNativeRawSimpleSelector,
   readScannerNativeNestedAmpersandPseudoSelector
@@ -82,7 +82,11 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
   return out;
 }
 
-function copySelectorForRulesetMetadata(selector: Selector): Selector {
+function copySelectorForRulesetMetadata(selector: Selector | string): Selector | string {
+  // A bare-string selector (strings-not-nodes model) is immutable — return as-is.
+  if (typeof selector === 'string') {
+    return selector;
+  }
   const copied = copyOwnedWithReusableLeaves(selector);
   if (isRulesetSelectorMetadata(copied)) {
     return copied;
@@ -458,7 +462,6 @@ type RulesetOptions = NodeOptions & {
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
   ownSelector?: Selector | Nil;
   hasDefault?: boolean;
-  deferSelectorMaterialization?: boolean;
 };
 
 /**
@@ -510,13 +513,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     super(rulesValue, options, location, treeContext);
     if (typeof value.selector === 'string') {
+      // The parser is the authority on selector syntax; the runtime stores
+      // whatever string it produced (materializing to nodes lazily when needed).
       const selectorText = value.selector.trim();
-      if (
-        !isScannerNativeRawSelector(selectorText, true)
-        && !options?.deferSelectorMaterialization
-      ) {
-        throw new TypeError('Ruleset selector is outside the scanner-native selector subset.');
-      }
       this.selector = selectorText;
       this.guard = 'guard' in value ? value.guard : undefined;
       this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
@@ -621,7 +620,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     const parts = splitRawCompoundSelector(rawSelector);
     if (!parts || parts.length < 1) {
-      throw new TypeError('Ruleset selector is outside the scanner-native selector subset.');
+      // Not a recognized compound (e.g. a keyframe selector like `0%`): hold it
+      // verbatim as a basic selector rather than rejecting parser output.
+      return markStaticSelector(new BasicSelector(
+        rawSelector,
+        undefined,
+        this.location.length ? this.location : undefined,
+        this.sourceRoot?._treeContext
+      ));
     }
     return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
@@ -1500,7 +1506,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return SelectorList.create(kept).inherit(sel);
   }
 
-  private static unwrapGeneratedReferenceIs(sel: Selector, includeUntouchedSiblings = false): Selector {
+  private static unwrapGeneratedReferenceIs(sel: Selector | string, includeUntouchedSiblings = false): Selector | string {
+    // A bare-string selector has no generated reference-:is() wrapper to unwrap.
+    if (typeof sel === 'string') {
+      return sel;
+    }
     if (sel instanceof SelectorList) {
       const kept: Selector[] = [];
       const seen = new Set<string>();
@@ -1733,7 +1743,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return SelectorList.create(expanded).inherit(selector);
   }
 
-  static simplifyGeneratedIsSelector(selector: Selector): Selector | undefined {
+  static simplifyGeneratedIsSelector(selector: Selector | string): Selector | undefined {
+    // A bare-string selector has no generated :is() structure to simplify.
+    if (typeof selector === 'string') {
+      return undefined;
+    }
     if (isNode(selector, N.PseudoSelector) && selector.generated === true && selector.name === ':is') {
       return selector.arg instanceof Selector
         ? Ruleset.unwrapGeneratedReferenceIs(selector.arg)
