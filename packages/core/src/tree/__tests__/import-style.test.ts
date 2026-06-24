@@ -2484,7 +2484,7 @@ describe('Style import', () => {
       if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected wrapped import child to be AtRule');
       }
-      expect(wrappedImport.rules[0].rules).toBeInstanceOf(RulesClass);
+      expect(Array.isArray(wrappedImport.rules[0].rules)).toBe(true);
       const css = await renderNodeToString(node, context, { context });
       expect(css).toContain('@media screen and (min-width: 600px)');
       expect(css).toContain('.imported');

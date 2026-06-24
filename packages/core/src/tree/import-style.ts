@@ -11,6 +11,7 @@ import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
+import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
@@ -852,7 +853,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       : new Sequence(preludeNodes);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
-    return new AtRule({
+    // @import has no block body — it is a semicolon at-rule statement.
+    return new AtRuleStatement({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
     }, undefined, location);
