@@ -167,7 +167,12 @@ function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] |
   return val;
 }
 
-function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
+function findDisallowedExtendSelector(selector: Selector | string, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
+  // A bare-string selector (strings-not-nodes) is a plain simple selector — not a
+  // disallowed extend target.
+  if (typeof selector === 'string') {
+    return undefined;
+  }
   if (!allowed) {
     return undefined;
   }
