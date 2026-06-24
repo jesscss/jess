@@ -672,6 +672,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const rules = deep
       ? this.rules.map(rule => cloneFn(rule))
       : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new Ruleset(
       {
         selector: clonePart(this.selector) ?? this.selector!,
@@ -710,6 +711,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const composed = childStr.includes('&')
         ? childStr.replace(/&/g, parentStr)
         : `${parentStr} ${childStr}`;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return composed as unknown as Selector;
     }
     const library = child.keySetLibrary ?? parent.keySetLibrary;
@@ -724,6 +726,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // Child is a SelectorList: compose each item independently. Each item
     // carries its own explicit-vs-implicit & semantics.
     if (isNode(child, N.SelectorList)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const items = (child as SelectorList).value as Selector[];
       const out: Selector[] = [];
       for (const item of items) {
@@ -731,6 +734,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         // A bare-& item substituted with a list parent comes back as a list:
         // flatten its items into the outer result.
         if (isNode(composed, N.SelectorList)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           out.push(...((composed as SelectorList).value as Selector[]));
         } else {
           out.push(composed);
@@ -941,6 +945,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const newParts: ComplexSelectorComponent[] = [];
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]!;
+      if (typeof part === 'string') {
+        continue;
+      }
       if (isNode(part, N.Ampersand)) {
         const leftTight = Ruleset._isTightCombinatorAt(parts, i - 1);
         const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
@@ -1471,6 +1478,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const kept: SelectorListItem[] = [];
     let sawAddedSelector = false;
     for (const item of sel.value) {
+      if (typeof item === 'string') {
+        continue;
+      }
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         sawAddedSelector = true;
         const key = item.valueOf();
@@ -1485,6 +1495,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     if (!sawAddedSelector) {
       for (const item of sel.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         if (!item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
           continue;
         }
@@ -1516,6 +1529,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of sel.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         const keepItem = includeUntouchedSiblings
           ? !item.hasFlag(F_EXTEND_TARGET)
           : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1546,6 +1562,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of arg.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         const keepItem = includeUntouchedSiblings
           ? !item.hasFlag(F_EXTEND_TARGET)
           : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1600,6 +1619,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     let hasAnyAdded = false;
     for (let i = 0; i < parent.value.length; i++) {
       const item = parent.value[i]!;
+      if (typeof item === 'string') {
+        continue;
+      }
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         hasAnyAdded = true;
         break;
@@ -1611,6 +1633,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const seen = new Set<string>();
     const kept: SelectorListItem[] = [];
     for (const item of parent.value) {
+      if (typeof item === 'string') {
+        continue;
+      }
       const keepItem = includeUntouchedSiblings
         ? !item.hasFlag(F_EXTEND_TARGET)
         : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1680,6 +1705,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
         const items = isNode(arg, N.SelectorList) ? arg.value : [arg];
         for (const item of items) {
+          if (typeof item === 'string') {
+            continue;
+          }
           if (item.hasFlag(F_EXTEND_TARGET)) {
             continue;
           }
@@ -2100,6 +2128,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (node.options) {
       (node.options as RulesetOptions).ownSelector = ownSelector;
     } else {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       node.options = { ownSelector } as RulesetOptions;
     }
   }
@@ -2296,6 +2325,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (guard) {
       const guardResult = guard instanceof Condition
         ? guard.evaluateBoolean(context)
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         : (guard as Node).eval(context);
       const finishGuard = (result: boolean | Node): Nil | undefined => {
         const guardPasses = typeof result === 'boolean'
@@ -2320,6 +2350,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>;
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
   value: RulesetValue | RulesetParams[0],
   options?: RulesetParams[1],

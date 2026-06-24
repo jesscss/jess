@@ -44,6 +44,7 @@ import {
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
+import type { AtRuleStatement } from './at-rule-statement.js';
 import type { StyleImport } from './import-style.js';
 import {
   assignScopeFrameVariable,
@@ -500,7 +501,7 @@ function rulesMayContainExtends(rules: Rules): boolean {
 
 function rulesMayContainReferenceImports(rules: Rules): boolean {
   if (
-    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    rules.options.referenceMode === true
     || rules._hasReferenceImports
     || rules.hasReferenceImportChildSurface
   ) {
@@ -528,7 +529,7 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
 
 function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
   return (
-    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    rules.options.referenceMode === true
     || rules._hasReferenceImports
     || rules.hasReferenceImportChildSurface
   );
@@ -653,12 +654,9 @@ export type RulesOptions = {
 };
 
 export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
-  get options(): RulesOptions & NodeOptions & {
+  get options(): O & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
-  set options(options: RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  });
   eval(context: Context): MaybePromise<this>;
 }
 
@@ -911,11 +909,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     } else {
       value = [...source];
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return this.derive(value) as this;
   }
 
   derive(value: Node[] = [...this.rules]): Rules {
     const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const Ctor = this.constructor as new (
       value: Node[],
       options?: RulesOptions,
@@ -1067,7 +1067,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._hasReferenceImports = (
       this._hasReferenceImports
       || this.hasReferenceImportChildSurface
-      || (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      || this.options.referenceMode === true
     );
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
@@ -1235,7 +1235,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this.hasReferenceImportChildSurface
       || (
         this._hasReferenceImports
-        && (this.options as { referenceMode?: boolean } | undefined)?.referenceMode !== true
+        && this.options.referenceMode !== true
       )
     );
   }
@@ -3549,7 +3549,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const ctx = options.context;
     const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
     const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
-    const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    const ownReferenceMode = this.options.referenceMode === true;
     if (ownReferenceMode && options.referenceMode !== true) {
       options.referenceMode = true;
       options.referenceRenderEnabled = false;
@@ -3604,6 +3604,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 importRule.prelude = maybePrelude as Node;
                 importRule.adopt(importRule.prelude);
               }
@@ -3823,7 +3824,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     };
     const saved = savePrintState(options, ['referenceMode']);
     if (
-      (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      this.options.referenceMode === true
       && options.referenceMode !== true
     ) {
       options.referenceMode = true;
@@ -4659,7 +4660,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isImportAtRule(node)) {
         // CSS @import hoisting is output-order bookkeeping, not name registration.
         // Preserve the prelude as authored; evaluating here can strip comment tokens.
-        queueTopImport(context, node);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        queueTopImport(context, node as unknown as AtRuleStatement);
         node.registrationPrepared = true;
         const placeholder = new Nil(
           '',
@@ -4738,7 +4740,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const canReuseCanonicalDeclaration = (
-      isNode(node, N.Declaration | N.VarDeclaration)
+      (isNode(node, N.Declaration) || isNode(node, N.VarDeclaration))
       && !node.options?.assign
       && !node.options?.normalizedFromAssign
     );
@@ -4784,7 +4786,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.type === 'StyleImport') {
         return false;
       }
-      if (isNode(node, N.Declaration | N.VarDeclaration) && !node.options?.setDefined) {
+      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !node.options?.setDefined) {
         if (!this._hasStaticName(node)) {
           return false;
         }
@@ -5355,7 +5357,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return decl.value;
+      const v = decl.value;
+      return v instanceof Node ? v : undefined;
     };
     const replaceOwnedDeclaration = (
       ownerRules: Rules,

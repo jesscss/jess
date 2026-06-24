@@ -11,7 +11,7 @@ import { Rules } from './rules.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
-import { Any, Anonymous, Keyword } from './any.js';
+import { Any } from './any.js';
 import { Bool } from './bool.js';
 import { Dimension } from './dimension.js';
 import { Num } from './number.js';
