@@ -6,6 +6,7 @@ import { Node, defineType } from './node.js';
  */
 export class JsArray extends Node<readonly any[]> {
   static override childKeys = null;
+  declare readonly value: readonly any[];
 
   override resolve(_context: Context): this {
     return this;

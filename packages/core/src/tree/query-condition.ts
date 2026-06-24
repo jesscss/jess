@@ -19,77 +19,76 @@ import {
 } from './util/render-buffer.js';
 
 function getKnownQueryConditionSourceText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Anonymous':
-    case 'Keyword':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Dimension':
-    case 'Num':
-      return typeof node.number === 'number'
-        ? `${node.number}${'unit' in node && node.unit ? node.unit : ''}`
-        : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    default:
-      if (node.constructor === QueryCondition) {
-        const parts = new Array(node.value.length);
-        for (let i = 0; i < node.value.length; i++) {
-          const text = getKnownQueryConditionSourceText(node.value[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          parts[i] = text;
-        }
-        return parts.join(' ');
-      }
-      if (node.constructor === Paren) {
-        const open = node.options?.delimiter === 'square' ? '[' : '(';
-        const close = node.options?.delimiter === 'square' ? ']' : ')';
-        if (!node.value) {
-          return `${node.options?.escaped ? '~' : ''}${open}${close}`;
-        }
-        const value = getKnownQueryConditionSourceText(node.value);
-        if (value === undefined) {
-          return undefined;
-        }
-        return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownQueryConditionSourceText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownQueryConditionSourceText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownQueryConditionSourceText(node.left);
-        const right = getKnownQueryConditionSourceText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
-      return undefined;
+  if (node instanceof Any) {
+    return node.value;
   }
+  if (node instanceof Dimension) {
+    return `${node.number}${node.unit ?? ''}`;
+  }
+  if (node instanceof Num) {
+    return `${node.number}`;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof QueryCondition) {
+    const parts = new Array(node.value.length);
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownQueryConditionSourceText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      parts[i] = text;
+    }
+    return parts.join(' ');
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownQueryConditionSourceText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownQueryConditionSourceText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownQueryConditionSourceText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownQueryConditionSourceText(node.left);
+    const right = getKnownQueryConditionSourceText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  return undefined;
 }
 
 function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
@@ -246,7 +245,7 @@ export class QueryCondition extends Sequence {
       const rendered = this.renderQueryConditionChild(value[i]!, options, context);
       if (isThenable(rendered)) {
         return (rendered as Promise<string | void>)
-          .then((text) => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
+          .then(text => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
       }
       out += rendered ?? '';
     }

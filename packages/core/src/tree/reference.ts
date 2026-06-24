@@ -9,7 +9,8 @@ import { N } from './node-type.js';
 import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
-import type { Num } from './number.js';
+import { Num } from './number.js';
+import { Dimension } from './dimension.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
@@ -2271,13 +2272,13 @@ function normalizeReferenceKeyValue(value: unknown): NormalizedLookupKey {
   if (typeof value === 'string' || typeof value === 'number') {
     return value;
   }
-  if (isNode(value, N.Any | N.Keyword)) {
+  if (value instanceof Any) {
     return value.value;
   }
   if (isNode(value, N.Quoted) && typeof value.value === 'string') {
     return value.value;
   }
-  if (isNode(value, N.Num | N.Dimension)) {
+  if (value instanceof Dimension) {
     return value.unit ? `${value.number}${value.unit}` : value.number;
   }
   if (isNode(value, N.Color) && typeof value.node === 'string') {
@@ -2505,7 +2506,7 @@ function isEmptyMergedAssignPlaceholder(node: Node): boolean {
   if (node instanceof Nil) {
     return true;
   }
-  if (isNode(node, N.Any | N.Keyword)) {
+  if (node instanceof Any) {
     return node.value === '';
   }
   if (isNode(node, N.Quoted) && typeof node.value === 'string') {
