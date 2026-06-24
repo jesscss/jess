@@ -112,6 +112,7 @@ import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
+import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
@@ -310,7 +311,7 @@ export function applyExtendsToSelector(
         for (const target of instruction.target.value) {
           expanded.push({
             ...instruction,
-            target
+            target: selectorListItemForMatch(target)
           });
         }
       } else {
@@ -677,7 +678,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
          */
         if (isNode(result, N.SelectorList)) {
           for (let el of result.value) {
-            push(el);
+            push(selectorListItemForMatch(el));
           }
         } else {
           push(result);
@@ -697,7 +698,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
                 // Unwrap generated :is() - extract its argument value
                 const arg = sel.arg;
                 if (arg && isNode(arg, N.SelectorList)) {
-                  flattened.push(...arg.value);
+                  flattened.push(...arg.value.map(selectorListItemForMatch));
                 } else if (arg) {
                   flattened.push(expectSelector(arg));
                 }
@@ -731,7 +732,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
           // Unwrap generated :is() - extract its argument value
           const arg = sel.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            flattened.push(...arg.value);
+            flattened.push(...arg.value.map(selectorListItemForMatch));
           } else if (arg) {
             flattened.push(expectSelector(arg));
           }
@@ -2243,14 +2244,14 @@ function extendSelectorList(
         }
         appendedVariant = true;
       } else {
-        const first = copySelectorForExtend(extended.value[0]!);
+        const first = copySelectorForExtend(selectorListItemForMatch(extended.value[0]!));
         orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(first) : markExtendTarget(first));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        const template = extended.value[0] ?? selector;
+        const template = selectorListItemForMatch(extended.value[0] ?? selector);
         newSelectors.push(
           ...extended.value
             .slice(1)
-            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template, s)))
+            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template, selectorListItemForMatch(s))))
             .map(s => copySelectorForExtend(s))
         );
         appendedVariant = true;
@@ -2366,7 +2367,7 @@ function extendSelectorList(
             continue;
           }
           const updatedArg = SelectorList.create([
-            ...m.parentArg.value.map(s => copySelectorForExtend(s)),
+            ...m.parentArg.value.map(s => copySelectorForExtend(selectorListItemForMatch(s))),
             copySelectorForExtend(extendWith)
           ]).inherit(m.parentArg);
           const updatedSel = copySelectorForExtend(m.selector);
@@ -2964,7 +2965,7 @@ function handleFullExtend(
 
   // If target is already a selector list, add to it
   if (isNode(target, N.SelectorList)) {
-    return createExtendedSelectorList([...target.value, extendWith], target);
+    return createExtendedSelectorList([...target.value.map(selectorListItemForMatch), extendWith], target);
   }
 
   // If target is a pseudo-selector with selector arguments, check if we should extend arguments or create selector list
@@ -2975,7 +2976,7 @@ function handleFullExtend(
     if (isSelectorNode(arg) && target.name === ':is') {
       if (isNode(arg, N.SelectorList)) {
         // Add to existing selector list
-        const newArg = createExtendedSelectorList([...arg.value, extendWith], arg);
+        const newArg = createExtendedSelectorList([...arg.value.map(selectorListItemForMatch), extendWith], arg);
         if (typeof newArg === 'string') {
           return newArg;
         }
@@ -3258,7 +3259,7 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
     if (!Array.isArray(list) || list.length === 0) {
       return false;
     }
-    return list.every(item => checkItem(item));
+    return list.every(item => checkItem(selectorListItemForMatch(item)));
   }
   return checkItem(selector);
 }
@@ -3765,14 +3766,14 @@ function collectSelectorSubtreeValues(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item, values);
+      collectSelectorSubtreeValues(selectorListItemForMatch(item), values);
     }
     return values;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item, values);
+      collectSelectorSubtreeValues(selectorListItemForMatch(item), values);
     }
     return values;
   }
@@ -3783,7 +3784,7 @@ function collectSelectorSubtreeValues(
         continue;
       }
       if (isSelectorNode(item)) {
-        collectSelectorSubtreeValues(item, values);
+        collectSelectorSubtreeValues(selectorListItemForMatch(item), values);
       }
     }
     return values;
@@ -3813,14 +3814,14 @@ function collectNewSelectorCandidates(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(selectorListItemForMatch(item), originalValues, candidates, seenValues);
     }
     return candidates;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(selectorListItemForMatch(item), originalValues, candidates, seenValues);
     }
     return candidates;
   }
@@ -3831,7 +3832,7 @@ function collectNewSelectorCandidates(
         continue;
       }
       if (isSelectorNode(item)) {
-        collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
+        collectNewSelectorCandidates(selectorListItemForMatch(item), originalValues, candidates, seenValues);
       }
     }
     return candidates;
