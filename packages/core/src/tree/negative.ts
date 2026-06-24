@@ -14,28 +14,27 @@ import round from 'lodash-es/round.js';
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
 export class Negative extends Node<Node> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node;
+  declare readonly value: Node;
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('-', this);
-    this.node.writeSyntax(options);
+    this.value.writeSyntax(options);
   }
 
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.node = value;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const node = this.node;
+    const node = this.value;
     if (node instanceof Dimension && !this.isCompoundDimension(node)) {
       const value = node;
       const unit = value.unit ?? '';
@@ -70,11 +69,11 @@ export class Negative extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (!this.node.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.node.eval(context) as Node;
+    if (!this.value.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.value.eval(context) as Node;
       return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
     }
-    const value = this.node.eval(context);
+    const value = this.value.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options))
       : this.renderEvaluatedValue(context, value, bufferOrOptions, options);
@@ -118,11 +117,11 @@ export class Negative extends Node<Node> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    if (!this.node.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.node.eval(context) as Node;
+    if (!this.value.hasFlag(F_MAY_ASYNC)) {
+      const evaluated = this.value.eval(context) as Node;
       return this.operateNegativeValue(evaluated, context);
     }
-    const value = this.node.eval(context);
+    const value = this.value.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.operateNegativeValue(evaluated, context))
       : this.operateNegativeValue(value, context);

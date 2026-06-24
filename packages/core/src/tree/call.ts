@@ -363,7 +363,7 @@ function getKnownRenderedCallText(node: Node): string | undefined {
         return `${left} ${node.operator} ${right}`;
       }
       if (node.constructor === Negative) {
-        const value = getKnownRenderedCallText(node.node);
+        const value = getKnownRenderedCallText(node.value);
         return value === undefined ? undefined : `-${value}`;
       }
       return undefined;
@@ -489,7 +489,7 @@ function getKnownSourceCallText(node: Node): string | undefined {
         return `${left} ${node.operator} ${right}`;
       }
       if (node.constructor === Negative) {
-        const value = getKnownSourceCallText(node.node);
+        const value = getKnownSourceCallText(node.value);
         return value === undefined ? undefined : `-${value}`;
       }
       return undefined;

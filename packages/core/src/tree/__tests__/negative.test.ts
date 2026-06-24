@@ -63,8 +63,8 @@ describe('Negative', () => {
     const value = num(10);
     const node = negative(value);
 
-    expect(node.node).toBe(value);
-    expect(Negative.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Negative.childKeys).toEqual(['value']);
   });
 
   it('returns simple dimension negative syntax without writer readback', () => {
@@ -196,9 +196,9 @@ describe('Negative', () => {
 
   it('renders sync negative values without may-async continuation scaffolding', () => {
     const negativeNode = negative(num(20));
-    const originalEval = negativeNode.node.eval;
-    negativeNode.node.eval = function evalSyncOnly(
-      this: typeof negativeNode.node,
+    const originalEval = negativeNode.value.eval;
+    negativeNode.value.eval = function evalSyncOnly(
+      this: typeof negativeNode.value,
       renderContext: Context
     ) {
       const out = originalEval.call(this, renderContext);
