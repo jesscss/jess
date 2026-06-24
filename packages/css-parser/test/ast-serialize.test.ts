@@ -1,7 +1,27 @@
-import { CssParserChevrotain as CssParser } from '../src/index.js';
+import { CssParser } from '../src/index.js';
 import { N, isNode, serializeTypes } from '@jesscss/core';
+import { packedSpanStart, packedSpanEnd } from '@jesscss/parser';
 
 const cssParser = new CssParser();
+
+// Simple selectors, combinators, names, and plain values are plain strings (not
+// nodes), so source provenance lives in the parent node's packed fieldSpans
+// (by childKeys index) and valueSpans (by array-segment index).
+function childIndex(node: any, key: string): number {
+  return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
+}
+function fieldStart(node: any, key: string): number {
+  return packedSpanStart(node.fieldSpans, childIndex(node, key));
+}
+function fieldEnd(node: any, key: string): number {
+  return packedSpanEnd(node.fieldSpans, childIndex(node, key));
+}
+function valueStart(node: any, index: number): number {
+  return packedSpanStart(node.valueSpans, index);
+}
+function valueEnd(node: any, index: number): number {
+  return packedSpanEnd(node.valueSpans, index);
+}
 
 describe('serializeTypes coverage', () => {
   test('charset', () => {
@@ -17,15 +37,12 @@ describe('serializeTypes coverage', () => {
         rules:
           [
             (Ruleset
-              selector:
-                'a'
+              selector: 'a'
               rules:
                 [
                   (Declaration
-                    name:
-                      'b'
-                    value:
-                      'c'
+                    name: 'b'
+                    value: 'c'
                   )
                 ]
             )
@@ -60,13 +77,14 @@ describe('serializeTypes coverage', () => {
     if (!isNode(selector, N.ComplexSelector)) {
       throw new Error('Expected parsed selector to be complex');
     }
+    // The descendant combinator is a plain ' ' string between the two compounds.
     const combinator = selector.value[1];
-
-    expect(isNode(combinator, N.Combinator)).toBe(true);
-    expect('pre' in combinator).toBe(false);
-    expect(trivia.lookup(selector.value[2].location[0], 'before')?.map(token => token.image)).toEqual([
+    expect(combinator).toBe(' ');
+    // The trivia preceding the second compound is recovered via valueSpans.
+    expect(trivia.lookup(valueStart(selector, 2), 'before')?.map(token => token.image)).toEqual([
       ' ',
-      '/* gap */'
+      '/* gap */',
+      ' '
     ]);
   });
 
@@ -322,13 +340,13 @@ describe('serializeTypes coverage', () => {
     expect(first?.valueOf()).toBe('#a');
     expect(second?.valueOf()).toBe('.b');
     expect(third?.valueOf()).toBe('.c');
-    expect(trivia.lookup(second!.location[0], 'before')?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(valueStart(ruleset.selector, 1), 'before')?.map(token => token.image)).toEqual([
       '\n',
       '/*x*/',
       '/*y*/',
       '\n'
     ]);
-    expect(trivia.lookup(third!.location[0], 'before')?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(valueStart(ruleset.selector, 2), 'before')?.map(token => token.image)).toEqual([
       '/*z*/'
     ]);
   });
@@ -343,14 +361,16 @@ describe('serializeTypes coverage', () => {
 
     expect(first?.valueOf()).toBe('#comments');
     expect(second?.valueOf()).toBe('.comments');
-    expect(trivia.lookup(first!.location[3], 'after')?.map(token => token.image)).toEqual([
+    const firstEnd = valueEnd(ruleset.selector, 0);
+    const secondStart = valueStart(ruleset.selector, 1);
+    expect(trivia.lookup(firstEnd, 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/* boo */',
       '/* boo again*/'
     ]);
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > first!.location[3] && offset < second!.location[0])
+        .filter(([offset]) => offset > firstEnd && offset < secondStart)
         .map(([, tokens]) => tokens.map(token => token.image))
     ).toEqual([[
       ' ',
@@ -370,8 +390,11 @@ describe('serializeTypes coverage', () => {
       throw new Error('Expected nested rule to be a ruleset');
     }
 
-    expect(nested.selector.toString({ trivia })).toBe(' /*x*/ b');
-    expect(trivia.lookup(nested.selector.location[0], 'before')?.map(token => token.image)).toEqual([
+    // The nested selector is a bare string; its source offset comes from the
+    // ruleset's packed selector fieldSpan. The leading trivia (' /*x*/ ') is
+    // preserved in the trivia map before that offset.
+    const selStart = fieldStart(nested, 'selector');
+    expect(trivia.lookup(selStart, 'before')?.map(token => token.image)).toEqual([
       ' ',
       '/*x*/',
       ' '
@@ -412,13 +435,14 @@ describe('serializeTypes coverage', () => {
     const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
-    expect(trivia.lookup(value.location[3], 'after')?.map(token => token.image)).toEqual([
+    const valueEndOff = fieldEnd(declaration, 'value');
+    expect(trivia.lookup(valueEndOff, 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/* comment */'
     ]);
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > value.location[3])
+        .filter(([offset]) => offset > valueEndOff)
         .map(([, tokens]) => tokens.map(token => token.image))[0]
     ).toEqual([
       ' ',
@@ -439,14 +463,15 @@ describe('serializeTypes coverage', () => {
     const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
-    expect(trivia.lookup(name.location[3], 'after')?.map(token => token.image)).toEqual([
+    const nameEndOff = fieldEnd(declaration, 'name');
+    expect(trivia.lookup(nameEndOff, 'after')?.map(token => token.image)).toEqual([
       '/* survive */',
       ' ',
       '/* me too */'
     ]);
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > name.location[3])
+        .filter(([offset]) => offset > nameEndOff)
         .map(([, tokens]) => tokens.map(token => token.image))[0]
     ).toEqual([
       '/* survive */',
@@ -497,19 +522,17 @@ describe('serializeTypes coverage', () => {
               ]
           )
     `);
+    // A space-separated sequence is a plain array (no operator semantics).
     expect(out).toContainString(`
       (Declaration
         name:
           'n'
         value:
-          (Sequence
-            value:
-              [
-                (Num 1)
-                (Num 2)
-                (Num 3)
-              ]
-          )
+          [
+            (Num 1)
+            (Num 2)
+            (Num 3)
+          ]
     `);
   });
 
@@ -519,7 +542,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          '@media
+          '@media'
     `);
   });
 });

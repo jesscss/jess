@@ -259,3 +259,30 @@ export function consumeTriviaBetween(
   });
   return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
 }
+
+/**
+ * Like consumeTriviaBetween, but for string components that carry no own node
+ * location — the surrounding offsets come from the owning node's valueSpans.
+ */
+export function consumeTriviaBetweenOffsets(
+  trivia: TriviaMap | undefined,
+  prevEnd: number | undefined,
+  nextStart: number | undefined,
+  options: TriviaEmitOptions
+): IToken[] | undefined {
+  if (!trivia || prevEnd === undefined || nextStart === undefined
+    || prevEnd < 0 || nextStart < 0 || prevEnd > nextStart) {
+    return undefined;
+  }
+  const tokens = trivia.lookup(nextStart, 'before');
+  if (!tokens?.length) {
+    return undefined;
+  }
+  const isBetween = tokens.every((token) => {
+    return token.startOffset !== undefined
+      && token.endOffset !== undefined
+      && token.startOffset >= prevEnd
+      && token.endOffset <= nextStart;
+  });
+  return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
+}

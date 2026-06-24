@@ -689,6 +689,18 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    *   to avoid distribution; simple/compound/complex parents splice inline.
    */
   static composeSelector(child: Selector, parent: Selector): Selector {
+    // String-backed selectors (scanner-native simple selectors) compose
+    // textually: substitute `&` with the parent, or prepend the parent via a
+    // descendant combinator. Returned as a string so the flattened ruleset keeps
+    // a string selector.
+    if (typeof child === 'string' || typeof parent === 'string') {
+      const childStr = typeof child === 'string' ? child : child.toString();
+      const parentStr = typeof parent === 'string' ? parent : parent.toString();
+      const composed = childStr.includes('&')
+        ? childStr.replace(/&/g, parentStr)
+        : `${parentStr} ${childStr}`;
+      return composed as unknown as Selector;
+    }
     const library = child.keySetLibrary ?? parent.keySetLibrary;
     // Child is a parent-replacement: its `&` has already been fully resolved
     // against the parent context (e.g. `.a, .b { &-1 { ... } }` →

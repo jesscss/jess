@@ -26,9 +26,20 @@ const nonElementRegex = /^[.#:[]/;
 function emitCompoundPart(
   part: CompoundSelectorComponent,
   options: ReturnType<typeof getPrintOptions>,
-  emitLeadingTrivia: boolean
+  emitLeadingTrivia: boolean,
+  stringPartStart?: number
 ): void {
   if (typeof part === 'string') {
+    // String parts carry no own location; their source offset (for trivia
+    // lookup between adjacent simple selectors, e.g. comments) comes from the
+    // owning CompoundSelector's valueSpans, passed in as stringPartStart.
+    if (emitLeadingTrivia && options.trivia && typeof stringPartStart === 'number' && stringPartStart >= 0) {
+      emitTriviaTokens(
+        consumeTrivia(options.trivia, stringPartStart, 'before', options),
+        options,
+        { skipLeadingWhitespace: true }
+      );
+    }
     options.writer.add(part);
     return;
   }
@@ -135,10 +146,12 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
+    const spans = this.valueSpans;  // packed [start,end,flags] per component
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
-      emitCompoundPart(value[i]!, printOptions, i > 0);
+      const stringPartStart = spans ? spans[i * 3] : undefined;
+      emitCompoundPart(value[i]!, printOptions, i > 0, stringPartStart);
     }
     restorePrintState(printOptions, saved);
   }

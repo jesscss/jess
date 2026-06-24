@@ -82,15 +82,19 @@ function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeT
   if (arr.length === 0) {
     return `${pad}[]`;
   }
-  const first = arr[0];
-  if (isJessNode(first)) {
+  // Component arrays (nodes and/or strings — e.g. selector/sequence values)
+  // render multi-line, one element per line, with no separators.
+  const hasNodeOrString = arr.some(item => isJessNode(item) || typeof item === 'string');
+  if (hasNodeOrString) {
     const childPad = indent(depth + 1, opts.indentSize);
     const inner = arr.map(item => (
-      isJessNode(item) ? serializeNode(item, depth + 1, opts, visiting) : `${childPad}(undefined)`
+      isJessNode(item)
+        ? serializeNode(item, depth + 1, opts, visiting)
+        : `${childPad}${formatPrimitive(item, opts)}`
     )).join('\n');
     return `${pad}[\n${inner}\n${pad}]`;
   }
-  // Not a node array; show compact
+  // Pure-primitive array (numbers/booleans); show compact
   return `${pad}[${summarizeArray(arr, opts)}]`;
 }
 

@@ -28,29 +28,27 @@ import {
   scanTo,
   balanced
 } from 'parseman';
-import type { Span, Combinator, ParseContext, ParseResult } from 'parseman';
+import type { Span, RuleKeys } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
-
-// Run a combinator with trivia disabled. Used for CompoundSelector to prevent
-// whitespace (descendant combinator) from being consumed between simple selectors.
-function noTrivia<T>(p: Combinator<T>): Combinator<T> {
-  return {
-    _tag: p._tag,
-    _meta: p._meta,
-    _def: p._def,
-    parse(input: string, pos: number, ctx: ParseContext): ParseResult<T> {
-      return p.parse(input, pos, { ...ctx, trivia: undefined });
-    }
-  };
-}
+import { buildTriviaIndex } from 'parseman';
+import {
+  createPackedFieldSpans,
+  setPackedFieldSpan,
+  createPackedSegmentSpans,
+  setPackedSegmentSpan
+} from '@jesscss/parser';
 
 import {
-  type Node,
+  Node,
   type LocationInfo,
+  type TriviaMap,
+  createTriviaMap,
+  nil,
   Rules, Ruleset,
   type Selector,
   BasicSelector, CompoundSelector, type CompoundSelectorComponent,
   ComplexSelector, type ComplexSelectorValue,
+  Combinator,
   SelectorList,
   Declaration, CustomDeclaration,
   Any, Dimension, Num, Color, ColorFormat,
@@ -70,7 +68,51 @@ const nonAscii = '\\u0080-\\uffff';
 const nmStart  = `[_a-zA-Z${nonAscii}]`;
 const nmChar   = `[-_a-zA-Z0-9${nonAscii}]`;
 
+// Matches input that is ENTIRELY trailing trivia: whitespace, block comments,
+// or line comments. Used to decide whether content left unconsumed after a
+// whole-document parse is a real error or just trailing trivia.
+const TRAILING_TRIVIA_ONLY = /^(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*$/;
+
 const IDENT_RE = new RegExp(`-?${nmStart}${nmChar}*`);
+
+// Recognized CSS color keywords (full match, case-insensitive). Exported so the
+// Less grammar can reuse it instead of maintaining a parallel list.
+export const CSS_COLOR_NAMES = new Set([
+  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque',
+  'black', 'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood',
+  'cadetblue', 'chartreuse', 'chocolate', 'coral', 'cornflowerblue', 'cornsilk',
+  'crimson', 'cyan', 'currentcolor', 'darkblue', 'darkcyan', 'darkgoldenrod',
+  'darkgray', 'darkgrey', 'darkgreen', 'darkkhaki', 'darkmagenta',
+  'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon',
+  'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey',
+  'darkturquoise', 'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 'dimgrey',
+  'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro',
+  'ghostwhite', 'gold', 'goldenrod', 'gray', 'grey', 'green', 'greenyellow',
+  'honeydew', 'hotpink', 'indianred', 'indigo', 'ivory', 'khaki', 'lavender',
+  'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral',
+  'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgrey', 'lightgreen',
+  'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray',
+  'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen',
+  'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
+  'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
+  'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose',
+  'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab', 'orange',
+  'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise',
+  'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink', 'plum',
+  'powderblue', 'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue',
+  'saddlebrown', 'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna',
+  'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow',
+  'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'transparent',
+  'turquoise', 'violet', 'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen'
+]);
+
+// Pseudo-classes/elements whose argument is itself a selector (kept structured);
+// any other (unknown) pseudo gets a generic component array as its argument.
+const SELECTOR_PSEUDOS = new Set([
+  'is', 'where', 'not', 'has', 'matches', 'any', '-moz-any', '-webkit-any',
+  'host', 'host-context', 'slotted', 'nth-child', 'nth-last-child',
+  'nth-of-type', 'nth-last-of-type'
+]);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,21 +140,139 @@ function leafText(children: ReadonlyArray<Child>): string {
     .join('');
 }
 
+// A built child may be a Node, a CSTLeaf, or — when a sub-rule collapsed to a
+// plain string (e.g. a simple selector or plain-ident value) — a raw string.
+export type Component = string | JessNode;
+
+// Convert a raw child entry into an AST component: strings pass through, leaves
+// become their text, nodes pass through. Trivia/errors are dropped (returns null).
+export function toComponent(c: unknown): Component | null {
+  if (typeof c === 'string') return c;
+  if (c && typeof c === 'object' && '_tag' in c) {
+    const tag = (c as { _tag: string })._tag;
+    if (tag === 'leaf') return (c as CSTLeaf).value;
+    if (tag === 'node') return c as JessNode;
+  }
+  return null;
+}
+
+// A non-trivia child with its source span. Leaves (including collapsed string
+// results, recorded as spanned leaves by the framework) yield their text; nodes
+// pass through. Trivia/errors are skipped.
+export type Spanned = { comp: Component; span: Span };
+
+export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>): Spanned[] {
+  const out: Spanned[] = [];
+  for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
+    if (rc._tag === 'leaf' && rc.span) {
+      out.push({ comp: rc.value ?? '', span: rc.span });
+    } else if (rc._tag === 'node' && (rc as unknown as JessNode).span) {
+      out.push({ comp: rc as unknown as JessNode, span: (rc as unknown as JessNode).span });
+    }
+  }
+  return out;
+}
+
+// Record one direct-field source span (by childKeys index) on a node.
+export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: number, span: Span) {
+  const n = node as unknown as { fieldSpans?: number[] };
+  n.fieldSpans ??= createPackedFieldSpans(fieldCount);
+  setPackedFieldSpan(n.fieldSpans, fieldIndex, span.start, span.end);
+}
+
+// Record per-segment source spans for an array-backed `value`.
+export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>) {
+  const packed = createPackedSegmentSpans(spans.length);
+  spans.forEach((s, i) => setPackedSegmentSpan(packed, i, s.start, s.end));
+  (node as unknown as { valueSpans?: number[] }).valueSpans = packed;
+}
+
+// childKeys index lookup for a node's static childKeys array.
+export function fieldIndexOf(node: JessNode, key: string): { index: number; count: number } {
+  const keys = (node.constructor as unknown as { childKeys?: readonly string[] }).childKeys ?? [];
+  return { index: keys.indexOf(key), count: keys.length };
+}
+
+// ---------------------------------------------------------------------------
+// Parse result + trivia tokens
+// ---------------------------------------------------------------------------
+
+/** Minimal IToken-compatible trivia token (what TriviaMap consumers read). */
+type TriviaToken = {
+  image: string;
+  startOffset: number;
+  endOffset: number;
+  tokenType: { name: string };
+};
+
+function makeTriviaToken(value: string, span: Span): TriviaToken {
+  const isComment = value.startsWith('/*');
+  return {
+    image: value,
+    startOffset: span.start,
+    endOffset: span.end,
+    tokenType: { name: isComment ? 'Comment' : 'WS' }
+  };
+}
+
+function rawSpan(c: { span?: Span }): Span | undefined {
+  const s = c.span;
+  return s && typeof s.start === 'number' ? s : undefined;
+}
+
+export type CssParseResult<T extends Node = Node> = {
+  tree: T;
+  errors: Array<{ message: string; offset?: number }>;
+  warnings: Array<{ message: string }>;
+  trivia: TriviaMap;
+};
+
 // ---------------------------------------------------------------------------
 // CssParser
 // ---------------------------------------------------------------------------
 
 export class CssParser extends Parser<JessNode> {
-  // `rw` must be declared first so `_trivia = this.rw` can reference it.
-  rw = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+  // Trivia tokens — whitespace runs and block comments parsed *separately* so
+  // capture records them as distinct tokens (and so whitespace, the descendant
+  // combinator, is distinguishable from a comment-only gap).
+  ws = regex(/[ \t\n\r\f]+/);
+  comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+
+  // `rw` (declared before `_trivia` so it can reference it) consumes a run of
+  // mixed whitespace and comments, each recorded as its own trivia token.
+  rw = oneOrMore(choice(this.ws, this.comment));
 
   // Registers whitespace+comments as trivia; auto-skipped between sequence terms.
   protected override _trivia = this.rw;
 
+  // Record consumed trivia as separate CSTTrivia tokens in rawChildren.
+  protected override _captureTrivia = true;
+
+  // Makes the rule name optional in parse(): parse(text) === parse('Stylesheet', text).
+  protected override _defaultRule = 'Stylesheet' as const;
+
+  /** Source text of the in-progress parse; used by builders that emit verbatim text. */
+  protected _source = '';
+
+  /**
+   * When true, parse() reports an "Unexpected input" error if the top-level rule
+   * stops before consuming the whole source (modulo trailing trivia). CSS leaves
+   * this off (its fixture tests tolerate prefix parses); Less/SCSS/Jess enable it
+   * so malformed inputs surface a hard parse error. */
+  protected _strictEOF = false;
+
+  /** Deprecation/diagnostic warnings collected by builders during a parse. */
+  protected _warnings: Array<{ message: string; deprecation?: string }> = [];
+
+  /** Record a warning (e.g. a deprecated Less construct) during buildNode. */
+  protected _warn(message: string, deprecation?: string) {
+    this._warnings.push(deprecation ? { message, deprecation } : { message });
+  }
+
   ident = regex(IDENT_RE);
 
-  singleStr = regex(/'(?:[^'\\]|\\.)*'/);
-  doubleStr = regex(/"(?:[^"\\]|\\.)*"/);
+  singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
+  doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 
   // Single-leaf tokens (no reconstruction from parts needed in builders).
   customProp = regex(new RegExp(`--${nmChar}*`));
@@ -120,11 +280,10 @@ export class CssParser extends Parser<JessNode> {
 
   // ── Root ──────────────────────────────────────────────────────────────────
 
-  // Leading optional(g.rw) is needed: many()'s trivia-retry only fires when
-  // the item fails outright, but choice(..., unknown) is infallible (unknown
-  // is a catch-all), so Ruleset would never get a trivia-retry opportunity.
+  // many() skips leading trivia before each item, so no explicit rw is needed
+  // here (and `unknown` no longer captures leading whitespace).
   Stylesheet = (g: any) => many(
-    sequence(optional(g.rw), choice(g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.unknown))
+    choice(g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.unknown)
   );
 
   // ── Rulesets ─────────────────────────────────────────────────────────────
@@ -158,24 +317,23 @@ export class CssParser extends Parser<JessNode> {
     literal('|')
   );
 
-  // noTrivia prevents whitespace from being silently consumed between simple
-  // selectors. Without it, `.a .b` collapses into one CompoundSelector instead
-  // of two (with an implicit descendant combinator between them).
-  CompoundSelector = (g: any) => noTrivia(oneOrMore(g.simpleSelector));
+  // oneOrMore skips trivia (whitespace) between simple selectors. buildNode
+  // inspects rawChildren: if whitespace separates two simple selectors, the
+  // result is reinterpreted as a ComplexSelector with a descendant combinator.
+  CompoundSelector = (g: any) => oneOrMore(g.simpleSelector);
 
-  // lowercase: actual node type comes from inner capital rule
+  // lowercase: actual node type comes from inner capital rule; basicSelector
+  // contributes a plain string leaf (no node).
   simpleSelector = (g: any) => choice(
     g.AttributeSelector,
     g.PseudoSelector,
-    g.BasicSelector
+    g.basicSelector
   );
 
-  BasicSelector = (g: any) => choice(
-    sequence(literal('.'), g.ident),
-    sequence(literal('#'), g.ident),
-    literal('*'),
-    g.ident
-  );
+  // lowercase: a single simple selector (.class, #id, *, type) as one leaf.
+  // (Keyframe percentage selectors like 0%/100% are handled in the dedicated
+  // at-rule workstream — Ruleset rejects them as scanner-native string selectors.)
+  basicSelector = regex(new RegExp(`(?:[.#]?-?${nmStart}${nmChar}*|\\*)`));
 
   AttributeSelector = (g: any) => sequence(
     literal('['),
@@ -202,22 +360,21 @@ export class CssParser extends Parser<JessNode> {
 
   // ── Declarations ─────────────────────────────────────────────────────────
 
-  // Same catch-all issue as Stylesheet: unknown makes choice infallible,
-  // so leading optional(g.rw) is required for trivia to reach Declaration.
-  declarationList = (g: any) => many(sequence(
-    optional(g.rw),
+  // many() skips leading trivia before each item — no explicit rw needed.
+  declarationList = (g: any) => many(
     choice(
       g.Declaration,
       g.CustomDeclaration,
+      g.Ruleset,            // CSS nesting: a nested ruleset in a declaration block
       literal(';'),
       sequence(g.unknown, optional(literal(';')))
     )
-  ));
+  );
 
   Declaration = (g: any) => sequence(
     g.ident,
     literal(':'),
-    g.ValueList,
+    g.valueList,
     optional(g.important),
     optional(literal(';'))
   );
@@ -238,14 +395,17 @@ export class CssParser extends Parser<JessNode> {
 
   // ── Values ───────────────────────────────────────────────────────────────
 
-  ValueList = (g: any) => sequence(
-    g.ValueSequence,
-    many(sequence(literal(','), g.ValueSequence))
+  // lowercase: value content (nodes, plain-ident leaves, ',' separators) bubbles
+  // directly into the enclosing capital rule (Declaration, etc.), so trivia and
+  // exact token spans are preserved on that node rather than lost in a collapse.
+  valueList = (g: any) => sequence(
+    g.valueSequence,
+    many(sequence(literal(','), g.valueSequence))
   );
 
-  ValueSequence = (g: any) => oneOrMore(g.value);
+  valueSequence = (g: any) => oneOrMore(g.value);
 
-  // lowercase: value nodes appear directly as children of ValueSequence
+  // lowercase: value nodes appear directly as children of valueSequence
   value = (g: any) => choice(
     g.Dimension,
     g.Num,
@@ -276,7 +436,13 @@ export class CssParser extends Parser<JessNode> {
     literal(')')
   );
 
-  parenBody = (g: any) => sequence(optional(g.ValueList), literal(')'));
+  parenBody = (g: any) => sequence(
+    optional(sequence(
+      g.valueList,
+      many(sequence(literal(';'), optional(g.valueList)))
+    )),
+    literal(')')
+  );
 
   Call = (g: any) => sequence(g.ident, literal('('), g.parenBody);
 
@@ -342,29 +508,43 @@ export class CssParser extends Parser<JessNode> {
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    _state: unknown,
-    _rawChildren: ReadonlyArray<{ _tag: string }>
+    state: unknown,
+    rawChildren: ReadonlyArray<{ _tag: string }>
+  ) {
+    const node = this._dispatchBuild(type, span, children, rawChildren);
+    // Retain the raw children (structural + trivia, in source order) on the node
+    // so the parser can reconstruct a before/after trivia map after parsing.
+    // Skip when the builder passed a child through unchanged (node is itself in
+    // rawChildren) — that would create a self-referential cycle.
+    if (node instanceof Node && rawChildren.length && !rawChildren.includes(node as { _tag: string })) {
+      node._setCstChildren(rawChildren);
+    }
+    return node;
+  }
+
+  protected _dispatchBuild(
+    type: string,
+    span: Span,
+    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
+    rawChildren: ReadonlyArray<{ _tag: string }>
   ) {
     const loc = spanToLocation(span);
     switch (type) {
       case 'Stylesheet':        return this._buildStylesheet(children, loc);
-      case 'Ruleset':           return this._buildRuleset(children, loc) as unknown as JessNode;
-      case 'SelectorList':      return this._buildSelectorList(children, loc);
-      case 'ComplexSelector':   return this._buildComplexSelector(children, span);
-      case 'CompoundSelector':  return this._buildCompoundSelector(children, loc);
-      case 'BasicSelector':     return new BasicSelector(leafText(children), undefined, loc);
+      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc) as unknown as JessNode;
+      case 'SelectorList':      return this._buildSelectorList(rawChildren, loc);
+      case 'ComplexSelector':   return this._buildComplexSelector(rawChildren, loc);
+      case 'CompoundSelector':  return this._buildCompoundSelector(rawChildren, span);
       case 'AttributeSelector': return this._buildAttributeSelector(children, loc);
       case 'PseudoSelector':    return this._buildPseudoSelector(children, loc);
-      case 'Declaration':       return this._buildDeclaration(children, loc);
+      case 'Declaration':       return this._buildDeclaration(rawChildren, loc);
       case 'CustomDeclaration': return this._buildCustomDeclaration(children, loc);
-      case 'ValueList':         return this._buildValueList(children, loc);
-      case 'ValueSequence':     return this._buildValueSequence(children, loc);
       case 'Dimension':         return this._buildDimension(children, loc);
       case 'Num':               return new Num(parseFloat(leafText(children)), undefined, loc);
       case 'Color':             return this._buildColor(leafText(children), loc);
       case 'Url':               return this._buildUrl(children, loc);
-      case 'Call':              return this._buildCall(children, loc);
-      case 'Paren':             return this._buildParen(children, loc);
+      case 'Call':              return this._buildCall(rawChildren, loc);
+      case 'Paren':             return this._buildParen(rawChildren, loc);
       case 'Quoted':            return this._buildQuoted(children, loc);
       case 'AtRuleBlock':       return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'AtRuleStatement':   return this._buildAtRuleStatement(children, loc);
@@ -374,96 +554,282 @@ export class CssParser extends Parser<JessNode> {
 
   // ── Private AST builders ──────────────────────────────────────────────────
 
-  private _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     return new Rules(nodeChildren(children), undefined, loc);
   }
 
-  private _buildRuleset(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const nodes = nodeChildren(children);
-    return new Ruleset({
-      selector: (nodes[0] ?? new Any('', {}, loc)) as unknown as Selector,
-      rules: nodes.slice(1)
-    }, undefined, loc);
-  }
-
-  private _buildSelectorList(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const sels = nodeChildren(children);
-    if (sels.length === 1) {
-      return sels[0]!;
+  protected _buildRuleset(
+    children: ReadonlyArray<Child>,
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    // rawChildren = [selector (string|node, spanned), '{' leaf, ...rule nodes, '}' leaf]
+    const sel = spannedComponents(rawChildren)[0];
+    const selector = (sel?.comp ?? '') as string | Selector;
+    const rules = nodeChildren(children.slice(1));
+    const node = new Ruleset({ selector, rules }, undefined, loc);
+    if (sel) {
+      const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
+      if (index >= 0) setFieldSpan(node as unknown as JessNode, index, count, sel.span);
     }
-    return new SelectorList(sels as unknown as (Selector | string)[], undefined, loc);
+    return node;
   }
 
-  private _buildComplexSelector(children: ReadonlyArray<Child>, span: Span) {
+  protected _buildSelectorList(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    // Drop ',' separators; keep ComplexSelector results (string | node) + spans.
+    const items = spannedComponents(rawChildren).filter(i => i.comp !== ',');
+    if (items.length === 1) {
+      return items[0]!.comp as unknown as JessNode;
+    }
+    const node = new SelectorList(
+      items.map(i => i.comp) as unknown as (Selector | string)[],
+      undefined, loc
+    );
+    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
+    return node;
+  }
+
+  protected _buildComplexSelector(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    // rawChildren = [CompoundSelector result (string|node), combinator leaf, ...].
+    // Simple selectors and combinators are plain strings; only compound/attr/
+    // pseudo selectors are nodes.
+    const items = spannedComponents(rawChildren);
+    if (items.length === 1) {
+      return items[0]!.comp as unknown as JessNode;
+    }
+    const node = new ComplexSelector(
+      items.map(i => i.comp) as unknown as ComplexSelectorValue,
+      undefined, loc
+    );
+    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
+    return node;
+  }
+
+  protected _buildCompoundSelector(
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    span: Span
+  ) {
     const loc = spanToLocation(span);
-    const parts: (JessNode | string)[] = [];
-    let prevWasNode = false;
-    for (const c of children) {
-      if (c._tag === 'node') {
-        // Two adjacent compound nodes with no intervening combinator leaf = descendant
-        if (prevWasNode) {
+    // oneOrMore(simpleSelector) greedily collects simple selectors across any
+    // trivia. Whitespace between two simple selectors is the descendant
+    // combinator (a comment-only gap is NOT) — so we walk rawChildren and split
+    // into a ComplexSelector (with a ' ' combinator string) whenever whitespace
+    // separates adjacent simple selectors.
+    const parts: Component[] = [];          // complex-level: compounds + ' '
+    const partSpans: Span[] = [];
+    let group: Spanned[] = [];
+    let pendingWhitespace = false;
+
+    const flush = () => {
+      if (group.length === 0) return;
+      if (group.length === 1) {
+        parts.push(group[0]!.comp);
+        partSpans.push(group[0]!.span);
+      } else {
+        const start = group[0]!.span.start;
+        const end = group[group.length - 1]!.span.end;
+        const compound = new CompoundSelector(
+          group.map(g => g.comp) as unknown as CompoundSelectorComponent[],
+          undefined,
+          spanToLocation({ start, end })
+        );
+        setValueSpans(compound as unknown as JessNode, group.map(g => g.span));
+        parts.push(compound as unknown as JessNode);
+        partSpans.push({ start, end });
+      }
+      group = [];
+    };
+
+    let lastEnd = span.start;
+    for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
+      if (rc._tag === 'trivia') {
+        // Only a pure-whitespace token implies a descendant combinator; a comment
+        // token (e.g. '/*x */', which may contain spaces internally) does not.
+        if (/^[ \t\n\r\f]+$/.test(rc.value ?? '')) pendingWhitespace = true;
+      } else if ((rc._tag === 'leaf' || rc._tag === 'node') && rc.span) {
+        if (pendingWhitespace && group.length) {
+          const prevEnd = group[group.length - 1]!.span.end;
+          flush();
+          // descendant combinator: a ' ' string sits between the two compounds
           parts.push(' ');
+          partSpans.push({ start: prevEnd, end: rc.span.start });
         }
-        parts.push(c as JessNode);
-        prevWasNode = true;
-      } else if (c._tag === 'leaf' && (c as CSTLeaf).value) {
-        parts.push((c as CSTLeaf).value);
-        prevWasNode = false;
+        group.push({ comp: rc._tag === 'leaf' ? (rc.value ?? '') : (rc as unknown as JessNode), span: rc.span });
+        lastEnd = rc.span.end;
+        pendingWhitespace = false;
       }
     }
-    if (parts.length === 1 && typeof parts[0] !== 'string') {
-      return parts[0]!;
-    }
-    return new ComplexSelector(parts as unknown as ComplexSelectorValue, undefined, loc);
-  }
+    void lastEnd;
+    flush();
 
-  private _buildCompoundSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const parts = nodeChildren(children);
     if (parts.length === 1) {
-      return parts[0]!;
+      return parts[0]! as unknown as JessNode;
     }
-    return new CompoundSelector(parts as unknown as CompoundSelectorComponent[], undefined, loc);
+    const node = new ComplexSelector(parts as unknown as ComplexSelectorValue, undefined, loc);
+    setValueSpans(node as unknown as JessNode, partSpans);
+    return node;
   }
 
-  private _buildAttributeSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAttributeSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children
       .filter((c): c is CSTLeaf => c._tag === 'leaf')
       .filter(l => l.value !== '[' && l.value !== ']');
     const name = ls[0]?.value ?? '';
     const opRe = /^[*~|^$]?=$/;
     const opIdx = ls.findIndex(l => opRe.test(l.value));
+    const rawValue = opIdx >= 0 ? ls[opIdx + 1]?.value : undefined;
     const attrNode: AttributeSelectorValue = {
       name,
       ...(opIdx >= 0 ? { op: ls[opIdx]!.value } : {}),
-      ...(opIdx >= 0 && ls[opIdx + 1] ? { value: new Any(ls[opIdx + 1]!.value, {}, loc) } : {}),
+      ...(rawValue !== undefined ? { value: this._attrValueNode(rawValue, loc) } : {}),
       ...(opIdx >= 0 && ls[opIdx + 2] ? { mod: ls[opIdx + 2]!.value } : {})
     };
     return new AttributeSelector(attrNode, undefined, loc);
   }
 
-  private _buildPseudoSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  // An attribute value that is a quoted string becomes a Quoted node; otherwise
+  // a plain Any.
+  protected _attrValueNode(raw: string, loc: LocationInfo) {
+    if ((raw.startsWith('\'') && raw.endsWith('\'')) || (raw.startsWith('"') && raw.endsWith('"'))) {
+      return new Quoted(raw.slice(1, -1), { quote: raw[0] as '"' | '\'' }, loc);
+    }
+    return new Any(raw, {}, loc);
+  }
+
+  protected _buildPseudoSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const prefix = ls[0]?.value ?? ':';
     const pseudoName = ls[1]?.value ?? '';
-    return new PseudoSelector(
-      { name: prefix + pseudoName, arg: nodeChildren(children)[0] as Node | undefined },
-      undefined, loc
-    );
+    const argNode = nodeChildren(children)[0] as Node | undefined;
+    let arg = argNode;
+    // Selector-accepting pseudos keep their parsed selector node; for unknown
+    // pseudos the argument is a generic sequence, so flatten the speculatively
+    // parsed selector back into its raw component array (preserving the node's
+    // valueSpans on the PseudoSelector so the printer can recover trivia).
+    let argValueSpans: number[] | undefined;
+    if (argNode && !SELECTOR_PSEUDOS.has(pseudoName.toLowerCase())) {
+      const v = (argNode as unknown as { value?: unknown }).value;
+      if (Array.isArray(v)) {
+        arg = v as unknown as Node;
+        argValueSpans = (argNode as unknown as { valueSpans?: number[] }).valueSpans;
+      }
+    }
+    const node = new PseudoSelector({ name: prefix + pseudoName, arg }, undefined, loc);
+    if (argValueSpans) {
+      (node as unknown as { valueSpans?: number[] }).valueSpans = argValueSpans;
+    }
+    return node;
   }
 
-  private _buildDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const nameNode = new Any(ls[0]?.value ?? '', { role: 'property' }, loc);
-    const valueNode = nodeChildren(children)[0] ?? new Any('', {}, loc);
-    // '!' only appears in Declaration children via the lowercase `important` rule
-    const hasImportant = ls.some(l => l.value === '!');
-    return new Declaration(
-      { name: nameNode, value: valueNode, important: hasImportant || undefined },
+  protected _buildDeclaration(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    // items = [name (spanned), ':' , ...value content (spanned), '!'?, 'important'?, ';'?]
+    const items = spannedComponents(rawChildren);
+    const nameItem = items[0];
+    const name = (typeof nameItem?.comp === 'string' ? nameItem.comp : '') || '';
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    // value content runs from after ':' up to '!important' / ';'
+    let end = items.length;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!' || c === 'important' || c === ';') { end = i; break; }
+    }
+    const valueItems = items.slice(colonIdx + 1, end);
+    const { value, span: valueSpan } = this._assembleValue(valueItems, loc);
+    const hasImportant = items.some(i => i.comp === '!');
+    const node = new Declaration(
+      { name, value, important: hasImportant || undefined },
       undefined, loc
     );
+    const jn = node as unknown as JessNode;
+    const { index: nameIdx, count } = fieldIndexOf(jn, 'name');
+    if (nameItem && nameIdx >= 0) setFieldSpan(jn, nameIdx, count, nameItem.span);
+    const valueIdx = fieldIndexOf(jn, 'value').index;
+    if (valueSpan && valueIdx >= 0) setFieldSpan(jn, valueIdx, count, valueSpan);
+    return node;
   }
 
-  private _buildCustomDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  // Assemble a CSS value from its bubbled content items:
+  //   - split on ',' into comma segments
+  //   - each segment: one item → that item; many → a plain array (a sequence)
+  //   - multiple segments → a List node
+  // Returns the assembled value and its overall (trimmed) source span.
+  protected _assembleValue(items: Spanned[], loc: LocationInfo): { value: Component; span: Span | undefined } {
+    const content = items.filter(i => i.comp !== ',');
+    if (content.length === 0) {
+      return { value: new Any('', {}, loc), span: undefined };
+    }
+    const span: Span = {
+      start: content[0]!.span.start,
+      end: content[content.length - 1]!.span.end
+    };
+
+    // Split into comma-separated segments.
+    const segments: Spanned[][] = [[]];
+    for (const it of items) {
+      if (it.comp === ',') segments.push([]);
+      else segments.at(-1)!.push(it);
+    }
+    const segValues = segments.map(seg => this._assembleSegment(seg, loc));
+
+    if (segValues.length === 1) {
+      return { value: segValues[0]!, span };
+    }
+    // Inside a comma List, a multi-item (space-delimited) segment must be a
+    // Sequence node so it serializes structurally rather than being stringified.
+    // A lone space-array (single segment, handled above) stays a plain array.
+    const listValues = segValues.map(v => {
+      if (!Array.isArray(v)) return v;
+      const parts = (v as Component[]).map(c =>
+        typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c);
+      return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+    });
+    const list = new List(listValues as unknown as Node[], undefined, loc);
+    setValueSpans(list as unknown as JessNode, segments.map(seg => ({
+      start: seg[0]!.span.start,
+      end: seg[seg.length - 1]!.span.end
+    })));
+    return { value: list as unknown as Component, span };
+  }
+
+  // One comma-segment: a single value passes through; multiple space-separated
+  // values become a plain array (an ordered sequence with no operator).
+  protected _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
+    if (seg.length === 1) {
+      return seg[0]!.comp;
+    }
+    const grouped = this._groupSlashes(seg.map(s => s.comp), loc);
+    if (grouped.length === 1) return grouped[0]!;
+    return grouped as unknown as Component;
+  }
+
+  // Collapse '/'-separated runs (e.g. `small/20px`, `1/2/3`) into slash Lists.
+  // Items without a neighbouring '/' pass through unchanged.
+  protected _groupSlashes(comps: Component[], loc: LocationInfo): Component[] {
+    if (!comps.includes('/' as unknown as Component)) return comps;
+    // List children must be nodes (the serializer reads each child's location),
+    // so bare ident strings in a slash run are coerced to Any[role=ident].
+    const asNode = (c: Component): Component =>
+      typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c;
+    const out: Component[] = [];
+    let i = 0;
+    while (i < comps.length) {
+      if (i + 1 < comps.length && comps[i + 1] === ('/' as unknown as Component)) {
+        const run: Component[] = [asNode(comps[i]!)];
+        i += 1;
+        while (i < comps.length && comps[i] === ('/' as unknown as Component)) {
+          i += 1;
+          if (i < comps.length) { run.push(asNode(comps[i]!)); i += 1; }
+        }
+        out.push(new List(run as unknown as Node[], { sep: '/' } as any, loc) as unknown as Component);
+      } else {
+        out.push(comps[i]!);
+        i += 1;
+      }
+    }
+    return out;
+  }
+
+  protected _buildCustomDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const propName = ls[0]?.value ?? '';  // single leaf: '--foo-bar'
     const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
@@ -473,33 +839,7 @@ export class CssParser extends Parser<JessNode> {
     );
   }
 
-  private _buildValueList(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const nodes = nodeChildren(children);
-    const hasComma = children.some(c => c._tag === 'leaf' && (c as CSTLeaf).value === ',');
-    if (!hasComma) {
-      return nodes[0] ?? new Any('', {}, loc);
-    }
-    return new List(nodes, undefined, loc);
-  }
-
-  private _buildValueSequence(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    // Mix nodes and non-trivial leaves. Lowercase rules (anyValue, ident, etc.)
-    // produce leaves; we lift them to Any so callers see a non-empty result.
-    const mixed: JessNode[] = [];
-    for (const c of children) {
-      if (c._tag === 'node') {
-        mixed.push(c as JessNode);
-      } else if (c._tag === 'leaf' && (c as CSTLeaf).value.trim()) {
-        mixed.push(new Any((c as CSTLeaf).value, {}, loc) as JessNode);
-      }
-    }
-    if (mixed.length === 1) {
-      return mixed[0]!;
-    }
-    return new Sequence(mixed, undefined, loc);
-  }
-
-  private _buildDimension(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildDimension(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     return new Dimension(
       { number: parseFloat(ls[0]?.value ?? '0'), unit: ls[1]?.value ?? '' },
@@ -507,58 +847,201 @@ export class CssParser extends Parser<JessNode> {
     );
   }
 
-  private _buildColor(text: string, loc: LocationInfo) {
+  protected _buildColor(text: string, loc: LocationInfo) {
     return new Color(text, { format: ColorFormat.HEX }, loc);
   }
 
-  private _buildUrl(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildUrl(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    // A node child that already parsed (Quoted url) passes through; otherwise the
+    // raw url contents are a bare string.
+    const innerNode = nodeChildren(children)[0];
+    if (innerNode) {
+      return new Url(innerNode as Node, undefined, loc);
+    }
     const inner = ls
       .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
       .map(l => l.value).join('').trim();
-    return new Url(new Any(inner, { role: 'urlvalue' }, loc), undefined, loc);
+    return new Url(inner as unknown as Node, undefined, loc);
   }
 
-  private _buildCall(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    return new Call(
-      { name: ls[0]?.value ?? '', args: nodeChildren(children)[0] as unknown as List<Node> },
-      undefined, loc
-    );
+  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const name = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const args = this._assembleArgs(this._betweenParens(items), loc);
+    return new Call({ name, args: args as unknown as List<Node> }, undefined, loc);
   }
 
-  private _buildParen(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    return new Paren(nodeChildren(children)[0] as Node | undefined, undefined, loc);
+  protected _buildParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const inner = this._betweenParens(spannedComponents(rawChildren));
+    const { value } = this._assembleValue(inner, loc);
+    return new Paren(value as unknown as Node, undefined, loc);
   }
 
-  private _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  // The spanned items strictly inside the outermost '(' … ')'.
+  protected _betweenParens(items: Spanned[]): Spanned[] {
+    const open = items.findIndex(i => i.comp === '(');
+    let close = items.length;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i]!.comp === ')') { close = i; break; }
+    }
+    return items.slice(open + 1, close);
+  }
+
+  // Function args: always a List, one element per comma-segment (each a value).
+  protected _assembleArgs(items: Spanned[], loc: LocationInfo) {
+    // Semicolon-separated args take precedence: split on ';' and assemble each
+    // part as its own (comma) arg list, wrapping in an outer List with sep ';'.
+    if (items.some(it => it.comp === ';')) {
+      const semiSegs: Spanned[][] = [[]];
+      for (const it of items) {
+        if (it.comp === ';') semiSegs.push([]);
+        else semiSegs.at(-1)!.push(it);
+      }
+      const parts = semiSegs.filter(s => s.length > 0).map(s => this._assembleArgs(s, loc));
+      return new List(parts as unknown as Node[], { sep: ';' } as any, loc);
+    }
+    const segments: Spanned[][] = [[]];
+    for (const it of items) {
+      if (it.comp === ',') segments.push([]);
+      else segments.at(-1)!.push(it);
+    }
+    const nonEmpty = segments.filter(s => s.length > 0);
+    const values = nonEmpty.map(seg => {
+      const assembled = this._assembleSegment(seg, loc);
+      // A space-delimited segment assembles to an array of components → wrap in a
+      // Sequence so positional args like `extract(1 2 3, 2)` keep their grouping.
+      if (Array.isArray(assembled)) {
+        const parts = (assembled as Component[]).map(c => this._argComponent(c, loc));
+        return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+      }
+      return this._argComponent(assembled, loc);
+    });
+    const list = new List(values as unknown as Node[], undefined, loc);
+    if (nonEmpty.length) {
+      setValueSpans(list as unknown as JessNode, nonEmpty.map(seg => ({
+        start: seg[0]!.span.start,
+        end: seg[seg.length - 1]!.span.end
+      })));
+    }
+    return list;
+  }
+
+  // A function-argument component: colorize first (color keywords win), then a
+  // remaining bare ident string becomes an Any[role=ident] node (args are nodes,
+  // unlike plain declaration values which stay bare strings).
+  protected _argComponent(comp: Component, loc: LocationInfo): Component {
+    const colored = this._colorize(comp, loc);
+    if (typeof colored === 'string') {
+      return new Any(colored, { role: 'ident' }, loc) as unknown as Component;
+    }
+    return colored;
+  }
+
+  // A bare ident that is a recognized CSS color keyword becomes a Color node.
+  protected _colorize(comp: Component, loc: LocationInfo): Component {
+    if (typeof comp === 'string' && CSS_COLOR_NAMES.has(comp.toLowerCase())) {
+      return new Color({ node: comp }, {}, loc) as unknown as Component;
+    }
+    return comp;
+  }
+
+  protected _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const text = leafText(children);
     return new Quoted(text.slice(1, -1), { quote: text[0] as '"' | '\'' }, loc);
   }
 
-  private _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const keyword = ls[0]?.value ?? '';  // single leaf: '@media'
-    const nameNode = new Any(keyword, { role: 'atkeyword' }, loc);
+    const name = ls[0]?.value ?? '';  // single leaf: '@media' — kept as a string
     const preludeText = ls.slice(1)
       .find(l => l.value !== '{' && l.value !== '}')
       ?.value.trim();
-    const preludeNode = preludeText ? new Any(preludeText, {}, loc) : undefined;
+    // Model the prelude as a List of ident tokens (whitespace-separated).
+    const preludeNode = preludeText
+      ? new List(
+          preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, loc)),
+          undefined, loc
+        )
+      : undefined;
     return new AtRule(
-      { name: nameNode, prelude: preludeNode, rules: nodeChildren(children) },
+      { name, prelude: preludeNode, rules: nodeChildren(children) },
       undefined, loc
     );
   }
 
-  private _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const keyword = ls[0]?.value ?? '';
-    const nameNode = new Any(keyword, { role: 'atkeyword' }, loc);
+    const name = ls[0]?.value ?? '';  // kept as a string
+    // @charset is modeled as a single verbatim Any token (role=charset), not a
+    // structured at-rule — it must round-trip its exact source including spaces.
+    if (name.toLowerCase() === '@charset') {
+      const text = this._source.slice(loc[0], loc[3]);
+      return new Any(text, { role: 'charset' }, loc);
+    }
     const preludeText = ls.slice(1).filter(l => l.value !== ';').map(l => l.value).join('').trim();
     return new AtRuleStatement(
-      { name: nameNode, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
+      { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
       undefined, loc
     );
   }
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+
+  // ── Public parse: tree + errors + warnings + trivia map ────────────────────
+
+  // Overrides Parser.parse to return a Jess-shaped result: the built tree, any
+  // parse errors/warnings, and a before/after trivia map reconstructed from the
+  // trivia tokens captured on each node's rawChildren during parsing.
+  override parse(input: string): CssParseResult<Rules>;
+  override parse(ruleName: RuleKeys<this>, input: string): CssParseResult;
+  override parse(a: string, b?: string): CssParseResult {
+    /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+    // Stash the source so builders can recover exact (trivia-inclusive) text
+    // for rules that serialize their whole span verbatim (e.g. @charset).
+    this._source = b === undefined ? a : b;
+    this._warnings = [];  // collected by builders during the parse below
+    const doc = b === undefined
+      ? super.parse(a as RuleKeys<this>)
+      : super.parse(a as RuleKeys<this>, b);
+
+    // Parseman builds the generic before/after trivia index from captured
+    // rawChildren; we adapt its {value, span} tokens to Jess IToken-shaped
+    // tokens for the TriviaMap.
+    const index = buildTriviaIndex(doc.tree);
+    const adapt = (m: Map<number, Array<{ value: string; span: Span }>>) => {
+      const out = new Map<number, TriviaToken[]>();
+      for (const [offset, run] of m) {
+        out.set(offset, run.map(t => makeTriviaToken(t.value, t.span)));
+      }
+      return out;
+    };
+
+    const errors = doc.errors.map(e => ({
+      message: e.expected?.join(', ') ?? 'Parse error',
+      offset: e.span?.start
+    }));
+
+    // Completeness check: a tolerant top-level rule (e.g. Stylesheet's many())
+    // can match a valid prefix and silently stop at malformed input. If the
+    // built tree doesn't reach the end of the source (modulo trailing trivia),
+    // the leftover is a parse error. Only applies to whole-document parses.
+    if (this._strictEOF && doc.tree && errors.length === 0) {
+      const end = doc.consumedEnd;
+      const rest = this._source.slice(end);
+      if (rest.length > 0 && !TRAILING_TRIVIA_ONLY.test(rest)) {
+        errors.push({ message: 'Unexpected input', offset: end });
+      }
+    }
+
+    return {
+      tree: (doc.tree ?? nil()) as Node,
+      errors,
+      warnings: this._warnings.slice(),
+      trivia: createTriviaMap({
+        before: adapt(index.before) as unknown as Map<number, never[]>,
+        after: adapt(index.after) as unknown as Map<number, never[]>
+      })
+    };
+    /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+  }
 }

@@ -16,7 +16,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
+import { consumeTriviaBetween, consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
@@ -170,19 +170,38 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         } else {
           const prev = value[i - 1];
           const next = value[i + 1];
-          const tokens = options.trivia && prev instanceof Node && next instanceof Node
-            ? consumeTriviaBetween(options.trivia, prev, next, options)
-            : undefined;
-          const coStart = typeof component === 'string' ? undefined : component.location[0];
-          const spaceBeforeTrivia = coStart !== undefined
-            && tokens?.[0]?.startOffset !== undefined
-            && coStart < tokens[0]!.startOffset!;
-          if (spaceBeforeTrivia) {
-            w.add(' ', typeof component === 'string' ? this : component);
+          const spans = this.valueSpans;
+          let tokens: ReturnType<typeof consumeTriviaBetween>;
+          if (options.trivia && prev instanceof Node && next instanceof Node) {
+            tokens = consumeTriviaBetween(options.trivia, prev, next, options);
+          } else if (options.trivia && spans) {
+            // String components: recover surrounding offsets from valueSpans
+            // (prev component end, next component start).
+            tokens = consumeTriviaBetweenOffsets(
+              options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options
+            );
           }
-          emitTriviaTokens(tokens, options);
-          if (!spaceBeforeTrivia) {
-            w.add(' ', typeof component === 'string' ? this : component);
+          if (typeof component === 'string') {
+            // String descendant combinator: the captured trivia already carries
+            // the exact whitespace/comments; emit it verbatim, or a single space
+            // when no trivia was recorded.
+            if (tokens?.length) {
+              emitTriviaTokens(tokens, options);
+            } else {
+              w.add(' ', this);
+            }
+          } else {
+            const coStart = component.location[0];
+            const spaceBeforeTrivia = coStart !== undefined
+              && tokens?.[0]?.startOffset !== undefined
+              && coStart < tokens[0]!.startOffset!;
+            if (spaceBeforeTrivia) {
+              w.add(' ', component);
+            }
+            emitTriviaTokens(tokens, options);
+            if (!spaceBeforeTrivia) {
+              w.add(' ', component);
+            }
           }
         }
       } else {

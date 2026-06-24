@@ -28,6 +28,7 @@ import {
 import type { Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import { LessGrammar } from '@jesscss/less-parser';
+import { spannedComponents } from '@jesscss/css-parser';
 
 import {
   type Node,
@@ -74,7 +75,7 @@ export class ScssGrammar extends LessGrammar {
   VarDeclaration = (g: any) => sequence(
     g.scssVar,
     literal(':'),
-    g.ValueList,
+    g.valueList,
     optional(choice(literal('!default'), literal('!global'))),
     optional(literal(';'))
   );
@@ -95,7 +96,7 @@ export class ScssGrammar extends LessGrammar {
   ): JessNode {
     const loc = spanToLocation(span);
     switch (type) {
-      case 'VarDeclaration': return this._buildScssVarDeclaration(children, loc);
+      case 'VarDeclaration': return this._buildScssVarDeclaration(_rawChildren, loc);
       case 'Reference':      return this._buildScssReference(children, loc);
       default:               return super.buildNode(type, span, children, _state, _rawChildren);
     }
@@ -106,16 +107,22 @@ export class ScssGrammar extends LessGrammar {
   // ── Private SCSS AST builders ─────────────────────────────────────────────
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 
-  private _buildScssVarDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const varName = ls[0]?.value ?? '';
-    // Strip leading $ from SCSS variable name
-    const nameStr = varName.startsWith('$') ? varName.slice(1) : varName;
-    const nameNode = new Any(nameStr, { role: 'ident' }, loc);
-    const valueNode = nodeChildren(children)[0] ?? new Any('', {}, loc);
-    const hasImportant = ls.some(l => l.value === '!' || l.value === '!default' || l.value === '!global');
+  private _buildScssVarDeclaration(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    // strings-not-nodes: name is the bare ident ($ stripped); value via the
+    // shared CSS string-AST value builder.
+    const items = spannedComponents(rawChildren);
+    const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const name = rawName.startsWith('$') ? rawName.slice(1) : rawName;
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    let end = items.length;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!' || c === '!default' || c === '!global' || c === ';') { end = i; break; }
+    }
+    const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
+    const hasImportant = items.some(i => i.comp === '!' || i.comp === '!default' || i.comp === '!global');
     return new VarDeclaration(
-      { name: nameNode, value: valueNode, important: hasImportant || undefined } as any,
+      { name, value, important: hasImportant || undefined } as any,
       {} as VarDeclarationOptions,
       loc
     );

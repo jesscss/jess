@@ -35,24 +35,8 @@ export type ParseResult<T extends Node = Node> = {
 // Rule name mapping: Chevrotain (lowercase) → Parséman (Capital)
 // ---------------------------------------------------------------------------
 
-const RULE_MAP: Record<string, string> = {
-  stylesheet: 'Stylesheet',
-  main: 'Stylesheet',
-  declaration: 'anyDeclaration',
-  declarationList: 'declarationList',
-  selector: 'LessSelectorList',
-  complexSelector: 'LessComplexSelector',
-  selectorList: 'LessSelectorList',
-  atRule: 'AtRuleBlock',
-  value: 'ValueList',
-  valueList: 'ValueList',
-  comparison: 'Comparison',
-  guard: 'Guard',
-  guardOr: 'Guard',
-  guardAnd: 'Guard',
-  qualifiedRule: 'Ruleset',
-  mixinOrQualifiedRule: 'Ruleset'
-};
+// Entry-point name aliases now live on LessGrammar._aliases and are resolved by
+// Parseman's parse()/rule(); no translation table is needed here.
 
 // ---------------------------------------------------------------------------
 // LessParserParseman
@@ -76,11 +60,9 @@ export class LessParserParseman {
   parse(text: string, rule?: string, options?: { context?: unknown }): ParseResult;
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
   parse(text: string, rule = 'stylesheet', _options?: { context?: unknown }): ParseResult {
-    const grammarRule = RULE_MAP[rule] ?? rule;
-    // RuleKeys<LessGrammar> only accepts capital-letter keys; cast needed for lowercase
-    // rules (e.g. anyDeclaration, declarationList) used as entry points.
-
-    const doc = this.grammar.parse(grammarRule as any, text);
+    // Entry-point aliases (e.g. 'value' → 'valueList') resolve inside grammar.parse
+    // via LessGrammar._aliases. Cast needed: RuleKeys only accepts capital keys.
+    const doc = this.grammar.parse(rule as any, text);
 
     const tree = doc.tree instanceof Object && '_tag' in doc.tree
       ? doc.tree as Node
@@ -92,7 +74,7 @@ export class LessParserParseman {
         message: e.expected?.join(', ') ?? 'Parse error',
         offset: e.span?.start
       })),
-      warnings: [],
+      warnings: (doc as { warnings?: Array<{ message: string }> }).warnings ?? [],
       lexerResult: { errors: [] }
     };
   }

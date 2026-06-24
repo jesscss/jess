@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { CssParserChevrotain as CssParser } from '../src/index.js';
+import { CssParser } from '../src/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveLessTestDataRoot } from './test-data.js';
@@ -10,7 +10,7 @@ const bootstrap = fs.readFileSync(
   'utf8'
 );
 
-const cssParser = new CssParser({ legacyMode: true });
+const cssParser = new CssParser(); // @todo - { legacyMode: true }
 
 describe('CSS parser benchmark', () => {
   test(`bootstrap4.css (${(bootstrap.length / 1024).toFixed(1)}KB) - 20 iterations`, () => {
@@ -33,10 +33,10 @@ describe('CSS parser benchmark', () => {
     }
 
     times.sort((a, b) => a - b);
-    const median = times[Math.floor(times.length / 2)];
+    const median = times[Math.floor(times.length / 2)]!;
     const mean = times.reduce((a, b) => a + b, 0) / times.length;
-    const min = times[0];
-    const max = times[times.length - 1];
+    const min = times[0]!;
+    const max = times[times.length - 1]!;
 
     console.log(`\n  Iterations: ${iterations}`);
     console.log(`  Median: ${median.toFixed(2)}ms`);

@@ -8,6 +8,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
@@ -115,7 +116,25 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     w.add(name, this);
     if (arg) {
       w.add('(');
-      if (isNode(arg, N.SelectorList)) {
+      if (Array.isArray(arg)) {
+        // Generic (unknown-pseudo) argument: a raw component array. Emit each
+        // component, recovering trivia between them from this node's valueSpans.
+        const spans = this.valueSpans;
+        for (let i = 0; i < arg.length; i++) {
+          const part = arg[i];
+          if (i > 0 && options.trivia && spans) {
+            emitTriviaTokens(
+              consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[i * 3], options),
+              options
+            );
+          }
+          if (typeof part === 'string') {
+            w.add(part, this);
+          } else if (part && typeof (part as Node).toString === 'function') {
+            (part as Node).toString(options);
+          }
+        }
+      } else if (isNode(arg, N.SelectorList)) {
         const argMark = w.mark();
         arg.toString(options);
         w.replaceSince(argMark, normalizeSelectorArg, arg);

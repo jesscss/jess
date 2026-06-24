@@ -97,6 +97,30 @@ export function setPackedFieldSpan(
   spans[offset + 2] = flags;
 }
 
+/**
+ * Reads the start offset of a packed span entry (field or segment), or -1 if
+ * the slot is empty/out of range. Zero-allocation: returns a primitive number.
+ */
+export function packedSpanStart(spans: PackedFieldSpans | undefined, index: number): number {
+  if (spans === undefined || index < 0) return -1;
+  return spans[index * 3] ?? -1;
+}
+
+/**
+ * Reads the end offset of a packed span entry (field or segment), or -1 if the
+ * slot is empty/out of range. Zero-allocation: returns a primitive number.
+ */
+export function packedSpanEnd(spans: PackedFieldSpans | undefined, index: number): number {
+  if (spans === undefined || index < 0) return -1;
+  return spans[index * 3 + 1] ?? -1;
+}
+
+/** Reads the flags of a packed span entry, or 0 if empty/out of range. */
+export function packedSpanFlags(spans: PackedFieldSpans | undefined, index: number): number {
+  if (spans === undefined || index < 0) return 0;
+  return spans[index * 3 + 2] ?? 0;
+}
+
 /** Allocates a packed segment span table for an array-backed field. */
 export function createPackedSegmentSpans(segmentCount: number): PackedSegmentSpans {
   return createPackedFieldSpans(segmentCount);
