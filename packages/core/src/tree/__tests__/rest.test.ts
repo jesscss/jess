@@ -35,8 +35,8 @@ describe('Rest', () => {
     const value = any('items');
     const node = rest(value);
 
-    expect(node.node).toBe(value);
-    expect(Rest.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Rest.childKeys).toEqual(['value']);
   });
 
   it('returns scalar rest syntax without writer readback', () => {

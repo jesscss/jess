@@ -51,8 +51,8 @@ describe('url', () => {
     const value = quoted('image.png');
     const node = url(value);
 
-    expect(node.node).toBe(value);
-    expect(Url.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Url.childKeys).toEqual(['value']);
   });
 
   it('renders a resolved url value through render(context)', async () => {
