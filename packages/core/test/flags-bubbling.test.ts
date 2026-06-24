@@ -115,8 +115,8 @@ describe('Flag bubbling', () => {
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
       expectFlags(tree.rules[0]! as Ruleset, false, true);
-      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
     });
 
@@ -161,12 +161,12 @@ describe('Flag bubbling', () => {
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
       expectFlags(tree.rules[0]! as Ruleset, false, true);
-      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const listNode = declaration.value as List;
 
       // List should have both flags (non-static + mayAsync)
@@ -198,12 +198,12 @@ describe('Flag bubbling', () => {
       // All levels should bubble up non-static
       expectFlags(tree, false, false);
       expectFlags(tree.rules[0]! as Ruleset, false, false);
-      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
-      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, false);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, false);
       expectFlags(innerRuleset, false, false);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const operation = declaration.value as Operation;
 
       // Operation should have non-static
@@ -235,12 +235,12 @@ describe('Flag bubbling', () => {
       // All levels should bubble up non-static and mayAsync
       expectFlags(tree, false, true);
       expectFlags(tree.rules[0]! as Ruleset, false, true);
-      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const callNode = declaration.value as Call;
 
       // Call should have both flags
@@ -275,13 +275,13 @@ describe('Flag bubbling', () => {
       // All levels should remain static
       expectFlags(tree, true, false);
       expectFlags(tree.rules[0]! as Ruleset, true, false);
-      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
-      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, true, false);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, true, false);
       expectFlags(innerRuleset, true, false);
 
       // Get the deepest nodes to verify specific types
-      const declaration1 = innerRuleset.value.rules.value[0]! as Declaration;
-      const declaration2 = innerRuleset.value.rules.value[1]! as Declaration;
+      const declaration1 = innerRuleset.rules[0]! as Declaration;
+      const declaration2 = innerRuleset.rules[1]! as Declaration;
 
       // Declarations should be static
       expectFlags(declaration1, true, false);
