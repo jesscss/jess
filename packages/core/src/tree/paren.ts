@@ -54,9 +54,9 @@ function writeParenValue(value: Node, options: FinalPrintOptions): void {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node | undefined;
+  declare readonly value: Node | undefined;
 
   private getDelimiters(): [open: string, close: string] {
     return this._options?.delimiter === 'square' ? ['[', ']'] : ['(', ')'];
@@ -110,7 +110,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.node = value;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
@@ -119,7 +118,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (!printOptions.trivia) {
-      const simple = this.writeSimpleWrappedSyntax(this.node, printOptions);
+      const simple = this.writeSimpleWrappedSyntax(this.value, printOptions);
       if (simple !== undefined) {
         return simple;
       }
@@ -132,7 +131,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    if (!options.trivia && this.writeSimpleWrappedSyntax(this.node, options) !== undefined) {
+    if (!options.trivia && this.writeSimpleWrappedSyntax(this.value, options) !== undefined) {
       return;
     }
     const w = options.writer;
@@ -142,7 +141,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
     const [open, close] = this.getDelimiters();
     w.add(open);
-    const value = this.node;
+    const value = this.value;
     if (value) {
       writeParenValue(value, options);
     }
@@ -152,7 +151,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const guardValue = getDefaultGuardValue(this.node, context);
+    const guardValue = getDefaultGuardValue(this.value, context);
     if (guardValue !== undefined) {
       const out = String(guardValue);
       return isRenderBuffer(bufferOrOptions)
@@ -167,7 +166,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
-    const currentValue = this.node;
+    const currentValue = this.value;
     if (!currentValue) {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
@@ -233,8 +232,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return this.renderWrappedValue(context, value, bufferOrOptions, options);
     }
-    while (value instanceof Paren && value.node) {
-      value = value.node;
+    while (value instanceof Paren && value.value) {
+      value = value.value;
     }
     if (value instanceof Bool || value instanceof Dimension) {
       return this.renderOutput(context, value, bufferOrOptions, options);
@@ -310,7 +309,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   private evaluateValue(context: Context): MaybePromise<Node> {
-    const currentValue = this.node;
+    const currentValue = this.value;
     if (currentValue) {
       const guardBool = getDefaultGuardBool(currentValue, context);
       if (guardBool) {
@@ -343,8 +342,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
          * so it's really just a DX tool that can be ignored
          * on output.
          */
-        while (value instanceof Paren && value.node) {
-          value = value.node;
+        while (value instanceof Paren && value.value) {
+          value = value.value;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;

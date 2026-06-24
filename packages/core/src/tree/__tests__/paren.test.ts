@@ -65,8 +65,8 @@ describe('Paren', () => {
     const child = any('foo');
     const node = paren(child);
 
-    expect(node.node).toBe(child);
-    expect(Paren.childKeys).toEqual(['node']);
+    expect(node.value).toBe(child);
+    expect(Paren.childKeys).toEqual(['value']);
   });
 
   it('writes empty paren syntax without writer readback', () => {
