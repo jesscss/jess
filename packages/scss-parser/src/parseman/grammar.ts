@@ -65,7 +65,7 @@ export class ScssGrammar extends LessGrammar {
   // ── Override rw to include // line comments ───────────────────────────────
   // Must be declared BEFORE _trivia so the field initializer captures this rw.
   rw = regex(/(?:[ \t\n\r\f]+|\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-  protected override _trivia = this.rw;
+  protected _trivia = this.rw;
 
   // ── SCSS $variable token ──────────────────────────────────────────────────
   scssVar = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
@@ -117,7 +117,10 @@ export class ScssGrammar extends LessGrammar {
     let end = items.length;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === '!default' || c === '!global' || c === ';') { end = i; break; }
+      if (c === '!' || c === '!default' || c === '!global' || c === ';') {
+        end = i;
+        break;
+      }
     }
     const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
     const hasImportant = items.some(i => i.comp === '!' || i.comp === '!default' || i.comp === '!global');

@@ -1,0 +1,284 @@
+/**
+ * Functional Less grammar — the macro-compiled counterpart to the class-based
+ * LessGrammar. Mirrors the functional CSS grammar (`node()` rules + a BuilderHost
+ * that reuses the class builders), extended with the Less-specific rules the
+ * class adds on top of CSS. Combinators are imported `with { type: 'macro' }`,
+ * so the whole grammar compiles to flat JS; the rules() map is the entry-point
+ * registry the parser dispatches into (stylesheet, value, guard, …).
+ */
+import {
+  node, regex, literal, sequence, choice, many, oneOrMore, optional,
+  not, scanTo, balanced, parser, trivia, rules
+} from 'parseman' with { type: 'macro' };
+import type { Span } from 'parseman';
+import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
+import { LessGrammar } from './builders.js';
+import { buildLazyTriviaMap } from '@jesscss/css-parser';
+
+// ---------------------------------------------------------------------------
+// Builder host — reuse LessGrammar's builders (Less + inherited CSS buildNode).
+// ---------------------------------------------------------------------------
+
+class BuilderHost extends LessGrammar {
+  setSource(src: string) {
+    this._source = src;
+  }
+
+  resetWarnings() {
+    this._warnings = [];
+  }
+
+  getWarnings() {
+    return this._warnings.slice();
+  }
+
+  build(type: string, span: { start: number; end: number }, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>): unknown {
+    /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+    return (this as unknown as {
+      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>): unknown;
+    }).buildNode(type, span as Span, children, undefined, rawChildren);
+    /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+  }
+}
+
+const host = new BuilderHost();
+
+export function mk(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
+  return host.build(type, { start: span.start, end: span.end }, children, rawChildren);
+}
+
+// ---------------------------------------------------------------------------
+// Trivia + terminals (CSS base + Less @var / @{interp}).
+// ---------------------------------------------------------------------------
+
+const ws = regex(/[ \t\n\r\f]+/);
+const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+const rw = trivia(oneOrMore(choice(ws, comment, lineComment)));
+
+const ident = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const basicSel = regex(/(?:[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\d+(?:\.\d+)?%|\*)/);
+const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
+const pseudoColon = regex(/::?/);
+const attrOp = regex(/[*~|^$]?=/);
+const attrMod = regex(/[is]/i);
+const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
+const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
+const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
+const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
+const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
+const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
+const urlOpen = regex(/url\(/i);
+const urlInner = regex(/[^)"'\s]+/);
+const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
+
+// Less-specific terminals.
+const lessVar = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const lessInterp = regex(/@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
+
+// ---------------------------------------------------------------------------
+// Grammar — CSS base rules + Less overrides/additions (mirrors LessGrammar).
+// ---------------------------------------------------------------------------
+
+const cssRules = rules((g: any) => {
+  // ── Root (Less: + VarDeclaration, MixinCall, detached Call) ─────────────────
+  const unknownTok = scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true });
+  const Stylesheet = node('Stylesheet',
+    parser({ trivia: rw }, many(choice(
+      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.MixinCall,
+      sequence(g.Call, optional(literal(';'))), unknownTok
+    ))),
+    (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
+
+  // Plain helper consts referenced before their section must be defined up-front
+  // (Phase-1 evaluation is sequential; only g.* refs resolve lazily).
+  const important = sequence(literal('!'), literal('important'));
+
+  // ── Less variable declaration / reference ───────────────────────────────────
+  const VarDeclaration = node('VarDeclaration',
+    parser({ trivia: rw }, sequence(lessVar, literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('VarDeclaration', c, r, s));
+  const Reference = node('Reference',
+    parser({ trivia: rw }, sequence(lessVar, optional(sequence(literal('['), choice(ident, g.Quoted, lessVar), literal(']'))))),
+    (c: any, r: any, s: any) => mk('Reference', c, r, s));
+
+  // ── Mixins ───────────────────────────────────────────────────────────────
+  // Regex-based content scan: one level of nested parens + strings, all as one leaf.
+  // Avoids the balanced('(',')')-inside-scanTo CSTLeaf pollution bug (balanced uses
+  // literal() internally, which pushes leaves into the enclosing node()'s collector).
+  const mixinArgsContent = regex(/(?:[^()'"]|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|\((?:[^()'"]|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*")*\))*/);
+  const MixinArgs = node('MixinArgs',
+    parser({ trivia: rw }, sequence(literal('('), optional(mixinArgsContent), literal(')'))),
+    (c: any, r: any, s: any) => mk('MixinArgs', c, r, s));
+  const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
+  const MixinCall = node('MixinCall',
+    parser({ trivia: rw }, sequence(g.mixinNamePath, optional(g.MixinArgs), literal(';'))),
+    (c: any, r: any, s: any) => mk('MixinCall', c, r, s));
+  const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
+    parser({ trivia: rw }, sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
+    (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
+  const MixinOrQualifiedRule = node('MixinOrQualifiedRule',
+    parser({ trivia: rw }, sequence(
+      g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard),
+      optional(choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))
+    )),
+    (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
+
+  // ── Guards / comparisons ───────────────────────────────────────────────────
+  const Comparison = node('Comparison',
+    parser({ trivia: rw }, sequence(g.Reference, regex(/>=|<=|=~|[<>=]/), choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))),
+    (c: any, r: any, s: any) => mk('Comparison', c, r, s));
+  const GuardCondition = node('GuardCondition',
+    parser({ trivia: rw }, sequence(literal('('), g.Comparison, literal(')'))),
+    (c: any, r: any, s: any) => mk('GuardCondition', c, r, s));
+  const Guard = node('Guard',
+    parser({ trivia: rw }, sequence(regex(/when/), optional(regex(/not/)), literal('('),
+      many(choice(g.GuardCondition, g.Comparison, regex(/default\(\)/), regex(/and|or/))), literal(')'))),
+    (c: any, r: any, s: any) => mk('Guard', c, r, s));
+
+  // ── Less ampersand / interpolated / extend ──────────────────────────────────
+  const LessAmpersand = node('LessAmpersand',
+    parser({ trivia: rw }, sequence(literal('&'), optional(sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'))))),
+    (c: any, r: any, s: any) => mk('LessAmpersand', c, r, s));
+  const InterpolatedSelector = node('InterpolatedSelector',
+    parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
+    (c: any, r: any, s: any) => mk('InterpolatedSelector', c, r, s));
+  const ExtendStatement = node('ExtendStatement',
+    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), regex(/::?/), literal('extend'), literal('('), g.pseudoArg, literal(')'), optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
+
+  // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.LessAmpersand, g.InterpolatedSelector, basicSel);
+  const CompoundSelector = node('CompoundSelector',
+    parser({ trivia: rw }, oneOrMore(g.simpleSelector)),
+    (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
+  const LessComplexSelector = node('LessComplexSelector',
+    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector)))),
+    (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s));
+  const LessSelectorList = node('LessSelectorList',
+    parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))),
+    (c: any, r: any, s: any) => mk('LessSelectorList', c, r, s));
+  const AttributeSelector = node('AttributeSelector',
+    parser({ trivia: rw }, sequence(literal('['), ident, optional(sequence(attrOp, choice(singleStr, doubleStr, ident), optional(attrMod))), literal(']'))),
+    (c: any, r: any, s: any) => mk('AttributeSelector', c, r, s));
+  const PseudoSelector = node('PseudoSelector',
+    parser({ trivia: rw }, sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')'))))),
+    (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
+  const pseudoArg = choice(nth, g.LessSelectorList, scanTo(literal(')'), { skip: [balanced('(', ')')] }));
+
+  // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
+  const Ruleset = node('Ruleset',
+    parser({ trivia: rw }, sequence(g.LessSelectorList, literal('{'), g.declarationList, literal('}'))),
+    (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
+  const declarationList = parser({ trivia: rw }, many(choice(
+    g.VarDeclaration, g.ExtendStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';'),
+    sequence(scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true }), optional(literal(';')))
+  )));
+  const Declaration = node('Declaration',
+    parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('Declaration', c, r, s));
+  const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
+  const CustomDeclaration = node('CustomDeclaration',
+    parser({ trivia: rw }, sequence(customProp, literal(':'),
+      choice(g.customValue, scanTo(choice(literal(';'), literal('}')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')], orEOF: true })),
+      optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('CustomDeclaration', c, r, s));
+  const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
+
+  // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
+  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
+  const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
+  const value = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.Quoted, g.anyValue);
+  const EscapedValue = node('EscapedValue',
+    parser({ trivia: rw }, sequence(literal('~'), choice(g.Paren, g.Quoted))),
+    (c: any, r: any, s: any) => mk('EscapedValue', c, r, s));
+  const NamedColor = node('NamedColor', regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9])/i), (c: any, r: any, s: any) => mk('NamedColor', c, r, s));
+  // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
+  const Dimension = node('Dimension', sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)), (c: any, r: any, s: any) => mk('Dimension', c, r, s));
+  // bare number; the not()-lookahead folded into the regex -> one match, one leaf.
+  const Num = node('Num', regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/), (c: any, r: any, s: any) => mk('Num', c, r, s));
+  const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
+  const Url = node('Url', parser({ trivia: rw }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
+  const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
+  const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
+  const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  const Quoted = node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => mk('Quoted', c, r, s));
+  const anyValue = choice(ident, anyValueTok);
+
+  // ── At-rules ───────────────────────────────────────────────────────────────
+  const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] }));
+  const AtRuleBlock = node('AtRuleBlock',
+    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
+  const AtRuleStatement = node('AtRuleStatement',
+    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
+    (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+  const atRuleBody = parser({ trivia: rw }, many(choice(
+    g.AtRuleBlock, g.AtRuleStatement, g.VarDeclaration, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
+  )));
+
+  return {
+    Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, MixinCall,
+    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardCondition, Guard,
+    LessAmpersand, InterpolatedSelector, ExtendStatement, simpleSelector,
+    CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg,
+    Ruleset, declarationList, Declaration, customValue, CustomDeclaration, anyDeclaration,
+    valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,
+    parenBody, Call, Paren, Quoted, anyValue, AtRuleBlock, AtRuleStatement, atRuleBody
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Parser — rule-name dispatch (with the class's entry-point aliases).
+// ---------------------------------------------------------------------------
+
+const ALIASES: Record<string, string> = {
+  stylesheet: 'Stylesheet', main: 'Stylesheet', declaration: 'anyDeclaration',
+  declarationList: 'declarationList', selector: 'LessSelectorList',
+  complexSelector: 'LessComplexSelector', selectorList: 'LessSelectorList',
+  atRule: 'AtRuleBlock', value: 'valueList', valueList: 'valueList',
+  comparison: 'Comparison', guard: 'Guard', guardOr: 'Guard', guardAnd: 'Guard',
+  qualifiedRule: 'MixinOrQualifiedRule', mixinOrQualifiedRule: 'MixinOrQualifiedRule',
+  mixinArgs: 'MixinArgs', anonymousMixinDefinition: 'AnonymousMixinDefinition'
+};
+
+export type LessFnParseResult = {
+  tree: Node;
+  errors: Array<{ message: string; offset?: number }>;
+  warnings: Array<{ message: string }>;
+  trivia: TriviaMap;
+  lexerResult: { errors: Array<unknown> };
+};
+
+export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResult {
+  host.setSource(input);
+  host.resetWarnings();
+  const ruleName = ALIASES[rule] ?? rule;
+  const fn = (cssRules as Record<string, unknown>)[ruleName];
+  const triviaLog: number[] = [];
+  const ctx = { trackLines: false, _triviaLog: triviaLog };
+  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+  const r = typeof fn === 'function'
+    ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
+    : (fn as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
+
+  const tree: Node = r.ok && r.value instanceof Node ? r.value : (nil() as unknown as Node);
+  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+  const errors: Array<{ message: string; offset?: number }> = [];
+  if (!r.ok) {
+    errors.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
+  }
+
+  return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input), lexerResult: { errors: [] } };
+}
+
+/** Functional Less parser — call .parse(text) to get a Jess AST. */
+export class LessParser {
+  // Config accepted for API compatibility; mathMode and similar are TODO.
+  constructor(_config?: Record<string, unknown>) {}
+
+  parse(text: string, rule = 'stylesheet'): LessFnParseResult {
+    return parseLessFn(text, rule);
+  }
+}

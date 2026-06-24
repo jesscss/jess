@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { CssParser } from '../src/index.js';
+import { parseCssFn } from '../src/grammar.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveLessTestDataRoot } from './test-data.js';
@@ -10,13 +10,13 @@ const bootstrap = fs.readFileSync(
   'utf8'
 );
 
-const cssParser = new CssParser(); // @todo - { legacyMode: true }
-
+// Benchmark the production path: the macro-compiled functional grammar
+// (`parseCssFn`), not the interpreted class parser.
 describe('CSS parser benchmark', () => {
   test(`bootstrap4.css (${(bootstrap.length / 1024).toFixed(1)}KB) - 20 iterations`, () => {
     // Warm up
     for (let i = 0; i < 3; i++) {
-      cssParser.parse(bootstrap);
+      parseCssFn(bootstrap);
     }
 
     const iterations = 20;
@@ -24,7 +24,7 @@ describe('CSS parser benchmark', () => {
 
     for (let i = 0; i < iterations; i++) {
       const start = performance.now();
-      const { errors } = cssParser.parse(bootstrap);
+      const { errors } = parseCssFn(bootstrap);
       const elapsed = performance.now() - start;
       times.push(elapsed);
       if (i === 0 && errors.length > 0) {

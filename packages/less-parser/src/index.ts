@@ -1,15 +1,14 @@
 export * from './lessTokens.js';
-export * from './ast.js';
 export * from './lessRecursiveParser.js';
-export * from './lessParser.js';
+// Explicit exports from lessParser.ts — LessParser (Chevrotain) re-exported as
+// LessParserChevrotain so the functional LessParser can own the LessParser name.
+export type { LessRules, SyntacticContentAssistSuggestion } from './lessParser.js';
+export { LessParser as LessParserChevrotain } from './lessParser.js';
 
-export { LessGrammar } from './parseman/index.js';
+export { LessGrammar } from './builders.js';
 
-// Default Parser is now Parseman-based
-import { LessParserParseman } from './parseman/index.js';
-export { LessParserParseman };
-export { LessParserParseman as Parser };
+import { LessParser } from './grammar.js';
+export { LessParser };
+export { parseLessFn, type LessFnParseResult } from './grammar.js';
 
-// Chevrotain parser kept as LessParserChevrotain for comparison / rollback
-import { LessParser } from './lessParser.js';
-export { LessParser as LessParserChevrotain };
+export const Parser = LessParser;

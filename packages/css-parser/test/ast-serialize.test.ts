@@ -1,13 +1,18 @@
-import { CssParser } from '../src/index.js';
-import { N, isNode, serializeTypes } from '@jesscss/core';
+import { parseCssFn } from '../src/grammar.js';
+import { N, isNode, serializeTypes, type Trivia } from '@jesscss/core';
 import { packedSpanStart, packedSpanEnd } from '@jesscss/parser';
 
-const cssParser = new CssParser();
+const cssParser = { parse: (input: string) => parseCssFn(input) };
+
+// Trivia is now a single source-range run; its text is the source slice.
+const triviaText = (t: Trivia | undefined): string | undefined =>
+  t ? t.src.slice(t.start, t.end) : undefined;
 
 // Simple selectors, combinators, names, and plain values are plain strings (not
 // nodes), so source provenance lives in the parent node's packed fieldSpans
 // (by childKeys index) and valueSpans (by array-segment index).
 function childIndex(node: any, key: string): number {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
 }
 function fieldStart(node: any, key: string): number {
@@ -81,11 +86,7 @@ describe('serializeTypes coverage', () => {
     const combinator = selector.value[1];
     expect(combinator).toBe(' ');
     // The trivia preceding the second compound is recovered via valueSpans.
-    expect(trivia.lookup(valueStart(selector, 2), 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* gap */',
-      ' '
-    ]);
+    expect(triviaText(trivia.lookup(valueStart(selector, 2), 'before'))).toBe(' /* gap */ ');
   });
 
   test('attribute selector with modifier flag', () => {
@@ -253,8 +254,7 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Url
-        node:
-          'foo'
+        value: 'foo'
       )
     `);
   });
@@ -315,18 +315,12 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(firstArg, N.Color)).toBe(true);
     expect(isNode(secondArg, N.Color)).toBe(true);
-    expect(trivia.lookup(firstArg!.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/*{comment}*/'
-    ]);
+    expect(triviaText(trivia.lookup(firstArg!.location[3], 'after'))).toBe(' /*{comment}*/');
     expect(
       [...trivia.entries('before')]
         .filter(([offset]) => offset > firstArg!.location[3] && offset < secondArg!.location[0])
-        .map(([, tokens]) => tokens.map(token => token.image))
-    ).toEqual([[
-      ' ',
-      '/*{comment}*/'
-    ]]);
+        .map(([, t]) => triviaText(t))
+    ).toEqual([' /*{comment}*/']);
   });
 
   test('selector list comments stay in trivia between selector members', () => {
@@ -340,15 +334,8 @@ describe('serializeTypes coverage', () => {
     expect(first?.valueOf()).toBe('#a');
     expect(second?.valueOf()).toBe('.b');
     expect(third?.valueOf()).toBe('.c');
-    expect(trivia.lookup(valueStart(ruleset.selector, 1), 'before')?.map(token => token.image)).toEqual([
-      '\n',
-      '/*x*/',
-      '/*y*/',
-      '\n'
-    ]);
-    expect(trivia.lookup(valueStart(ruleset.selector, 2), 'before')?.map(token => token.image)).toEqual([
-      '/*z*/'
-    ]);
+    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 1), 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 2), 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
@@ -363,20 +350,12 @@ describe('serializeTypes coverage', () => {
     expect(second?.valueOf()).toBe('.comments');
     const firstEnd = valueEnd(ruleset.selector, 0);
     const secondStart = valueStart(ruleset.selector, 1);
-    expect(trivia.lookup(firstEnd, 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* boo */',
-      '/* boo again*/'
-    ]);
+    expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]
         .filter(([offset]) => offset > firstEnd && offset < secondStart)
-        .map(([, tokens]) => tokens.map(token => token.image))
-    ).toEqual([[
-      ' ',
-      '/* boo */',
-      '/* boo again*/'
-    ]]);
+        .map(([, t]) => triviaText(t))
+    ).toEqual([' /* boo *//* boo again*/']);
   });
 
   test('same-line comments before nested selectors stay in selector trivia', () => {
@@ -394,11 +373,7 @@ describe('serializeTypes coverage', () => {
     // ruleset's packed selector fieldSpan. The leading trivia (' /*x*/ ') is
     // preserved in the trivia map before that offset.
     const selStart = fieldStart(nested, 'selector');
-    expect(trivia.lookup(selStart, 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/*x*/',
-      ' '
-    ]);
+    expect(triviaText(trivia.lookup(selStart, 'before'))).toBe(' /*x*/ ');
   });
 
   test('collapse nesting emits nested selector comments from trivia', () => {
@@ -436,18 +411,12 @@ describe('serializeTypes coverage', () => {
 
     expect(value.valueOf()).toBe('yes');
     const valueEndOff = fieldEnd(declaration, 'value');
-    expect(trivia.lookup(valueEndOff, 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* comment */'
-    ]);
+    expect(triviaText(trivia.lookup(valueEndOff, 'after'))).toBe(' /* comment */');
     expect(
       [...trivia.entries('before')]
         .filter(([offset]) => offset > valueEndOff)
-        .map(([, tokens]) => tokens.map(token => token.image))[0]
-    ).toEqual([
-      ' ',
-      '/* comment */'
-    ]);
+        .map(([, t]) => triviaText(t))[0]
+    ).toBe(' /* comment */');
   });
 
   test('declaration name comments stay in trivia before declaration separators', () => {
@@ -464,20 +433,12 @@ describe('serializeTypes coverage', () => {
 
     expect(name.valueOf()).toBe('color');
     const nameEndOff = fieldEnd(declaration, 'name');
-    expect(trivia.lookup(nameEndOff, 'after')?.map(token => token.image)).toEqual([
-      '/* survive */',
-      ' ',
-      '/* me too */'
-    ]);
+    expect(triviaText(trivia.lookup(nameEndOff, 'after'))).toBe('/* survive */ /* me too */');
     expect(
       [...trivia.entries('before')]
         .filter(([offset]) => offset > nameEndOff)
-        .map(([, tokens]) => tokens.map(token => token.image))[0]
-    ).toEqual([
-      '/* survive */',
-      ' ',
-      '/* me too */'
-    ]);
+        .map(([, t]) => triviaText(t))[0]
+    ).toBe('/* survive */ /* me too */');
   });
 
   test('at-rule prelude comments stay in trivia before rule blocks', () => {
@@ -493,16 +454,8 @@ describe('serializeTypes coverage', () => {
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
     expect(prelude.valueOf()).toBe('hover');
-    expect(trivia.lookup(prelude.location[0], 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* Safari */',
-      ' '
-    ]);
-    expect(trivia.lookup(prelude.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* and Chrome */',
-      ' '
-    ]);
+    expect(triviaText(trivia.lookup(prelude.location[0], 'before'))).toBe(' /* Safari */ ');
+    expect(triviaText(trivia.lookup(prelude.location[3], 'after'))).toBe(' /* and Chrome */ ');
   });
 
   test('lists and sequences in values', () => {

@@ -1,30 +1,12 @@
 /**
- * LessGrammar — Parséman-based Less parser, extending CssParser.
+ * LessGrammar — builder methods for the Less grammar.
  *
- * Adds Less-specific grammar on top of CSS:
- *   - Variable declarations: @var: value;  →  VarDeclaration
- *   - Variable references:   @var           →  Reference
- *   - Ampersand selectors:   &              →  Ampersand
- *   - Nested rulesets inside declarationList
- *   - Less merge operators:  +: and +_:
- *   - Variable accessor:     @var[key]
- *
- * Inherits trivia handling, all CSS rules, and buildNode dispatch from
- * CssParser. Capital rules call buildNode(); lowercase rules are transparent.
+ * Builder-only class: no grammar rules, no Parséman Parser base.
+ * Grammar rules live in grammar-fn.ts (macro-compiled functional grammar),
+ * which uses LessGrammar via a thin BuilderHost subclass.
+ * Extends CssParser to inherit the shared CSS builder methods.
  */
 
-import {
-  sequence,
-  choice,
-  many,
-  optional,
-  regex,
-  literal,
-  keywords,
-  not,
-  scanTo,
-  balanced
-} from 'parseman';
 import type { Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
@@ -67,317 +49,10 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-// CSS named color keywords — shared set from css-parser, compiled to an optimal
-// longest-first matcher with a word boundary by Parseman's keywords().
-
-// ---------------------------------------------------------------------------
 // LessGrammar
 // ---------------------------------------------------------------------------
 
 export class LessGrammar extends CssParser {
-  // Public entry-point aliases (Chevrotain-era lowercase names → grammar rules),
-  // resolved by Parseman's parse()/rule() so the adapter needs no lookup table.
-  protected override _aliases = {
-    stylesheet: 'Stylesheet',
-    main: 'Stylesheet',
-    declaration: 'anyDeclaration',
-    declarationList: 'declarationList',
-    selector: 'LessSelectorList',
-    complexSelector: 'LessComplexSelector',
-    selectorList: 'LessSelectorList',
-    atRule: 'AtRuleBlock',
-    value: 'valueList',
-    valueList: 'valueList',
-    comparison: 'Comparison',
-    guard: 'Guard',
-    guardOr: 'Guard',
-    guardAnd: 'Guard',
-    qualifiedRule: 'MixinOrQualifiedRule',  // Less qualified rules may carry a `when` guard
-    mixinOrQualifiedRule: 'MixinOrQualifiedRule',
-    mixinArgs: 'MixinArgs',
-    anonymousMixinDefinition: 'AnonymousMixinDefinition'
-  };
-
-  // ── Less-specific token rules ─────────────────────────────────────────────
-
-  // @varname (same regex as atKeyword; no conflict because they appear in
-  // mutually exclusive contexts: atKeyword at statement level, lessVar inside
-  // values and variable declarations).
-  lessVar = regex(/@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-
-  // @{varname} — Less string interpolation placeholder
-  lessInterp = regex(/@\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}/);
-
-  // ── Override Stylesheet to include VarDeclaration ─────────────────────────
-
-  // many() skips leading trivia before each item — no explicit rw needed.
-  Stylesheet = (g: any) => many(
-    choice(
-      g.VarDeclaration,
-      g.AtRuleBlock,
-      g.AtRuleStatement,
-      g.Ruleset,
-      g.MixinCall,        // .mixin; / .mixin();  (terminated by ';', disjoint from Ruleset's '{')
-      sequence(g.Call, optional(literal(';'))),  // detached function call: func(1, 2, 3);
-      g.unknown
-    )
-  );
-
-  // A standalone mixin call statement, e.g. `.mixin;` or `.mixin(1, 2);`.
-  // Distinguished from a Ruleset by the trailing ';' (Rulesets require '{').
-  MixinCall = (g: any) => sequence(
-    g.mixinNamePath,
-    optional(g.MixinArgs),
-    literal(';')
-  );
-
-  // ── Override declarationList to include VarDeclaration and nested Rulesets ─
-
-  declarationList = (g: any) => many(
-    choice(
-      g.VarDeclaration,
-      g.ExtendStatement,   // &:extend(.base [all]);  — Less extend statement
-      g.Ruleset,           // Less nesting: .parent { .child { } }
-      g.Declaration,
-      g.CustomDeclaration,
-      literal(';'),
-      sequence(g.unknown, optional(literal(';')))
-    )
-  );
-
-  // A standalone Less extend statement inside a rule body: `&:extend(.base all);`
-  ExtendStatement = (g: any) => sequence(
-    optional(g.LessAmpersand),
-    regex(/::?/),
-    literal('extend'),
-    literal('('),
-    g.pseudoArg,
-    literal(')'),
-    optional(literal(';'))
-  );
-
-  // ── VarDeclaration: @color: value; ───────────────────────────────────────
-
-  VarDeclaration = (g: any) => sequence(
-    g.lessVar,
-    literal(':'),
-    g.valueList,
-    optional(g.important),
-    optional(literal(';'))
-  );
-
-  // ── Reference: @var or @var[key] in value positions ──────────────────────
-
-  Reference = (g: any) => sequence(
-    g.lessVar,
-    optional(sequence(
-      literal('['),
-      choice(g.ident, g.Quoted, g.lessVar),
-      literal(']')
-    ))
-  );
-
-  // ── CSS named color keywords → Color nodes ────────────────────────────────
-  NamedColor = keywords([...CSS_COLOR_NAMES], { caseInsensitive: true, boundary: 'a-zA-Z0-9_-' });
-
-  // ── Override value to add Reference and NamedColor ────────────────────────
-
-  value = (g: any) => choice(
-    g.Reference,    // @var — before Dimension/Num (no @-prefixed dimensions in CSS)
-    g.Dimension,
-    g.Num,
-    g.Color,        // hex colors
-    g.NamedColor,   // named CSS color keywords (red, blue, etc.)
-    g.Url,
-    g.Call,
-    g.EscapedValue, // Less ~(...) / ~"..." — before Paren/Quoted
-    g.Paren,
-    g.Quoted,
-    g.anyValue
-  );
-
-  // Less escaped value: ~(content) or ~"string" → inner node with escaped: true.
-  EscapedValue = (g: any) => sequence(literal('~'), choice(g.Paren, g.Quoted));
-
-  // ── Less comparison expression: @var op value ─────────────────────────────
-  //   Used as an entry point by guards.test.ts: parse('@a = white', 'comparison')
-  Comparison = (g: any) => sequence(
-    g.Reference,
-    regex(/>=|<=|=~|[<>=]/),
-    choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue)
-  );
-
-  // Parenthesized comparison in a guard — produces a Paren(Condition) node
-  GuardCondition = (g: any) => sequence(literal('('), g.Comparison, literal(')'));
-
-  // ── Less guard: when(comparison) ─────────────────────────────────────────
-  //   Handles: when(@a = white)
-  //            when((@a = white) and (@b = black))
-  //            when((@a = white))
-  Guard = (g: any) => sequence(
-    regex(/when/),
-    optional(regex(/not/)),
-    literal('('),
-    many(choice(
-      g.GuardCondition,    // (comparison) → Paren(Condition)
-      g.Comparison,        // bare comparison
-      regex(/default\(\)/),
-      regex(/and|or/)
-    )),
-    literal(')')
-  );
-
-  // ── Mixins ─────────────────────────────────────────────────────────────────
-
-  // Argument list: ( ... ). Permissive — scans to the matching ')' while
-  // preserving nested parens and strings (covers @a, @a: default, @rest..., etc).
-  MixinArgs = (g: any) => sequence(
-    literal('('),
-    optional(scanTo(literal(')'), { skip: [balanced('(', ')'), g.singleStr, g.doubleStr] })),
-    literal(')')
-  );
-
-  // Anonymous mixin definition: .(args) { } or .() { }
-  AnonymousMixinDefinition = (g: any) => sequence(
-    literal('.'),
-    g.MixinArgs,
-    literal('{'),
-    g.declarationList,
-    literal('}')
-  );
-
-  // A mixin name path: .name / #name, optionally chained (#foo > .bar).
-  mixinNamePath = (g: any) => sequence(
-    g.basicSelector,
-    many(sequence(optional(g.combinator), g.basicSelector))
-  );
-
-  // Mixin definition/call or qualified rule:
-  //   .mixin(args) when (guard) { body }   definition
-  //   .mixin(args);  /  .mixin(args)        call
-  //   .selector { body }                    qualified rule
-  MixinOrQualifiedRule = (g: any) => sequence(
-    g.mixinNamePath,
-    optional(g.MixinArgs),
-    optional(g.Guard),
-    optional(choice(
-      sequence(literal('{'), g.declarationList, literal('}')),
-      literal(';')
-    ))
-  );
-
-  // ── Ampersand: & in Less selectors ────────────────────────────────────────
-
-  // & optionally followed by a Less append/merge template: &(.foo-&), &(nil), &("").
-  LessAmpersand = (g: any) => sequence(
-    literal('&'),
-    optional(sequence(
-      literal('('),
-      scanTo(literal(')'), { skip: [balanced('(', ')'), g.singleStr, g.doubleStr] }),
-      literal(')')
-    ))
-  );
-
-  // Override simpleSelector to include & and interpolated selectors (.@{var}).
-  // InterpolatedSelector is tried before basicSelector and requires at least one
-  // @{…} so plain selectors still fall through to basicSelector.
-  simpleSelector = (g: any) => choice(
-    g.AttributeSelector,
-    g.PseudoSelector,
-    g.LessAmpersand,
-    g.InterpolatedSelector,
-    g.basicSelector
-  );
-
-  InterpolatedSelector = (g: any) => sequence(
-    optional(regex(/[.#]/)),
-    many(regex(/[-_a-zA-Z0-9]+/)),
-    g.lessInterp,
-    many(choice(g.lessInterp, regex(/[-_a-zA-Z0-9]+/)))
-  );
-
-  // ── Override ComplexSelector for relative selectors (.parent { > .child }) ─
-
-  // Relative selector: optional leading combinator before first CompoundSelector.
-  // Handles: `> .child { }` inside a nested ruleset.
-  LessComplexSelector = (g: any) => sequence(
-    optional(g.combinator),    // optional leading combinator (relative selector)
-    g.CompoundSelector,
-    many(sequence(optional(g.combinator), g.CompoundSelector))
-  );
-
-  LessSelectorList = (g: any) => sequence(
-    g.LessComplexSelector,
-    many(sequence(literal(','), g.LessComplexSelector))
-  );
-
-  // Override Ruleset to use Less-aware selector list
-  Ruleset = (g: any) => sequence(
-    g.LessSelectorList,
-    literal('{'),
-    g.declarationList,
-    literal('}')
-  );
-
-  // ── Override Declaration: support Less merge operators (+: and +_:) ───────
-
-  // Explicit `any` return avoids structural-type mismatch with CssParser.Declaration
-  // which infers a different tuple arity from its sequence() call.
-
-  Declaration = (g: any): any => sequence(
-    g.ident,
-    optional(choice(literal('+_'), literal('+'))),  // Less property merge
-    literal(':'),
-    g.valueList,
-    optional(g.important),
-    optional(literal(';'))
-  );
-
-  // ── Override CustomDeclaration: add orEOF so it works as a standalone entry point ───────
-
-  // CssParser's CustomDeclaration requires ; or } as sentinel — fails when parsing
-  // custom properties standalone. orEOF: true lets the scan reach EOF if neither appears.
-  // Try a structured value first (so functions etc. parse as Call/Sequence);
-  // fall back to a permissive scan for arbitrary custom-property content.
-  CustomDeclaration = (g: any) => sequence(
-    g.customProp,
-    literal(':'),
-    choice(
-      g.customValue,
-      scanTo(
-        choice(literal(';'), literal('}')),
-        { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')], orEOF: true }
-      )
-    ),
-    optional(literal(';'))
-  );
-
-  // A structured custom-property value: a value list that must reach a
-  // terminator (';', '}', or EOF) — otherwise the permissive scan is used.
-  customValue = (g: any) => sequence(g.valueList, not(regex(/[^\s;}]/)));
-
-  // ── anyDeclaration: unified entry point for tests that call parse(text, 'declaration') ─
-
-  // lowercase → transparent; whichever inner capital rule matches produces the node
-  anyDeclaration = (g: any) => choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
-
-  // ── Override atRuleBody to also include VarDeclaration ───────────────────
-
-  atRuleBody = (g: any) => many(
-    choice(
-      g.AtRuleBlock,
-      g.AtRuleStatement,
-      g.VarDeclaration,
-      g.Ruleset,
-      g.Declaration,
-      g.CustomDeclaration,
-      literal(';')
-    )
-  );
-
   // ── buildNode ─────────────────────────────────────────────────────────────
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/naming-convention */
 
@@ -385,9 +60,7 @@ export class LessGrammar extends CssParser {
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-
     _state: unknown,
-
     _rawChildren: ReadonlyArray<{ _tag: string }>
   ): JessNode {
     const loc = spanToLocation(span);
@@ -396,15 +69,18 @@ export class LessGrammar extends CssParser {
       case 'VarDeclaration':      return this._buildVarDeclaration(raw, loc);
       case 'Reference':           return this._buildReference(children, loc);
       case 'LessAmpersand':       return this._buildAmpersand(children, loc);
-      // Less selector/ruleset/declaration use the shared CSS string-AST builders.
-      // LessComplexSelector's optional leading combinator falls out as a leading
-      // string component.
       case 'LessComplexSelector': return this._buildComplexSelector(raw, loc);
       case 'LessSelectorList':    return this._buildSelectorList(raw, loc);
       case 'Ruleset':             return this._buildRuleset(children, raw, loc) as unknown as JessNode;
-      case 'Declaration':         this._warnDeprecatedValue(span); return this._buildLessDeclaration(raw, loc);
-      case 'CustomDeclaration':   this._warnCustomPropVars(span); return this._buildLessCustomDecl(children, loc);
-      case 'AtRuleBlock':         this._warnAtRulePreludeVars(span); return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
+      case 'Declaration':
+        this._warnDeprecatedValue(span);
+        return this._buildLessDeclaration(raw, loc);
+      case 'CustomDeclaration':
+        this._warnCustomPropVars(span);
+        return this._buildLessCustomDecl(children, loc);
+      case 'AtRuleBlock':
+        this._warnAtRulePreludeVars(span);
+        return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'NamedColor':          return this._buildNamedColor(children, loc);
       case 'GuardCondition':      return new Paren({ node: nodeChildren(children)[0] ?? new Any('', {}, loc) }, {}, loc) as unknown as JessNode;
       case 'Comparison':          return this._buildComparison(children, loc);
@@ -424,8 +100,6 @@ export class LessGrammar extends CssParser {
   // ── Private Less AST builders ─────────────────────────────────────────────
 
   private _buildVarDeclaration(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
-    // strings-not-nodes: name is the bare ident (@ stripped); value via the
-    // shared CSS string-AST value builder.
     const items = spannedComponents(rawChildren);
     const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
@@ -433,11 +107,12 @@ export class LessGrammar extends CssParser {
     let end = items.length;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') { end = i; break; }
+      if (c === '!' || c === 'important' || c === ';') {
+        end = i;
+        break;
+      }
     }
     const valItems = items.slice(colonIdx + 1, end);
-    // Legacy: a variable whose value is an unquoted class-selector list
-    // (e.g. `@classes: .a, .b, .c`) is a deprecated "selector capture".
     if (valItems.length) {
       const vText = this._source.slice(valItems[0]!.span.start, valItems[valItems.length - 1]!.span.end);
       if (/(?:^|[\s,])\.-?[_a-zA-Z]/.test(vText)) {
@@ -460,11 +135,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const varName = ls[0]?.value ?? '';
     const key = varName.startsWith('@') ? varName.slice(1) : varName;
-
-    // Check for accessor bracket: @var[key] or @var[Quoted]
     const hasAccessor = ls.some(l => l.value === '[');
     if (hasAccessor) {
-      const accessorNode = nodeChildren(children)[0];  // Quoted if present
+      const accessorNode = nodeChildren(children)[0];
       const accessorLeaf = ls.find(l => l.value !== varName && l.value !== '[' && l.value !== ']');
       const accessKey = accessorNode
         ? String(accessorNode)
@@ -476,7 +149,6 @@ export class LessGrammar extends CssParser {
         loc
       );
     }
-
     return new Reference(key, { type: 'variable' }, loc);
   }
 
@@ -489,7 +161,6 @@ export class LessGrammar extends CssParser {
   private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    // leaves: first is the operator (regex match); nodes: left/right values
     const left = nodes[0] ?? new Any('', {}, loc);
     const op = ls.find(l => />=|<=|=~|[<>=]/.test(l.value));
     const right = nodes[1] ?? new Any('', {}, loc);
@@ -507,7 +178,6 @@ export class LessGrammar extends CssParser {
     const nodes = nodeChildren(children);
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasNot = ls.some(l => l.value === 'not');
-    // default() guard → Paren(DefaultGuard), wrapped in a negated Condition when `not`.
     if (ls.some(l => l.value === 'default()')) {
       const paren = new Paren(
         new DefaultGuard('default()', {}, loc) as any,
@@ -517,7 +187,6 @@ export class LessGrammar extends CssParser {
         ? new Condition([paren as any], { negate: true }, loc)
         : paren) as unknown as JessNode;
     }
-    // Find 'and'/'or' leaves to construct multi-condition Condition chains
     const andOrIdx = ls.findIndex(l => l.value === 'and' || l.value === 'or');
     if (andOrIdx >= 0 && nodes.length >= 2) {
       const op = ls[andOrIdx]!.value as ConditionOperator;
@@ -531,8 +200,6 @@ export class LessGrammar extends CssParser {
     return new Condition([new Any('', {}, loc)], { negate: hasNot }, loc) as unknown as JessNode;
   }
 
-  // .@{var} / foo@{var} → InterpolatedSelector wrapping an Interpolated value
-  // (source text with @{…} placeholders + their Reference replacements).
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const source = ls.map(l => l.value).join('');
@@ -543,8 +210,6 @@ export class LessGrammar extends CssParser {
     return new InterpolatedSelector(interp as any, {}, loc) as unknown as JessNode;
   }
 
-  // :extend(target [all]) is a Less pseudo that becomes an Extend node; any
-  // other pseudo uses the shared CSS builder.
   private _buildLessPseudo(
     type: string, span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
@@ -560,8 +225,6 @@ export class LessGrammar extends CssParser {
     return super.buildNode(type, span, children, state, raw);
   }
 
-  // Declaration with optional Less merge operator: `prop+: v` (list merge) or
-  // `prop+_: v` (sequence merge) → set the assign option on the built node.
   private _buildLessDeclaration(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const items = spannedComponents(raw);
     const decl = this._buildDeclaration(raw, loc);
@@ -575,15 +238,12 @@ export class LessGrammar extends CssParser {
     return decl;
   }
 
-  // & with optional append/merge template → Ampersand with appendValue.
-  //   &        → appendValue undefined
-  //   &(nil)   → '' (explicit empty parent)
-  //   &("")    → '' (empty quoted template)
-  //   &(.foo-&)→ '.foo-&' (merge template; templateMerge derived from the '&')
   private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasParen = ls.some(l => l.value === '(');
-    if (!hasParen) return new Ampersand(undefined, {}, loc) as unknown as JessNode;
+    if (!hasParen) {
+      return new Ampersand(undefined, {}, loc) as unknown as JessNode;
+    }
     const content = ls.find(l => l.value !== '&' && l.value !== '(' && l.value !== ')')?.value ?? '';
     const trimmed = content.trim();
     const appendValue = trimmed === 'nil'
@@ -592,7 +252,6 @@ export class LessGrammar extends CssParser {
     return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
   }
 
-  // `&:extend(target [all]);` statement → an Extend node (with optional 'all' flag).
   private _buildExtendStatement(
     children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
   ): JessNode {
@@ -604,17 +263,16 @@ export class LessGrammar extends CssParser {
     return new Extend({ target, flag } as any, {}, loc) as unknown as JessNode;
   }
 
-  // Less ~(...) / ~"..." → the inner Paren/Quoted node flagged escaped: true.
   private _buildEscapedValue(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
     const inner = nodeChildren(children)[0];
-    if (!inner) return new Any('', { role: 'ident' }, loc) as unknown as JessNode;
+    if (!inner) {
+      return new Any('', { role: 'ident' }, loc) as unknown as JessNode;
+    }
     const n = inner as unknown as { _options?: Record<string, unknown> };
     n._options = { ...(n._options ?? {}), escaped: true };
     return inner;
   }
 
-  // Less models a function call's name as a Reference (type 'function',
-  // fallbackValue) so it resolves like a variable, with silentFail on the Call.
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const call = super._buildCall(rawChildren, loc) as unknown as {
       name: unknown; args: unknown; _options?: Record<string, unknown>;
@@ -625,8 +283,6 @@ export class LessGrammar extends CssParser {
     return next as unknown as JessNode;
   }
 
-  // Custom property: structured value (from valueList) → wrapped in a Sequence;
-  // otherwise fall back to the shared CSS scanned-text Any builder.
   private _buildLessCustomDecl(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const propName = ls[0]?.value ?? '';
@@ -639,8 +295,6 @@ export class LessGrammar extends CssParser {
     }
     return this._buildCustomDeclaration(children, loc);
   }
-
-  // ── Deprecation detectors (scan the node's source span) ─────────────────────
 
   private _warnDeprecatedValue(span: Span) {
     const text = this._source.slice(span.start, span.end);
@@ -682,8 +336,6 @@ export class LessGrammar extends CssParser {
     }
   }
 
-  // A standalone mixin call statement; emits Less deprecation warnings for the
-  // no-parens and whitespace-before-parens forms.
   private _buildMixinCall(
     children: ReadonlyArray<Child>,
     raw: ReadonlyArray<{ _tag: string }>,
@@ -692,7 +344,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === ';') break;
+      if (l.value === '(' || l.value === ';') {
+        break;
+      }
       nameParts.push(l.value);
     }
     const name = nameParts.join('');
@@ -703,8 +357,6 @@ export class LessGrammar extends CssParser {
         'mixin-call-no-parens'
       );
     } else {
-      // Whitespace between the name and '(' → trivia immediately before the args
-      // node (the '(' lives inside the MixinArgs node, so check the boundary).
       const items = raw as Array<{ _tag: string }>;
       const argsIdx = items.findIndex(i => i._tag === 'node');
       if (argsIdx > 0 && items[argsIdx - 1]?._tag === 'trivia') {
@@ -725,8 +377,6 @@ export class LessGrammar extends CssParser {
     ) as unknown as JessNode;
   }
 
-  // ── Mixin builders ─────────────────────────────────────────────────────────
-
   private _buildMixinArgs(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const inner = ls.find(l => l.value !== '(' && l.value !== ')')?.value ?? '';
@@ -734,7 +384,6 @@ export class LessGrammar extends CssParser {
     if (!trimmed) {
       return new List([] as any, {} as any, loc);
     }
-    // Top-level separator: ';' takes precedence (Less's coarser arg separator).
     const sep = trimmed.includes(';') ? ';' : ',';
     const items = this._splitTopLevel(trimmed, sep)
       .map(p => p.trim()).filter(Boolean)
@@ -742,8 +391,6 @@ export class LessGrammar extends CssParser {
     return new List(items as any, { sep } as any, loc);
   }
 
-  // A single mixin argument: ~(...) → escaped Paren wrapping a comma List;
-  // a comma-bearing arg → nested comma List; otherwise an Any[role=ident].
   private _mixinArgPart(part: string, loc: LocationInfo): JessNode {
     const esc = /^~\(([\s\S]*)\)$/.exec(part);
     if (esc) {
@@ -760,17 +407,27 @@ export class LessGrammar extends CssParser {
     return new Any(part, { role: 'ident' }, loc) as unknown as JessNode;
   }
 
-  // Split a string on `sep`, ignoring separators nested inside (), [], "" or ''.
   private _splitTopLevel(text: string, sep: string): string[] {
     const out: string[] = [];
     let depth = 0, quote = '', start = 0;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i]!;
-      if (quote) { if (ch === quote) quote = ''; continue; }
-      if (ch === '"' || ch === '\'') quote = ch;
-      else if (ch === '(' || ch === '[') depth++;
-      else if (ch === ')' || ch === ']') depth--;
-      else if (ch === sep && depth === 0) { out.push(text.slice(start, i)); start = i + 1; }
+      if (quote) {
+        if (ch === quote) {
+          quote = '';
+        }
+        continue;
+      }
+      if (ch === '"' || ch === '\'') {
+        quote = ch;
+      } else if (ch === '(' || ch === '[') {
+        depth++;
+      } else if (ch === ')' || ch === ']') {
+        depth--;
+      } else if (ch === sep && depth === 0) {
+        out.push(text.slice(start, i));
+        start = i + 1;
+      }
     }
     out.push(text.slice(start));
     return out;
@@ -779,8 +436,6 @@ export class LessGrammar extends CssParser {
   private _buildAnonMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
     const rules = nodes.filter(n => n.type !== 'List');
-    // '.' isn't a scanner-native selector; defer materialization so the Ruleset
-    // constructor accepts the anonymous-mixin placeholder selector.
     return new Ruleset(
       { selector: '.', rules },
       { deferSelectorMaterialization: true } as any,
@@ -792,24 +447,23 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
     const hasBlock = ls.some(l => l.value === '{');
-    // Name path: leading selector/combinator leaves before any '(' / '{' / ';'.
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')') break;
+      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')') {
+        break;
+      }
       nameParts.push(l.value);
     }
     const name = nameParts.join('');
     const argsList = nodes.find(n => n.type === 'List');
     const guard = nodes.find(n => n.type === 'Paren' || n.type === 'Condition' || n.type === 'DefaultGuard');
     if (hasBlock) {
-      // Mixin definition or qualified rule → a Ruleset (carrying any when-guard).
       const ruleNodes = nodes.filter(n => n !== argsList && n !== guard);
       return new Ruleset(
         { selector: name || '&', rules: ruleNodes, guard: guard as any },
         undefined, loc
       ) as unknown as JessNode;
     }
-    // Mixin call → Call(name: mixin-ruleset Reference, args: List).
     const ref = new Reference(
       { key: name } as unknown as ReferenceValue,
       { type: 'mixin-ruleset', role: 'name' } as any,
