@@ -21,7 +21,6 @@ import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
 
-
 // AUDIT: if this does NOT inherit from Node it does not belong in the tree folder. It is a utility, so should be in a util sub-folder
 
 /**
@@ -65,9 +64,10 @@ export interface BindingEntry {
 }
 
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+  const declValue = decl.value;
   return {
     cell: {
-      value: decl.value,
+      value: declValue instanceof Node ? declValue : undefined,
       sourceNode: decl,
       readonly: decl.options?.readonly
     },
@@ -448,7 +448,6 @@ export function lookupScopeFrameVariable(
         return { kind: 'miss' };
       }
       visitedFallbackFrames?.add(f);
-      let currentCellRejectedByGuard = false;
       const currentCell = f.currentBindingsByName.get(name);
       if (
         currentCell
@@ -465,8 +464,6 @@ export function lookupScopeFrameVariable(
             readonly: currentCell.readonly
           };
         }
-        currentCellRejectedByGuard = sourceNode !== undefined
-          && options?.blockedSource?.(sourceNode) === true;
       } else if (start === undefined) {
         if (
           currentCell
@@ -486,7 +483,6 @@ export function lookupScopeFrameVariable(
               readonly: currentCell.readonly
             };
           }
-          currentCellRejectedByGuard = true;
         }
       }
 
@@ -602,7 +598,7 @@ export function lookupScopeFrameCallable(
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;
-        if (options?.includeRulesets === false && entry.value.type === 'Ruleset') {
+        if (options?.includeRulesets === false && entry.value instanceof Node && entry.value.type === 'Ruleset') {
           continue;
         }
         if (

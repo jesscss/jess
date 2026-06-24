@@ -50,10 +50,11 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this._treeContext = treeContext;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): AtRuleStatement {
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     cloneFn ??= n => n.clone(deep);
     const name = deep && this.name instanceof Node ? cloneFn(this.name) : this.name;
     const prelude = deep && this.prelude instanceof Node ? cloneFn(this.prelude) : this.prelude;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new AtRuleStatement(
       {
         name,
@@ -62,14 +63,15 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       this._options ? { ...this._options } : undefined,
       this._location?.length ? this._location : undefined,
       this._treeContext
-    ).inherit(this);
+    ).inherit(this) as this;
   }
 
   override resolve(context: Context): MaybePromise<AtRuleStatement> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    return this.eval(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this.eval(context) as MaybePromise<AtRuleStatement>;
   }
 
   protected override evalNode(context: Context): MaybePromise<AtRuleStatement> {
@@ -116,6 +118,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     options?: PrintOptions
   ): MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return super.render(context, bufferOrOptions as RenderBuffer, options);
     }
     const evaluated = this.eval(context);
@@ -142,6 +145,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(field) : field, this);
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const scalarValue = (field as { value?: unknown }).value;
     if (typeof scalarValue === 'string') {
       options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(scalarValue) : scalarValue, field);

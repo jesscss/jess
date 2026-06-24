@@ -66,13 +66,13 @@ function createDerivedRulesSurface(
   output.addFlag(F_VISIBLE);
   output.scopeFrame = undefined;
   if (options?.rulesOptions || options?.markMixinOutput) {
-    output.options = {
+    Reflect.set(output, 'options', {
       ...output.options,
       ...options?.rulesOptions
-    };
+    });
   }
   if (options?.markMixinOutput) {
-    output.options = {
+    Reflect.set(output, 'options', {
       ...output.options,
       rulesVisibility: {
         Ruleset: 'public',
@@ -80,7 +80,7 @@ function createDerivedRulesSurface(
         VarDeclaration: 'public',
         Mixin: 'public'
       }
-    };
+    });
     attachMixinOutputSlot(output, sourceRules, options.restrictMixinOutputLookup === true);
   }
   return output;

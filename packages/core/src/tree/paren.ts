@@ -301,7 +301,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = renderListValueSyntax(value.value, prepared, ',');
     return buffer
       ? writeRenderText(buffer, out)

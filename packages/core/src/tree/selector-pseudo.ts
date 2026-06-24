@@ -147,7 +147,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           }
           if (typeof part === 'string') {
             w.add(part, this);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           } else if (part && typeof (part as Node).toString === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             (part as Node).toString(options);
           }
         }
@@ -179,8 +181,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           const omitGeneratedWrapper = this.generated
             && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
             && arg.value.length === 1;
-          this._requiredKeySet = omitGeneratedWrapper
-            ? arg.value[0]!.requiredKeySet
+          const firstItem = arg.value[0]!;
+          this._requiredKeySet = omitGeneratedWrapper && typeof firstItem !== 'string'
+            ? firstItem.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;
@@ -230,6 +233,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const currentArg = this.arg;
     cloneFn ??= n => n.clone(deep);
     const clonedArg = deep && currentArg ? cloneFn(currentArg) : currentArg;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cloned = new PseudoSelector(
       {
         name: this.name,

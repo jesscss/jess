@@ -36,7 +36,8 @@ export class CssParserChevrotain {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new CssRecursiveParser(T, config);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this.parser = new CssRecursiveParser(T as import('./cssRecursiveParser.js').TokenMap, config);
   }
 
   parse(text: string): IParseResult<Rules>;
@@ -69,8 +70,7 @@ export class CssParserChevrotain {
   /**
    * @todo Implement content assist for the new parser
    */
-  suggest(text: string, init: { offset: number; rule?: CssRules }): SyntacticContentAssistSuggestion[] {
+  suggest(_text: string, _init: { offset: number; rule?: CssRules }): SyntacticContentAssistSuggestion[] {
     return [];
   }
 }
-

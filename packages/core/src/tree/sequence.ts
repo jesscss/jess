@@ -60,7 +60,7 @@ function emitRenderedSequenceNode(
   context: Context,
   options: ReturnType<typeof getPrintOptions>
 ): void {
-  node.render(context, options);
+  void node.render(context, options);
 }
 
 function emitRenderedSequenceNodeMaybe(
@@ -427,7 +427,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
               : new OutputWriter(false, buffer.kind === 'flat' ? buffer.parts : undefined)
           })
         : prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     if (this.hasFlag(F_STATIC)) {
       return this.renderResolvedValue(context, this.value, prepared, buffer);
     }

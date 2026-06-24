@@ -15,7 +15,7 @@ type FinalizeCallableOutputOptions = {
   createEmptyOutput: (sourceRules: Rules) => Rules;
   createWrapperOutput: (sourceRules: Rules, restrictMixinOutputLookup: boolean) => Rules;
   resolveSingleOutputSourceRules: (output: Rules) => Rules;
-  isIndexedRuleChild: (node: Rules['value'][number]) => boolean;
+  isIndexedRuleChild: (node: Rules['rules'][number]) => boolean;
 };
 
 type FinalizeCallableEvalOutputOptions = FinalizeCallableOutputOptions & {
@@ -122,7 +122,7 @@ export function finalizeCallableOutput({
 
   if (state.outputRules.length === 1) {
     const output = state.outputRules[0]!;
-    output.options = {
+    Reflect.set(output, 'options', {
       ...output.options,
       rulesVisibility: {
         Ruleset: 'public',
@@ -130,7 +130,7 @@ export function finalizeCallableOutput({
         VarDeclaration: 'public',
         Mixin: 'public'
       }
-    };
+    });
     attachMixinOutputSlot(
       output,
       resolveSingleOutputSourceRules(output),

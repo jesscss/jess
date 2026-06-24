@@ -372,7 +372,6 @@ export class QueryCondition extends Sequence {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const printOptions = buffer ? options : bufferOrOptions;
     const sharesWriter = Boolean(buffer && 'shareWriter' in buffer && buffer.shareWriter);
     const prepared = buffer
       ? sharesWriter
@@ -383,7 +382,8 @@ export class QueryCondition extends Sequence {
               : new OutputWriter(false, buffer.kind === 'flat' ? buffer.parts : undefined)
           })
         : prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, printOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, buffer ? undefined : bufferOrOptions as PrintOptions | undefined);
     if (this.hasFlag(F_STATIC)) {
       const directText = !prepared.trivia ? getKnownQueryConditionSourceText(this) : undefined;
       if (directText !== undefined) {

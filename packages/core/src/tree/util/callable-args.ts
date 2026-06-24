@@ -29,7 +29,8 @@ export async function evaluateCallableArgs({
         }
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
-          const restValue = evald.value;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const restValue = Reflect.get(evald, 'value') as Node | undefined;
           if (isNode(restValue, N.List)) {
             for (let j = 0; j < restValue.value.length; j++) {
               evaluatedArgs.push(restValue.value[j]!);

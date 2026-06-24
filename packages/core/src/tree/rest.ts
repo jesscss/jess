@@ -93,7 +93,7 @@ export class Rest extends Node<Node | string | undefined> {
     if (buffer) {
       return writeRenderText(buffer, out);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const prepared = prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     if (value instanceof Any) {
       prepared.writer.add('...$');
       prepared.writer.add(value.value, value);

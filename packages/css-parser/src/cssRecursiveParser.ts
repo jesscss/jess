@@ -125,7 +125,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this._context = c;
   }
 
-  set input(value: IToken[]) {
+  override set input(value: IToken[]) {
     this.ruleIndex = 0;
     const beforeIndex = new Map<number, IToken[]>();
     const afterIndex = new Map<number, IToken[]>();
@@ -176,7 +176,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this.reset();
   }
 
-  get input(): IToken[] {
+  override get input(): IToken[] {
     return this.tokVector;
   }
 

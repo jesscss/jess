@@ -135,7 +135,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.eval(context);
+    const declVal = decl.value;
+    if (!(declVal instanceof Node)) {
+      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} return value is not a Node`);
+    }
+    return await declVal.eval(context);
   }
 }
 

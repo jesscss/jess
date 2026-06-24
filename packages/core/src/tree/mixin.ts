@@ -186,6 +186,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     const rules = deep
       ? this.rules.map(rule => cloneChild(rule))
       : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return this.withParts({
       rules,
       ...(this.name !== undefined && { name: this.name }),
@@ -227,7 +228,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    const { name, rules, params, guard } = this;
+    const { name, params, guard } = this;
     if (name) {
       name.writeSyntax(options);
     } else {
@@ -255,11 +256,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     this.writeBraced(options);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<Mixin> {
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (this.registrationPrepared) {
       return this;
     }
-    return this._prepareMixinRegistration(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this._prepareMixinRegistration(context) as MaybePromise<this>;
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {

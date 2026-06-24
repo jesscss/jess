@@ -77,8 +77,7 @@ export interface NToNode {
   [N.Rules]: Rules;
   [N.Collection]: Collection;
   [N.Ruleset]: Ruleset;
-  [N.AtRule]: AtRule;
-  [N.AtRuleStatement]: AtRuleStatement;
+  [N.AtRule]: AtRule | AtRuleStatement;
   [N.Reference]: Reference;
   [N.Comment]: Comment;
   [N.JsFunction]: JsFunction;

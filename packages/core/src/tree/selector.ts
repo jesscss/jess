@@ -131,7 +131,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this.evalNode(context);
   }
 
-  writeSyntax(options: FinalPrintOptions): void {
+  override writeSyntax(options: FinalPrintOptions): void {
     this.toTrimmedString(options);
   }
 

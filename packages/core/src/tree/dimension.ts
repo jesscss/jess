@@ -197,7 +197,7 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String(b.value ?? '').trim();
+      const text = String(Reflect.get(b, 'value') ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }

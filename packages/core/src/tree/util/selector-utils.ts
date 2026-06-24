@@ -116,7 +116,8 @@ export function getImplicitSelector(
     return selector;
   }
   const parentSource: ParentSource | undefined = isNode(parent, N.Ruleset)
-    ? parent
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    ? parent as unknown as ParentSource
     : isSnapshotParentSource(parent)
       ? parent
       : snapshotParentSource(parent, collapseNesting);
@@ -126,6 +127,11 @@ export function getImplicitSelector(
     const nextValue: Selector[] = [];
     for (let i = 0; i < value.length; i++) {
       const sel = value[i]!;
+      if (typeof sel === 'string') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        nextValue.push(sel as unknown as Selector);
+        continue;
+      }
       const result = addImplicitAmpersand(sel, collapseNesting, parentSource);
       nextValue.push(result);
       if (result !== sel) {

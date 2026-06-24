@@ -319,6 +319,7 @@ export function defineFunction<
    * Parameter names are inferred from the params array: name, value, etc.
    * All calls are converted to positional format before calling the internal function.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const result: DefinedFunction<T, F> = function(...args: any[]): ReturnType<F> {
     const rawParams = options?.params;
     if (!rawParams) {
@@ -1064,7 +1065,8 @@ function validateValue(value: any, expectedType: ArgType | readonly ArgType[], p
   }
 
   // Handle single type
-  if (!isValidType(value, expectedType)) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  if (!isValidType(value, expectedType as ArgType)) {
     const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
     const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
     return {

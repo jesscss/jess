@@ -267,7 +267,7 @@ export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'),
     atrule({
       name: new Any('media', { role: 'atkeyword' }),
       prelude: any('screen'),
-      rules: atRuleContent
+      rules: atRuleContent.rules
     })
   ]);
 }
@@ -277,7 +277,7 @@ export function createAtRuleVariable(atRuleContent = createVariableReference('co
     atrule({
       name: new Any('media', { role: 'atkeyword' }),
       prelude: any('screen'),
-      rules: atRuleContent
+      rules: atRuleContent.rules
     })
   ]);
 }
@@ -444,7 +444,7 @@ export const testPatterns = {
 export const getNestedNode = (tree: Node, path: number[]): Node => {
   let current = tree;
   for (const index of path) {
-    const next = readNodeAt(current instanceof RulesNode ? current : current.value, index);
+    const next = readNodeAt(current instanceof RulesNode ? current : Reflect.get(current, 'value'), index);
     if (!next) {
       throw new Error(`Cannot access index ${index} on node: ${current}`);
     }

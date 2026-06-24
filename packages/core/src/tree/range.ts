@@ -152,9 +152,9 @@ export class Range extends Node<RangeValue, RangeOptions> {
     // Range only contains Dimension/Any children which render synchronously
     return buffer
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      ? super.render(_context, buffer, options) as string
+      ? super.render(context, buffer, options) as string
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      : super.render(_context, printOptions) as string;
+      : super.render(context, printOptions) as string;
   }
 }
 

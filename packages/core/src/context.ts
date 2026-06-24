@@ -96,6 +96,11 @@ export interface ContextOptions {
   breakOnError?: boolean;
 
   /**
+   * Enable source map generation in output.
+   */
+  sourceMap?: boolean;
+
+  /**
    * Lazily supplies an importer plugin after path resolution proves a module
    * extension needs one. This keeps heavyweight optional runtimes out of
    * plugin-free parse/eval paths.

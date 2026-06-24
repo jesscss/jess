@@ -43,7 +43,7 @@ export const getInterpolatedNode = (
   while ((result = INTERPOLATION_REGEX.exec(name)) !== null) {
     const [match, prefix, varName] = result;
     source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    replacements.push(createInterpolatedReference(prefix, varName, location, context));
+    replacements.push(createInterpolatedReference(prefix ?? '', varName ?? '', location, context));
   }
 
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);

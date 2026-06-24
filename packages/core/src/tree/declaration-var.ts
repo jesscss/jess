@@ -6,6 +6,7 @@ import {
 import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
+import type { LocationInfo } from './node-base.js';
 import { Nil } from './nil.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
@@ -49,7 +50,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location, treeContext);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    super(value as DeclarationValue, options, location as LocationInfo | undefined, treeContext);
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
@@ -83,7 +85,9 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
       return;
     }
     const nameMark = w.mark();
-    this.name.writeSyntax(options);
+    if (typeof this.name !== 'string') {
+      this.name.writeSyntax(options);
+    }
     w.trimEndSince(nameMark);
   }
 
