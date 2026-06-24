@@ -254,8 +254,8 @@ export function consumeTriviaBetween(
   const isBetween = tokens.every((token) => {
     return token.startOffset !== undefined
       && token.endOffset !== undefined
-      && token.startOffset > prevEnd
-      && token.endOffset < nextStart;
+      && token.startOffset >= prevEnd
+      && token.endOffset <= nextStart;
   });
   return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
 }

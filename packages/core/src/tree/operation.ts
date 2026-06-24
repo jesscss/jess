@@ -120,8 +120,8 @@ export class Operation extends Node<OperationValue> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);

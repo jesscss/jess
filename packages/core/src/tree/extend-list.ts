@@ -40,8 +40,8 @@ export class ExtendList extends Node<Extend[]> {
     options.writer.add(';');
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     if (this.nodes.length === 0) {
       options.writer.add(';', this);
       return ';';

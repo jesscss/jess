@@ -211,11 +211,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     restorePrintState(options, saved);
   }
 
-  private renderComplexSyntax(options?: PrintOptions): string {
+  private renderComplexSyntax(rawOptions?: PrintOptions): string {
     if (this.value.length === 0) {
       return '';
     }
-    options = getPrintOptions(options);
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);

@@ -3537,11 +3537,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._toDocumentString(options);
   }
 
-  _toDocumentString(options?: PrintOptions): string {
+  _toDocumentString(rawOptions?: PrintOptions): string {
     if (!this.visible && !this.fullRender) {
       return '';
     }
-    options = getPrintOptions(options);
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const depth = options.depth!;
     const mark = w.mark();
@@ -3713,17 +3713,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
   }
 
-  private _emitSourceRulesBody(options: PrintOptions): void {
+  private _emitSourceRulesBody(options: FinalPrintOptions): void {
     this._emitRulesBody(options, 'source');
   }
 
-  private _emitRenderRulesBody(options: PrintOptions): MaybePromise<void> {
+  private _emitRenderRulesBody(options: FinalPrintOptions): MaybePromise<void> {
     return this._emitRulesBody(options, 'render');
   }
 
-  private _emitRulesBody(options: PrintOptions, mode: 'source'): void;
-  private _emitRulesBody(options: PrintOptions, mode: 'render'): MaybePromise<void>;
-  private _emitRulesBody(options: PrintOptions, mode: 'source' | 'render'): MaybePromise<void> {
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source'): void;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'render'): MaybePromise<void>;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render'): MaybePromise<void> {
     const w = options.writer!;
     const context = options.context;
     const depth = options.depth ?? 0;
@@ -4001,8 +4001,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     finish();
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
@@ -4016,11 +4016,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._emitSourceRulesBody(options);
   }
 
-  toRenderString(options?: PrintOptions): MaybePromise<string> {
+  toRenderString(rawOptions?: PrintOptions): MaybePromise<string> {
     if (!this.visible && !this.fullRender) {
       return '';
     }
-    options = getPrintOptions(options);
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     const rendered = this._emitRenderRulesBody(options);

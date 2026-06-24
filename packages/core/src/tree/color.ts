@@ -493,8 +493,8 @@ export class Color extends Node<ColorData, ColorOptions> {
     return out;
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const scalar = this.serializeScalarSyntax(Boolean(options.compress));
     if (scalar !== undefined) {
       options.writer.add(scalar, this);

@@ -57,8 +57,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     if (this._options?.paramVar && this.value instanceof Nil) {

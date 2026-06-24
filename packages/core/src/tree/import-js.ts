@@ -95,8 +95,8 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     w.add(';');
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

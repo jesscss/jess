@@ -915,8 +915,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     w.add(';');
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const mark = options.writer.mark();
     this.writeSyntax(options);
     return options.writer.getSince(mark);

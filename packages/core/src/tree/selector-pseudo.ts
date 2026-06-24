@@ -119,10 +119,27 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       if (Array.isArray(arg)) {
         // Generic (unknown-pseudo) argument: a raw component array. Emit each
         // component, recovering trivia between them from this node's valueSpans.
+        // A ' ' descendant combinator carries no own text — its surrounding
+        // trivia (whitespace + comments) spans from the previous part's end to
+        // the next part's start, so recover it across the combinator rather than
+        // emitting a bare space (mirrors ComplexSelector.toString).
         const spans = this.valueSpans;
         for (let i = 0; i < arg.length; i++) {
           const part = arg[i];
-          if (i > 0 && options.trivia && spans) {
+          if (part === ' ') {
+            const tokens = (options.trivia && spans)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options)
+              : undefined;
+            if (tokens?.length) {
+              emitTriviaTokens(tokens, options);
+            } else {
+              w.add(' ', this);
+            }
+            continue;
+          }
+          // Recover trivia before this part — unless the previous part was a ' '
+          // combinator, which already consumed the trivia up to this part's start.
+          if (i > 0 && arg[i - 1] !== ' ' && options.trivia && spans) {
             emitTriviaTokens(
               consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[i * 3], options),
               options

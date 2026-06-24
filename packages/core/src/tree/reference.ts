@@ -3676,8 +3676,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   /**
    * @note - A reference renders a $ only if it has no target.
    */
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);

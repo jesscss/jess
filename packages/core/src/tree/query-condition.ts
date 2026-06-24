@@ -222,8 +222,8 @@ export class QueryCondition extends Sequence {
     }
   }
 
-  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions, context?: Context): string | MaybePromise<string> {
-    options = getPrintOptions(options);
+  private renderQueryConditionSyntax(value: Node[], rawOptions?: PrintOptions, context?: Context): string | MaybePromise<string> {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer;
     const length = value.length;
 

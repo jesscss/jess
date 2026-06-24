@@ -122,8 +122,8 @@ export class Range extends Node<RangeValue, RangeOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const out = this.scalarRangeText(options);
     if (out !== undefined) {
       options.writer.add(out, this);

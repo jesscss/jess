@@ -787,7 +787,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private declValueTrimmedString(
     valueParts: DeclarationValue,
-    options?: PrintOptions,
+    rawOptions?: PrintOptions,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
       mergeAdapter?: DeclarationMergeAdapterState;
@@ -795,7 +795,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       normalizedFromAssign?: AssignmentType;
     }
   ) {
-    options = getPrintOptions(options);
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     this.writeDeclarationValueSyntax(valueParts, options, renderState);

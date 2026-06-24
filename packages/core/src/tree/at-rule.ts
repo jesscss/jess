@@ -610,9 +610,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       throw new TypeError('AtRule requires rules to be a Node array. Use AtRuleStatement for semicolon at-rules.');
     }
     super(rulesValue, options, location, treeContext);
-    if (typeof value.name === 'string' && !/^@(?:[a-zA-Z]|-[a-zA-Z])[\w-]*$/u.test(value.name)) {
-      throw new TypeError('At-rule name is outside the scanner-native at-rule subset.');
-    }
+    // The parser decides what's a valid at-rule name; the runtime stores it.
     this.name = this._processNodes(value.name);
     this.prelude = this._processNodes(value.prelude);
   }

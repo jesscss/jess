@@ -90,8 +90,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const position = options.writer.position();
     this.writeSyntax(options);
     return getWriterTextSincePosition(options.writer, position);

@@ -1574,8 +1574,8 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     if ((!this.args || this.args.value.length === 0) && !this.contentNode && typeof this.name === 'string') {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;

@@ -32,8 +32,8 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const node = this.value;
     if (node instanceof Dimension && !this.isCompoundDimension(node)) {
       const value = node;

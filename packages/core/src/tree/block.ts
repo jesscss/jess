@@ -61,8 +61,8 @@ export class Block extends Node<Node, BlockOptions> {
     this._treeContext = treeContext;
   }
 
-  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  private renderBlockSyntax(value = this.value, rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     const type = this._options?.type;

@@ -53,8 +53,8 @@ export class Rest extends Node<Node | string | undefined> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const value = this.value;
     if (!value || !isNode(value)) {
       const out = value ? `...$$${value}` : '...$';

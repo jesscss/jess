@@ -14,8 +14,8 @@ export class RawRules extends Rules {
   override allowRuleRoot = true;
 
   // Do not add newlines/indent; emit children exactly as-is
-  override toBraced(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toBraced(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     if (this.rules.length === 0) {
       options.writer.add('{}', this);
       return '{}';
@@ -55,8 +55,8 @@ export class RawRules extends Rules {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     if (this.rules.length === 0) {
       return '';
     }
