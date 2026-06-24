@@ -291,7 +291,8 @@ export function flattenVisibleRulesForRender(
             pushContainer(child);
             continue;
           }
-          if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          if (((child as Node).options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
             pushContainer(child);
             continue;
           }
@@ -733,6 +734,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
           const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
@@ -757,6 +759,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childFrameSnapshot = saveArrayState(lastRenderedFrames);
           const childHeaderSnapshot = saveArrayState(frameHeaders);
           const childPositionBaseline = w.position();
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           if (!childOut && !hasPrintableTrivia(n, options)) {
             w.restore(childPositionBaseline);

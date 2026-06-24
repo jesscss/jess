@@ -16,7 +16,8 @@
     "paths": {
       "jess": ["./packages/jess/lib"],
       "@jess/*": ["./packages/*/src"],
-      "@jesscss/css-parser": ["./packages/css-parser/src/index.ts"]
+      "@jesscss/css-parser": ["./packages/css-parser/src/index.ts"],
+      "@jesscss/parser": ["./packages/parser/src/index.ts"]
     },
     "plugins": [
   

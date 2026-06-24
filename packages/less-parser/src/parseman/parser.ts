@@ -71,8 +71,8 @@ export class LessParserParseman {
     return {
       tree: (tree ?? nil()) as Node,
       errors: doc.errors.map(e => ({
-        message: e.expected?.join(', ') ?? 'Parse error',
-        offset: e.span?.start
+        message: e.message,
+        offset: e.offset
       })),
       warnings: (doc as { warnings?: Array<{ message: string }> }).warnings ?? [],
       lexerResult: { errors: [] }

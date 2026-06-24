@@ -25,8 +25,8 @@ export function parseCss(input: string): ParsemanParseResult {
   return {
     tree: doc.tree instanceof Rules ? doc.tree : null,
     errors: doc.errors.map(e => ({
-      message: e.expected.join(', '),
-      offset: e.span.start
+      message: e.message,
+      offset: e.offset
     }))
   };
 }

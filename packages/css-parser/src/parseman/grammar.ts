@@ -147,11 +147,20 @@ export type Component = string | JessNode;
 // Convert a raw child entry into an AST component: strings pass through, leaves
 // become their text, nodes pass through. Trivia/errors are dropped (returns null).
 export function toComponent(c: unknown): Component | null {
-  if (typeof c === 'string') return c;
+  if (typeof c === 'string') {
+    return c;
+  }
   if (c && typeof c === 'object' && '_tag' in c) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const tag = (c as { _tag: string })._tag;
-    if (tag === 'leaf') return (c as CSTLeaf).value;
-    if (tag === 'node') return c as JessNode;
+    if (tag === 'leaf') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return (c as CSTLeaf).value;
+    }
+    if (tag === 'node') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return c as JessNode;
+    }
   }
   return null;
 }
@@ -163,10 +172,13 @@ export type Spanned = { comp: Component; span: Span };
 
 export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>): Spanned[] {
   const out: Spanned[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
     if (rc._tag === 'leaf' && rc.span) {
       out.push({ comp: rc.value ?? '', span: rc.span });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     } else if (rc._tag === 'node' && (rc as unknown as JessNode).span) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       out.push({ comp: rc as unknown as JessNode, span: (rc as unknown as JessNode).span });
     }
   }
@@ -175,6 +187,7 @@ export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>):
 
 // Record one direct-field source span (by childKeys index) on a node.
 export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: number, span: Span) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const n = node as unknown as { fieldSpans?: number[] };
   n.fieldSpans ??= createPackedFieldSpans(fieldCount);
   setPackedFieldSpan(n.fieldSpans, fieldIndex, span.start, span.end);
@@ -184,11 +197,13 @@ export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: num
 export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>) {
   const packed = createPackedSegmentSpans(spans.length);
   spans.forEach((s, i) => setPackedSegmentSpan(packed, i, s.start, s.end));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   (node as unknown as { valueSpans?: number[] }).valueSpans = packed;
 }
 
 // childKeys index lookup for a node's static childKeys array.
 export function fieldIndexOf(node: JessNode, key: string): { index: number; count: number } {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const keys = (node.constructor as unknown as { childKeys?: readonly string[] }).childKeys ?? [];
   return { index: keys.indexOf(key), count: keys.length };
 }
@@ -249,6 +264,7 @@ export class CssParser extends Parser<JessNode> {
   protected override _captureTrivia = true;
 
   // Makes the rule name optional in parse(): parse(text) === parse('Stylesheet', text).
+  // @ts-expect-error -- 'Stylesheet' is a valid RuleKeys<CssParser>; circular type inference prevents assignment
   protected override _defaultRule = 'Stylesheet' as const;
 
   /** Source text of the in-progress parse; used by builders that emit verbatim text. */
@@ -504,7 +520,7 @@ export class CssParser extends Parser<JessNode> {
   // no-unsafe-type-assertion rule for this bounded section only.
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 
-  protected buildNode(
+  protected override buildNode(
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
@@ -570,7 +586,9 @@ export class CssParser extends Parser<JessNode> {
     const node = new Ruleset({ selector, rules }, undefined, loc);
     if (sel) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
-      if (index >= 0) setFieldSpan(node as unknown as JessNode, index, count, sel.span);
+      if (index >= 0) {
+        setFieldSpan(node as unknown as JessNode, index, count, sel.span);
+      }
     }
     return node;
   }
@@ -621,7 +639,9 @@ export class CssParser extends Parser<JessNode> {
     let pendingWhitespace = false;
 
     const flush = () => {
-      if (group.length === 0) return;
+      if (group.length === 0) {
+        return;
+      }
       if (group.length === 1) {
         parts.push(group[0]!.comp);
         partSpans.push(group[0]!.span);
@@ -645,7 +665,9 @@ export class CssParser extends Parser<JessNode> {
       if (rc._tag === 'trivia') {
         // Only a pure-whitespace token implies a descendant combinator; a comment
         // token (e.g. '/*x */', which may contain spaces internally) does not.
-        if (/^[ \t\n\r\f]+$/.test(rc.value ?? '')) pendingWhitespace = true;
+        if (/^[ \t\n\r\f]+$/.test(rc.value ?? '')) {
+          pendingWhitespace = true;
+        }
       } else if ((rc._tag === 'leaf' || rc._tag === 'node') && rc.span) {
         if (pendingWhitespace && group.length) {
           const prevEnd = group[group.length - 1]!.span.end;
@@ -731,7 +753,10 @@ export class CssParser extends Parser<JessNode> {
     let end = items.length;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') { end = i; break; }
+      if (c === '!' || c === 'important' || c === ';') {
+        end = i;
+        break;
+      }
     }
     const valueItems = items.slice(colonIdx + 1, end);
     const { value, span: valueSpan } = this._assembleValue(valueItems, loc);
@@ -742,9 +767,13 @@ export class CssParser extends Parser<JessNode> {
     );
     const jn = node as unknown as JessNode;
     const { index: nameIdx, count } = fieldIndexOf(jn, 'name');
-    if (nameItem && nameIdx >= 0) setFieldSpan(jn, nameIdx, count, nameItem.span);
+    if (nameItem && nameIdx >= 0) {
+      setFieldSpan(jn, nameIdx, count, nameItem.span);
+    }
     const valueIdx = fieldIndexOf(jn, 'value').index;
-    if (valueSpan && valueIdx >= 0) setFieldSpan(jn, valueIdx, count, valueSpan);
+    if (valueSpan && valueIdx >= 0) {
+      setFieldSpan(jn, valueIdx, count, valueSpan);
+    }
     return node;
   }
 
@@ -766,8 +795,11 @@ export class CssParser extends Parser<JessNode> {
     // Split into comma-separated segments.
     const segments: Spanned[][] = [[]];
     for (const it of items) {
-      if (it.comp === ',') segments.push([]);
-      else segments.at(-1)!.push(it);
+      if (it.comp === ',') {
+        segments.push([]);
+      } else {
+        segments.at(-1)!.push(it);
+      }
     }
     const segValues = segments.map(seg => this._assembleSegment(seg, loc));
 
@@ -777,8 +809,10 @@ export class CssParser extends Parser<JessNode> {
     // Inside a comma List, a multi-item (space-delimited) segment must be a
     // Sequence node so it serializes structurally rather than being stringified.
     // A lone space-array (single segment, handled above) stays a plain array.
-    const listValues = segValues.map(v => {
-      if (!Array.isArray(v)) return v;
+    const listValues = segValues.map((v) => {
+      if (!Array.isArray(v)) {
+        return v;
+      }
       const parts = (v as Component[]).map(c =>
         typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c);
       return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
@@ -798,14 +832,18 @@ export class CssParser extends Parser<JessNode> {
       return seg[0]!.comp;
     }
     const grouped = this._groupSlashes(seg.map(s => s.comp), loc);
-    if (grouped.length === 1) return grouped[0]!;
+    if (grouped.length === 1) {
+      return grouped[0]!;
+    }
     return grouped as unknown as Component;
   }
 
   // Collapse '/'-separated runs (e.g. `small/20px`, `1/2/3`) into slash Lists.
   // Items without a neighbouring '/' pass through unchanged.
   protected _groupSlashes(comps: Component[], loc: LocationInfo): Component[] {
-    if (!comps.includes('/' as unknown as Component)) return comps;
+    if (!comps.includes('/' as unknown as Component)) {
+      return comps;
+    }
     // List children must be nodes (the serializer reads each child's location),
     // so bare ident strings in a slash run are coerced to Any[role=ident].
     const asNode = (c: Component): Component =>
@@ -818,7 +856,10 @@ export class CssParser extends Parser<JessNode> {
         i += 1;
         while (i < comps.length && comps[i] === ('/' as unknown as Component)) {
           i += 1;
-          if (i < comps.length) { run.push(asNode(comps[i]!)); i += 1; }
+          if (i < comps.length) {
+            run.push(asNode(comps[i]!));
+            i += 1;
+          }
         }
         out.push(new List(run as unknown as Node[], { sep: '/' } as any, loc) as unknown as Component);
       } else {
@@ -883,31 +924,40 @@ export class CssParser extends Parser<JessNode> {
     const open = items.findIndex(i => i.comp === '(');
     let close = items.length;
     for (let i = items.length - 1; i >= 0; i--) {
-      if (items[i]!.comp === ')') { close = i; break; }
+      if (items[i]!.comp === ')') {
+        close = i;
+        break;
+      }
     }
     return items.slice(open + 1, close);
   }
 
   // Function args: always a List, one element per comma-segment (each a value).
-  protected _assembleArgs(items: Spanned[], loc: LocationInfo) {
+  protected _assembleArgs(items: Spanned[], loc: LocationInfo): List {
     // Semicolon-separated args take precedence: split on ';' and assemble each
     // part as its own (comma) arg list, wrapping in an outer List with sep ';'.
     if (items.some(it => it.comp === ';')) {
       const semiSegs: Spanned[][] = [[]];
       for (const it of items) {
-        if (it.comp === ';') semiSegs.push([]);
-        else semiSegs.at(-1)!.push(it);
+        if (it.comp === ';') {
+          semiSegs.push([]);
+        } else {
+          semiSegs.at(-1)!.push(it);
+        }
       }
       const parts = semiSegs.filter(s => s.length > 0).map(s => this._assembleArgs(s, loc));
       return new List(parts as unknown as Node[], { sep: ';' } as any, loc);
     }
     const segments: Spanned[][] = [[]];
     for (const it of items) {
-      if (it.comp === ',') segments.push([]);
-      else segments.at(-1)!.push(it);
+      if (it.comp === ',') {
+        segments.push([]);
+      } else {
+        segments.at(-1)!.push(it);
+      }
     }
     const nonEmpty = segments.filter(s => s.length > 0);
-    const values = nonEmpty.map(seg => {
+    const values = nonEmpty.map((seg) => {
       const assembled = this._assembleSegment(seg, loc);
       // A space-delimited segment assembles to an array of components → wrap in a
       // Sequence so positional args like `extract(1 2 3, 2)` keep their grouping.
@@ -960,9 +1010,9 @@ export class CssParser extends Parser<JessNode> {
     // Model the prelude as a List of ident tokens (whitespace-separated).
     const preludeNode = preludeText
       ? new List(
-          preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, loc)),
-          undefined, loc
-        )
+        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, loc)),
+        undefined, loc
+      )
       : undefined;
     return new AtRule(
       { name, prelude: preludeNode, rules: nodeChildren(children) },
@@ -992,8 +1042,12 @@ export class CssParser extends Parser<JessNode> {
   // Overrides Parser.parse to return a Jess-shaped result: the built tree, any
   // parse errors/warnings, and a before/after trivia map reconstructed from the
   // trivia tokens captured on each node's rawChildren during parsing.
+  // CssParseResult intentionally does not extend ParseDoc (different shape).
+  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
   override parse(input: string): CssParseResult<Rules>;
+  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
   override parse(ruleName: RuleKeys<this>, input: string): CssParseResult;
+  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
   override parse(a: string, b?: string): CssParseResult {
     /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
     // Stash the source so builders can recover exact (trivia-inclusive) text

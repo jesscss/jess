@@ -114,7 +114,7 @@ export class LessGrammar extends CssParser {
   // ── Override Stylesheet to include VarDeclaration ─────────────────────────
 
   // many() skips leading trivia before each item — no explicit rw needed.
-  Stylesheet = (g: any) => many(
+  override Stylesheet = (g: any) => many(
     choice(
       g.VarDeclaration,
       g.AtRuleBlock,
@@ -136,7 +136,7 @@ export class LessGrammar extends CssParser {
 
   // ── Override declarationList to include VarDeclaration and nested Rulesets ─
 
-  declarationList = (g: any) => many(
+  override declarationList = (g: any) => many(
     choice(
       g.VarDeclaration,
       g.ExtendStatement,   // &:extend(.base [all]);  — Less extend statement
@@ -185,7 +185,7 @@ export class LessGrammar extends CssParser {
 
   // ── Override value to add Reference and NamedColor ────────────────────────
 
-  value = (g: any) => choice(
+  override value = (g: any) => choice(
     g.Reference,    // @var — before Dimension/Num (no @-prefixed dimensions in CSS)
     g.Dimension,
     g.Num,
@@ -284,7 +284,7 @@ export class LessGrammar extends CssParser {
   // Override simpleSelector to include & and interpolated selectors (.@{var}).
   // InterpolatedSelector is tried before basicSelector and requires at least one
   // @{…} so plain selectors still fall through to basicSelector.
-  simpleSelector = (g: any) => choice(
+  override simpleSelector = (g: any) => choice(
     g.AttributeSelector,
     g.PseudoSelector,
     g.LessAmpersand,
@@ -315,7 +315,7 @@ export class LessGrammar extends CssParser {
   );
 
   // Override Ruleset to use Less-aware selector list
-  Ruleset = (g: any) => sequence(
+  override Ruleset = (g: any) => sequence(
     g.LessSelectorList,
     literal('{'),
     g.declarationList,
@@ -327,7 +327,7 @@ export class LessGrammar extends CssParser {
   // Explicit `any` return avoids structural-type mismatch with CssParser.Declaration
   // which infers a different tuple arity from its sequence() call.
 
-  Declaration = (g: any): any => sequence(
+  override Declaration = (g: any): any => sequence(
     g.ident,
     optional(choice(literal('+_'), literal('+'))),  // Less property merge
     literal(':'),
@@ -342,7 +342,7 @@ export class LessGrammar extends CssParser {
   // custom properties standalone. orEOF: true lets the scan reach EOF if neither appears.
   // Try a structured value first (so functions etc. parse as Call/Sequence);
   // fall back to a permissive scan for arbitrary custom-property content.
-  CustomDeclaration = (g: any) => sequence(
+  override CustomDeclaration = (g: any): any => sequence(
     g.customProp,
     literal(':'),
     choice(
@@ -366,7 +366,7 @@ export class LessGrammar extends CssParser {
 
   // ── Override atRuleBody to also include VarDeclaration ───────────────────
 
-  atRuleBody = (g: any) => many(
+  override atRuleBody = (g: any) => many(
     choice(
       g.AtRuleBlock,
       g.AtRuleStatement,
@@ -402,11 +402,14 @@ export class LessGrammar extends CssParser {
       case 'LessComplexSelector': return this._buildComplexSelector(raw, loc);
       case 'LessSelectorList':    return this._buildSelectorList(raw, loc);
       case 'Ruleset':             return this._buildRuleset(children, raw, loc) as unknown as JessNode;
-      case 'Declaration':         this._warnDeprecatedValue(span); return this._buildLessDeclaration(raw, loc);
-      case 'CustomDeclaration':   this._warnCustomPropVars(span); return this._buildLessCustomDecl(children, loc);
-      case 'AtRuleBlock':         this._warnAtRulePreludeVars(span); return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
+      case 'Declaration':         this._warnDeprecatedValue(span);
+        return this._buildLessDeclaration(raw, loc);
+      case 'CustomDeclaration':   this._warnCustomPropVars(span);
+        return this._buildLessCustomDecl(children, loc);
+      case 'AtRuleBlock':         this._warnAtRulePreludeVars(span);
+        return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'NamedColor':          return this._buildNamedColor(children, loc);
-      case 'GuardCondition':      return new Paren({ node: nodeChildren(children)[0] ?? new Any('', {}, loc) }, {}, loc) as unknown as JessNode;
+      case 'GuardCondition':      return new Paren(nodeChildren(children)[0] ?? new Any('', {}, loc), {}, loc) as unknown as JessNode;
       case 'Comparison':          return this._buildComparison(children, loc);
       case 'Guard':               return this._buildGuard(children, loc);
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
@@ -433,7 +436,10 @@ export class LessGrammar extends CssParser {
     let end = items.length;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') { end = i; break; }
+      if (c === '!' || c === 'important' || c === ';') {
+        end = i;
+        break;
+      }
     }
     const valItems = items.slice(colonIdx + 1, end);
     // Legacy: a variable whose value is an unquoted class-selector list
@@ -583,7 +589,9 @@ export class LessGrammar extends CssParser {
   private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasParen = ls.some(l => l.value === '(');
-    if (!hasParen) return new Ampersand(undefined, {}, loc) as unknown as JessNode;
+    if (!hasParen) {
+      return new Ampersand(undefined, {}, loc) as unknown as JessNode;
+    }
     const content = ls.find(l => l.value !== '&' && l.value !== '(' && l.value !== ')')?.value ?? '';
     const trimmed = content.trim();
     const appendValue = trimmed === 'nil'
@@ -607,7 +615,9 @@ export class LessGrammar extends CssParser {
   // Less ~(...) / ~"..." → the inner Paren/Quoted node flagged escaped: true.
   private _buildEscapedValue(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
     const inner = nodeChildren(children)[0];
-    if (!inner) return new Any('', { role: 'ident' }, loc) as unknown as JessNode;
+    if (!inner) {
+      return new Any('', { role: 'ident' }, loc) as unknown as JessNode;
+    }
     const n = inner as unknown as { _options?: Record<string, unknown> };
     n._options = { ...(n._options ?? {}), escaped: true };
     return inner;
@@ -615,14 +625,14 @@ export class LessGrammar extends CssParser {
 
   // Less models a function call's name as a Reference (type 'function',
   // fallbackValue) so it resolves like a variable, with silentFail on the Call.
-  protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+  protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): Call {
     const call = super._buildCall(rawChildren, loc) as unknown as {
       name: unknown; args: unknown; _options?: Record<string, unknown>;
     };
     const key = typeof call.name === 'string' ? call.name : '';
     const nameRef = new Reference(key, { type: 'function', fallbackValue: true } as any, loc);
     const next = new Call({ name: nameRef as any, args: call.args as any }, { silentFail: true } as any, loc);
-    return next as unknown as JessNode;
+    return next as unknown as Call;
   }
 
   // Custom property: structured value (from valueList) → wrapped in a Sequence;
@@ -692,7 +702,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === ';') break;
+      if (l.value === '(' || l.value === ';') {
+        break;
+      }
       nameParts.push(l.value);
     }
     const name = nameParts.join('');
@@ -766,11 +778,22 @@ export class LessGrammar extends CssParser {
     let depth = 0, quote = '', start = 0;
     for (let i = 0; i < text.length; i++) {
       const ch = text[i]!;
-      if (quote) { if (ch === quote) quote = ''; continue; }
-      if (ch === '"' || ch === '\'') quote = ch;
-      else if (ch === '(' || ch === '[') depth++;
-      else if (ch === ')' || ch === ']') depth--;
-      else if (ch === sep && depth === 0) { out.push(text.slice(start, i)); start = i + 1; }
+      if (quote) {
+        if (ch === quote) {
+          quote = '';
+          continue;
+        }
+      }
+      if (ch === '"' || ch === '\'') {
+        quote = ch;
+      } else if (ch === '(' || ch === '[') {
+        depth++;
+      } else if (ch === ')' || ch === ']') {
+        depth--;
+      } else if (ch === sep && depth === 0) {
+        out.push(text.slice(start, i));
+        start = i + 1;
+      }
     }
     out.push(text.slice(start));
     return out;
@@ -795,7 +818,9 @@ export class LessGrammar extends CssParser {
     // Name path: leading selector/combinator leaves before any '(' / '{' / ';'.
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')') break;
+      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')') {
+        break;
+      }
       nameParts.push(l.value);
     }
     const name = nameParts.join('');
