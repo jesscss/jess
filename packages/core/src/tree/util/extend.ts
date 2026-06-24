@@ -659,7 +659,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       if (el.name === ':is') {
         const arg = el.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          const deduped = deduplicateSelectors(arg.value);
+          const deduped = deduplicateSelectors(arg.value.filter((item): item is Selector => typeof item !== 'string'));
           if (deduped.length === 1) {
             push(deduped[0]!);
             continue;
@@ -720,7 +720,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
         push(el);
       }
     } else if (isNode(el, N.SelectorList)) {
-      let processedResult = createProcessedSelector(el.value, true);
+      let processedResult = createProcessedSelector(el.value.filter((item): item is Selector => typeof item !== 'string'), true);
       if (typeof processedResult === 'string') {
         return processedResult;
       }
@@ -787,7 +787,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound value can have duplicate value (e.g., .v.w.v)
       // Process value with root=false to prevent deduplication
-      const compoundProcessed = createProcessedSelector(el.value, false);
+      const compoundProcessed = createProcessedSelector(el.value.filter((c): c is Selector => typeof c !== 'string'), false);
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
@@ -797,7 +797,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
         : CompoundSelector.create(processedComponents).inherit(el));
     } else if (isNode(el, N.ComplexSelector)) {
       let value = el.value;
-      let complexProcessed = createProcessedSelector(value);
+      let complexProcessed = createProcessedSelector(value.filter((c): c is Selector => typeof c !== 'string'));
       if (typeof complexProcessed === 'string') {
         return complexProcessed;
       }
@@ -805,17 +805,20 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       let outputComponents = result;
       let [first, second] = value;
       /** Remove invisibility on combinator if it's a generated */
-      if (first?.type === 'Ampersand') {
+      if (typeof first !== 'string' && first?.type === 'Ampersand') {
         /** Implicit ampersand was kept for nested output (don't resolve to parent selector here). */
         if (first.hasFlag(F_IMPLICIT_AMPERSAND) && result[0] === first) {
           // Fall through; no throw, no slice
         } else if (isNode(result[0], N.Selector)) {
           if (first.generated) {
-            result[1]!.removeFlag(F_VISIBLE);
+            const result1 = result[1];
+            if (result1 && typeof result1 !== 'string') {
+              result1.removeFlag(F_VISIBLE);
+            }
           }
         } else if (first.generated) {
           /** Silent removal if generated and no selector was resolved */
-          if (second?.type === 'Combinator' && second.generated) {
+          if (typeof second !== 'string' && second?.type === 'Combinator' && second.generated) {
             outputComponents = result.slice(2);
           } else {
             outputComponents = result.slice(1);
@@ -932,7 +935,8 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               const prefixFirstValue = resolvedPrefixFirst?.valueOf?.();
               if (innerFirst && prefixFirstValue && innerFirst.valueOf() === prefixFirstValue) {
                 // Drop the matching first selector and an optional following combinator.
-                const dropCount = innerParts[1]?.type === 'Combinator' ? 2 : 1;
+                const innerParts1 = innerParts[1];
+                const dropCount = typeof innerParts1 !== 'string' && innerParts1?.type === 'Combinator' ? 2 : 1;
                 innerSel = ComplexSelector.create(innerParts.slice(dropCount)).inherit(innerSel);
               }
             }
@@ -953,7 +957,9 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               amp.addFlag(F_IMPLICIT_AMPERSAND);
               amp.removeFlag(F_VISIBLE);
               const combCopy = copyComplexComponentForPlacement(maybeCombinator);
-              combCopy.removeFlag(F_VISIBLE);
+              if (typeof combCopy !== 'string') {
+                combCopy.removeFlag(F_VISIBLE);
+              }
               const parts: ComplexSelectorComponent[] = [amp, combCopy, copySelectorForExtend(innerSel), ...suffixAfterIs];
               const next = ComplexSelector.create(parts).inherit(el);
               push(next);
@@ -1060,6 +1066,9 @@ function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelecto
 }
 
 function copyComplexComponentForPlacement(node: ComplexSelectorComponent): ComplexSelectorComponent {
+  if (typeof node === 'string') {
+    return node;
+  }
   const copied = node.cloneForPlacement({ reuseLeaves: false });
   if (!isComplexComponent(copied)) {
     throw new TypeError('Expected complex selector component copy');
@@ -1261,9 +1270,9 @@ function detectAndHandleBoundaryCrossing(
 
     // Check if the first part of find matches inside the :is() and the rest matches after
     const firstPart = find.value[0];
-    const restParts = find.value.slice(1);
+    const restParts = find.value.slice(1).filter((c): c is SimpleSelector => typeof c !== 'string');
 
-    if (!firstPart || restParts.length === 0 || i + 1 >= target.value.length) {
+    if (!firstPart || typeof firstPart === 'string' || restParts.length === 0 || i + 1 >= target.value.length) {
       continue;
     }
 
@@ -1277,7 +1286,7 @@ function detectAndHandleBoundaryCrossing(
     const restCompound = restParts.length === 1
       ? restParts[0]!
       : CompoundSelector.create(restParts);
-    const afterIs = target.value.slice(i + 1);
+    const afterIs = target.value.slice(i + 1).filter((c): c is SimpleSelector => typeof c !== 'string');
     const afterIsCompound = afterIs.length === 1
       ? afterIs[0]!
       : CompoundSelector.create(afterIs);
@@ -1350,7 +1359,10 @@ function createFlattenedBoundaryCrossingResult(
 
   // For each alternative in :is(), create alt + value after :is()
   for (const alt of isArg.value) {
-    const altWithRest = CompoundSelector.create([alt as SimpleSelector, ...afterIs]).inherit(inheritFrom);
+    if (typeof alt === 'string') {
+      continue;
+    }
+    const altWithRest = CompoundSelector.create([alt, ...afterIs]).inherit(inheritFrom);
     flattenedSelectors.push(altWithRest);
   }
 
@@ -1655,10 +1667,11 @@ export function extendSelector(
             if (sComp && tComp && !isNode(sComp, N.Combinator) && !isNode(tComp, N.Combinator)) {
               // Check if find component partially matches selector component
               if (isNode(sComp, N.CompoundSelector) && isNode(tComp, N.SimpleSelector)) {
-                const matchingElement = sComp.value.find(el => el.valueOf() === tComp.valueOf());
+                const sCompSimple = sComp.value.filter((el): el is SimpleSelector => typeof el !== 'string');
+                const matchingElement = sCompSimple.find(el => el.valueOf() === tComp.valueOf());
                 if (matchingElement) {
                   // Found partial match - extract remainder
-                  const remainderElements = sComp.value.filter(el => el.valueOf() !== tComp.valueOf());
+                  const remainderElements = sCompSimple.filter(el => el.valueOf() !== tComp.valueOf());
                   if (remainderElements.length > 0) {
                     if (remainderElements.length === 1) {
                       compoundRemainder = remainderElements[0]!;
@@ -1727,7 +1740,7 @@ export function extendSelector(
               continue;
             }
             const matchedComponent = newComponents[componentIndex];
-            if (matchedComponent) {
+            if (matchedComponent && typeof matchedComponent !== 'string') {
               const wrapped = wrapMatchInIs(
                 matchedComponent,
                 matchedComponent,
@@ -1742,7 +1755,7 @@ export function extendSelector(
               newComponents[componentIndex] = wrapped;
             }
           }
-          return createValidatedCompoundSelectorWithErrors(newComponents, target);
+          return createValidatedCompoundSelectorWithErrors(newComponents.filter((c): c is SimpleSelector => typeof c !== 'string'), target);
         }
       }
 
@@ -1832,7 +1845,7 @@ export function extendSelector(
               continue;
             }
             const component = newComponents[componentIndex];
-            if (!component || isNode(component, N.Combinator)) {
+            if (!component || typeof component === 'string' || isNode(component, N.Combinator)) {
               continue;
             }
 
@@ -1858,7 +1871,7 @@ export function extendSelector(
               const childIndex = matchLoc.path[1];
               const compoundComponents = [...component.value];
               const matchedChild = compoundComponents[childIndex];
-              if (matchedChild) {
+              if (matchedChild && typeof matchedChild !== 'string') {
                 const wrappedChild = wrapMatchInIs(
                   matchedChild,
                   matchedChild,
@@ -1871,7 +1884,7 @@ export function extendSelector(
                   return wrappedChild;
                 }
                 compoundComponents[childIndex] = wrappedChild;
-                const compoundResult = createValidatedCompoundSelectorWithErrors(compoundComponents, component, { target, find, extendWith });
+                const compoundResult = createValidatedCompoundSelectorWithErrors(compoundComponents.filter((c): c is SimpleSelector => typeof c !== 'string'), component, { target, find, extendWith });
                 if (typeof compoundResult === 'string') {
                   return compoundResult;
                 }
@@ -2015,7 +2028,7 @@ export function extendSelector(
       }
       const matchedComponent = target.value[componentIndex];
 
-      if (matchedComponent && !isNode(matchedComponent, N.Combinator)) {
+      if (matchedComponent && typeof matchedComponent !== 'string' && !isNode(matchedComponent, N.Combinator)) {
         // Replace the matched component with :is(original, extension)
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its value to avoid nesting
@@ -2052,7 +2065,7 @@ export function extendSelector(
               continue;
             }
             const matchedComponent = newComponents[componentIndex];
-            if (matchedComponent) {
+            if (matchedComponent && typeof matchedComponent !== 'string') {
               // Wrap this component in :is(original, extension)
               const isWrapResult = createValidatedIsWrapperWithErrors(
                 [matchedComponent, extendWith],
@@ -2066,7 +2079,7 @@ export function extendSelector(
               newComponents[componentIndex] = isWrapResult;
             }
           }
-          return createValidatedCompoundSelectorWithErrors(newComponents, target, { target, find, extendWith });
+          return createValidatedCompoundSelectorWithErrors(newComponents.filter((c): c is SimpleSelector => typeof c !== 'string'), target, { target, find, extendWith });
         }
       }
 
@@ -2077,7 +2090,7 @@ export function extendSelector(
       }
       const matchedComponent = target.value[componentIndex];
 
-      if (matchedComponent && target.value.length > 1) {
+      if (matchedComponent && typeof matchedComponent !== 'string' && target.value.length > 1) {
         // Replace the matched component with :is(original, extension)
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its value to avoid nesting
@@ -2088,7 +2101,7 @@ export function extendSelector(
         }
 
         newComponents[componentIndex] = isWrapper;
-        const result = createValidatedCompoundSelectorWithErrors(newComponents, target, { target, find, extendWith });
+        const result = createValidatedCompoundSelectorWithErrors(newComponents.filter((c): c is SimpleSelector => typeof c !== 'string'), target, { target, find, extendWith });
         return result;
       }
     }
@@ -3497,6 +3510,7 @@ function handleAmpersandBoundaryCrossing(
       return ComplexSelector.create(tail).inherit(item);
     };
     let nestedItems: Selector[] = selector.value
+      .filter((item): item is Selector => typeof item !== 'string')
       .map(extractNestedFromItem)
       .filter((s): s is Selector => !!s);
 
@@ -3574,12 +3588,36 @@ type SelectorContainerParent = CompoundSelector | ComplexSelector | SelectorList
  * @param newNode - The replacement node
  */
 function replaceNodeInParent(parent: SelectorContainerParent, oldNode: Node, newNode: Node): void {
-  if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
-    const parentItems = isNode(parent, N.SelectorList) ? parent.value : parent.value;
+  if (isNode(parent, N.SelectorList)) {
+    const parentItems = parent.value;
     for (let i = 0; i < parentItems.length; i++) {
       if (parentItems[i] === oldNode) {
         parent.adopt(newNode);
-        parentItems[i] = newNode;
+        parentItems[i] = isSelectorNode(newNode) ? newNode : String(newNode);
+        parent.invalidateCache?.();
+        break;
+      }
+    }
+  } else if (isNode(parent, N.ComplexSelector)) {
+    const parentItems = parent.value;
+    for (let i = 0; i < parentItems.length; i++) {
+      if (parentItems[i] === oldNode) {
+        parent.adopt(newNode);
+        if (isComplexComponent(newNode)) {
+          parentItems[i] = newNode;
+        }
+        parent.invalidateCache?.();
+        break;
+      }
+    }
+  } else if (isNode(parent, N.CompoundSelector)) {
+    const parentItems = parent.value;
+    for (let i = 0; i < parentItems.length; i++) {
+      if (parentItems[i] === oldNode) {
+        parent.adopt(newNode);
+        if (isNode(newNode, N.SimpleSelector)) {
+          parentItems[i] = newNode;
+        }
         parent.invalidateCache?.();
         break;
       }
@@ -3929,9 +3967,9 @@ function applyExtensionAtPath(
       return wrapped;
     }
     const newValue: SimpleSelector[] = [
-      ...current.value.slice(0, start),
+      ...current.value.slice(0, start).filter((c): c is SimpleSelector => typeof c !== 'string'),
       wrapped,
-      ...current.value.slice(end)
+      ...current.value.slice(end).filter((c): c is SimpleSelector => typeof c !== 'string')
     ];
     return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
   }
@@ -3957,7 +3995,10 @@ function applyExtensionAtPath(
           wrappedAdded = true;
         }
       } else {
-        newValue.push(current.value[i]!);
+        const item = current.value[i]!;
+        if (typeof item !== 'string') {
+          newValue.push(item);
+        }
       }
     }
     return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
@@ -4082,8 +4123,12 @@ function applyExtensionAtPath(
     const newValue = [...current.value];
     // When we recurse into a component that will be wrapped, pass this compound as context for element/ID validation.
     const childContext = remainingPath.length === 0 && extensionType === 'wrap' ? current : undefined;
+    const targetChild = newValue[index]!;
+    if (typeof targetChild === 'string') {
+      return current;
+    }
     const compoundChild = applyExtensionAtPath(
-      newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
+      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
     );
     if (typeof compoundChild === 'string') {
       return compoundChild;
@@ -4092,7 +4137,7 @@ function applyExtensionAtPath(
       throw new TypeError('Expected simple selector result');
     }
     newValue[index] = compoundChild;
-    return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
+    return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue.filter((c): c is SimpleSelector => typeof c !== 'string'))).inherit(current);
   }
 
   if (isNode(current, N.ComplexSelector)) {
@@ -4218,7 +4263,7 @@ function applyExtension(
       if (typeof wrapOrdered === 'string') {
         return wrapOrdered;
       }
-      const wrapSelectors = wrapOrdered.value;
+      const wrapSelectors = wrapOrdered.value.filter((item): item is Selector => typeof item !== 'string');
       return createValidatedIsWrapperWithErrors(
         wrapSelectors,
         current,
