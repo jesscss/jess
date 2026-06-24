@@ -2617,7 +2617,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       if (
         consumed.length === 1
         && consumed[0] === segment
-        && sourceRulesOf(ruleset.rules) === entrySource
+        && sourceRulesOf(ruleset) === entrySource
         && (matchScope === scope || matchSource === sourceRulesOf(scope))
       ) {
         return true;
@@ -2704,7 +2704,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
     const DEFINITE_MISS = Symbol('definite-ruleset-namespace-miss');
     type RulesetNamespaceFastResult = MixinEntry[] | typeof DEFINITE_MISS | undefined;
     const selectorNeedsLegacyFallback = (ruleset: Ruleset): boolean => {
-      return blocksAmbientMixinOutputLookup(ruleset.rules);
+      return blocksAmbientMixinOutputLookup(ruleset);
     };
 
     const walk = (
@@ -2954,7 +2954,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
               ...options,
               searchParents: false
             };
-            resolved = ruleset.rules.findMixin(segment, 'Mixin', nestedOptions);
+            resolved = ruleset.findMixin(segment, 'Mixin', nestedOptions);
           } else {
             simpleLookupOptions ??= {
               hasTarget: options.hasTarget,
@@ -2964,11 +2964,11 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
             };
             let simpleCallableCovered = false;
             const simpleFrame = !options.hasTarget && !options.local
-              ? ruleset.rules.getScopeFrame()
+              ? ruleset.getScopeFrame()
               : undefined;
             if (simpleFrame) {
               const includeRulesets = simpleLookupOptions.includeRulesets !== false;
-              ruleset.rules.prepareCallableLookupFrame(simpleFrame, segment, includeRulesets);
+              ruleset.prepareCallableLookupFrame(simpleFrame, segment, includeRulesets);
               const simpleHit = lookupScopeFrameCallable(simpleFrame, segment, {
                 includeRulesets,
                 searchParents: false
@@ -2979,7 +2979,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
               } else if (simpleHit.kind === 'miss') {
                 simpleCallableCovered = true;
               } else if (simpleHit.reason === 'child-surface' || simpleHit.reason === 'reference-import') {
-                const uncovered = ruleset.rules.findMixinsFastForUncoveredCallable(
+                const uncovered = ruleset.findMixinsFastForUncoveredCallable(
                   segment,
                   simpleHit.reason,
                   includeRulesets,
@@ -2992,13 +2992,13 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
               }
             }
             if (resolved === undefined && !simpleCallableCovered) {
-              const simpleCallableMatches = ruleset.rules.findMixinsFast(segment, simpleLookupOptions);
+              const simpleCallableMatches = ruleset.findMixinsFast(segment, simpleLookupOptions);
               if (simpleCallableMatches.length > 0) {
                 resolved = simpleCallableMatches;
               }
             }
             if (resolved === undefined && options.terminalMixinOnly !== true) {
-              const simpleCallableRulesets = ruleset.rules.findVisibleExactCallableRulesetPath(path, {
+              const simpleCallableRulesets = ruleset.findVisibleExactCallableRulesetPath(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
@@ -3011,13 +3011,13 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
             ...options,
             searchParents: false
           };
-          resolved = ruleset.rules.findRulesetNamespacePathFast(
+          resolved = ruleset.findRulesetNamespacePathFast(
             path,
             nestedOptions,
             remainderStart
           );
           if (resolved === undefined) {
-            resolved = ruleset.rules.findMixinNamespacePathFast(
+            resolved = ruleset.findMixinNamespacePathFast(
               path,
               undefined,
               nestedOptions,
@@ -3025,7 +3025,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
             );
           }
           if (resolved === undefined) {
-            resolved = ruleset.rules.findMixin(
+            resolved = ruleset.findMixin(
               collectKeyRemainder(path, remainderStart),
               terminalFilterType,
               nestedOptions
@@ -3081,15 +3081,15 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
       };
       let resolved: MixinEntry[] | undefined;
       if (remainderLength === 1) {
-        resolved = ruleset.rules.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
+        resolved = ruleset.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
       } else {
-        resolved = ruleset.rules.findRulesetNamespacePathFast(
+        resolved = ruleset.findRulesetNamespacePathFast(
           keys,
           nestedOptions,
           consumed.length
         );
         if (resolved === undefined) {
-          resolved = ruleset.rules.findMixinNamespacePathFast(
+          resolved = ruleset.findMixinNamespacePathFast(
             keys,
             undefined,
             nestedOptions,
@@ -3097,7 +3097,7 @@ export class Rules extends Node<never, RulesOptions & NodeOptions> {
           );
         }
         if (resolved === undefined) {
-          resolved = ruleset.rules.findMixin(
+          resolved = ruleset.findMixin(
             collectKeyRemainder(keys, consumed.length),
             terminalFilterType,
             nestedOptions
