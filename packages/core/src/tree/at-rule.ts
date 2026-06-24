@@ -116,13 +116,14 @@ type AtRuleBodyRegistrationState = {
 
 // AUDIT: Another huge pile of suspicious functions
 function atRuleScalarTokenText(node: Node): string | undefined {
-  return (
+  if (
     node.constructor === Any
     || node.constructor === Anonymous
     || node.constructor === Keyword
-  )
-    ? node.value
-    : undefined;
+  ) {
+    return (node as Any).value;
+  }
+  return undefined;
 }
 
 function getAtRuleSourceIdentityText(node: string | Node | undefined): string {
@@ -388,7 +389,7 @@ function setAtRuleBodyEvalPrelude(
   if (record.writeEvaluatedPrelude) {
     record.evalFrame.adopt(prelude);
     record.evalFrame.prelude = prelude;
-    record.evalFrame._valueOf = undefined;
+    Reflect.set(record.evalFrame, '_valueOf', undefined);
   }
 }
 
@@ -476,7 +477,8 @@ function hasCommentChild(value: unknown): boolean {
     return true;
   }
   if (value instanceof Node) {
-    return hasCommentChild(value.value);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node subclasses carry their value in `.value`
+    return hasCommentChild((value as unknown as { value: unknown }).value);
   }
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i++) {
@@ -526,10 +528,10 @@ function applyAtRuleBodyPublicResultState(
   if (record.evaluatedPrelude && record.evaluatedPrelude !== node.prelude) {
     node.adopt(record.evaluatedPrelude);
     node.prelude = record.evaluatedPrelude;
-    node._valueOf = undefined;
+    Reflect.set(node, '_valueOf', undefined);
   }
   if (evaluatedBody && evaluatedBody.rules !== node.rules) {
-    node.rules = evaluatedBody.rules;
+    Reflect.set(node, 'rules', evaluatedBody.rules);
     for (let i = 0; i < node.rules.length; i++) {
       node.adopt(node.rules[i]!);
     }
@@ -567,7 +569,8 @@ function attachAtRuleBodyOuterScope(rules: Rules, context: Context): Rules {
 }
 
 function createAtRuleBodyEvalSurface(node: AtRule, context: Context): Rules {
-  const surface = new Rules(node.ownRules(node.rules));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- ownRules is private; Reflect allows module-internal access
+  const surface = new Rules((Reflect.get(node, 'ownRules') as (rules: Node[]) => Node[]).call(node, node.rules));
   surface.parent = node;
   surface.sourceNode = node;
   return attachAtRuleBodyOuterScope(surface, context);
@@ -651,6 +654,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     if (typeof node === 'string') {
       return node;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return (canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node)) as T;
   }
 
@@ -709,6 +713,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       this.location.length ? this.location : undefined,
       this.sourceRoot?._treeContext
     ).inherit(this);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return this.applyDerivedMetadata(node) as this;
   }
 
@@ -788,7 +793,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return this.rules;
   }
 
-  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyEvalRecord> {
+  private _evalForAtRuleRender(context: Context): MaybePromise<Node | AtRuleBodyEvalRecord> {
     if (this.evaluated) {
       return this;
     }
@@ -1029,7 +1034,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const node = this.evalForRender(context);
+    const node = this._evalForAtRuleRender(context);
     return isThenable(node)
       ? node.then(resolved => this.renderEvaluatedValue(resolved, context, bufferOrOptions, options))
       : this.renderEvaluatedValue(node, context, bufferOrOptions, options);
@@ -1039,13 +1044,15 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
    * Prepare name identity and body registration.
    * Prelude evaluation stays in evalNode so live-scope lookups stay correct.
    */
-  override prepareRegistration(context: Context): MaybePromise<AtRule> {
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
       const prepared = this._prepareAtRuleNameIdentity(context);
       if (isThenable(prepared)) {
-        return (prepared as Promise<AtRule>).then(node => this._prepareAtRuleRegistration(node, context, this));
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- AtRule subclasses return same instance via withParts/ownParts; cast to this is safe
+        return (prepared as Promise<AtRule>).then(node => this._prepareAtRuleRegistration(node, context, this)) as Promise<this>;
       }
-      return this._prepareAtRuleRegistration(prepared as AtRule, context, this);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- same as above
+      return this._prepareAtRuleRegistration(prepared as AtRule, context, this) as MaybePromise<this>;
     }
     return this;
   }
@@ -1071,7 +1078,9 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return node;
     };
 
-    const maybeKey = node.name.eval(context);
+    // node.name is Interpolated here (withParts preserves the type from this.name which was instanceof Interpolated)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name is Interpolated per the guard above
+    const maybeKey = (node.name as Interpolated).eval(context);
     if (isThenable(maybeKey)) {
       return maybeKey.then(finish);
     }
@@ -1149,7 +1158,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             }
             if (resolvedRules !== rules) {
               node = ensureDerived();
-              node.rules = resolvedRules.rules;
+              Reflect.set(node, 'rules', resolvedRules.rules);
               node.registrationPrepared = true;
             }
             this.restoreBodyParentage(node);
@@ -1167,7 +1176,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       if (preparedRules !== rules) {
         node = ensureDerived();
-        node.rules = preparedRules.rules;
+        Reflect.set(node, 'rules', preparedRules.rules);
         node.registrationPrepared = true;
       }
       this.restoreBodyParentage(node);
@@ -1332,7 +1341,10 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
     }
 
-    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, true);
+    // When we reach here, name is Any|Interpolated (string case was handled by early return, or
+    // atRuleHeaderNode===this which implies a Node name at runtime). Prelude is Node|undefined.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch (see comment above)
+    const nameOut = renderAtRuleHeaderNodeSyntax(name as Node, options, true);
     const preludeTrivia = createTriviaMap();
     const preludePrintOptions: FinalPrintOptions = options.context && prelude
       ? {
@@ -1346,7 +1358,8 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
           trivia: preludeTrivia
         };
     const preludeOut = prelude
-      ? renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, true)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- prelude is Node here (string case handled above)
+      ? renderAtRuleHeaderNodeSyntax(prelude as Node, preludePrintOptions, true)
       : undefined;
     return buildComparableAtRuleHeader(nameOut, preludeOut);
   }
@@ -1392,12 +1405,18 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       w.add(idt);
     }
 
-    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
-    w.add(nameOut, name);
+    // When we reach here, name is Any|Interpolated (string+no-override case handled above).
+    // Prelude is Node|undefined (string case handled in the early return block).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch
+    const nameNode = name as Node;
+    const nameOut = renderAtRuleHeaderNodeSyntax(nameNode, options, withoutComments);
+    w.add(nameOut, nameNode);
     if (prelude) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- prelude is Node here
+      const preludeNode = prelude as Node;
       const preludeTrivia = withoutComments
         ? createTriviaMap()
-        : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
+        : options.trivia ?? preludeNode.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
             ...options,
@@ -1406,7 +1425,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
+      const preludeOut = renderAtRuleHeaderNodeSyntax(preludeNode, preludePrintOptions, withoutComments);
       if (hasNonAtRuleWhitespace(preludeOut)) {
         const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
         const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
@@ -1416,7 +1435,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         } else if (!nameEndsWithSpace) {
           w.add(' ');
         }
-        w.add(finalPreludeOut, prelude);
+        w.add(finalPreludeOut, preludeNode);
       }
     }
 
@@ -1466,11 +1485,17 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
     }
 
-    const nameOut = renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
+    // When we reach here, name is Any|Interpolated (string+no-override case handled above).
+    // Prelude is Node|undefined (string case handled in the early return block).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch
+    const nameNode = name as Node;
+    const nameOut = renderAtRuleHeaderNodeSyntax(nameNode, options, withoutComments);
     if (prelude) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- prelude is Node here
+      const preludeNode = prelude as Node;
       const preludeTrivia = withoutComments
         ? createTriviaMap()
-        : options.trivia ?? prelude.sourceRoot?._treeContext?.opts?.trivia;
+        : options.trivia ?? preludeNode.sourceRoot?._treeContext?.opts?.trivia;
       const preludePrintOptions: FinalPrintOptions = options.context && preludeTrivia
         ? {
             ...options,
@@ -1479,7 +1504,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = renderAtRuleHeaderNodeSyntax(prelude, preludePrintOptions, withoutComments);
+      const preludeOut = renderAtRuleHeaderNodeSyntax(preludeNode, preludePrintOptions, withoutComments);
       if (!hasNonAtRuleWhitespace(preludeOut)) {
         out += nameOut;
         if (rules) {
@@ -1493,7 +1518,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
       const interstitialTrivia = withoutComments
         ? ''
-        : renderAtRuleBetweenNameAndPreludeTrivia(name, prelude, options);
+        : renderAtRuleBetweenNameAndPreludeTrivia(nameNode, preludeNode, options);
 
       out += nameOut;
       if (interstitialTrivia) {
@@ -1512,7 +1537,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       out += finalPreludeOut;
       const preludePost = withoutComments
         ? ''
-        : renderAtRulePostPreludeTrivia(prelude, options);
+        : renderAtRulePostPreludeTrivia(preludeNode, options);
       out += preludePost;
       if (rules) {
         const preludeEndsWithSpace = preludePost
@@ -1536,7 +1561,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return out;
   }
 
-  override evalNode(context: Context): MaybePromise<AtRule | Nil> {
+  override evalNode(context: Context): MaybePromise<Rules> {
     let hasRulesetFrame = false;
     for (let i = 0; i < context.frames.length; i++) {
       if (isNode(context.frames[i], N.Ruleset)) {
@@ -1559,14 +1584,16 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const out = this.evalBodyNode(context, record);
     if (isThenable(out)) {
       return (out as Promise<AtRule | Nil>).then((value) => {
-        return value instanceof AtRule
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Nil is a valid node result; declared return type is Rules for base compat
+        return (value instanceof AtRule
           ? createAtRuleEvalResultNode(this, record)
-          : value;
+          : value) as Rules;
       });
     }
-    return out instanceof AtRule
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Nil is a valid node result; declared return type is Rules for base compat
+    return (out instanceof AtRule
       ? createAtRuleEvalResultNode(this, record)
-      : out;
+      : out) as Rules;
   }
 
   private evalBodyNode(

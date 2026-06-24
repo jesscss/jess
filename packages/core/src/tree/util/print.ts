@@ -49,6 +49,15 @@ export type PrintOptions = {
   emittedTrivia?: Set<IToken[]>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+  /** Output syntax target, e.g. 'jess' for Jess canonical output. */
+  syntax?: string;
+  /** Jess conversion options for rewriting import paths during serialization. */
+  conversion?: {
+    mapPath?: (sourcePath: string) => string;
+    outputDir?: string;
+    sourceRoot?: string;
+    fromFilePath?: string;
+  };
 };
 
 export type FinalPrintOptions = PrintOptions & {

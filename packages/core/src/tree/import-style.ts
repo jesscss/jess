@@ -1,6 +1,6 @@
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -108,8 +108,10 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
     return;
   }
   if (value instanceof Node) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const childKeys = (value.constructor as typeof Node).childKeys;
     if (childKeys) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const fields = value as unknown as Record<string, unknown>;
       for (let i = 0; i < childKeys.length; i++) {
         visitDescendantRulesets(fields[childKeys[i]!], cb);
@@ -352,6 +354,7 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
 type ImportPlacementValuePath = readonly (string | number)[];
 
 function nodeChildKeys(node: Node): readonly string[] | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const childKeys = (node.constructor as typeof Node).childKeys;
   return childKeys === null ? undefined : childKeys;
 }
@@ -373,6 +376,7 @@ function findImportPlacementValuePath(
     if (childKeys) {
       for (const key of childKeys) {
         path.push(key);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const found = findImportPlacementValuePath((value as unknown as Record<string, unknown>)[key], target, path);
         path.pop();
         if (found) {
@@ -381,7 +385,8 @@ function findImportPlacementValuePath(
       }
       return undefined;
     }
-    return findImportPlacementValuePath(value.value, target, path);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node subclasses use legacy .value when childKeys is undefined
+    return findImportPlacementValuePath((value as unknown as { value: unknown }).value, target, path);
   }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
@@ -412,10 +417,12 @@ function readImportPlacementValuePath(value: unknown, path: ImportPlacementValue
   for (const segment of path) {
     if (cursor instanceof Node) {
       if (typeof segment === 'string') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         cursor = (cursor as unknown as Record<string, unknown>)[segment];
         continue;
       }
-      cursor = cursor.value;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node subclasses use legacy .value when childKeys is undefined
+      cursor = (cursor as unknown as { value: unknown }).value;
     }
     if (Array.isArray(cursor)) {
       if (typeof segment !== 'number') {
@@ -543,7 +550,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   readonly path: StyleImportValue['path'];
   readonly with: StyleImportValue['with'] | undefined;
-  readonly withNode: StyleImportValue['with']['node'] | undefined;
+  readonly withNode: NonNullable<StyleImportValue['with']>['node'] | undefined;
 
   private getImportAnchorRules(context: Context): Rules {
     return isNode(context.rulesContext, N.Rules)
@@ -600,7 +607,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         source
       }
     });
-    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- getInlineSourceLocation always returns a full 6-element tuple, never []
+    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source) as LocationInfo);
     new Rules([node], undefined, undefined, treeContext);
     return node;
   }
@@ -641,7 +649,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const wrappedAtRule = new AtRule({
       name: new Any(name, { role: 'atkeyword' }),
       prelude,
-      rules
+      rules: rules.rules
     });
     return this.deriveRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
   }
@@ -789,7 +797,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         continue;
       }
       liveSlots.set(name, {
-        value: node.value,
+        value: node.value instanceof Node ? node.value : undefined,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
@@ -842,7 +850,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
   }
 
-  private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
+  private createCssImportAtRule(pathNode: Quoted | Url): AtRuleStatement {
     const preludeNodes: Node[] = [pathNode];
     const postludeNodes = this.getPostludeNodes(this.options.importOptions?.postlude);
     for (let i = 0; i < postludeNodes.length; i++) {
@@ -985,14 +993,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       evaluatedRules.options.importBoundary === true
       || (isNode(evaluatedRules.sourceNode, N.Rules) && evaluatedRules.sourceNode.options.importBoundary === true)
     );
-    out.options = {
+    // Rules interface declares get options() without a setter, but Node base provides one; bypass via Reflect.set
+    Reflect.set(out, 'options', {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
       importBoundary: hasImportBoundary,
       referenceMode: isReferenceMode,
       readonly
-    };
+    });
     importPlacementOptionsStates.set(out, {
       referenceMode: isReferenceMode,
       rulesVisibility: out.options.rulesVisibility
