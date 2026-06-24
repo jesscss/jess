@@ -1,4 +1,3 @@
-import type { IToken } from 'chevrotain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
 import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
@@ -13,7 +12,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { defineFunction } from '../../define-function.js';
@@ -53,16 +52,8 @@ class WholeBufferCountingWriter extends OutputWriter {
   }
 }
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class AsyncAny extends Any<string> {
   constructor(value: string) {
@@ -455,7 +446,7 @@ describe('Call', () => {
       name: 'linear-gradient',
       args: new List([first, second])
     });
-    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
       after: new Map([[first.location[3], tokens]])
@@ -472,7 +463,7 @@ describe('Call', () => {
       name: 'linear-gradient',
       args: new List([first, second])
     });
-    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
       after: new Map([[first.location[3], tokens]])
@@ -1490,7 +1481,7 @@ describe('Call', () => {
   it('preserves source trivia in optional fallback call arguments', async () => {
     const first = new Color({ node: '#333' }, undefined, [20, 1, 21, 23, 1, 24]);
     const second = new Color({ node: '#111' }, undefined, [40, 1, 41, 43, 1, 44]);
-    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
       after: new Map([[first.location[3], tokens]])

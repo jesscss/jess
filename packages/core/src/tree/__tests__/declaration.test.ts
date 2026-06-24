@@ -1,9 +1,8 @@
-import type { IToken } from 'chevrotain';
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { Nil } from '../nil.js';
@@ -32,16 +31,8 @@ class CountingWriter extends OutputWriter {
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS', startOffset = 0): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset,
-  endOffset: startOffset + image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('Declaration', () => {
   beforeEach(() => {
@@ -724,7 +715,7 @@ describe('Declaration', () => {
     const value = new Sequence([interpolatedValue]);
     value._location = interpolatedValue.location;
     const trivia = createTriviaMap({
-      before: new Map([[interpolatedValue.location[0], [token(' ', 'WS', 49)]]])
+      before: new Map([[interpolatedValue.location[0], run(' ')]])
     }) satisfies TriviaMap;
     context = new Context({ trivia });
     const node = rules([
@@ -928,10 +919,10 @@ describe('Declaration', () => {
     value._location = [7, 1, 8, 9, 1, 10];
     const node = decl({ name: any('b'), value });
     node._location = [4, 1, 5, 25, 1, 26];
-    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const shared = run(' /* comment */');
     const trivia = createTriviaMap({
-      before: new Map([[23, tokens]]),
-      after: new Map([[value.location[3], tokens]])
+      before: new Map([[23, shared]]),
+      after: new Map([[value.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
@@ -943,10 +934,10 @@ describe('Declaration', () => {
     const name = any('color', { role: 'property' });
     name._location = [4, 1, 5, 8, 1, 9];
     const node = decl({ name, value: any('grey') });
-    const tokens = [token('/* survive */', 'BlockComment'), token(' '), token('/* me too */', 'BlockComment')];
+    const shared = run('/* survive */ /* me too */');
     const trivia = createTriviaMap({
-      before: new Map([[35, tokens]]),
-      after: new Map([[name.location[3], tokens]])
+      before: new Map([[35, shared]]),
+      after: new Map([[name.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
@@ -1654,7 +1645,7 @@ describe('Declaration', () => {
     const node = decl({ name, value });
     node._location = [0, 1, 1, 12, 2, 6];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token('\n', 'WS', 6)]]])
+      before: new Map([[value.location[0], run('\n')]])
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('color: white');

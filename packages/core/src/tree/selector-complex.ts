@@ -185,7 +185,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             // String descendant combinator: the captured trivia already carries
             // the exact whitespace/comments; emit it verbatim, or a single space
             // when no trivia was recorded.
-            if (tokens?.length) {
+            if (tokens) {
               emitTriviaTokens(tokens, options);
             } else {
               w.add(' ', this);
@@ -193,8 +193,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           } else {
             const coStart = component.location[0];
             const spaceBeforeTrivia = coStart !== undefined
-              && tokens?.[0]?.startOffset !== undefined
-              && coStart < tokens[0]!.startOffset!;
+              && tokens?.start !== undefined
+              && coStart < tokens.start;
             if (spaceBeforeTrivia) {
               w.add(' ', component);
             }

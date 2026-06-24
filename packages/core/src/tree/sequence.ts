@@ -44,8 +44,8 @@ function isIdentifierChar(value: string | undefined): boolean {
   return Boolean(value && /[A-Za-z_-]/u.test(value));
 }
 
-function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
-  return Boolean(tokens?.some(token => token.tokenType.name !== 'WS'));
+function hasNonWhitespaceTrivia(run: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
+  return Boolean(run?.hasComment);
 }
 
 function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {

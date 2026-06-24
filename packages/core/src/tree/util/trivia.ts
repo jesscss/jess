@@ -1,25 +1,23 @@
-import type { IToken } from 'chevrotain';
 import type { FinalPrintOptions, PrintOptions } from './print.js';
-import type { TriviaLookup, TriviaMap } from '../../types/index.js';
+import type { TriviaLookup, TriviaMap, Trivia } from '../../types/index.js';
 import type { Node } from '../node.js';
 
 type TriviaEmitOptions = Pick<PrintOptions, 'context' | 'emittedTrivia' | 'writer'>;
 
+/**
+ * Build a TriviaMap from per-offset run indexes. A run is identified by its
+ * source range (`{ start, end, src }`) — its text is sliced on demand at print
+ * time, so no per-token objects are allocated. The same run object is shared by
+ * its `before` (runEnd) and `after` (runStart) keys, which is what
+ * `emittedTrivia` (a `Set<Trivia>`) dedupes on.
+ */
 export function createTriviaMap(indexes?: {
-  before?: Map<number, IToken[]>;
-  after?: Map<number, IToken[]>;
+  before?: Map<number, Trivia>;
+  after?: Map<number, Trivia>;
 }): TriviaMap {
-  const before = indexes?.before ?? new Map<number, IToken[]>();
-  const after = indexes?.after ?? new Map<number, IToken[]>();
-  const runs = new Set<IToken[]>();
-  for (const tokens of before.values()) {
-    runs.add(tokens);
-  }
-  for (const tokens of after.values()) {
-    runs.add(tokens);
-  }
+  const before = indexes?.before ?? new Map<number, Trivia>();
+  const after = indexes?.after ?? new Map<number, Trivia>();
   return {
-    runs,
     lookup(offset, direction) {
       if (offset === undefined) {
         return undefined;
@@ -44,11 +42,28 @@ export function createTriviaMap(indexes?: {
   };
 }
 
+/**
+ * Construct a single trivia run over [start, end) of `src`. `hasComment` is
+ * derived once here (a charCode scan, no slice) so the serialization path never
+ * re-scans the text. Trivia is only whitespace + comments, so any non-whitespace
+ * char in the range means the run carries a comment.
+ */
+export function makeTrivia(src: string, start: number, end: number): Trivia {
+  let hasComment = false;
+  for (let i = start; i < end; i++) {
+    const c = src.charCodeAt(i);
+    // space \t \n \r \f  → whitespace; anything else starts a comment
+    if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
+      hasComment = true;
+      break;
+    }
+  }
+  return { start, end, src, hasComment };
+}
+
 function isTriviaMap(value: unknown): value is TriviaMap {
   return typeof value === 'object'
     && value !== null
-    && 'runs' in value
-    && value.runs instanceof Set
     && 'lookup' in value
     && typeof value.lookup === 'function'
     && 'entries' in value
@@ -62,52 +77,48 @@ function treeTrivia(node: Node): TriviaMap | undefined {
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 
-export function isLineCommentTriviaToken(token: IToken): boolean {
-  return token.tokenType.name === 'LineComment';
-}
-
-export function isBlockCommentTriviaToken(token: IToken): boolean {
-  return token.tokenType.name === 'Comment' || token.tokenType.name === 'BlockComment';
-}
-
 /**
- * Trivia is file-context owned whitespace/comments between source offsets.
- * A serializer may look up the continuous run before or after a given offset,
- * but the run is consumed once for the active print state regardless of which
- * side found it first.
+ * The printable text of a run: its raw source slice, with `//` line comments
+ * stripped when emitting in a compressed `context` (they cannot survive there).
+ * Pure — does not consume the run.
  */
-export function getPrintableTriviaTokens(
-  tokens: IToken[] | undefined,
-  options?: Pick<PrintOptions, 'context'>
-): IToken[] | undefined {
-  if (!tokens?.length) {
-    return undefined;
+export function printableTriviaText(run: Trivia | undefined, context?: unknown): string {
+  if (!run) {
+    return '';
   }
-  if (!options?.context) {
-    return tokens;
+  const text = run.src.slice(run.start, run.end);
+  return context && run.hasComment ? text.replace(/\/\/[^\n\r]*/g, '') : text;
+}
+
+/** True if the run contains a block comment (`/* … *\/`), regardless of context. */
+export function triviaHasBlockComment(run: Trivia | undefined): boolean {
+  return Boolean(run && run.src.slice(run.start, run.end).includes('/*'));
+}
+
+/** The leading whitespace prefix of a run (empty when it starts with a comment). */
+function leadingWhitespaceOf(run: Trivia | undefined): string {
+  if (!run) {
+    return '';
   }
-  const printable = tokens.filter(token => !isLineCommentTriviaToken(token));
-  return printable.length > 0 ? printable : undefined;
+  return /^[ \t\n\r\f]+/.exec(run.src.slice(run.start, run.end))?.[0] ?? '';
 }
 
 export function emitTriviaTokens(
-  tokens: IToken[] | undefined,
+  run: Trivia | undefined,
   options: TriviaEmitOptions,
   emitOptions?: { skipLeadingWhitespace?: boolean }
 ): void {
-  let printable = getPrintableTriviaTokens(tokens, options);
-  if (!printable) {
+  let text = printableTriviaText(run, options.context);
+  if (!text) {
     return;
   }
   if (emitOptions?.skipLeadingWhitespace) {
-    printable = printable.filter((token, index) => {
-      return index > 0 || token.tokenType.name !== 'WS';
-    });
+    text = text.replace(/^[ \t\n\r\f]+/, '');
+    if (!text) {
+      return;
+    }
   }
-  const writer = options.writer!;
-  for (const token of printable) {
-    writer.add(token.image);
-  }
+  options.writer!.add(text);
 }
 
 /**
@@ -147,8 +158,8 @@ export function emitCommentTriviaBetweenNodes(
   if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
     return false;
   }
-  const tokens = trivia.lookup(prevEnd, 'after');
-  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+  const run = trivia.lookup(prevEnd, 'after');
+  if (!run?.hasComment) {
     return false;
   }
   const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
@@ -173,8 +184,8 @@ export function emitCommentTriviaBeforeDelimiter(
   if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
     return;
   }
-  const tokens = trivia.lookup(prevEnd, 'after');
-  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+  const run = trivia.lookup(prevEnd, 'after');
+  if (!run?.hasComment) {
     return;
   }
   emitTriviaTokens(consumeTrivia(trivia, prevEnd, 'after', options), options);
@@ -192,16 +203,16 @@ export function emitCommentTriviaAfterNode(
   if (!trivia || offset === undefined) {
     return;
   }
-  const tokens = trivia.lookup(offset, 'after');
-  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+  const run = trivia.lookup(offset, 'after');
+  if (!run?.hasComment) {
     return;
   }
   const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
+  if (emittedTrivia.has(run)) {
     return;
   }
-  emittedTrivia.add(tokens);
-  emitTriviaTokens(tokens, options);
+  emittedTrivia.add(run);
+  emitTriviaTokens(run, options);
 }
 
 export function consumeTrivia(
@@ -209,20 +220,20 @@ export function consumeTrivia(
   offset: number | undefined,
   lookup: TriviaLookup,
   options: TriviaEmitOptions
-): IToken[] | undefined {
+): Trivia | undefined {
   if (offset === undefined) {
     return undefined;
   }
-  const tokens = trivia.lookup(offset, lookup);
-  if (!tokens) {
+  const run = trivia.lookup(offset, lookup);
+  if (!run) {
     return undefined;
   }
   const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
+  if (emittedTrivia.has(run)) {
     return undefined;
   }
-  emittedTrivia.add(tokens);
-  return tokens;
+  emittedTrivia.add(run);
+  return run;
 }
 
 export function consumeTriviaText(
@@ -231,9 +242,7 @@ export function consumeTriviaText(
   lookup: TriviaLookup,
   options: TriviaEmitOptions
 ): string {
-  return getPrintableTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options)
-    ?.map(token => token.image)
-    .join('') ?? '';
+  return printableTriviaText(consumeTrivia(trivia, offset, lookup, options), options.context);
 }
 
 export function consumeTriviaBetween(
@@ -241,23 +250,17 @@ export function consumeTriviaBetween(
   prev: Node,
   next: Node,
   options: TriviaEmitOptions
-): IToken[] | undefined {
+): Trivia | undefined {
   const prevEnd = prev.location[3];
   const nextStart = next.location[0];
   if (!trivia || prevEnd === undefined || nextStart === undefined || prevEnd > nextStart) {
     return undefined;
   }
-  const tokens = trivia.lookup(nextStart, 'before');
-  if (!tokens?.length) {
+  const run = trivia.lookup(nextStart, 'before');
+  if (!run || run.start < prevEnd || run.end > nextStart) {
     return undefined;
   }
-  const isBetween = tokens.every((token) => {
-    return token.startOffset !== undefined
-      && token.endOffset !== undefined
-      && token.startOffset >= prevEnd
-      && token.endOffset <= nextStart;
-  });
-  return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
+  return consumeTrivia(trivia, nextStart, 'before', options);
 }
 
 /**
@@ -269,20 +272,19 @@ export function consumeTriviaBetweenOffsets(
   prevEnd: number | undefined,
   nextStart: number | undefined,
   options: TriviaEmitOptions
-): IToken[] | undefined {
+): Trivia | undefined {
   if (!trivia || prevEnd === undefined || nextStart === undefined
     || prevEnd < 0 || nextStart < 0 || prevEnd > nextStart) {
     return undefined;
   }
-  const tokens = trivia.lookup(nextStart, 'before');
-  if (!tokens?.length) {
+  const run = trivia.lookup(nextStart, 'before');
+  if (!run || run.start < prevEnd || run.end > nextStart) {
     return undefined;
   }
-  const isBetween = tokens.every((token) => {
-    return token.startOffset !== undefined
-      && token.endOffset !== undefined
-      && token.startOffset >= prevEnd
-      && token.endOffset <= nextStart;
-  });
-  return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
+  return consumeTrivia(trivia, nextStart, 'before', options);
+}
+
+/** The leading-whitespace image of a run, or '' — for newline-preservation checks. */
+export function triviaLeadingWhitespace(run: Trivia | undefined): string {
+  return leadingWhitespaceOf(run);
 }

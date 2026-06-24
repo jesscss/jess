@@ -1,21 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -108,16 +99,9 @@ describe('Comment', () => {
     visible._location = [120, 8, 1, 136, 10, 1];
     const trivia = createTriviaMap({
       before: new Map([
-        [hidden.location[0], [
-          token('// source-only', 'LineComment'),
-          token('\n'),
-          token('/*\n\n    Comment\n\n*/', 'Comment'),
-          token('\n\n'),
-          token('/*\n * Keep indent\n */', 'Comment'),
-          token('\n')
-        ]]
+        [hidden.location[0], run('// source-only\n/*\n\n    Comment\n\n*/\n\n/*\n * Keep indent\n */\n')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
 
     expect(rules([hidden, visible]).toString({ context, trivia })).toBe(`/*
@@ -145,12 +129,9 @@ describe('Comment', () => {
     visible.selector._location = visible.location;
     const trivia = createTriviaMap({
       before: new Map([
-        [visible.location[0], [
-          token('/* Colors\n * ------\n */', 'Comment'),
-          token('\n')
-        ]]
+        [visible.location[0], run('/* Colors\n * ------\n */\n')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
 
     expect(rules([visible]).toString({ context, trivia })).toBe(`/* Colors
@@ -172,11 +153,7 @@ describe('Comment', () => {
       rules: [hidden, visible]
     });
     container._location = [90, 1, 1, 160, 5, 1];
-    const hiddenPost = [
-      token(' '),
-      token('/* results in void */', 'Comment'),
-      token('\n\n  ')
-    ];
+    const hiddenPost = run(' /* results in void */\n\n  ');
     const trivia = createTriviaMap({
       before: new Map([
         [visible.location[0], hiddenPost]
@@ -204,11 +181,9 @@ describe('Comment', () => {
     });
     const trivia = createTriviaMap({
       before: new Map([
-        [empty.location[0], [
-          token('/**/', 'Comment')
-        ]]
+        [empty.location[0], run('/**/')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
     context.opts.trivia = trivia;
 
@@ -227,11 +202,7 @@ describe('Comment', () => {
       ]
     });
     visible._location = [100, 8, 1, 116, 10, 1];
-    const tokens = [
-      token('\n'),
-      token('/*comment on last line*/', 'Comment'),
-      token('\n')
-    ];
+    const tokens = run('\n/*comment on last line*/\n');
     const trivia = createTriviaMap({
       before: new Map([[Infinity, tokens]]),
       after: new Map([

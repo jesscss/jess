@@ -24,7 +24,8 @@ import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens,
-  getPrintableTriviaTokens
+  printableTriviaText,
+  triviaLeadingWhitespace
 } from './util/trivia.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
@@ -47,9 +48,7 @@ function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia'
     return false;
   }
   return (
-    'runs' in value
-    && value.runs instanceof Set
-    && 'lookup' in value
+    'lookup' in value
     && typeof value.lookup === 'function'
     && 'entries' in value
     && typeof value.entries === 'function'
@@ -91,10 +90,7 @@ function emitCallArgSeparator(
   const leadingTrivia = options.trivia
     ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
     : undefined;
-  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-    ? leadingTrivia[0].image
-    : '';
-  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {
@@ -119,15 +115,13 @@ function emitCommentTriviaBetweenCallArgs(
   if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
     return '';
   }
-  const tokens = trivia.lookup(prevEnd, 'after');
-  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+  const run = trivia.lookup(prevEnd, 'after');
+  if (!run?.hasComment) {
     return '';
   }
   const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
   emitTriviaTokens(consumed, options);
-  return getPrintableTriviaTokens(consumed, options)
-    ?.map(token => token.image)
-    .join('') ?? '';
+  return printableTriviaText(consumed, options.context);
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;

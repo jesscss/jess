@@ -5,7 +5,6 @@ import {
   F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
   keyword, Anonymous
 } from '../index.js';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
   AtRule
@@ -15,7 +14,7 @@ import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import * as path from 'path';
@@ -24,16 +23,8 @@ import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -1744,8 +1735,8 @@ describe('AtRule', () => {
     name._location = [0, 1, 1, 17, 1, 18];
     const prelude = any('hover', { role: 'keyword' });
     prelude._location = [32, 1, 33, 36, 1, 37];
-    const leading = [token(' '), token('/* Safari */', 'BlockComment'), token(' ')];
-    const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
+    const leading = run(' /* Safari */ ');
+    const trailing = run(' /* and Chrome */ ');
     const trivia = createTriviaMap({
       before: new Map([
         [prelude.location[0], leading],

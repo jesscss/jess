@@ -1,8 +1,7 @@
 import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
@@ -55,6 +54,9 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
  *         as distinct tokens. We should get rid of `spaced` and properly
  *         check that the result is spaced correctly.
  */
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
+
 describe('Sequence', () => {
   let context: Context;
 
@@ -717,14 +719,7 @@ describe('Sequence', () => {
   });
 
   it('writes sequence items without public toString transport when trivia is active', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
@@ -803,14 +798,7 @@ describe('Sequence', () => {
   });
 
   it('falls back to sequence spacing when source whitespace was already consumed', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: ' ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run(' ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
@@ -829,14 +817,7 @@ describe('Sequence', () => {
   });
 
   it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
@@ -853,14 +834,7 @@ describe('Sequence', () => {
   });
 
   it('emits source trivia between sequence nodes while rendering through context', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])

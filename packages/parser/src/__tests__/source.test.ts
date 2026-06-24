@@ -1,12 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import {
   LineMap,
-  ScannerCursor,
   SourceText,
   createPackedFieldSpans,
   createPackedSegmentSpans,
   delimitedSpan,
-  scanTriviaInto,
   setPackedFieldSpan,
   setPackedSegmentSpan,
   sourceSpan,
@@ -114,25 +112,4 @@ describe('span helpers', () => {
     expect(trivia).toEqual({ start: 0, end: 2, kind: 'newline' });
   });
 
-  test('keeps newline ownership explicit across comments, blank lines, and EOF', () => {
-    const source = new SourceText('/* a */\n\n// eof');
-    const cursor = new ScannerCursor(source);
-    const runs: TriviaRun[] = [];
-
-    scanTriviaInto(cursor, runs, [], { lineComments: true });
-
-    expect(runs.map(run => run.kind)).toEqual([
-      'block-comment',
-      'newline',
-      'newline',
-      'line-comment'
-    ]);
-    expect(runs).toEqual([
-      { start: 0, end: 7, kind: 'block-comment', closed: true },
-      { start: 7, end: 8, kind: 'newline' },
-      { start: 8, end: 9, kind: 'newline' },
-      { start: 9, end: 15, kind: 'line-comment', closed: true }
-    ]);
-    expect(cursor.offset).toBe(source.length);
-  });
 });

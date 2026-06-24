@@ -1,7 +1,6 @@
-import type { IToken } from 'chevrotain';
 import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -20,16 +19,7 @@ class CountingWriter extends OutputWriter {
   }
 }
 
-const token = (image: string): IToken => ({
-  image,
-  tokenType: { name: 'WS' } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 let context: Context;
 
@@ -165,8 +155,8 @@ describe('Complex selector', () => {
 
     test('does not consume reordered source trivia between generated selector parts', () => {
       const trivia = createTriviaMap({
-        before: new Map([[0, [token('\n')]]]),
-        after: new Map([[26, [token('\n')]]])
+        before: new Map([[0, run('\n')]]),
+        after: new Map([[26, run('\n')]])
       });
       const treeContext = new TreeContext({ trivia });
       const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);

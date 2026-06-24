@@ -1,20 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Any } from '../../../index.js';
 import { Context } from '../../../context.js';
-import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
+import { consumeTrivia, createTriviaMap, emitTriviaTokens, makeTrivia } from '../trivia.js';
+import type { Trivia } from '../../../types/index.js';
 import { OutputWriter, getPrintOptions, prepareRenderPrintState } from '../print.js';
 
-const token = (image: string, name = 'WS'): IToken => ({
-  image,
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length,
-  tokenType: { name } as IToken['tokenType']
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
+const triviaText = (t: Trivia | undefined) => t ? t.src.slice(t.start, t.end) : undefined;
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -82,8 +75,8 @@ describe('TriviaMap serialization', () => {
   it('serializes trivia looked up before a node offset', () => {
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
     const trivia = createTriviaMap({
-      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[10, run('\n  /* keep */')]]),
+      after: new Map()
     });
 
     expect(node.toString({ trivia })).toBe('\n  /* keep */test');
@@ -93,8 +86,8 @@ describe('TriviaMap serialization', () => {
     const writer = new CountingWriter();
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
     const trivia = createTriviaMap({
-      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[10, run('\n  /* keep */')]]),
+      after: new Map()
     });
 
     expect(node.toString({ trivia, writer })).toBe('\n  /* keep */test');
@@ -105,8 +98,8 @@ describe('TriviaMap serialization', () => {
   it('does not serialize trailing trivia from generic node output', () => {
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
     const trivia = createTriviaMap({
-      before: new Map<number, IToken[]>(),
-      after: new Map([[13, [token('\n  ')]]])
+      before: new Map(),
+      after: new Map([[13, run('\n  ')]])
     });
 
     expect(node.toString({ trivia })).toBe('test');
@@ -115,9 +108,9 @@ describe('TriviaMap serialization', () => {
   it('consumes a shared trailing lookup once when a parent boundary emits it', () => {
     const writer = new OutputWriter();
     const options = getPrintOptions({ writer });
-    const tokens = [token(' '), token('/* keep me */', 'BlockComment')];
+    const tokens = run(' /* keep me */');
     const trivia = createTriviaMap({
-      before: new Map<number, IToken[]>(),
+      before: new Map(),
       after: new Map([[13, tokens]])
     });
 
@@ -125,6 +118,6 @@ describe('TriviaMap serialization', () => {
     emitTriviaTokens(consumeTrivia(trivia, 13, 'after', options), options);
 
     expect(writer.toString()).toBe(' /* keep me */');
-    expect(tokens.map(item => item.image)).toEqual([' ', '/* keep me */']);
+    expect(triviaText(tokens)).toBe(' /* keep me */');
   });
 });

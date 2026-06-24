@@ -1,28 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../../context.js';
 import { OutputWriter, getPrintOptions } from '../print.js';
-import { consumeTrivia, consumeTriviaText, createTriviaMap, emitTriviaTokens } from '../trivia.js';
+import { consumeTrivia, consumeTriviaText, createTriviaMap, emitTriviaTokens, makeTrivia } from '../trivia.js';
 
-const token = (image: string): IToken => ({
-  image,
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length,
-  tokenType: { name: image.startsWith('//') ? 'LineComment' : 'BlockComment' } as IToken['tokenType']
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('render trivia consumption', () => {
-  it('consumes a trivia token run once per print state even with a render context', () => {
+  it('consumes a trivia run once per print state even with a render context', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
-    const tokens = [token('/* once */')];
     const trivia = createTriviaMap({
-      before: new Map([[10, tokens]]),
+      before: new Map([[10, run('/* once */')]]),
       after: new Map()
     });
 
@@ -36,10 +26,11 @@ describe('render trivia consumption', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
-    const tokens = [token('/* before */')];
+    // The SAME run object indexed from both sides — emitted once by identity.
+    const shared = run('/* before */');
     const trivia = createTriviaMap({
-      before: new Map([[10, tokens]]),
-      after: new Map([[5, tokens]])
+      before: new Map([[10, shared]]),
+      after: new Map([[5, shared]])
     });
 
     emitTriviaTokens(consumeTrivia(trivia, 5, 'after', options), options);
@@ -52,9 +43,8 @@ describe('render trivia consumption', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
-    const tokens = [token('/* once */')];
     const trivia = createTriviaMap({
-      before: new Map([[10, tokens]]),
+      before: new Map([[10, run('/* once */')]]),
       after: new Map()
     });
 

@@ -1,6 +1,5 @@
 import type { Context } from '../../context.js';
-import type { IToken } from 'chevrotain';
-import type { TriviaMap } from '../../types/index.js';
+import type { TriviaMap, Trivia } from '../../types/index.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
@@ -46,7 +45,7 @@ export type PrintOptions = {
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
-  emittedTrivia?: Set<IToken[]>;
+  emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
 };
@@ -82,15 +81,13 @@ function isTriviaMap(value: unknown): value is TriviaMap {
     return false;
   }
   if (
-    !('runs' in value)
-    || !('lookup' in value)
+    !('lookup' in value)
     || !('entries' in value)
     || !('has' in value)
   ) {
     return false;
   }
-  return value.runs instanceof Set
-    && typeof value.lookup === 'function'
+  return typeof value.lookup === 'function'
     && typeof value.entries === 'function'
     && typeof value.has === 'function';
 }

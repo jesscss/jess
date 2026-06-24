@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list, Quoted } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
-import type { IToken } from 'chevrotain';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -141,12 +140,8 @@ describe('quoted', () => {
   });
 
   it('does not emit source trivia from resolved quoted value children', () => {
-    const whitespace: IToken[] = [{
-      image: ' ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
-    }];
     const trivia = createTriviaMap({
-      before: new Map([[10, whitespace]]),
+      before: new Map([[10, makeTrivia(' ', 0, 1)]]),
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });

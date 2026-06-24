@@ -2,7 +2,6 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, Node } from '../node.js';
-import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
@@ -18,7 +17,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
-import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
+import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
@@ -56,9 +55,8 @@ export function hasPrintableTriviaAt(
   if (!trivia) {
     return false;
   }
-  const tokens = trivia.lookup(boundaryOffset(node, side), side);
-  const printable = getPrintableTriviaTokens(tokens, options);
-  return Boolean(printable?.some(token => token.image.trim() !== ''));
+  const run = trivia.lookup(boundaryOffset(node, side), side);
+  return printableTriviaText(run, options?.context).trim() !== '';
 }
 
 function hasPrintableTrivia(
@@ -129,11 +127,7 @@ type RenderRuleEntry = {
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
   const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
-  const tokens = getPrintableTriviaTokens(trivia?.lookup(node.location[0], 'before'), options);
-  if (!tokens) {
-    return false;
-  }
-  return tokens.some(isBlockCommentTriviaToken);
+  return triviaHasBlockComment(trivia?.lookup(node.location[0], 'before'));
 }
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {

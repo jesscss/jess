@@ -4,21 +4,12 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { IToken } from 'chevrotain';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length,
-  tokenType: { name: tokenTypeName } as IToken['tokenType']
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -133,7 +124,7 @@ describe('CSS Nesting Collapse', () => {
   });
 
   it('does not coalesce adjacent identical headers across printable trivia', async () => {
-    const boundaryTrivia = [token('\n'), token('/* keep */', 'BlockComment'), token('\n')];
+    const boundaryTrivia = run('\n/* keep */\n');
     const first = ruleset({
       selector: sel([el('.same')]),
       rules: [
@@ -551,7 +542,7 @@ describe('CSS Nesting Collapse', () => {
       referenceMode: true
     }, [10, 1, 11, 20, 1, 21]);
     const trivia = createTriviaMap({
-      before: new Map([[10, [token('/* keep */', 'BlockComment')]]])
+      before: new Map([[10, run('/* keep */')]])
     });
     const node = rules([
       ruleset({

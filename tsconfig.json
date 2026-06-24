@@ -3,7 +3,7 @@
     "allowJs": true,
     "declaration": true,
     "esModuleInterop": true,
-    "module": "ES2020",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": ["esnext"],

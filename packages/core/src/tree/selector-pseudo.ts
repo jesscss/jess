@@ -127,11 +127,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         for (let i = 0; i < arg.length; i++) {
           const part = arg[i];
           if (part === ' ') {
-            const tokens = (options.trivia && spans)
+            const run = (options.trivia && spans)
               ? consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options)
               : undefined;
-            if (tokens?.length) {
-              emitTriviaTokens(tokens, options);
+            if (run) {
+              emitTriviaTokens(run, options);
             } else {
               w.add(' ', this);
             }

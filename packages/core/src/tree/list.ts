@@ -6,7 +6,8 @@ import { type Operator } from './util/calculate.js';
 import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,
-  emitTriviaTokens
+  emitTriviaTokens,
+  triviaLeadingWhitespace
 } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -123,10 +124,7 @@ export function renderListValueSyntax<T extends Node>(
     const leadingTrivia = printOptions.trivia
       ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
       : undefined;
-    const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-      ? leadingTrivia[0].image
-      : '';
-    const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+    const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
     if (sep === '/') {
       w.add(preserveLeadingWhitespace ? ' /' : ' / ');
     } else {
@@ -154,10 +152,7 @@ function emitListSeparator(
   const leadingTrivia = options.trivia
     ? consumeTrivia(options.trivia, item.location[0], 'before', options)
     : undefined;
-  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-    ? leadingTrivia[0].image
-    : '';
-  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {

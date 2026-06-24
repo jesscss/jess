@@ -1,22 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -379,8 +370,7 @@ describe('Paren', () => {
     const value = any('foo');
     value._location = [4, 1, 5, 6, 1, 7];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token(' '), token('/*x*/', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[value.location[0], run(' /*x*/')]])
     }) satisfies TriviaMap;
 
     expect(paren(value).toTrimmedString({ trivia, writer })).toBe('(/*x*/foo)');

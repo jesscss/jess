@@ -1,25 +1,16 @@
-import type { IToken } from 'chevrotain';
 import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
@@ -87,10 +78,10 @@ describe('List', () => {
   it('emits trivia before parser-owned list separators', () => {
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
-    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const shared = run(' /* comment */');
     const trivia = createTriviaMap({
-      before: new Map([[21, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      before: new Map([[21, shared]]),
+      after: new Map([[first.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
@@ -100,10 +91,10 @@ describe('List', () => {
     const writer = new CountingWriter();
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
-    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const shared = run(' /* comment */');
     const trivia = createTriviaMap({
-      before: new Map([[21, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      before: new Map([[21, shared]]),
+      after: new Map([[first.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
@@ -114,8 +105,7 @@ describe('List', () => {
     const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
     const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
     const trivia = createTriviaMap({
-      before: new Map([[5, [token(' ')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[5, run(' ')]])
     }) satisfies TriviaMap;
 
     expect(list([first, second], { sep: '/' }).toString({ trivia })).toBe('10px / 2');
@@ -128,10 +118,9 @@ describe('List', () => {
     const third = new Any('wall', undefined, [30, 3, 14, 33, 3, 18]);
     const trivia = createTriviaMap({
       before: new Map([
-        [second.location[0], [token('\n            ')]],
-        [third.location[0], [token('\n            ')]]
-      ]),
-      after: new Map<number, IToken[]>()
+        [second.location[0], run('\n            ')],
+        [third.location[0], run('\n            ')]
+      ])
     }) satisfies TriviaMap;
 
     expect(list([first, second, third]).toString({ trivia, writer })).toBe(

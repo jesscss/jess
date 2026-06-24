@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass, Url } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -25,16 +24,8 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
   context.rulesContext = evald;
 }
 
-const token = (image: string): IToken => ({
-  image,
-  tokenType: { name: 'WS' } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('url', () => {
   let context: Context;
@@ -134,8 +125,8 @@ describe('url', () => {
 
   it('does not render pure source whitespace inside url syntax', () => {
     const trivia = createTriviaMap({
-      before: new Map([[4, [token(' ')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[4, run(' ')]]),
+      after: new Map()
     });
     const treeContext = new TreeContext({ trivia });
     const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
