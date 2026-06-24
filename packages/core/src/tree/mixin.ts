@@ -97,10 +97,14 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     ) {
       options = { ...options, hasDefault: true };
     }
-    if (!Array.isArray(value.rules)) {
+    // Accept either a bare Node array or a Rules container node (unwrapped to
+    // its child array) — factories like `mixin({ rules: rules([...]) })` pass the
+    // latter, while the parser passes the array directly.
+    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
+    if (!Array.isArray(rulesValue)) {
       throw new TypeError('Mixin requires rules to be a Node array.');
     }
-    super(value.rules, options, location, treeContext);
+    super(rulesValue, options, location, treeContext);
     this.name = value.name;
     this.params = value.params;
     this.guard = value.guard;

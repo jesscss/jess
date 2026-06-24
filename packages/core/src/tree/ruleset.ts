@@ -501,10 +501,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     ) {
       options = { ...options, hasDefault: true };
     }
-    if (!Array.isArray(value.rules)) {
+    // Accept either a bare Node array or a Rules container node (unwrapped to
+    // its child array) — factories like `ruleset({ rules: rules([...]) })` pass
+    // the latter, while the parser passes the array directly.
+    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
+    if (!Array.isArray(rulesValue)) {
       throw new TypeError('Ruleset requires rules to be a Node array.');
     }
-    super(value.rules, options, location, treeContext);
+    super(rulesValue, options, location, treeContext);
     if (typeof value.selector === 'string') {
       const selectorText = value.selector.trim();
       if (

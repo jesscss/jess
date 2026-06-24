@@ -603,10 +603,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   declare readonly rules: Node[];
 
   constructor(value: AtRuleValue | AtRuleParts, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    if (!Array.isArray(value.rules)) {
+    // Accept either a bare Node array or a Rules container node (unwrapped to its
+    // child array) — factories pass a Rules node; the parser passes the array.
+    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
+    if (!Array.isArray(rulesValue)) {
       throw new TypeError('AtRule requires rules to be a Node array. Use AtRuleStatement for semicolon at-rules.');
     }
-    super(value.rules, options, location, treeContext);
+    super(rulesValue, options, location, treeContext);
     if (typeof value.name === 'string' && !/^@(?:[a-zA-Z]|-[a-zA-Z])[\w-]*$/u.test(value.name)) {
       throw new TypeError('At-rule name is outside the scanner-native at-rule subset.');
     }

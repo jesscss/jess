@@ -54,10 +54,14 @@ function throwInvalidWhileIterationRegistrationPrep(): never {
   throw new TypeError('Expected $while iteration registration prep to return Rules');
 }
 
-function assertRulesBodyArray(owner: string, rules: unknown): asserts rules is Node[] {
-  if (!Array.isArray(rules)) {
+// Accept either a bare Node array or a Rules container node (unwrapped to its
+// child array). Factories pass a Rules node; the parser passes the array.
+function normalizeRulesBody(owner: string, rules: unknown): Node[] {
+  const arr = rules instanceof Rules ? rules.rules : rules;
+  if (!Array.isArray(arr)) {
     throw new TypeError(`${owner} requires rules to be a Node array.`);
   }
+  return arr;
 }
 
 function makeDirectiveRulesPublic(rules: Rules) {
@@ -436,8 +440,7 @@ export class If extends Rules<IfValue> {
   override allowRuleRoot = true;
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('If', value.rules);
-    super(value.rules, options, location, treeContext);
+    super(normalizeRulesBody('If', value.rules), options, location, treeContext);
     this.condition = value.condition;
     this.else = value.else;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -559,9 +562,7 @@ export class For extends Rules<StructuredLoopValue> {
   override allowRuleRoot = true;
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('For', value.rules);
-    // AUDIT: Uh.... why is this passing 5 values?
-    super(value.rules, options, location, treeContext);
+    super(normalizeRulesBody('For', value.rules), options, location, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -729,8 +730,7 @@ export class While extends Rules<WhileValue> {
   override allowRuleRoot = true;
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    assertRulesBodyArray('While', value.rules);
-    super(value.rules, options, location, treeContext);
+    super(normalizeRulesBody('While', value.rules), options, location, treeContext);
     this.condition = value.condition;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
