@@ -52,8 +52,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
-      const r1 = expectRulesetNode(tree.value[0]);
-      const r2 = expectRulesetNode(tree.value[1]);
+      const r1 = expectRulesetNode(tree.rules[0]);
+      const r2 = expectRulesetNode(tree.rules[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -71,8 +71,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
-      const a1 = tree.value[0]!;
-      const a2 = tree.value[1]!;
+      const a1 = tree.rules[0]!;
+      const a2 = tree.rules[1]!;
       expectFlags(a1, false, true); // mayAsync
       expectFlags(a2, true, false); // static
     });
@@ -87,7 +87,7 @@ describe('Flag isolation', () => {
           ]
         })
       ]);
-      const rs = expectRulesetNode(tree.value[0]);
+      const rs = expectRulesetNode(tree.rules[0]);
       const inner = rs.value.rules;
       const d1 = expectDeclarationNode(inner[0]);
       const d2 = expectDeclarationNode(inner[1]);
@@ -105,7 +105,7 @@ describe('Flag isolation', () => {
           ]
         })
       ]);
-      const rs = expectRulesetNode(tree.value[0]);
+      const rs = expectRulesetNode(tree.rules[0]);
       const inner = rs.value.rules;
       const d1 = expectDeclarationNode(inner[0]);
       const d2 = expectDeclarationNode(inner[1]);
@@ -123,7 +123,7 @@ describe('Flag isolation', () => {
           ]
         })
       ]);
-      const rs = expectRulesetNode(tree.value[0]);
+      const rs = expectRulesetNode(tree.rules[0]);
       const inner = rs.value.rules;
       const d1 = expectDeclarationNode(inner[0]);
       const d2 = expectDeclarationNode(inner[1]);
@@ -141,7 +141,7 @@ describe('Flag isolation', () => {
           ]
         })
       ]);
-      const rs = expectRulesetNode(tree.value[0]);
+      const rs = expectRulesetNode(tree.rules[0]);
       const inner = rs.value.rules;
       const d1 = expectDeclarationNode(inner[0]);
       const d2 = expectDeclarationNode(inner[1]);
@@ -159,7 +159,7 @@ describe('Flag isolation', () => {
           ]
         })
       ]);
-      const rs = expectRulesetNode(tree.value[0]);
+      const rs = expectRulesetNode(tree.rules[0]);
       const inner = rs.value.rules;
       const d1 = expectDeclarationNode(inner[0]);
       const d2 = expectDeclarationNode(inner[1]);
@@ -178,8 +178,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = expectRulesetNode(tree.value[0]);
-      const r2 = expectRulesetNode(tree.value[1]);
+      const r1 = expectRulesetNode(tree.rules[0]);
+      const r2 = expectRulesetNode(tree.rules[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -195,8 +195,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = expectRulesetNode(tree.value[0]);
-      const r2 = expectRulesetNode(tree.value[1]);
+      const r1 = expectRulesetNode(tree.rules[0]);
+      const r2 = expectRulesetNode(tree.rules[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -212,8 +212,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'z', value: any('1') })]
         })
       ]);
-      const r1 = expectRulesetNode(tree.value[0]);
-      const r2 = expectRulesetNode(tree.value[1]);
+      const r1 = expectRulesetNode(tree.rules[0]);
+      const r2 = expectRulesetNode(tree.rules[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -229,8 +229,8 @@ describe('Flag isolation', () => {
           rules: [decl({ name: 'y', value: any('1') })]
         })
       ]);
-      const r1 = expectRulesetNode(tree.value[0]);
-      const r2 = expectRulesetNode(tree.value[1]);
+      const r1 = expectRulesetNode(tree.rules[0]);
+      const r2 = expectRulesetNode(tree.rules[1]);
       expectFlags(r1, false, true); // mayAsync
       expectFlags(r2, true, false); // static
     });
@@ -254,7 +254,7 @@ describe('Flag isolation', () => {
         })
       ]);
 
-      const container = expectRulesetNode(tree.value[0]);
+      const container = expectRulesetNode(tree.rules[0]);
       const staticRule = expectRulesetNode(container.value.rules[0]);
       const dynamicRule = expectRulesetNode(container.value.rules[1]);
 
@@ -280,7 +280,7 @@ describe('Flag isolation', () => {
         })
       ]);
 
-      const container = expectRulesetNode(tree.value[0]);
+      const container = expectRulesetNode(tree.rules[0]);
       const staticDecl1 = expectDeclarationNode(container.value.rules[0]);
       const dynamicDecl = expectDeclarationNode(container.value.rules[1]);
       const staticDecl2 = expectDeclarationNode(container.value.rules[2]);
@@ -321,7 +321,7 @@ describe('Flag isolation', () => {
         })
       ]);
 
-      const level1 = expectRulesetNode(tree.value[0]);
+      const level1 = expectRulesetNode(tree.rules[0]);
       const level2 = expectRulesetNode(level1.value.rules[1]);
       const level3 = expectRulesetNode(level2.value.rules[1]);
 

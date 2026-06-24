@@ -40,7 +40,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: red)
@@ -65,7 +65,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: @var)
@@ -89,7 +89,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the operation
@@ -114,7 +114,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the function call
@@ -140,7 +140,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     const declarations = rulesetNode.value.rules.value;
@@ -168,7 +168,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     const declarations = rulesetNode.value.rules.value;
@@ -198,7 +198,7 @@ describe('Static optimization', () => {
     ]);
 
     // Get the first ruleset
-    const rulesetNode = tree.value[0]! as Ruleset;
+    const rulesetNode = tree.rules[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
     // The ruleset should have mayAsync flags due to dynamic content

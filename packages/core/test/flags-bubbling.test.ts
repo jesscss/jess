@@ -39,7 +39,7 @@ describe('Flag bubbling', () => {
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, true, false); // F_STATIC, not F_MAY_ASYNC
     });
 
@@ -54,7 +54,7 @@ describe('Flag bubbling', () => {
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
     });
 
@@ -70,7 +70,7 @@ describe('Flag bubbling', () => {
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC (due to variable)
     });
   });
@@ -86,7 +86,7 @@ describe('Flag bubbling', () => {
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
     });
 
@@ -114,9 +114,9 @@ describe('Flag bubbling', () => {
 
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
     });
 
@@ -130,7 +130,7 @@ describe('Flag bubbling', () => {
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
     });
   });
@@ -160,9 +160,9 @@ describe('Flag bubbling', () => {
 
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
@@ -197,9 +197,9 @@ describe('Flag bubbling', () => {
 
       // All levels should bubble up non-static
       expectFlags(tree, false, false);
-      expectFlags(tree.value[0]! as Ruleset, false, false);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
+      expectFlags(tree.rules[0]! as Ruleset, false, false);
+      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
+      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
       expectFlags(innerRuleset, false, false);
 
       // Get the deepest nodes to verify specific types
@@ -234,9 +234,9 @@ describe('Flag bubbling', () => {
 
       // All levels should bubble up non-static and mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
@@ -274,9 +274,9 @@ describe('Flag bubbling', () => {
 
       // All levels should remain static
       expectFlags(tree, true, false);
-      expectFlags(tree.value[0]! as Ruleset, true, false);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
+      expectFlags(tree.rules[0]! as Ruleset, true, false);
+      expectFlags((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
+      expectFlags(((tree.rules[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
       expectFlags(innerRuleset, true, false);
 
       // Get the deepest nodes to verify specific types
