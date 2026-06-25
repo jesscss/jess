@@ -554,9 +554,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private ownRules(value: RulesetValue['rules']): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyOwnedWithReusableLeaves(value[i]!);
+    const arr = value instanceof Rules ? value.rules : value;
+    const owned = new Array<Node>(arr.length);
+    for (let i = 0; i < arr.length; i++) {
+      const copied = copyOwnedWithReusableLeaves(arr[i]!);
       if (!(copied instanceof Node)) {
         throw new TypeError('Expected ruleset rule copy to remain a node');
       }

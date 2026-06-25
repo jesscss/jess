@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Context } from '../../context.js';
 import {
   any,
@@ -22,6 +23,7 @@ import {
   query,
   quoted,
   rules,
+  Rules,
   Ruleset,
   ruleset,
   sel,
@@ -302,10 +304,12 @@ describe('extend integration (eval -> toString)', () => {
 
   it('materializes async selector-list parent extend records without cloning source-free leaves', async () => {
     const originalAmpersandEval = Ampersand.prototype.eval;
-    Ampersand.prototype.eval = function evalAsync(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (Ampersand.prototype as unknown as { eval: (context: Context) => MaybePromise<Node> }).eval = function evalAsync(
+      this: Node,
       context: Context
-    ) {
-      return Promise.resolve(Node.evalStatic(this, context));
+    ): MaybePromise<Node> {
+      return Promise.resolve(Node.evalStatic(this, context)) as Promise<Node>;
     };
 
     const parentA = el('.parent-a');
@@ -433,30 +437,37 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const evaldRules = evald as unknown as Rules;
     const isDeclarationNamed = (node: unknown, name: string): node is Declaration => (
       node instanceof Declaration
       && (node.name.valueOf?.() ?? node.name) === name
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      && Array.isArray(node.rules.rules)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      && Array.isArray((node.rules as unknown as Rules).rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const outerBb = evald.rules.find(
+    const outerBb = evaldRules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'background'))
-        && node.rules.rules.some(rule => rule instanceof Ruleset)
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    const inner = outerBb?.rules.rules.find(
-      (node): node is Ruleset =>
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const inner = (outerBb?.rules as unknown as Rules)?.rules.find(
+      (node: Node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'color'))
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = inner?.selector.valueOf() ?? '';
+    const innerSelectorStr = inner?.selector?.valueOf() ?? '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');

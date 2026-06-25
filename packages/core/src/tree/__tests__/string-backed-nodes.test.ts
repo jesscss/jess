@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   N,
   Declaration,
+  Node,
   any,
   atrule,
   atrulestatement,
@@ -91,7 +92,8 @@ describe('string-backed scanner-first proof nodes', () => {
 
     void declaration.prepareRegistration(context);
     expect(declaration.value).toBe(segment);
-    expect(declaration.value.parent).toBe(declaration);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((declaration.value as Node).parent).toBe(declaration);
   });
 
   test('materializes mixed declaration segments into a reachable value container', () => {
@@ -253,8 +255,10 @@ describe('string-backed scanner-first proof nodes', () => {
       throw new Error('Expected string selector list materialization to create a SelectorList.');
     }
     expect(selector.parent).toBe(node);
-    expect(selector.value[0]!.parent).toBe(selector);
-    expect(selector.value[1]!.parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[0]! as Node).parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[1]! as Node).parent).toBe(selector);
     if (!isNode(selector.value[1], N.CompoundSelector)) {
       throw new Error('Expected second selector list branch to materialize as a CompoundSelector.');
     }
@@ -289,9 +293,12 @@ describe('string-backed scanner-first proof nodes', () => {
       throw new Error('Expected string complex selector materialization to create a ComplexSelector.');
     }
     expect(selector.parent).toBe(node);
-    expect(selector.value[0]!.parent).toBe(selector);
-    expect(selector.value[1]!.parent).toBe(selector);
-    expect(selector.value[2]!.parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[0]! as Node).parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[1]! as Node).parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[2]! as Node).parent).toBe(selector);
     const types = serializeTypes(node);
     expect(types).toContain('(ComplexSelector');
     expect(types).toContain('(Combinator \'>\')');
@@ -321,8 +328,10 @@ describe('string-backed scanner-first proof nodes', () => {
     if (!selector || !isNode(selector, N.SelectorList)) {
       throw new Error('Expected string selector list materialization to create a SelectorList.');
     }
-    expect(selector.value[0]!.parent).toBe(selector);
-    expect(selector.value[1]!.parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[0]! as Node).parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[1]! as Node).parent).toBe(selector);
     expect(isNode(selector.value[0], N.ComplexSelector)).toBe(true);
     const types = serializeTypes(node);
     expect(types).toContain('(SelectorList');
@@ -355,8 +364,10 @@ describe('string-backed scanner-first proof nodes', () => {
       return;
     }
     expect(selector.parent).toBe(node);
-    expect(selector.value[0]!.parent).toBe(selector);
-    expect(selector.value[1]!.parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[0]! as Node).parent).toBe(selector);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((selector.value[1]! as Node).parent).toBe(selector);
     const types = serializeTypes(node);
     expect(types).toContain('(CompoundSelector');
     expect(types).toContain('(Ampersand');
@@ -564,7 +575,8 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(declaration.name).toBeDefined();
     expect(declaration.value).toBeDefined();
     expect(declaration.name).toBe('color');
-    expect(declaration.value.parent).toBe(declaration);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((declaration.value as Node).parent).toBe(declaration);
     expect(declaration.toTrimmedString()).toBe('color: blue');
     expect(serializeTypes(declaration)).toContain('name: \'color\'');
   });

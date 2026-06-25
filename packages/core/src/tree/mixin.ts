@@ -160,7 +160,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   private withParts(value: MixinValue): Mixin {
     const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
-    const ownedRules = this.ownRules(value.rules);
+    const ownedRules = this.ownRules(Array.isArray(value.rules) ? value.rules : value.rules.rules);
     const derived: MixinValue = {
       rules: ownedRules
     };

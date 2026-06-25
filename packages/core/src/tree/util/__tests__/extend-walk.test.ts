@@ -13,7 +13,7 @@ import {
   walkAndExtend,
   canUseWalkAndConsume,
   wouldExtendChange,
-  classifyExtendTargetPresence
+  classifyExtendMatch
 } from '../extend-walk.js';
 import { extendSelector } from '../extend.js';
 
@@ -74,7 +74,8 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe('.a,.b,.c');
     expect(target.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(target);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((unchanged as Selector).parent).toBe(target);
   });
 
   it('inside CompoundSelector → does NOT extend (full mode rejects component matches)', () => {
@@ -139,7 +140,8 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     expect(arg.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(arg);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((unchanged as Selector).parent).toBe(arg);
   });
 });
 
@@ -430,18 +432,18 @@ describe('wouldExtendChange', () => {
   });
 });
 
-describe('classifyExtendTargetPresence', () => {
+describe('classifyExtendMatch', () => {
   it('reports self-extend target presence without treating it as an output change', () => {
-    expect(classifyExtendTargetPresence(el('.a'), el('.a'), false)).toBe('local');
+    expect(classifyExtendMatch(el('.a'), el('.a'), el('.a'), false)).toBe('local');
     expect(wouldExtendChange(el('.a'), el('.a'), el('.a'), false)).toBe(false);
   });
 
   it('reports selector-list item target presence through the walk path', () => {
-    expect(classifyExtendTargetPresence(sellist([el('.a'), el('.b')]), el('.b'), false)).toBe('local');
+    expect(classifyExtendMatch(sellist([el('.a'), el('.b')]), el('.b'), el('.b'), false)).toBe('local');
   });
 
   it('reports single-component complex target presence through the walk path', () => {
-    expect(classifyExtendTargetPresence(sel([el('.a')]), el('.a'), false)).toBe('local');
+    expect(classifyExtendMatch(sel([el('.a')]), el('.a'), el('.a'), false)).toBe('local');
   });
 });
 

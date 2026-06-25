@@ -29,7 +29,7 @@ describe('Bool', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = bool(true, undefined, undefined, treeContext);
+    const node = new Bool(true, undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });

@@ -6,6 +6,7 @@ import { consumeTrivia, consumeTriviaText, createTriviaMap, emitTriviaTokens } f
 
 const token = (image: string): IToken => ({
   image,
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,

@@ -1,4 +1,4 @@
-import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
+import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist, type Selector } from '../../index.js';
 import { Context } from '../../../context.js';
 import { matchSelectors, selectorCompare } from '../selector-match-core.js';
 
@@ -133,22 +133,26 @@ describe('Fast-reject in selectorMatch', () => {
     });
 
     const find = sel([
-      amp({ selectorContainer: clonedParent.value }),
+      amp({ selectorContainer: clonedParent }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = context.selectorBits;
     for (const child of find.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = context.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
     for (const child of target.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = context.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
 
@@ -156,7 +160,7 @@ describe('Fast-reject in selectorMatch', () => {
     findList.keySetLibrary = context.selectorBits;
 
     expect(find.compare(target, context)).toBe(0);
-    expect(findList.compare(target, context)).toBe(0);
+    expect(findList.compare(target)).toBe(0);
   });
 
   test('evalContext-aware compare does not throw when find and target use different selector-bit libraries', () => {
@@ -174,22 +178,26 @@ describe('Fast-reject in selectorMatch', () => {
     });
 
     const find = sel([
-      amp({ selectorContainer: clonedParent.value }),
+      amp({ selectorContainer: clonedParent }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = contextB.selectorBits;
     for (const child of find.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = contextB.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof contextB.selectorBits }).keySetLibrary = contextB.selectorBits;
       }
     }
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
     for (const child of target.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = contextA.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof contextA.selectorBits }).keySetLibrary = contextA.selectorBits;
       }
     }
 
@@ -342,7 +350,8 @@ describe('Fast-reject in selectorMatch', () => {
     const sourceTarget = el('.b');
     const find = await sourceFind.eval(context);
     const target = await sourceTarget.eval(context);
-    let result = matchSelectors(target, find);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    let result = matchSelectors(target as unknown as Selector, find as unknown as Selector);
     expect(result.hasFullMatch).toBe(true);
   });
 

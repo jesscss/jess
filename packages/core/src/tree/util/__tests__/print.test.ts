@@ -7,6 +7,7 @@ import { OutputWriter, getPrintOptions, prepareRenderPrintState } from '../print
 
 const token = (image: string, name = 'WS'): IToken => ({
   image,
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,

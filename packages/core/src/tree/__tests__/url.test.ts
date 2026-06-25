@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { IToken } from 'chevrotain';
-import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass, Url } from '../index.js';
+import { url, quoted, Quoted, ref, rules, vardecl, any, Any, type AnyRole, Rules as RulesClass, Url } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -28,6 +28,7 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
 const token = (image: string): IToken => ({
   image,
   tokenType: { name: 'WS' } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -64,7 +65,8 @@ describe('url', () => {
     ]);
     await setEvaluatedRoot(context, node);
 
-    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>));
     const resolveUrl = urlNode.resolve.bind(urlNode);
     let urlResolveCalls = 0;
     urlNode.resolve = (renderContext: Context) => {
@@ -89,7 +91,8 @@ describe('url', () => {
     await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
-    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>));
     const resolveUrl = urlNode.resolve.bind(urlNode);
     let urlResolveCalls = 0;
     urlNode.resolve = (renderContext: Context) => {
@@ -124,7 +127,8 @@ describe('url', () => {
       }
     });
     try {
-      const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>));
 
       expect(await urlNode.render(context)).toBe('url("image.png")');
     } finally {
@@ -138,8 +142,8 @@ describe('url', () => {
       after: new Map<number, IToken[]>()
     });
     const treeContext = new TreeContext({ trivia });
-    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
-    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+    const value = new Quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
+    const node = new Url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
 
     expect(node.render(context)).toBe('url("image.png")');
   });
@@ -174,7 +178,8 @@ describe('url', () => {
     ]);
     await setEvaluatedRoot(context, node);
 
-    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>));
     const resolved = await urlNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
@@ -205,7 +210,8 @@ describe('url', () => {
     ]);
     await setEvaluatedRoot(context, node);
 
-    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>));
     const resolved = await urlNode.resolve(context);
 
     expect(resolved.render(context)).toBe('url("image.png")');

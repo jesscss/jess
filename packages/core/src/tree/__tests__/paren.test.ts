@@ -10,6 +10,7 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -379,7 +380,7 @@ describe('Paren', () => {
     const value = any('foo');
     value._location = [4, 1, 5, 6, 1, 7];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token(' '), token('/*x*/', 'BlockComment')]]]),
+      before: new Map([[value.location[0]!, [token(' '), token('/*x*/', 'BlockComment')]]]),
       after: new Map<number, IToken[]>()
     }) satisfies TriviaMap;
 

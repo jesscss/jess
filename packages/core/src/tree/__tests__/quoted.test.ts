@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list, Quoted } from '../index.js';
+import { quoted, ref, rules, vardecl, any, Any, type AnyRole, Rules as RulesClass, Node, color, Color, interpolated, list, Quoted } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
@@ -51,7 +51,8 @@ describe('quoted', () => {
 
     expect(rule.value).toBe(value);
     expect(value.parent).toBe(rule);
-    expect(rule.constructor.childKeys).toEqual(['value']);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((rule.constructor as typeof Quoted).childKeys).toEqual(['value']);
   });
 
   it('does not allocate options when comparing default quoted values', () => {
@@ -72,7 +73,8 @@ describe('quoted', () => {
     ]);
     await setEvaluatedRoot(context, node);
 
-    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }) as unknown as Any<AnyRole>);
     const resolveQuoted = quotedNode.resolve.bind(quotedNode);
     let quotedResolveCalls = 0;
     quotedNode.resolve = (renderContext: Context) => {
@@ -97,7 +99,8 @@ describe('quoted', () => {
     await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
-    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }) as unknown as Any<AnyRole>);
     const resolveQuoted = quotedNode.resolve.bind(quotedNode);
     let quotedResolveCalls = 0;
     quotedNode.resolve = (renderContext: Context) => {
@@ -132,7 +135,8 @@ describe('quoted', () => {
       }
     });
     try {
-      const quotedNode = quoted(ref({ key: 'asset' }, { type: 'variable' }));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const quotedNode = quoted(ref({ key: 'asset' }, { type: 'variable' }) as unknown as Any<AnyRole>);
 
       expect(await quotedNode.render(context)).toBe('"image.png"');
     } finally {
@@ -143,20 +147,23 @@ describe('quoted', () => {
   it('does not emit source trivia from resolved quoted value children', () => {
     const whitespace: IToken[] = [{
       image: ' ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
+      tokenType: { name: 'WS' } as IToken['tokenType'],
+      tokenTypeIdx: 0,
+      startOffset: 0
     }];
     const trivia = createTriviaMap({
       before: new Map([[10, whitespace]]),
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const value = color({
+    const value = new Color({
       node: 'red',
       rgb: [255, 0, 0],
       alpha: 1
     }, undefined, [10, 1, 11, 12, 1, 13], treeContext);
 
-    expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(quoted(value as unknown as Any<AnyRole>).toTrimmedString({ trivia })).toBe('"red"');
   });
 
   it('streams node values without capture scaffolding', () => {
@@ -175,7 +182,8 @@ describe('quoted', () => {
     ]);
     await setEvaluatedRoot(context, node);
 
-    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }) as unknown as Any<AnyRole>);
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('"hello"');
@@ -204,7 +212,8 @@ describe('quoted', () => {
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.render(context)).toBe('"say-one, hello"');
-    expect(sourceValue.parent).toBe(quotedNode);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((sourceValue as Node).parent).toBe(quotedNode);
     expect(quotedNode.toTrimmedString()).toBe('"say-one, $message"');
   });
 });

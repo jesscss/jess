@@ -14,7 +14,7 @@ describe('callable candidate helpers', () => {
     const sharedCallable = callableRulesEntry({ rules: sharedRules });
     const defaultCallable = callableRulesEntry({
       guard: condition([defaultguard()]),
-      rules: []
+      rules: rules([])
     });
 
     const prepared = prepareCallableEvalCandidates({

@@ -1,15 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { any, call, condition, defaultguard, el, list, ref, rules, ruleset, vardecl } from '../../index.js';
 import { Nil } from '../../nil.js';
-import { N } from '../../node-type.js';
 import {
-  callableRulesEntry,
-  getCallableEntryParams,
-  type CallableEntry,
-  type MixinEntry
+  callableRulesEntry
 } from '../callable-entry.js';
 import { prepareCallableCandidateMatches, resolveCallableCandidateMatches } from '../callable-candidate-match.js';
-import { isNode } from '../is-node.js';
 
 describe('callable candidate match helper', () => {
   it('skips zero-param candidates when call args are present and keeps matched callable bindings', () => {
@@ -20,16 +15,14 @@ describe('callable candidate match helper', () => {
     const callable = callableRulesEntry({
       name: '.tone',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: []
+      rules: rules([])
     });
 
     const prepared = prepareCallableCandidateMatches({
       mixinEntries: [zeroArgRuleset, callable],
       nodeArgs: [any('blue')],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     });
 
     expect(prepared.evalCandidates).toEqual([callable]);
@@ -41,22 +34,20 @@ describe('callable candidate match helper', () => {
     const plainCallable = callableRulesEntry({
       name: '.plain',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: []
+      rules: rules([])
     });
     const defaultCallable = callableRulesEntry({
       name: '.default',
       guard: condition([defaultguard()]),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: []
+      rules: rules([])
     });
 
     const prepared = prepareCallableCandidateMatches({
       mixinEntries: [defaultCallable, plainCallable],
       nodeArgs: [any('blue')],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     });
 
     expect(prepared.hasDefault).toBe(true);
@@ -79,9 +70,7 @@ describe('callable candidate match helper', () => {
       nodeArgs: [],
       hasFileContext: false,
       rulesEvalStack: [],
-      caller,
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      caller
     });
 
     expect(prepared.evalCandidates).toEqual([]);
@@ -92,16 +81,14 @@ describe('callable candidate match helper', () => {
     const requiredCallable = callableRulesEntry({
       name: '.tone',
       params: list([vardecl({ name: 'tone', value: new Nil() }, { paramVar: true })]),
-      rules: []
+      rules: rules([])
     });
 
     expect(() => resolveCallableCandidateMatches({
       mixinEntries: [requiredCallable],
       nodeArgs: [],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     })).toThrowError(new ReferenceError('No matching mixins found.'));
   });
 });

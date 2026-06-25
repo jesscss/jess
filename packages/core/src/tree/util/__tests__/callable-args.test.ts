@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, list, rest, rules, vardecl } from '../../index.js';
+import type { List } from '../../list.js';
 import { Sequence } from '../../sequence.js';
 import { evaluateCallableArgs } from '../callable-args.js';
 
@@ -57,6 +58,7 @@ describe('callable arg evaluation helper', () => {
     if (evaluated[2]?.type !== 'List') {
       throw new Error('Expected cast list');
     }
-    expect(evaluated[2].value.map(item => item.valueOf())).toEqual(['nested']);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((evaluated[2] as unknown as List<typeof evaluated[0]>).value.map(item => item.valueOf())).toEqual(['nested']);
   });
 });

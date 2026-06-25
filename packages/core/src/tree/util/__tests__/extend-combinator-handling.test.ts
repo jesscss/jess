@@ -1,5 +1,6 @@
 import { extendSelector, tryExtendSelector } from '../extend.js';
 import { el, sel, compound, co, sellist, rules, ruleset, extend, ExtendFlag } from '../../../index.js';
+import type { Ruleset } from '../../../index.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { type Combinator, type Combinators } from '../../combinator.js';
@@ -222,8 +223,10 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ruleset = evald.rules[0];
-      const nestedRuleset = ext8Ruleset?.rules?.rules?.[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const ext8Ruleset = evald.rules[0] as unknown as Ruleset;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const nestedRuleset = (ext8Ruleset?.rules as unknown as { rules?: Ruleset[] })?.rules?.[0];
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
@@ -249,7 +252,8 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ext9Ruleset = evald.rules[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const ext8Ext9Ruleset = evald.rules[0] as unknown as Ruleset;
       const selectorStr = ext8Ext9Ruleset?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
       expect(selectorStr).not.toContain('.zoo');
@@ -296,8 +300,10 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.rules[0];
-      const nested = evald.rules[1]?.rules?.rules?.[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as unknown as Ruleset;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const nested = ((evald.rules[1] as unknown as Ruleset)?.rules as unknown as { rules?: Ruleset[] })?.rules?.[0];
       expect(firstRuleset?.selector?.valueOf()).toContain('.zap');
       const nestedSel = nested?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');

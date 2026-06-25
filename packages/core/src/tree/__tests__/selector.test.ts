@@ -14,6 +14,7 @@ let context: Context;
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -83,8 +84,8 @@ describe('Selector', () => {
       const secondRun = [token('/*z*/', 'BlockComment')];
       const trivia = createTriviaMap({
         before: new Map([
-          [second.location[0], firstRun],
-          [third.location[0], secondRun]
+          [second.location[0]!, firstRun],
+          [third.location[0]!, secondRun]
         ]),
         after: new Map<number, IToken[]>()
       }) satisfies TriviaMap;
@@ -99,7 +100,7 @@ describe('Selector', () => {
       const second = el('.b');
       second._location = [17, 3, 1, 18, 3, 2];
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], [token('\n'), token('/*x*/', 'BlockComment'), token('\n')]]]),
+        before: new Map([[second.location[0]!, [token('\n'), token('/*x*/', 'BlockComment'), token('\n')]]]),
         after: new Map<number, IToken[]>()
       }) satisfies TriviaMap;
 
@@ -136,7 +137,7 @@ describe('Selector', () => {
       const tokens = [token(' '), token('/* boo */', 'BlockComment'), token('/* boo again*/', 'BlockComment')];
       const trivia = createTriviaMap({
         before: new Map([[33, tokens]]),
-        after: new Map([[first.location[3], tokens]])
+        after: new Map([[first.location[3]!, tokens]])
       }) satisfies TriviaMap;
 
       expect(sellist([first, second]).toString({ trivia })).toBe('#comments /* boo *//* boo again*/,\n.comments');

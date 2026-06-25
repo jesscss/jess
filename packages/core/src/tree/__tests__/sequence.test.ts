@@ -786,7 +786,8 @@ describe('Sequence', () => {
     const rule = seq([first, second]);
     const rNode = rules([rule]);
     rNode._treeContext = treeContext;
-    context.opts.trivia = trivia;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (context.opts as Record<string, unknown>).trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('1020');
   });
@@ -880,7 +881,8 @@ describe('Sequence', () => {
     const rule = seq([first, second]);
     const rNode = rules([rule]);
     rNode._treeContext = treeContext;
-    context.opts.trivia = trivia;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (context.opts as Record<string, unknown>).trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('10  20');
   });

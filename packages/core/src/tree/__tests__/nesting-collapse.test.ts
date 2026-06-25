@@ -11,6 +11,7 @@ import { renderNodeToString } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -33,7 +34,8 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
-    return super.preview(fn, preserveSegments);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return super.preview(fn as () => Promise<string | void>, preserveSegments) as MaybePromise<string>;
   }
 }
 
@@ -147,8 +149,8 @@ describe('CSS Nesting Collapse', () => {
       ]
     }, undefined, [34, 2, 1, 54, 2, 21]);
     const trivia = createTriviaMap({
-      before: new Map([[second.location[0], boundaryTrivia]]),
-      after: new Map([[first.location[3], boundaryTrivia]])
+      before: new Map([[second.location[0]!, boundaryTrivia]]),
+      after: new Map([[first.location[3]!, boundaryTrivia]])
     });
     const node = rules([first, second]);
 

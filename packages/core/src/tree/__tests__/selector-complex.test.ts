@@ -1,5 +1,6 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
+import { amp, any, attr, co, compound, ComplexSelector, el, Node, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
+import { BasicSelector } from '../selector-basic.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -23,6 +24,7 @@ class CountingWriter extends OutputWriter {
 const token = (image: string): IToken => ({
   image,
   tokenType: { name: 'WS' } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -169,8 +171,8 @@ describe('Complex selector', () => {
         after: new Map([[26, [token('\n')]]])
       });
       const treeContext = new TreeContext({ trivia });
-      const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
-      const nested = el('.inside', undefined, [20, 2, 3, 26, 2, 10], treeContext);
+      const parent = new BasicSelector('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
+      const nested = new BasicSelector('.inside', undefined, [20, 2, 3, 26, 2, 10], treeContext);
 
       const rendered = sel([
         nested,
@@ -256,9 +258,12 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
-      const sourceCompound = selector.value[0]!;
-      const sourceCombinator = selector.value[1]!;
-      const sourceChild = selector.value[2]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceCompound = selector.value[0]! as Node;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceCombinator = selector.value[1]! as Node;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceChild = selector.value[2]! as Node;
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
@@ -273,7 +278,8 @@ describe('Complex selector', () => {
         amp(),
         el('.keep')
       ]);
-      const sourceChild = selector.value[1]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceChild = selector.value[1]! as Node;
       const sourceParent = sourceChild.parent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);

@@ -13,6 +13,7 @@ import { Node } from '../node.js';
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -24,7 +25,7 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   if (!isNode(evald, N.Rules)) {
-    throw new Error(`Expected Rules root, received ${evald.type}`);
+    throw new Error(`Expected Rules root, received ${(evald as Node).type}`);
   }
   context.root = evald;
   context.rulesContext = evald;
@@ -41,7 +42,8 @@ class CountingWriter extends OutputWriter {
 
 class WriteOnlyNode extends Node<string> {
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
-    options.writer.add(this.value);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    options.writer.add(Reflect.get(this, 'value') as string);
   }
 
   override toString(): string {
@@ -88,7 +90,7 @@ describe('Block', () => {
     const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
     const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
     const trivia = createTriviaMap({
-      before: new Map([[node.location[3], [token('\n  ')]]]),
+      before: new Map([[node.location[3]!, [token('\n  ')]]]),
       after: new Map<number, IToken[]>()
     }) satisfies TriviaMap;
 

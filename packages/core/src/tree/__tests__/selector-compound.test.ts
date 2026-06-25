@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { amp, any, attr, compound, CompoundSelector, el, Node, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
@@ -9,6 +9,7 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -105,7 +106,7 @@ describe('Compound Selector', () => {
       const second = el('.a');
       second._location = [16, 1, 17, 17, 1, 18];
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], [token('/*comment*/', 'BlockComment')]]]),
+        before: new Map([[second.location[0]!, [token('/*comment*/', 'BlockComment')]]]),
         after: new Map<number, IToken[]>()
       }) satisfies TriviaMap;
 
@@ -236,8 +237,10 @@ describe('Compound Selector', () => {
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
     ]);
-    const sourceElement = selector.value[0]!;
-    const sourceAttr = selector.value[1]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceElement = selector.value[0]! as Node;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceAttr = selector.value[1]! as Node;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo]');
@@ -251,7 +254,8 @@ describe('Compound Selector', () => {
       amp(),
       el('.keep')
     ]);
-    const sourceChild = selector.value[1]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceChild = selector.value[1]! as Node;
     const sourceParent = sourceChild.parent;
     const sourceLocation = sourceChild.location;
     const resolved = await selector.eval(context);

@@ -135,15 +135,15 @@ describe('Rules', () => {
     node = await node.eval(context);
     let index = node.index;
     expect(index).toBe(0);
-    expect(node.at(1)!.index).toBeGreaterThan(index);
+    expect(node.at(1)!.index!).toBeGreaterThan(index!);
     index = node.at(1)!.index;
-    expect(node.at(2)!.index).toBeGreaterThan(index);
+    expect(node.at(2)!.index!).toBeGreaterThan(index!);
     index = node.at(2)!.index;
     const childRules = expectRulesNode(node.at(2));
-    expect(childRules.at(0)!.index).toBeGreaterThan(index);
+    expect(childRules.at(0)!.index!).toBeGreaterThan(index!);
     index = childRules.at(1)!.index;
-    expect(childRules.at(2)!.index).toBeGreaterThan(index);
-    expect(expectRulesNode(childRules.at(2)).at(0)!.index).toBeGreaterThan(index);
+    expect(childRules.at(2)!.index!).toBeGreaterThan(index!);
+    expect(expectRulesNode(childRules.at(2)).at(0)!.index!).toBeGreaterThan(index!);
   });
 
   it('keeps Rules render flags render-local', () => {
@@ -1241,7 +1241,7 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const scope3Rules = scope3.rules as Rules;
+        const scope3Rules = scope3.rules as unknown as Rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
@@ -1331,7 +1331,7 @@ describe('Rules', () => {
         }
         const width = expectDeclarationNode(grid.rules.at(0));
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        context.rulesContext = grid.rules as Rules;
+        context.rulesContext = grid.rules as unknown as Rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });

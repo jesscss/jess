@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import * as path from 'path';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { Parser } from '../../../../less-parser/lib/index.js';
+import { Parser } from '../../../../less-parser/src/index.js';
 import { Context } from '../../context.js';
 import {
   any,
@@ -39,7 +39,7 @@ import {
   sellist,
   pseudo
 } from '../index.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
 // false so we expect nested output where source .less is nested (Less test-data style)
 const collapseNesting = false;
@@ -498,7 +498,8 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const context = new Context({ collapseNesting: true, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .button,
 .submit {
@@ -882,7 +883,8 @@ div:is(.ext5, .ext7),
     const context = new Context({ collapseNesting: false, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
 .cc {
@@ -910,7 +912,8 @@ div:is(.ext5, .ext7),
     const context = new Context({ collapseNesting: false, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css).toContain(`
 .aa,
 .cc {
@@ -937,7 +940,8 @@ div:is(.ext5, .ext7),
     const context = new Context({ collapseNesting: false, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .e.e,
 .dbl {

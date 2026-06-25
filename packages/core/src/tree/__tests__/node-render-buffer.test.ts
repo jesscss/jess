@@ -89,7 +89,7 @@ const rejectingAdapterNode = {
 };
 
 class SourceOnlyNode extends Node<string> {
-  override resolve(_context: Context) {
+  override resolve(_context: Context): never {
     throw new Error('base render should not resolve source-only nodes');
   }
 
@@ -464,7 +464,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
       { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as Any<AnyRole>), expected: '"asset"' },
+      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' },
       { surface: 'Url', node: url(new AsyncValueNode('asset')), expected: 'url(asset)' }
     ];
 

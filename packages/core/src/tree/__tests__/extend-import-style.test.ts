@@ -766,7 +766,7 @@ describe('Style import extend behavior', () => {
       expect(css).toContain('.visible {');
       expect(cssAgain).toBe(css);
       expect(firstRuleset.selector).toBe(storedSelector);
-      expect(firstRuleset.selector.valueOf()).toBe('.z');
+      expect(firstRuleset.selector!.valueOf()).toBe('.z');
     });
 
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {

@@ -100,9 +100,12 @@ describe('compoundComponentMatches', () => {
   });
 
   it('matches string-backed simple selector components without materializing leaves', () => {
-    expect(compoundComponentMatches('.a', el('.a'))).toBe(true);
-    expect(compoundComponentMatches(el('.a'), '.a')).toBe(true);
-    expect(compoundComponentMatches('.a', '.b')).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(compoundComponentMatches('.a' as unknown as Selector, el('.a'))).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(compoundComponentMatches(el('.a'), '.a' as unknown as Selector)).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(compoundComponentMatches('.a' as unknown as Selector, '.b' as unknown as Selector)).toBe(false);
   });
 
   it('matches when find is :is() containing target', () => {

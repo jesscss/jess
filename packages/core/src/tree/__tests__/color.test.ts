@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Dimension, Num } from '../index.js';
+import { Color, ColorFormat, Dimension, Num, Node } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -497,12 +497,13 @@ describe('Color Node', () => {
 
   describe('call-backed colors', () => {
     it('should preserve Call node for RGB function colors', () => {
-      const args = [
+      const argItems = [
         new Dimension({ number: 255, unit: '' }),
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      const callNode = new Call({ name: 'rgb', args });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const callNode = new Call({ name: 'rgb', args: argItems as unknown as List<Node> });
 
       const color = new Color({
         node: callNode,
@@ -520,12 +521,13 @@ describe('Color Node', () => {
     });
 
     it('should preserve Call node for HSL function colors', () => {
-      const args = [
+      const hslArgs = [
         new Dimension({ number: 0, unit: 'deg' }),
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      const callNode = new Call({ name: 'hsl', args });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const callNode = new Call({ name: 'hsl', args: hslArgs as unknown as List<Node> });
 
       const color = new Color({
         node: callNode,

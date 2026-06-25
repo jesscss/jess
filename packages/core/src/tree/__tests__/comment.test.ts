@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
+import { any, comment, decl, el, Node, rules, ruleset, sel, vardecl } from '../index.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -9,6 +9,7 @@ import { OutputWriter } from '../util/print.js';
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -108,7 +109,7 @@ describe('Comment', () => {
     visible._location = [120, 8, 1, 136, 10, 1];
     const trivia = createTriviaMap({
       before: new Map([
-        [hidden.location[0], [
+        [hidden.location[0]!, [
           token('// source-only', 'LineComment'),
           token('\n'),
           token('/*\n\n    Comment\n\n*/', 'Comment'),
@@ -142,10 +143,11 @@ describe('Comment', () => {
       ]
     });
     visible._location = [100, 8, 1, 116, 10, 1];
-    visible.selector._location = visible.location;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (visible.selector as Node)._location = visible.location;
     const trivia = createTriviaMap({
       before: new Map([
-        [visible.location[0], [
+        [visible.location[0]!, [
           token('/* Colors\n * ------\n */', 'Comment'),
           token('\n')
         ]]
@@ -179,10 +181,10 @@ describe('Comment', () => {
     ];
     const trivia = createTriviaMap({
       before: new Map([
-        [visible.location[0], hiddenPost]
+        [visible.location[0]!, hiddenPost]
       ]),
       after: new Map([
-        [hidden.location[3], hiddenPost]
+        [hidden.location[3]!, hiddenPost]
       ])
     });
 
@@ -204,13 +206,14 @@ describe('Comment', () => {
     });
     const trivia = createTriviaMap({
       before: new Map([
-        [empty.location[0], [
+        [empty.location[0]!, [
           token('/**/', 'Comment')
         ]]
       ]),
       after: new Map<number, IToken[]>()
     });
-    context.opts.trivia = trivia;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (context.opts as Record<string, unknown>).trivia = trivia;
 
     expect(await renderNodeToString(rules([container]), context, { context })).toBe(`.a {
   /**/
@@ -235,7 +238,7 @@ describe('Comment', () => {
     const trivia = createTriviaMap({
       before: new Map([[Infinity, tokens]]),
       after: new Map([
-        [visible.location[3], tokens]
+        [visible.location[3]!, tokens]
       ])
     });
 

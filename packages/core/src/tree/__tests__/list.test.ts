@@ -13,6 +13,7 @@ import { N } from '../node-type.js';
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -24,7 +25,7 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   if (!isNode(evald, N.Rules)) {
-    throw new Error(`Expected Rules root, received ${evald.type}`);
+    throw new Error(`Expected Rules root, received ${(evald as Node).type}`);
   }
   context.root = evald;
   context.rulesContext = evald;
@@ -42,15 +43,15 @@ class CountingWriter extends OutputWriter {
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
     const strictContext = new TreeContext({ equalityMode: 'strict' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, strictContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, strictContext);
+    const commaList = new List([num(1), num(2), num(3)], { sep: ',' }, undefined, strictContext);
+    const semicolonList = new List([num(1), num(2), num(3)], { sep: ';' }, undefined, strictContext);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
 
   it('treats separator differences as equal in coerce mode', () => {
     const coerceContext = new TreeContext({ equalityMode: 'coerce' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, coerceContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, coerceContext);
+    const commaList = new List([num(1), num(2), num(3)], { sep: ',' }, undefined, coerceContext);
+    const semicolonList = new List([num(1), num(2), num(3)], { sep: ';' }, undefined, coerceContext);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
 });
@@ -90,7 +91,7 @@ describe('List', () => {
     const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[21, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[first.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
@@ -103,7 +104,7 @@ describe('List', () => {
     const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[21, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[first.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
@@ -128,8 +129,8 @@ describe('List', () => {
     const third = new Any('wall', undefined, [30, 3, 14, 33, 3, 18]);
     const trivia = createTriviaMap({
       before: new Map([
-        [second.location[0], [token('\n            ')]],
-        [third.location[0], [token('\n            ')]]
+        [second.location[0]!, [token('\n            ')]],
+        [third.location[0]!, [token('\n            ')]]
       ]),
       after: new Map<number, IToken[]>()
     }) satisfies TriviaMap;

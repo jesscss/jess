@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, Selector, vardecl } from '../index.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -288,7 +288,8 @@ describe('Operation', () => {
       '+',
       any('two')
     ]);
-    const [leftOperand, , rightOperand] = operationNode.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const [leftOperand, , rightOperand] = Reflect.get(operationNode, 'value') as OperationValue;
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.render(context)).toBe('one, foo, two');
@@ -322,7 +323,8 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
-    const [leftOperand, , rightOperand] = resolvedOperation.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const [leftOperand, , rightOperand] = Reflect.get(resolvedOperation, 'value') as OperationValue;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
@@ -354,8 +356,10 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    expect(resolved.value[0]).not.toBe(leftOperand);
-    expect(resolved.value[0]?.toTrimmedString()).toBe('2em');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const resolvedValue = Reflect.get(resolved, 'value') as OperationValue;
+    expect(resolvedValue[0]).not.toBe(leftOperand);
+    expect(resolvedValue[0]?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
     expect(evald.parent).toBeUndefined();
@@ -389,17 +393,19 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Call result');
     }
     expect(resolved.args).toBeInstanceOf(List);
-    const calcArg = resolved.args.value[0];
+    const calcArg = resolved.args!.value[0];
     expect(calcArg).toBeInstanceOf(Operation);
     if (!(calcArg instanceof Operation)) {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    expect(calcArg.value[0]).not.toBe(leftOperand);
-    expect(calcArg.value[2]).not.toBe(rightOperand);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const calcArgValue = Reflect.get(calcArg, 'value') as OperationValue;
+    expect(calcArgValue[0]).not.toBe(leftOperand);
+    expect(calcArgValue[2]).not.toBe(rightOperand);
     expect(calcArg.evaluated).toBe(true);
-    expect(calcArg.value[0].evaluated).toBe(false);
-    expect(calcArg.value[2].evaluated).toBe(false);
+    expect(calcArgValue[0].evaluated).toBe(false);
+    expect(calcArgValue[2].evaluated).toBe(false);
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);
     expect(operationNode.evaluated).toBe(false);
@@ -485,7 +491,8 @@ describe('Operation', () => {
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       }),
       ruleset({
-        selector: any('.probe'),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        selector: any('.probe') as unknown as Selector,
         rules: [
           decl({
             name: 'margin',

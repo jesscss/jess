@@ -24,7 +24,8 @@ import {
   atrulestatement,
   quoted,
   url,
-  block
+  block,
+  type Interpolated
 } from '../index.js';
 
 function ownsValue(node: object): boolean {
@@ -217,10 +218,11 @@ describe('Node Flags', () => {
 
     it('Declaration with interpolated name should be F_NON_STATIC', () => {
       const d = decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: 'col%%',
           replacements: [ref({ key: any('suffix') })]
-        }),
+        }) as Interpolated<'property'>,
         value: expr(any('red'))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);

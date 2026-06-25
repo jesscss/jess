@@ -33,8 +33,10 @@ class DirectRule extends Node<string> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const w = getPrintOptions(options).writer!;
-    w.add(this.value);
-    return this.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const v = Reflect.get(this, 'value') as string;
+    w.add(v);
+    return v;
   }
 }
 

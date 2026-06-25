@@ -3,11 +3,12 @@ import type { IToken } from 'chevrotain';
 import { OutputWriter, getPrintOptions } from '../print.js';
 import { buildSourceMap } from '../sourcemap.js';
 import { createTriviaMap } from '../trivia.js';
-import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
+import { rules, Rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
 import { TreeContext } from '../../../context.js';
 
 const token = (image: string): IToken => ({
   image,
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -23,10 +24,11 @@ describe('source map segments', () => {
     const treeContext = new TreeContext({
       file: { name: 'root.jess', path: '.', fullPath: '/abs/root.jess' }
     });
-    const root = rules([
+    const root = new Rules([
       decl({ name: any('color'), value: any('red') })
     ], undefined, undefined, treeContext);
     // fake location & file for mapping
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (root.rules[0] as any)._location = [0, 1, 1, 0, 1, 6];
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('color: red;\n');
@@ -41,7 +43,7 @@ describe('source map segments', () => {
     const treeContext = new TreeContext({
       file: { name: 'nested.jess', path: '.', fullPath: '/abs/nested.jess' }
     });
-    const nested = rules([
+    const nested = new Rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
         rules: [
@@ -50,8 +52,10 @@ describe('source map segments', () => {
       })
     ], undefined, undefined, treeContext);
     // attach fake locations and files
-    const rs = (nested.value[0] as any).rules;
-    (rs.value[0] as any)._location = [0, 1, 3, 0, 1, 8];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const rs = ((Reflect.get(nested, 'value') as unknown[])[0] as any).rules;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (((Reflect.get(rs, 'value') as unknown[])[0]) as any)._location = [0, 1, 3, 0, 1, 8];
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
     const segs = w.getSegments();
@@ -77,7 +81,7 @@ describe('source map segments', () => {
     const root = rules([a, b]);
     const trivia = createTriviaMap({
       before: new Map<number, IToken[]>(),
-      after: new Map([[a.location[3], [token('\n\n\n')]]])
+      after: new Map([[a.location[3]!, [token('\n\n\n')]]])
     });
     const css = root.toString(getPrintOptions({ writer: w, trivia }));
     expect(css).toBe('a: 1;\n' + 'b: 2;\n');
@@ -115,19 +119,21 @@ describe('source map segments', () => {
     const leftContext = new TreeContext({
       file: { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' }
     });
-    const left = rules([
+    const left = new Rules([
       decl({ name: any('a'), value: any('1') })
     ], undefined, undefined, leftContext);
     // attach file+location to the declaration itself so segments carry sources
-    (left.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    ((Reflect.get(left, 'value') as unknown[])[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const rightContext = new TreeContext({
       file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' }
     });
-    const right = rules([
+    const right = new Rules([
       decl({ name: any('b'), value: any('2') })
     ], undefined, undefined, rightContext);
-    (right.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    ((Reflect.get(right, 'value') as unknown[])[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const root = rules([left, right]);
     const css = root.toString(getPrintOptions({ writer: w }));

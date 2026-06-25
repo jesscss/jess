@@ -3,6 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { BasicSelector } from '../selector-basic.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -22,7 +23,7 @@ class CountingWriter extends OutputWriter {
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   if (!isNode(evald, N.Rules)) {
-    throw new Error(`Expected Rules root, received ${evald.type}`);
+    throw new Error(`Expected Rules root`);
   }
   context.root = evald;
   context.rulesContext = evald;
@@ -41,7 +42,7 @@ describe('PseudoSelector', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = pseudo({ name: ':hover' }, undefined, undefined, treeContext);
+    const node = new PseudoSelector({ name: ':hover' }, undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });
@@ -56,7 +57,9 @@ describe('PseudoSelector', () => {
   it('does not emit source trivia inside generated selector arguments', () => {
     const newline: IToken[] = [{
       image: '\n  ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
+      tokenType: { name: 'WS' } as IToken['tokenType'],
+      tokenTypeIdx: 0,
+      startOffset: 0
     }];
     const trivia = createTriviaMap({
       before: new Map([[10, newline]]),
@@ -64,7 +67,7 @@ describe('PseudoSelector', () => {
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const inner = sel([
-      el('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),
+      new BasicSelector('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),
       co(' '),
       el('.b')
     ]);
