@@ -22,11 +22,13 @@ describe('serializeTypes', () => {
     expect(serializeTypes(root)).toContain('(Rules …)');
   });
 
-  it('does not treat rule containers as Rules by concrete ancestor bit', () => {
+  it('matches rule containers by the Rules abstract mask', () => {
     const body = [decl({ name: 'color', value: any('red') })];
     const node = ruleset({ selector: el('.a'), rules: body });
 
     expect(isNode(node, N.Ruleset)).toBe(true);
-    expect(isNode(node, N.Rules)).toBe(false);
+    // N.Rules is an abstract container mask — it matches Ruleset and AtRule too,
+    // not only concrete Rules instances.
+    expect(isNode(node, N.Rules)).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import {
 import type { TriviaMap } from '../types/index.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
-import type { Class, AbstractClass, Tagged } from 'type-fest';
+import type { AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
   getPrintOptions,

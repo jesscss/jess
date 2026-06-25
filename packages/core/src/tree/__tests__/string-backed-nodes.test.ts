@@ -32,7 +32,9 @@ describe('string-backed scanner-first proof nodes', () => {
       (Declaration
         name: 'color'
         value:
-          ['blue']
+          [
+            'blue'
+          ]
       )
     `);
   });
@@ -77,7 +79,11 @@ describe('string-backed scanner-first proof nodes', () => {
       (Declaration
         name: 'width'
         value:
-          ['calc(', Any, ' - 1px)']
+          [
+            'calc('
+            (Any '100%')
+            ' - 1px)'
+          ]
       )
     `);
   });
@@ -150,7 +156,9 @@ describe('string-backed scanner-first proof nodes', () => {
             (Declaration
               name: 'color'
               value:
-                ['blue']
+                [
+                  'blue'
+                ]
             )
           ]
       )
@@ -180,7 +188,7 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(selector.value).toEqual(['.a']);
     const types = serializeTypes(node);
     expect(types).toContain('(CompoundSelector');
-    expect(types).toContain('[\'.a\']');
+    expect(types).toContain('\'.a\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('rawSelector');
   });
@@ -265,9 +273,10 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(selector.value[1].value).toEqual(['button', '.primary']);
     const types = serializeTypes(node);
     expect(types).toContain('(SelectorList');
-    expect(types).toContain('[\'.a\']');
+    expect(types).toContain('\'.a\'');
     expect(types).toContain('(CompoundSelector');
-    expect(types).toContain('[\'button\', \'.primary\']');
+    expect(types).toContain('\'button\'');
+    expect(types).toContain('\'.primary\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('rawSelector');
   });
@@ -302,9 +311,11 @@ describe('string-backed scanner-first proof nodes', () => {
     const types = serializeTypes(node);
     expect(types).toContain('(ComplexSelector');
     expect(types).toContain('(Combinator \'>\')');
-    expect(types).toContain('[\'.a\']');
+
+    expect(types).toContain('\'.a\'');
     expect(types).toContain('(CompoundSelector');
-    expect(types).toContain('[\'button\', \'.primary\']');
+    expect(types).toContain('\'button\'');
+    expect(types).toContain('\'.primary\'');
     expect(types).not.toContain('(BasicSelector');
     expect(types).not.toContain('rawSelector');
   });
@@ -455,7 +466,9 @@ describe('string-backed scanner-first proof nodes', () => {
                   (Declaration
                     name: 'color'
                     value:
-                      ['blue']
+                      [
+                        'blue'
+                      ]
                   )
                 ]
             )

@@ -1419,10 +1419,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
+      const imp = this.important;
       return {
         name: this.name,
         value: this.value,
-        important: this.important instanceof Any ? this.important : undefined
+        important: imp instanceof Any ? imp : imp === true ? any('!important', { role: 'flag' }) : undefined
       };
     }
     const importantCopy = this.copyImportantForDerived(this.important);
@@ -1436,10 +1437,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
+    const imp = this.important;
+    const important = imp instanceof Any
+      ? imp
+      : imp === true
+        ? any('!important', { role: 'flag' })
+        : undefined;
     return {
       name: this.name,
       value: this.value,
-      important: this.important instanceof Any ? this.important : undefined,
+      important,
       renderOnly: true
     };
   }
