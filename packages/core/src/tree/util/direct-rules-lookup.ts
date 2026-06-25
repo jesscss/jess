@@ -1,5 +1,5 @@
 import type { Context } from '../../context.js';
-import { Declaration } from '../declaration.js';
+import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Rules } from '../rules.js';
@@ -215,7 +215,7 @@ function getDirectDeclarationBucket(
   const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (!isNode(node, N.Declaration | N.VarDeclaration) || !(node instanceof Declaration)) {
+    if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
       continue;
     }
     if (node.options?.setDefined) {
@@ -223,7 +223,8 @@ function getDirectDeclarationBucket(
     }
     if (String(node.name.valueOf()) === key) {
       bucket ??= [];
-      bucket.push(node);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      bucket.push(node as Declaration);
     }
   }
   if (!bucket) {

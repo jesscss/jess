@@ -79,7 +79,6 @@ import {
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
-import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findWritableSetDefinedDeclarationOccurrence,
@@ -4508,7 +4507,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (target < 0) {
       let indexedCount = 0;
       for (let i = 0; i < this.rules.length; i++) {
-        if (isIndexedRuleChild(this.rules[i]!)) {
+        if (!isNode(this.rules[i]!, N.Comment)) {
           indexedCount++;
         }
       }
@@ -4520,7 +4519,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let current = 0;
     for (let i = 0; i < this.rules.length; i++) {
       const node = this.rules[i]!;
-      if (!isIndexedRuleChild(node)) {
+      if (isNode(node, N.Comment)) {
         continue;
       }
       if (current === target) {
@@ -4646,7 +4645,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
-      const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
+      const nodeIndex = !isNode(node, N.Comment) ? indexedRuleCount++ : undefined;
       if (isNode(node, N.Any) && node.role === 'charset') {
         // Charset is root output-order bookkeeping, not name registration.
         if (!context.currentCharset) {
