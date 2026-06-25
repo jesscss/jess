@@ -3,7 +3,7 @@ import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Rules } from '../rules.js';
-import type { RulesOptions, RulesVisibility } from '../rules.js';
+import type { RulesVisibility } from '../rules.js';
 import { lookupScopeFrameVariable } from '../scope-frame.js';
 import { isNode } from './is-node.js';
 import {
@@ -223,7 +223,6 @@ function getDirectDeclarationBucket(
     }
     if (String(node.name.valueOf()) === key) {
       bucket ??= [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       bucket.push(node as Declaration);
     }
   }
