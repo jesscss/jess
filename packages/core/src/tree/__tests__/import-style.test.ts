@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
   style,
   rules,
+  coll,
   sel,
   el,
   sellist,
@@ -18,7 +19,6 @@ import {
   comment,
   expr,
   defaultguard,
-  sellist,
   quoted,
   amp,
   pseudo,
@@ -61,7 +61,6 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: Declar
   context.rulesContext = n;
   return findVariableDeclarationOccurrence(n, key, {
     ...opts,
-    context: opts.context ?? context,
     searchParents: true
   })?.node;
 }
@@ -320,14 +319,14 @@ describe('Style import', () => {
         vardecl({ name: 'importedVar', value: any('green') })
       ]));
 
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      (RulesClass.prototype as any).find = function(...args: unknown[]) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'importedVar') {
-          declarationHits.push(key);
+          declarationHits.push(key as string);
         }
-        return originalFind.apply(this, args);
+        return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
       };
 
       try {
@@ -352,7 +351,7 @@ describe('Style import', () => {
         expect(resolved.toTrimmedString()).toBe('color: green');
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -391,14 +390,14 @@ describe('Style import', () => {
         vardecl({ name: 'composedVar', value: any('purple') })
       ]));
 
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      (RulesClass.prototype as any).find = function(...args: unknown[]) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'composedVar') {
-          declarationHits.push(key);
+          declarationHits.push(key as string);
         }
-        return originalFind.apply(this, args);
+        return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
       };
 
       try {
@@ -424,7 +423,7 @@ describe('Style import', () => {
         expect(resolved.toTrimmedString()).toBe('color: purple');
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
   });
@@ -552,7 +551,7 @@ describe('Style import', () => {
       const importedRules = evald.at(0) as Rules;
       const importedRuleset = importedRules.at(0);
       expect(importedRuleset).toBeDefined();
-      expect(importedRuleset.toTrimmedString()).toContainString('.imported');
+      expect(importedRuleset!.toTrimmedString()).toContainString('.imported');
     });
 
     it('reference import makes rulesets optional', async () => {
@@ -629,7 +628,7 @@ describe('Style import', () => {
       expect(varDecl).toBeDefined();
       // The variable lookup should return the local variable (index 1) which wins over the imported variable (index 0)
       // because local variables in the current Rules are treated as having the highest index (Number.MAX_SAFE_INTEGER)
-      expect(varDecl.toTrimmedString()).toBe('$importedVar: modified');
+      expect(varDecl!.toTrimmedString()).toBe('$importedVar: modified');
     });
 
     it.skip('readonly can be overridden for compose', async () => {
@@ -654,7 +653,7 @@ describe('Style import', () => {
       const varDecl = getVarWithContext(context, evald, 'composedVar');
 
       // Should have modified value because readonly was overridden
-      expect(varDecl.toTrimmedString()).toBe('$composedVar: modified');
+      expect(varDecl!.toTrimmedString()).toBe('$composedVar: modified');
     });
 
     it('readonly can be set for import', async () => {
@@ -713,7 +712,7 @@ describe('Style import', () => {
       const evaldConsumer = await consumer.eval(context);
       const downstreamLookup = getVarWithContext(context, evaldConsumer, 'forwardedVar');
       expect(downstreamLookup).toBeDefined();
-      expect(downstreamLookup.toTrimmedString()).toBe('$forwardedVar: ok');
+      expect(downstreamLookup!.toTrimmedString()).toBe('$forwardedVar: ok');
     });
   });
 
@@ -733,7 +732,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'primaryColor', value: any('purple') })
             ]),
             type: 'with'
@@ -757,7 +756,7 @@ describe('Style import', () => {
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
       const injectedVarValueNode = injectedVar!.value;
-      const injectedVarValue = await injectedVarValueNode.eval(context);
+      const injectedVarValue = await (injectedVarValueNode as Node).eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
 
       // Test 2: Verify computed values based on injected variables are correct
@@ -779,7 +778,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'primaryColor', value: any('orange') })
             ]),
             type: 'set'
@@ -802,7 +801,7 @@ describe('Style import', () => {
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
       const injectedVarValueNode = injectedVar!.value;
-      const injectedVarValue = await injectedVarValueNode.eval(context);
+      const injectedVarValue = await (injectedVarValueNode as Node).eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('orange');
 
       // Test 2: Verify computed values based on injected variables are correct
@@ -822,7 +821,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'baseColor', value: any('blue') })
             ]),
             type: 'with'
@@ -839,13 +838,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.eval(context);
+      const baseColorValue = await (baseColor!.value as Node).eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('blue');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.eval(context);
+      const derivedColorValue = await (derivedColor!.value as Node).eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
@@ -862,7 +861,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'baseColor', value: any('green') })
             ]),
             type: 'with'
@@ -879,13 +878,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.eval(context);
+      const baseColorValue = await (baseColor!.value as Node).eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('green');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.eval(context);
+      const derivedColorValue = await (derivedColor!.value as Node).eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('green');
     });
 
@@ -902,7 +901,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'baseColor', value: any('yellow') })
             ]),
             type: 'set'
@@ -919,13 +918,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.eval(context);
+      const baseColorValue = await (baseColor!.value as Node).eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('yellow');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.eval(context);
+      const derivedColorValue = await (derivedColor!.value as Node).eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
@@ -942,7 +941,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'baseColor', value: any('cyan') })
             ]),
             type: 'set'
@@ -963,7 +962,7 @@ describe('Style import', () => {
       // Verify baseColor was injected (should be the injected one, not the original)
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.eval(context);
+      const baseColorValue = await (baseColor!.value as Node).eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('cyan');
 
       // Verify derivedColor reflects the injected value (linear lookup)
@@ -973,7 +972,7 @@ describe('Style import', () => {
       expect(derivedColor).toBeDefined();
       // The value should already be evaluated during the import evaluation
       // and should have used the injected baseColor
-      const derivedColorValue = await derivedColor!.value.eval(context);
+      const derivedColorValue = await (derivedColor!.value as Node).eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('cyan');
     });
 
@@ -1001,7 +1000,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-detached-closure-set.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') })
             ]),
             type: 'set'
@@ -1044,7 +1043,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([]),
+            node: coll([]),
             type: 'with'
           }
         }, {
@@ -1061,7 +1060,7 @@ describe('Style import', () => {
     });
 
     it('keeps additive non-variable "with" configs on a child rules surface', async () => {
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationBridgeHits: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
@@ -1079,7 +1078,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
@@ -1101,12 +1100,12 @@ describe('Style import', () => {
           ]
         })
       ]);
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      (RulesClass.prototype as any).find = function(...args: unknown[]) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && key === 'configuredProp') {
           declarationBridgeHits.push(`${filterType}:${key}`);
         }
-        return originalFind.apply(this, args);
+        return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
       };
 
       try {
@@ -1124,7 +1123,7 @@ describe('Style import', () => {
         expect(css).toContain('prop-hit: configured;');
         expect(declarationBridgeHits).toEqual([]);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -1143,7 +1142,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') })
             ]),
             type: 'with'
@@ -1162,7 +1161,7 @@ describe('Style import', () => {
       expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
-      const injectedVarValue = await injectedVar!.value.eval(context);
+      const injectedVarValue = await (injectedVar!.value as Node).eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
       expect(css).toContain('.base');
       expect(css).toContain('color: purple');
@@ -1202,7 +1201,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-guarded-mixin.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') })
             ]),
             type: 'with'
@@ -1289,7 +1288,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-guarded-mixin-set.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') })
             ]),
             type: 'set'
@@ -1365,7 +1364,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-detached-closure-configured.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') })
             ]),
             type: 'with'
@@ -1419,7 +1418,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'baseColor', value: any('teal') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1451,7 +1450,7 @@ describe('Style import', () => {
 
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
         expect(derivedColor).toBeDefined();
-        const derivedColorValue = await derivedColor!.value.eval(context);
+        const derivedColorValue = await (derivedColor!.value as Node).eval(context);
         expect(derivedColorValue.toTrimmedString()).toBe('teal');
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -1459,7 +1458,7 @@ describe('Style import', () => {
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for detached ruleset variable closures', async () => {
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationBridgeHits: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-detached-closure-set-child-surface.jess');
       context.sourceTrees.set(libraryPath, rules([
@@ -1490,7 +1489,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-detached-closure-set-child-surface.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1518,12 +1517,12 @@ describe('Style import', () => {
           ]
         })
       ]);
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      (RulesClass.prototype as any).find = function(...args: unknown[]) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && key === 'setConfiguredProp') {
           declarationBridgeHits.push(`${filterType}:${key}`);
         }
-        return originalFind.apply(this, args);
+        return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
       };
 
       try {
@@ -1543,7 +1542,7 @@ describe('Style import', () => {
         expect(css).not.toContain('border-color: red;');
         expect(declarationBridgeHits).toEqual([]);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -1588,7 +1587,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-guarded-mixin-set-child-surface.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1677,7 +1676,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-child-surface-mixin.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1748,7 +1747,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-child-surface-guarded-mixin.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1830,7 +1829,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-child-surface-detached-closure.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'accentColor', value: any('purple') }),
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
@@ -1876,7 +1875,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'var', value: any('first') })
             ]),
             type: 'set'
@@ -1893,7 +1892,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'var', value: any('second') })
             ]),
             type: 'set'
@@ -1929,7 +1928,7 @@ describe('Style import', () => {
         style({
           path: quoted(any('library-compose-with-cache.jess')),
           with: {
-            node: rules([
+            node: coll([
               vardecl({ name: 'var', value: any('second') })
             ]),
             type: 'with'
@@ -2127,7 +2126,7 @@ describe('Style import', () => {
       ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
-      const placementDecl = placementRuleset.rules?.rules[0];
+      const placementDecl = placementRuleset.rules?.[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
@@ -2183,8 +2182,8 @@ describe('Style import', () => {
       expect(importedRules.options.referenceMode).not.toBe(true);
       expect(importedRules.options.rulesVisibility.Ruleset).toBe('public');
 
-      delete referencePlacement.options.referenceMode;
-      delete referencePlacement.options.rulesVisibility;
+      delete (referencePlacement.options as any).referenceMode;
+      delete (referencePlacement.options as any).rulesVisibility;
       expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
       expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
       expect(getImportPlacementRenderState(referencePlacement)).toEqual({
@@ -2400,7 +2399,7 @@ describe('Style import', () => {
         call({ name: 'layer', args: list([any('theme')]) }),
         call({ name: 'supports', args: list([any('(display: grid)')]) }),
         any('screen and (min-width: 600px)')
-      ], { sep: ' ' });
+      ], { sep: ' ' as ',' });
 
       const node = rules([
         style({ path: quoted(any('inline-postlude.css')) }, {
@@ -2422,27 +2421,21 @@ describe('Style import', () => {
       if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected inline wrapped import child to be AtRule');
       }
-      expect(wrappedImport.rules[0].name.toTrimmedString()).toBe('@layer');
-      const supportsRules = wrappedImport.rules[0].rules;
-      expect(supportsRules).toBeInstanceOf(RulesClass);
-      if (!(supportsRules instanceof RulesClass)) {
-        throw new Error('Expected @layer rules to be wrapped in Rules');
-      }
-      expect(isNode(supportsRules.rules[0], N.AtRule)).toBe(true);
-      if (!isNode(supportsRules.rules[0], N.AtRule)) {
+      expect((wrappedImport.rules[0] as any).name.toTrimmedString()).toBe('@layer');
+      const supportsRulesArr = (wrappedImport.rules[0] as any).rules as Node[];
+      expect(supportsRulesArr).toBeInstanceOf(Array);
+      expect(isNode(supportsRulesArr[0], N.AtRule)).toBe(true);
+      if (!isNode(supportsRulesArr[0], N.AtRule)) {
         throw new Error('Expected @layer child to be AtRule');
       }
-      expect(supportsRules.rules[0].name.toTrimmedString()).toBe('@supports');
-      const mediaRules = supportsRules.rules[0].rules;
-      expect(mediaRules).toBeInstanceOf(RulesClass);
-      if (!(mediaRules instanceof RulesClass)) {
-        throw new Error('Expected @supports rules to be wrapped in Rules');
-      }
-      expect(isNode(mediaRules.rules[0], N.AtRule)).toBe(true);
-      if (!isNode(mediaRules.rules[0], N.AtRule)) {
+      expect((supportsRulesArr[0] as any).name.toTrimmedString()).toBe('@supports');
+      const mediaRulesArr = (supportsRulesArr[0] as any).rules as Node[];
+      expect(mediaRulesArr).toBeInstanceOf(Array);
+      expect(isNode(mediaRulesArr[0], N.AtRule)).toBe(true);
+      if (!isNode(mediaRulesArr[0], N.AtRule)) {
         throw new Error('Expected @supports child to be AtRule');
       }
-      expect(mediaRules.rules[0].name.toTrimmedString()).toBe('@media');
+      expect((mediaRulesArr[0] as any).name.toTrimmedString()).toBe('@media');
 
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
@@ -2484,7 +2477,7 @@ describe('Style import', () => {
       if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected wrapped import child to be AtRule');
       }
-      expect(Array.isArray(wrappedImport.rules[0].rules)).toBe(true);
+      expect(Array.isArray((wrappedImport.rules[0] as any).rules)).toBe(true);
       const css = await renderNodeToString(node, context, { context });
       expect(css).toContain('@media screen and (min-width: 600px)');
       expect(css).toContain('.imported');
@@ -2515,7 +2508,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const resolvedFromInterpolatedImport = getVarWithContext(context, evald, 'interpolationResolved');
       expect(resolvedFromInterpolatedImport).toBeDefined();
-      expect(resolvedFromInterpolatedImport.toTrimmedString()).toBe('$interpolationResolved: ok');
+      expect(resolvedFromInterpolatedImport!.toTrimmedString()).toBe('$interpolationResolved: ok');
     });
 
     it('import-interpolation: reclassifies interpolated .css imports as literal CSS @import', async () => {
@@ -2659,7 +2652,7 @@ describe('Style import', () => {
         })
       ]);
       const originalCopy = Any.prototype.cloneForPlacement;
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = (RulesClass.prototype as any).find;
       let scalarCopies = 0;
       const declarationBridgeHits: string[] = [];
       Any.prototype.cloneForPlacement = function(...args: Parameters<typeof originalCopy>) {
@@ -2672,7 +2665,7 @@ describe('Style import', () => {
         }
         return originalCopy.apply(this, args);
       };
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      (RulesClass.prototype as any).find = function(...args: unknown[]) {
         const [type, key, filterType] = args;
         if (
           type === 'declaration'
@@ -2687,7 +2680,7 @@ describe('Style import', () => {
         ) {
           declarationBridgeHits.push(`${filterType}:${key}`);
         }
-        return originalFind.apply(this, args);
+        return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
       };
 
       try {
@@ -2716,7 +2709,7 @@ describe('Style import', () => {
         expect(declarationBridgeHits).toEqual([]);
       } finally {
         Any.prototype.cloneForPlacement = originalCopy;
-        RulesClass.prototype.find = originalFind;
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -3326,10 +3319,7 @@ describe('Style import', () => {
       const nestedArrayPathCalls: unknown[] = [];
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const originalFindMixin = RulesClass.prototype.findMixin;
-      const runtimeRulesPrototype = RulesClass.prototype as typeof RulesClass.prototype & Record<
-        'getCallableEntriesForKey',
-        (key: string, updateFrameMissCoverage?: boolean) => ReturnType<typeof RulesClass.prototype.findMixinsFast>
-      >;
+      const runtimeRulesPrototype = RulesClass.prototype as any;
       const originalGetCallableEntriesForKey = runtimeRulesPrototype.getCallableEntriesForKey;
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
@@ -3340,13 +3330,13 @@ describe('Style import', () => {
       };
       runtimeRulesPrototype.getCallableEntriesForKey = function(
         this: InstanceType<typeof RulesClass>,
-        ...args: Parameters<typeof originalGetCallableEntriesForKey>
+        ...args: unknown[]
       ) {
         const [key, updateFrameMissCoverage] = args;
         if (this === node && key === '#Namespace' && updateFrameMissCoverage !== false) {
           directBucketReadCount++;
         }
-        return originalGetCallableEntriesForKey.apply(this, args);
+        return typeof originalGetCallableEntriesForKey === 'function' ? originalGetCallableEntriesForKey.apply(this, args) : undefined;
       };
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== node && Array.isArray(args[0])) {
@@ -3603,7 +3593,7 @@ describe('Style import', () => {
         await namespaceBody.eval(localContext);
         const found = node.findMixin(['#parent-namespace', '.reference-leaf'], undefined);
         expect(found).toHaveLength(1);
-        expect(found?.[0]?.name?.valueOf()).toBe('.reference-leaf');
+        expect((found?.[0] as any)?.name?.valueOf()).toBe('.reference-leaf');
         expect(namespaceBodyFindMixinCount).toBe(0);
         expect(broadFastHits).toEqual([]);
       } finally {

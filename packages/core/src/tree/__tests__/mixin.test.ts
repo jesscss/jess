@@ -1,4 +1,8 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil, type AnyRole } from '../index.js';
+import type { Declaration } from '../declaration.js';
+import type { MixinOutputChildSegment } from '../util/mixin-output-slot.js';
+import type { Condition } from '../condition.js';
+import type { Ruleset } from '../ruleset.js';
 import { Context, TreeContext } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
@@ -346,8 +350,10 @@ describe('Mixin', () => {
       if (!(firstResult instanceof RulesClass) || !(secondResult instanceof RulesClass)) {
         throw new Error('Expected Rules results');
       }
-      const firstDecl = firstResult.rules[0];
-      const secondDecl = secondResult.rules[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstDecl = firstResult.rules[0] as Declaration | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const secondDecl = secondResult.rules[0] as Declaration | undefined;
       expect(firstDecl).toBeDefined();
       expect(secondDecl).toBeDefined();
       expect(firstDecl).toBe(sourceDecl);
@@ -362,8 +368,8 @@ describe('Mixin', () => {
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(firstDecl?.type).toBe('Declaration');
       expect(secondDecl?.type).toBe('Declaration');
-      expect(firstDecl.value).toBe(sourceValue);
-      expect(secondDecl.value).toBe(sourceValue);
+      expect(firstDecl!.value).toBe(sourceValue);
+      expect(secondDecl!.value).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -561,8 +567,8 @@ describe('Mixin', () => {
       expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.rules);
       expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.rules);
       expect(sourceBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.rules);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.source)).toEqual(sourceBody.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.output)).toEqual(result.rules);
       expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
       expect(result.rules[0]).not.toBe(sourceComment);
@@ -968,7 +974,8 @@ describe('Mixin', () => {
           deep === false
           && this.rules.some(node => (
             node.type === 'Declaration'
-            && node.name?.valueOf?.() === 'color'
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            && (node as Declaration).name?.valueOf?.() === 'color'
           ))
         ) {
           detachedRuleClones++;
@@ -1317,7 +1324,9 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ]
       });
-      const mixinBody = mixinNoParam.rules;
+      // mixinNoParam.rules is Node[] but at runtime the mixin itself is the rules container
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const mixinBody = mixinNoParam as unknown as RulesClass;
 
       const callerRules = rules([
         vardecl({ name: 'parameterDefault', value: any('inside') }),
@@ -1355,7 +1364,7 @@ describe('Mixin', () => {
       expect(canEnterRulesEntryForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
       expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
       expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
-      expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({
+      expect(result.options.mixinOutputSlot?.childSegments.map((segment: MixinOutputChildSegment) => ({
         kind: segment.kind,
         source: segment.source,
         output: segment.output,
@@ -1462,8 +1471,8 @@ describe('Mixin', () => {
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
 
       const slotVisibility = output.options.rulesVisibility;
-      delete output.options.referenceMode;
-      delete output.options.rulesVisibility;
+      delete (output.options as Partial<typeof output.options>).referenceMode;
+      delete (output.options as Partial<typeof output.options>).rulesVisibility;
       expect(getMixinOutputRulesVisibility(output)).toBe(slotVisibility);
       expect(getMixinOutputReferenceMode(output)).toBe(false);
       expect(canEnterRulesEntryForLookup(entry, { type: 'Declaration', hasTarget: true })).toBe(true);
@@ -1502,7 +1511,8 @@ describe('Mixin', () => {
           deep === false
           && this.rules.some(node => (
             node.type === 'Declaration'
-            && node.name?.valueOf?.() === 'marker'
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            && (node as Declaration).name?.valueOf?.() === 'marker'
           ))
         ) {
           shallowMarkerBodyClones++;
@@ -2141,9 +2151,11 @@ describe('Mixin', () => {
           fullPath: '/virtual/test.less'
         }
       });
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration' && typeof key === 'string' && ['color', 'size', 'rest', 'arguments'].includes(key)) {
           declarationHits.push(key);
@@ -2193,7 +2205,8 @@ describe('Mixin', () => {
         `);
         expect(declarationHits).toEqual([]);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -2205,9 +2218,11 @@ describe('Mixin', () => {
           fullPath: '/virtual/test.less'
         }
       });
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration' && typeof key === 'string' && key === 'base-color') {
           declarationHits.push(key);
@@ -2251,7 +2266,8 @@ describe('Mixin', () => {
         // without touching broad declaration lookup at all.
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -2279,16 +2295,16 @@ describe('Mixin', () => {
       // Last-definition-wins: 'brand' bucket has two entries; last wins
       const brandBucket = frame.declarationBucketsByName.get('brand')!;
       expect(brandBucket).toHaveLength(2);
-      expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
+      expect(brandBucket[brandBucket.length - 1]!.cell.value!.valueOf()).toBe('navy');
 
       // resolveFrameCell should return the last declaration in source order.
       const frameResult = resolveFrameCell('brand', frame);
       expect(frameResult).toBeDefined();
-      expect(frameResult!.cell.value.valueOf()).toBe('navy');
+      expect(frameResult!.cell.value!.valueOf()).toBe('navy');
 
       const sizeResult = resolveFrameCell('size', frame);
       expect(sizeResult).toBeDefined();
-      expect(sizeResult!.cell.value.valueOf()).toBe('16px');
+      expect(sizeResult!.cell.value!.valueOf()).toBe('16px');
 
       // A name not in the scope resolves to undefined
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
@@ -2361,9 +2377,11 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-mixin') {
           fastPathHits.push(key);
@@ -2394,7 +2412,8 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-mixin', 'Mixin')).toEqual([mixinDef]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
 
       const css = await renderNodeToString(root!, context);
@@ -2429,9 +2448,11 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: parent miss reaches fallback frame before direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-frame-hit') {
           fastPathHits.push(key);
@@ -2453,14 +2474,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: unprepared parent retry frame hit stays off direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.parent-retry-frame-hit') {
           fastPathHits.push(key);
@@ -2488,14 +2512,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.parent-retry-frame-hit', 'Mixin')).toEqual([parentMixin]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: parent and fallback covered miss skips direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-frame-missing') {
           fastPathHits.push(key);
@@ -2523,13 +2550,16 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-frame-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace descendant fallback-frame covered miss skips nested lookup', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const nestedLookups: string[] = [];
       const fastPathHits: string[] = [];
 
@@ -2549,13 +2579,15 @@ describe('Mixin', () => {
         ]);
         const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
-        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
           if (this === namespaceRules) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
         };
-        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
           const [key] = args;
           if (key === '.missing-leaf') {
             fastPathHits.push(key);
@@ -2567,14 +2599,18 @@ describe('Mixin', () => {
         expect(nestedLookups).toEqual([]);
         expect(fastPathHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace descendant fallback-frame hit skips nested lookup', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const nestedLookups: string[] = [];
       const fastPathHits: string[] = [];
 
@@ -2593,13 +2629,15 @@ describe('Mixin', () => {
         ]);
         const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
-        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
           if (this === namespaceRules) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
         };
-        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
           const [key] = args;
           if (key === '.fallback-leaf') {
             fastPathHits.push(key);
@@ -2611,8 +2649,10 @@ describe('Mixin', () => {
         expect(nestedLookups).toEqual([]);
         expect(fastPathHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -2647,7 +2687,8 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
       const parentRules = rules([]);
       const fallbackRules = rules([
@@ -2659,7 +2700,8 @@ describe('Mixin', () => {
         })
       ]);
       const childRules = rules([]);
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-reference-missing') {
           fastPathHits.push(`${this === fallbackRules ? 'fallback' : 'other'}:${key}`);
@@ -2673,7 +2715,8 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-reference-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -2682,9 +2725,11 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-ruleset') {
           fastPathHits.push(key);
@@ -2711,7 +2756,8 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-ruleset', undefined)).toEqual([frameRuleset]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
 
       const css = await renderNodeToString(root!, context);
@@ -2726,10 +2772,12 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
       let rediscoveredChildSurface = false;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-missing') {
           fastPathHits.push(key);
@@ -2758,14 +2806,17 @@ describe('Mixin', () => {
         expect(fastPathHits).toHaveLength(0);
         expect(root.callableLookupCache?.get('.frame-missing')).toBeNull();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace miss skips Rules.findMixinsFast when frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-namespace') {
           fastPathHits.push(key);
@@ -2790,14 +2841,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#missing-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: ruleset namespace miss skips mixin ambiguity crawl when frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-ruleset-namespace') {
           fastPathHits.push(key);
@@ -2817,14 +2871,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#missing-ruleset-namespace', '.leaf'], undefined)).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: guarded namespace mixin start skips direct crawl when frame hit is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#guarded-frame-namespace') {
           fastPathHits.push(key);
@@ -2839,7 +2896,8 @@ describe('Mixin', () => {
         });
         const namespace = mixin({
           name: any('#guarded-frame-namespace'),
-          guard: bool(true),
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          guard: bool(true) as unknown as Condition,
           rules: [leaf]
         });
         const root = rules([namespace]);
@@ -2848,14 +2906,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#guarded-frame-namespace', '.leaf'], undefined)).toEqual([leaf]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace miss skips child direct crawl when child frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-child-namespace') {
           fastPathHits.push(key);
@@ -2882,15 +2943,18 @@ describe('Mixin', () => {
         expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace miss skips child findMixin when first remainder miss is covered', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let childFindMixinCount = 0;
       let childRules: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === childRules) {
           childFindMixinCount++;
         }
@@ -2916,15 +2980,18 @@ describe('Mixin', () => {
         expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], undefined)).toBeUndefined();
         expect(childFindMixinCount).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace child-surface covered miss skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let namespaceRulesFindMixinCount = 0;
       let namespaceRules: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
@@ -2952,25 +3019,30 @@ describe('Mixin', () => {
         expect(root.findMixin(['#parent-namespace', '.missing-child-mixin'], undefined)).toBeUndefined();
         expect(namespaceRulesFindMixinCount).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import modeled miss skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const missingKey = '.missing-reference-child';
       let namespaceRulesFindMixinCount = 0;
       const broadFastHits: string[] = [];
       let namespaceRules: RulesClass;
       let root: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === missingKey) {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -3007,14 +3079,18 @@ describe('Mixin', () => {
         expect(namespaceRulesFindMixinCount).toBe(0);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import modeled hit skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
         name: any('.reference-leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3024,13 +3100,15 @@ describe('Mixin', () => {
       let root: RulesClass;
       const broadFastHits: string[] = [];
       let namespaceRulesFindMixinCount = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === '.reference-leaf') {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -3058,14 +3136,18 @@ describe('Mixin', () => {
         expect(namespaceRulesFindMixinCount).toBe(0);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import offset path skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3081,13 +3163,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === '#imported') {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -3116,15 +3200,19 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#fallback-child-namespace') {
           fastPathHits.push(key);
@@ -3159,14 +3247,17 @@ describe('Mixin', () => {
         ], 'Mixin')).toEqual([leaf]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace fallback covered miss skips direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#fallback-missing-namespace') {
           fastPathHits.push(key);
@@ -3198,13 +3289,16 @@ describe('Mixin', () => {
         ], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback namespace reference-import offset hit skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3226,13 +3320,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3258,14 +3354,18 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback namespace reference-import offset miss skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         mixin({
           name: any('#imported'),
@@ -3288,13 +3388,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3320,14 +3422,18 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset hit skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3349,13 +3455,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3381,14 +3489,18 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset miss skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
@@ -3411,13 +3523,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3443,14 +3557,18 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback mixin namespace terminal filters fallback ruleset namespace prefixes', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const mixinLeaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('mixin') })]
@@ -3480,13 +3598,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3522,15 +3642,19 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.reference-import-missing') {
           fastPathHits.push(key);
@@ -3562,12 +3686,14 @@ describe('Mixin', () => {
         expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: uncovered reference imports do not reopen covered sibling child surfaces', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const missingKey = '.mixed-reference-missing';
       const broadParentCrawls: string[] = [];
       const coveredChild = rules([
@@ -3586,8 +3712,10 @@ describe('Mixin', () => {
       ]);
       const root = rules([coveredChild, referenceChild]);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key, options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, options] = args as [string, { skipCurrentSurface?: boolean } | undefined];
         if (this === root && key === missingKey && options?.skipCurrentSurface === true) {
           broadParentCrawls.push(key);
         }
@@ -3602,13 +3730,16 @@ describe('Mixin', () => {
         expect(root.findMixin(missingKey, 'Mixin')).toBeUndefined();
         expect(broadParentCrawls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import namespace start miss skips broad array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const namespaceKey = '#missing-imported-namespace';
       const rootBroadStarts: string[] = [];
       let nestedArrayFallbacks = 0;
@@ -3622,14 +3753,16 @@ describe('Mixin', () => {
       ]);
       const root = rules([referenceChild]);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === namespaceKey) {
           rootBroadStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3649,14 +3782,18 @@ describe('Mixin', () => {
         expect(rootBroadStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import compound prefix hit skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const importedLeaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3671,14 +3808,16 @@ describe('Mixin', () => {
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3700,14 +3839,18 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import compound prefix miss skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.branch')]),
@@ -3723,14 +3866,16 @@ describe('Mixin', () => {
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3752,14 +3897,18 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import selector-list prefix hit skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const importedLeaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3777,14 +3926,16 @@ describe('Mixin', () => {
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3806,14 +3957,18 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import selector-list prefix miss skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const referenceChild = rules([
         ruleset({
           selector: sellist([
@@ -3832,14 +3987,16 @@ describe('Mixin', () => {
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3861,18 +4018,14 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: selector-list prefix hit and miss avoid recursive prefix crawl when frames cover rulesets', () => {
-      type PrefixProbeRules = RulesClass & {
-        findVisibleCallableRulesetPrefixMatches(
-          path: string[],
-          options?: { hasTarget?: boolean; local?: boolean; searchParents?: boolean }
-        ): unknown[];
-      };
       const importedLeaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('green') })]
@@ -3887,11 +4040,12 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
-      const proto: PrefixProbeRules = Object.getPrototypeOf(root);
+
+      const proto = Object.getPrototypeOf(root) as any;
       const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
       let recursivePrefixCrawls = 0;
 
-      proto.findVisibleCallableRulesetPrefixMatches = function(path, options) {
+      proto.findVisibleCallableRulesetPrefixMatches = function(path: string[], options: unknown) {
         recursivePrefixCrawls++;
         return originalPrefixSearch.call(this, path, options);
       };
@@ -3913,7 +4067,8 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: local namespace-start misses do not reopen broad direct crawl', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const localChild = rules([
         mixin({
           name: any('#local'),
@@ -3928,7 +4083,8 @@ describe('Mixin', () => {
       const root = rules([localChild]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#local' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -3947,12 +4103,14 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: local namespace-start hits stay on narrow child frames', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('blue') })]
@@ -3966,7 +4124,8 @@ describe('Mixin', () => {
       const root = rules([child]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#visible' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -3985,12 +4144,14 @@ describe('Mixin', () => {
         })).toEqual([leaf]);
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: restricted namespace-start misses stay covered without target', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const source = rules([
         mixin({
           name: any('#target'),
@@ -4017,7 +4178,8 @@ describe('Mixin', () => {
       const root = rules([output]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#target' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -4035,12 +4197,14 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: targeted namespace-start hits stay on narrow child frames', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const sourceLeaf = mixin({
         name: any('.leaf'),
         rules: [decl({ name: 'color', value: any('source') })]
@@ -4065,7 +4229,8 @@ describe('Mixin', () => {
       const root = rules([output]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#target' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -4084,14 +4249,17 @@ describe('Mixin', () => {
         })).toEqual([outputLeaf]);
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-child-missing') {
           fastPathHits.push(key);
@@ -4113,12 +4281,14 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-child-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: uncovered child miss respects searchParents false after narrow bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const parentRetryHits: string[] = [];
       const missingKey = '.parent-only-after-child-miss';
       const parentMixin = mixin({
@@ -4136,7 +4306,8 @@ describe('Mixin', () => {
       root.getScopeFrame();
       childRules.getScopeFrame(root._scopeFrame);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === missingKey) {
           parentRetryHits.push(key);
@@ -4148,14 +4319,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
         expect(parentRetryHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-child-declaration-missing') {
           fastPathHits.push(key);
@@ -4176,12 +4350,14 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: prepared child entries stop recursive surface rediscovery', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childRules = rules([
         decl({ name: 'color', value: any('green') })
       ]);
@@ -4191,7 +4367,8 @@ describe('Mixin', () => {
       root.getScopeFrame();
 
       const originalValue = childRules.rules;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.prepared-child-missing') {
           return [];
@@ -4208,7 +4385,8 @@ describe('Mixin', () => {
       try {
         expect(root.findMixin('.prepared-child-missing', 'Mixin')).toBeUndefined();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
         Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
@@ -4380,9 +4558,11 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-only-child-missing') {
           fastPathHits.push(key);
@@ -4412,14 +4592,17 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: terminal mixin-only miss ignores ruleset-only candidates', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-only-prefix') {
           fastPathHits.push(key);
@@ -4445,14 +4628,17 @@ describe('Mixin', () => {
         })).toEqual({ kind: 'miss' });
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: simple misses stop on compound-prefix candidates', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.compound-prefix-only') {
           fastPathHits.push(key);
@@ -4479,7 +4665,8 @@ describe('Mixin', () => {
         });
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -4511,10 +4698,13 @@ describe('Mixin', () => {
     });
 
     it('direct mixin-only miss skips ruleset-only child surfaces without a frame', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childBridgeKeys: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key, options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, options] = args as [string, { searchParents?: boolean } | undefined];
         if (key === '.ruleset-only-direct-missing' && options?.searchParents === false) {
           childBridgeKeys.push(key);
         }
@@ -4536,7 +4726,8 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(childBridgeKeys).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -4568,7 +4759,8 @@ describe('Mixin', () => {
     });
 
     it('ruleset path misses skip mixin-only child surfaces without a frame', async () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childRules = rules([
         mixin({
           name: any('.only-mixin-child'),
@@ -4583,7 +4775,8 @@ describe('Mixin', () => {
       ]);
 
       await root.eval(context);
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.warmup-missing-ruleset-path' || key === '.missing-ruleset-path') {
           return [];
@@ -4604,7 +4797,8 @@ describe('Mixin', () => {
         });
         expect(root.findMixin(['.missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
         if (descriptor) {
           Object.defineProperty(childRules, 'rules', descriptor);
         }
@@ -4628,7 +4822,8 @@ describe('Mixin', () => {
 
       expect('_indexRules' in RulesClass.prototype).toBe(false);
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Ruleset');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Ruleset | undefined)?.type).toBe('Ruleset');
     });
 
     it('compound-prefix ruleset lookup uses callable buckets without legacy rule indexing', () => {
@@ -4648,7 +4843,8 @@ describe('Mixin', () => {
 
       expect('_indexRules' in RulesClass.prototype).toBe(false);
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Mixin');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Mixin | undefined)?.type).toBe('Mixin');
     });
 
     it('mixin namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
@@ -4667,9 +4863,11 @@ describe('Mixin', () => {
           ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4680,7 +4878,8 @@ describe('Mixin', () => {
         expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -4700,9 +4899,11 @@ describe('Mixin', () => {
           ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4713,7 +4914,8 @@ describe('Mixin', () => {
         expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -4728,9 +4930,11 @@ describe('Mixin', () => {
           rules: [leaf]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
@@ -4743,7 +4947,8 @@ describe('Mixin', () => {
         })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -4792,9 +4997,11 @@ describe('Mixin', () => {
           ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4813,7 +5020,8 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -5121,7 +5329,8 @@ describe('Mixin', () => {
         context
       });
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Mixin');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Mixin | undefined)?.type).toBe('Mixin');
       const mixinHit = found?.[0];
       expect(mixinHit instanceof Mixin ? mixinHit.name?.valueOf() : undefined).toBe('.colors');
     });
@@ -5158,7 +5367,7 @@ describe('Mixin', () => {
     });
 
     it('namespace fast path: ruleset namespace path preserves callable namespace unions', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         @namespaceGuard: 1;
@@ -5192,33 +5401,39 @@ describe('Mixin', () => {
         }
       `).tree;
 
-      context.root = tree;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree = tree as unknown as RulesClass;
+      context.root = typedTree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const directCrawlHits: string[] = [];
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#guarded' || key === '#deeper' || key === '.mixin') {
           directCrawlHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        if (this !== tree && Array.isArray(args[0])) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== typedTree && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
         return originalFindMixin.apply(this, args);
       };
 
       try {
-        const found = tree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
+        const found = typedTree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
           context
         });
 
         expect(found).toHaveLength(3);
 
-        const css = await renderNodeToString(tree, context, { context });
+        const css = await renderNodeToString(typedTree, context, { context });
 
         expect(css).toContain('#guarded-caller {');
         expect(css).toContain('guarded: namespace;');
@@ -5227,13 +5442,15 @@ describe('Mixin', () => {
         expect(directCrawlHits).toEqual([]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5280,11 +5497,16 @@ describe('Mixin', () => {
           .parameterized(blue);
         }
       `).tree;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree2 = tree as unknown as RulesClass;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const directCrawlHits: string[] = [];
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (
           key === '#theme'
@@ -5300,16 +5522,17 @@ describe('Mixin', () => {
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        if (this !== tree && Array.isArray(args[0])) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== typedTree2 && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
         return originalFindMixin.apply(this, args);
       };
 
       try {
-        context.root = tree;
-        const css = await renderNodeToString(tree, context, { context });
+        context.root = typedTree2;
+        const css = await renderNodeToString(typedTree2, context, { context });
 
         expect(css).toContain('.a {');
         expect(css).toContain('color: cyan;');
@@ -5322,16 +5545,21 @@ describe('Mixin', () => {
         expect(directCrawlHits).toEqual([]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args mark terminal lookup mixin-only', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const terminalHints: boolean[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        const [key, , options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, , options] = args as [string, unknown, { terminalMixinOnly?: boolean } | undefined];
         if (key === '.parameterized') {
           terminalHints.push(options?.terminalMixinOnly === true);
         }
@@ -5372,12 +5600,13 @@ describe('Mixin', () => {
         `);
         expect(terminalHints).toContain(true);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args still use rulesets as namespace containers', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5393,9 +5622,11 @@ describe('Mixin', () => {
           #theme > .button(red);
         }
       `).tree;
-      context.root = tree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree3 = tree as unknown as RulesClass;
+      context.root = typedTree3;
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree3, context, { context });
       expect(css).toBeString(`
         #theme {
           .button {
@@ -5409,7 +5640,7 @@ describe('Mixin', () => {
     });
 
     it('mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5427,9 +5658,11 @@ describe('Mixin', () => {
           #theme > .dark > .button(red);
         }
       `).tree;
-      context.root = tree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree4 = tree as unknown as RulesClass;
+      context.root = typedTree4;
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree4, context, { context });
       expect(css).toBeString(`
         #theme {
           .dark {
@@ -5474,8 +5707,10 @@ describe('Mixin', () => {
     });
 
     it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.button')]),
@@ -5485,14 +5720,16 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let arrayPathCalls = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#theme' || key === '.dark' || key === '.button')) {
           broadFastHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === root && Array.isArray(args[0])) {
           arrayPathCalls++;
         }
@@ -5508,13 +5745,16 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(arrayPathCalls).toBe(1);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const terminalMixin = mixin({
         name: any('.button'),
         params: list([any('color', { role: 'property' })]),
@@ -5536,7 +5776,8 @@ describe('Mixin', () => {
       const root = rules([referenceChild]);
       const broadFastHits: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#imported' || key === '.button')) {
           broadFastHits.push(key);
@@ -5564,12 +5805,14 @@ describe('Mixin', () => {
         })).toEqual([terminalMixin]);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('mixin-ruleset calls with args reject imported exact ruleset terminals after namespace resolution', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.dark'), el('.button')]),
@@ -5579,7 +5822,8 @@ describe('Mixin', () => {
       const root = rules([referenceChild]);
       const broadFastHits: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#imported' || key === '.button')) {
           broadFastHits.push(key);
@@ -5600,7 +5844,8 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -6056,7 +6301,8 @@ describe('Mixin', () => {
         const root = rules([
           mixin({
             name: any('.guarded'),
-            guard: bool(true),
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            guard: bool(true) as unknown as Condition,
             rules: [
               decl({ name: 'color', value: any('red') })
             ]
@@ -6081,7 +6327,8 @@ describe('Mixin', () => {
     it('restores caller rulesContext when static guard evaluation throws', async () => {
       context = new Context({ leakyRules: false });
       const savedRulesContext = rules([]);
-      const guard = bool(true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const guard = bool(true) as unknown as Condition;
       guard.eval = (evalContext: Context) => {
         expect(evalContext.rulesContext).not.toBe(savedRulesContext);
         throw new Error('guard eval failed');
@@ -7315,6 +7562,7 @@ describe('Mixin', () => {
           rules: [
             decl({
               name: 'value',
+              // @ts-expect-error – Reference is not in Quoted's allowed content types but works at runtime
               value: quoted(ref({ key: 'name' }, { type: 'variable' }))
             })
           ]
@@ -7457,6 +7705,7 @@ describe('Mixin', () => {
           params: list([any('name', { role: 'property' })]),
           rules: [
             decl({
+              // @ts-expect-error – Interpolated<AnyRole> is not in DeclarationValue.name type but is valid at runtime
               name: dynamicName,
               value: any('ok')
             })
@@ -7510,7 +7759,7 @@ describe('Mixin', () => {
 
       expect(prepared).not.toBe(node);
       expect(prepared.sourceNode).toBe(prepared);
-      expect(prepared.name.valueOf()).toBe('.inner-foo');
+      expect(prepared.name!.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
       expect(body.parent).toBe(node);
@@ -8409,7 +8658,7 @@ describe('Mixin', () => {
     });
 
     it('keeps sibling collapsed rulesets closed before a later interpolated mixin-ruleset call', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         @a1: foo;
@@ -8460,10 +8709,12 @@ describe('Mixin', () => {
           .person.sayGender();
         }
       `).tree;
-      context.root = tree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree5 = tree as unknown as RulesClass;
+      context.root = typedTree5;
       context.opts.collapseNesting = true;
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree5, context, { context });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {

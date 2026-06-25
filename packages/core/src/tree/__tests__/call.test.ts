@@ -1,7 +1,7 @@
 import type { IToken } from 'chevrotain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, type AnyRole, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import {
   getCallRawArgDiagnosticMessageSource,
   getCallRawArgDiagnosticSource,
@@ -56,6 +56,7 @@ class WholeBufferCountingWriter extends OutputWriter {
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -64,46 +65,49 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   endColumn: image.length
 });
 
-class AsyncAny extends Any<string> {
+class AsyncAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
-    return Promise.resolve(any(this.value));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Promise.resolve(any(this.value)) as unknown as Any<AnyRole>;
   }
 }
 
-class AsyncRenderedAny extends Any<string> {
+class AsyncRenderedAny extends Any<AnyRole> {
   constructor(value: string, private readonly renderedValue: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
-    return Promise.resolve(any(this.renderedValue));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Promise.resolve(any(this.renderedValue)) as unknown as Any<AnyRole>;
   }
 }
 
-class RejectingAny extends Any<string> {
+class RejectingAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
-    return Promise.reject(new Error(this.value));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Promise.reject(new Error(this.value)) as unknown as Any<AnyRole>;
   }
 }
 
-class ThrowingAny extends Any<string> {
-  override eval() {
+class ThrowingAny extends Any<AnyRole> {
+  override eval(): Any<AnyRole> {
     throw new Error(this.value);
   }
 }
 
-class SyncOverrideAny extends Any<string> {
+class SyncOverrideAny extends Any<AnyRole> {
   evalCalls = 0;
 
   override eval() {
@@ -118,7 +122,7 @@ class CustomSyntaxNode extends Node<string> {
   }
 
   override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
-    getPrintOptions(options).writer.add(`custom-${this.value}`);
+    getPrintOptions(options).writer.add(`custom-${this.valueOf()}`);
   }
 }
 
@@ -132,7 +136,7 @@ class WriterTrackingCustomSyntaxNode extends CustomSyntaxNode {
   }
 }
 
-class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
+class AsyncWriterTrackingCustomSyntaxAny extends Any<AnyRole> {
   readonly renderedNode: WriterTrackingCustomSyntaxNode;
 
   constructor(value: string) {
@@ -142,18 +146,20 @@ class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
   }
 
   override eval() {
-    return Promise.resolve(this.renderedNode);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Promise.resolve(this.renderedNode) as unknown as Any<AnyRole>;
   }
 }
 
-class AsyncCustomSyntaxAny extends Any<string> {
+class AsyncCustomSyntaxAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
-    return Promise.resolve(new CustomSyntaxNode(this.value));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Promise.resolve(new CustomSyntaxNode(this.valueOf())) as unknown as Any<AnyRole>;
   }
 }
 
@@ -458,7 +464,7 @@ describe('Call', () => {
     const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[first.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
@@ -475,7 +481,7 @@ describe('Call', () => {
     const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[first.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     rule.writeSyntax(getPrintOptions({ writer, trivia }));
@@ -533,7 +539,8 @@ describe('Call', () => {
 
   it('writes CSS call render output into shared flat buffers without nested call marks', async () => {
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as any).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const rule = call({
@@ -589,7 +596,8 @@ describe('Call', () => {
     context.rulesContext = evald;
 
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as any).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const rule = call({
@@ -896,10 +904,11 @@ describe('Call', () => {
     context.rulesContext = root;
     const name = any('source-name');
     let nameEvaluations = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForCounting() {
       nameEvaluations++;
       return fnNode;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({
       name,
       args: list([])
@@ -937,9 +946,10 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForFunctionName() {
       return fnNode;
-    };
+    } as unknown as typeof name.eval;
     const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
     const originalArgs = list([originalArg]);
     const rule = call({
@@ -983,9 +993,10 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForMixinName() {
       return mixinDef;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name });
     const evalStateCalls = countEvalStateUse();
 
@@ -1012,9 +1023,10 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForRulesetName() {
       return mixinRuleset;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name });
     const evalStateCalls = countEvalStateUse();
 
@@ -1042,9 +1054,10 @@ describe('Call', () => {
     context.rulesContext = root;
     const collection = new MixinCollection([mixinDef]);
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForMixinCollectionName() {
       return collection;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name });
     const evalStateCalls = countEvalStateUse();
 
@@ -1071,9 +1084,10 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForCallableArrayName() {
       return [mixinDef];
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name });
     const evalStateCalls = countEvalStateUse();
 
@@ -1103,9 +1117,10 @@ describe('Call', () => {
       name: ref({ key: '.theme' }, { type: 'mixin' })
     });
     const name = any('source-name');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForCallAliasName() {
       return alias;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name });
     const evalStateCalls = countEvalStateUse();
 
@@ -1133,9 +1148,10 @@ describe('Call', () => {
     context.rulesContext = root;
     const collection = new MixinCollection([mixinDef]);
     const name = any('missing-theme');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     name.eval = function evalForMissingCallableName() {
       return collection;
-    };
+    } as unknown as typeof name.eval;
     const rule = call({ name }, { silentFail: true });
     const originalClone = Call.prototype.clone;
     const derivedCalls = countDeriveCallUse();
@@ -1382,8 +1398,6 @@ describe('Call', () => {
     root.setFunctionBinding('direct-options-hit', fnNode);
 
     expect(root.findFunction('direct-options-hit', 'ignored', {
-      candidates: new Set(),
-      optionalCandidates: new Set(),
       findAll: true
     })).toBe(fnNode);
   });
@@ -1415,7 +1429,7 @@ describe('Call', () => {
 
     const root = rules([]);
     const originalLeaf = any('red');
-    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
+    const originalValue = new CountingSequence([originalLeaf, dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     root.setFunctionBinding('echo', new JsFunction({
       name: 'echo',
@@ -1493,9 +1507,10 @@ describe('Call', () => {
     const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[first.location[3]!, tokens]])
     }) satisfies TriviaMap;
-    context = new Context({ trivia });
+    context = new Context();
+    context.printState.trivia = trivia;
     const args = list([first, second]);
     const name = ref({ key: 'linear-gradient' }, { type: 'function', fallbackValue: true });
     const rule = call({ name, args }, { silentFail: true });
@@ -1551,7 +1566,8 @@ describe('Call', () => {
     const nestedRules = rules([nestedDeclaration]);
     const nestedRuleset = ruleset({
       selector: el('.nested'),
-      rules: nestedRules
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: nestedRules as unknown as Node[]
     });
     const root = rules([topDeclaration, nestedRuleset]);
     const rule = call({ name: 'noop' });
@@ -2249,7 +2265,7 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
 
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalValue = seq([any('red'), dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     const rule = call({
       name: ref({ key: 'echo' }, { type: 'function' }),
@@ -2332,7 +2348,7 @@ describe('Call', () => {
     context.rulesContext = root;
 
     const originalLeaf = any('red');
-    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
+    const originalValue = new CountingSequence([originalLeaf, dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     const rule = call({
       name: ref({ key: 'first' }, { type: 'function' }),
@@ -2374,7 +2390,7 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
 
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalValue = seq([any('red'), dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     const rule = call({
       name: ref({ key: 'mutate-raw' }, { type: 'function' }),
@@ -2408,7 +2424,7 @@ describe('Call', () => {
     context.root = root;
     context.rulesContext = root;
 
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalValue = seq([any('red'), dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     const rule = call({
       name: ref({ key: 'inspect-raw' }, { type: 'function' }),
@@ -2455,7 +2471,7 @@ describe('Call', () => {
     context.rulesContext = root;
 
     const makeRule = () => {
-      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalValue = seq([any('red'), dimension([10, 'px'])]);
       const originalArgs = list([originalValue]);
       return {
         originalValue,
@@ -2514,7 +2530,7 @@ describe('Call', () => {
 
     const rendered = await Promise.resolve(call({
       name,
-      args: list([seq([any('red'), dimension(10, 'px')])])
+      args: list([seq([any('red'), dimension([10, 'px'])])])
     }).render(context));
 
     expect(rendered).toBe('1');
@@ -2552,7 +2568,7 @@ describe('Call', () => {
     context.rulesContext = root;
 
     const makeRule = () => {
-      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalValue = seq([any('red'), dimension([10, 'px'])]);
       const originalArgs = list([originalValue]);
       return {
         originalValue,
@@ -2628,7 +2644,7 @@ describe('Call', () => {
 
   it('evaluates metadata JS function params from the owned arg surface', async () => {
     let receivedArg: Sequence | undefined;
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalValue = seq([any('red'), dimension([10, 'px'])]);
     const originalArgs = list([originalValue]);
     const root = rules([]);
     root.setFunctionBinding('inspect-owned', new JsFunction({
@@ -2725,7 +2741,7 @@ describe('Call', () => {
     };
 
     try {
-      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalValue = seq([any('red'), dimension([10, 'px'])]);
       const originalArgs = list([originalValue]);
       const rule = call({
         name: ref({ key: 'echo' }, { type: 'function' }),
@@ -3025,14 +3041,11 @@ describe('Call', () => {
     };
     let calls = 0;
     const root = rules([]);
-    root.setFunctionBinding('bad', new JsFunction({
-      name: 'bad',
-      fn: () => {
-        calls++;
-        throw new Error('bad function');
-      },
-      allowOptional: true
-    }));
+    const badFn1 = Object.assign(() => {
+      calls++;
+      throw new Error('bad function');
+    }, { allowOptional: true });
+    root.setFunctionBinding('bad', new JsFunction({ name: 'bad', fn: badFn1 }));
     context.root = root;
     context.rulesContext = root;
     const content = new Sequence(
@@ -3067,14 +3080,11 @@ describe('Call', () => {
   it('does not probe optional JS calls with content before rendering them', async () => {
     let calls = 0;
     const root = rules([]);
-    root.setFunctionBinding('wrap', new JsFunction({
-      name: 'wrap',
-      fn: () => {
-        calls++;
-        return any('wrapped');
-      },
-      allowOptional: true
-    }));
+    const wrapFn = Object.assign(() => {
+      calls++;
+      return any('wrapped');
+    }, { allowOptional: true });
+    root.setFunctionBinding('wrap', new JsFunction({ name: 'wrap', fn: wrapFn }));
     context.root = root;
     context.rulesContext = root;
     const name = ref({ key: 'wrap' }, { type: 'function', fallbackValue: true });
@@ -3104,14 +3114,11 @@ describe('Call', () => {
     const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
-    root.setFunctionBinding('ok', new JsFunction({
-      name: 'ok',
-      fn: () => {
-        calls++;
-        return any('ok');
-      },
-      allowOptional: true
-    }));
+    const okFn = Object.assign(() => {
+      calls++;
+      return any('ok');
+    }, { allowOptional: true });
+    root.setFunctionBinding('ok', new JsFunction({ name: 'ok', fn: okFn }));
     context.root = root;
     context.rulesContext = root;
     const name = ref({ key: 'ok' }, { type: 'function', fallbackValue: true });
@@ -3158,13 +3165,10 @@ describe('Call', () => {
 
   it('resolves optional JS failure fallback without shallow-cloning the source call', async () => {
     const root = rules([]);
-    root.setFunctionBinding('bad', new JsFunction({
-      name: 'bad',
-      fn: () => {
-        throw new Error('bad function');
-      },
-      allowOptional: true
-    }));
+    const badFn2 = Object.assign(() => {
+      throw new Error('bad function');
+    }, { allowOptional: true });
+    root.setFunctionBinding('bad', new JsFunction({ name: 'bad', fn: badFn2 }));
     context.root = root;
     context.rulesContext = root;
     const originalClone = Call.prototype.clone;
@@ -3200,14 +3204,11 @@ describe('Call', () => {
     const derivedCalls = countDeriveCallUse();
     let calls = 0;
     const root = rules([]);
-    root.setFunctionBinding('bad', new JsFunction({
-      name: 'bad',
-      fn: () => {
-        calls++;
-        throw new Error('bad function');
-      },
-      allowOptional: true
-    }));
+    const badFn3 = Object.assign(() => {
+      calls++;
+      throw new Error('bad function');
+    }, { allowOptional: true });
+    root.setFunctionBinding('bad', new JsFunction({ name: 'bad', fn: badFn3 }));
     context.root = root;
     context.rulesContext = root;
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
@@ -3239,13 +3240,10 @@ describe('Call', () => {
   it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
     const writer = new CountingWriter();
     const root = rules([]);
-    root.setFunctionBinding('bad', new JsFunction({
-      name: 'bad',
-      fn: () => {
-        throw new Error('bad function');
-      },
-      allowOptional: true
-    }));
+    const badFn4 = Object.assign(() => {
+      throw new Error('bad function');
+    }, { allowOptional: true });
+    root.setFunctionBinding('bad', new JsFunction({ name: 'bad', fn: badFn4 }));
     context.root = root;
     context.rulesContext = root;
     const rule = call({

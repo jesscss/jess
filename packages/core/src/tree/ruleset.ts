@@ -55,7 +55,7 @@ export type RulesetValue = {
    * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  rules: Node[];
+  rules: Rules | Node[];
   guard?: string | Condition | Nil;
   /**
    * When this ruleset is extended, we store its selector before the first extend.
@@ -2268,7 +2268,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   override evalNode(context: Context): MaybePromise<Rules> {
     if (this.evaluated) {
       return this;
@@ -2299,7 +2298,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
       // In that case, return it directly without wrapping back in Ruleset
       if (this.selector instanceof Nil) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return (evaluatedRules as unknown) === this
           ? new Rules(
               this.rules,
@@ -2310,7 +2308,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           : evaluatedRules;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ((evaluatedRules as unknown) !== this) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (this as unknown as { rules: Node[] }).rules = evaluatedRules.rules;

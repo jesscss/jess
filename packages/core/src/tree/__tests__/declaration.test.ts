@@ -35,6 +35,7 @@ let context: Context;
 const token = (image: string, tokenTypeName = 'WS', startOffset = 0): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset,
   endOffset: startOffset + image.length - 1,
   startLine: 1,
@@ -73,7 +74,7 @@ describe('Declaration', () => {
   });
 
   it('uses direct fields as the declaration source of truth', () => {
-    const name = any('color');
+    const name = any('color', { role: 'property' as const });
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const node = decl({ name, value, important });
@@ -106,7 +107,7 @@ describe('Declaration', () => {
   });
 
   it('writes non-custom declaration children without public string transport', () => {
-    const name = any('color');
+    const name = any('color', { role: 'property' as const });
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const rule = decl({ name, value, important });
@@ -131,7 +132,7 @@ describe('Declaration', () => {
   it('writes non-custom declaration syntax without outer string readback', () => {
     const writer = new CountingWriter();
     const rule = decl({
-      name: any('color'),
+      name: any('color', { role: 'property' as const }),
       value: any('red'),
       important: any('!important', { role: 'flag' })
     });
@@ -295,7 +296,7 @@ describe('Declaration', () => {
     await root.prepareRegistration(context);
     context.root = root;
     context.rulesContext = root;
-    const sourceName = any('color');
+    const sourceName = any('color', { role: 'property' as const });
     const sourceValue = ref({ key: 'brand' }, { type: 'variable' });
     const node = decl({
       name: sourceName,
@@ -332,14 +333,14 @@ describe('Declaration', () => {
   });
 
   it('renders assignment families without reparenting authored declaration values', async () => {
-    const makePrior = (assign: AssignmentType | '+:') => decl({
+    const makePrior = (assign: AssignmentType) => decl({
       name: any('background-color'),
       value: any('red')
     }, {
       assign: assign === AssignmentType.CondAssign ? undefined : assign
     });
-    const cases: Array<[AssignmentType | '+:', string]> = [
-      ['+:', 'background-color: red, blue'],
+    const cases: Array<[AssignmentType, string]> = [
+      [AssignmentType.Add, 'background-color: red, blue'],
       [AssignmentType.MergeList, 'background-color: red, blue'],
       [AssignmentType.MergeSequence, 'background-color: red blue'],
       [AssignmentType.CondAssign, 'background-color: red']
@@ -383,13 +384,14 @@ describe('Declaration', () => {
   it('renders nil declaration eval results through native node render', () => {
     const originalRender = Nil.prototype.render;
     let renderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     Nil.prototype.render = function renderForCounting(
       this: Nil,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       renderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof Nil.prototype.render;
 
     try {
       const value = ref({ key: 'missing' }, { type: 'variable', fallbackValue: new Nil() });
@@ -431,7 +433,7 @@ describe('Declaration', () => {
     context.rulesContext = evald;
 
     const node = decl({
-      name: any('color'),
+      name: any('color', { role: 'property' as const }),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     const sourceValue = node.value;
@@ -439,7 +441,8 @@ describe('Declaration', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red');
-    expect(sourceValue.parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((sourceValue as Node).parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -453,7 +456,7 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const sourceName = any('color');
+    const sourceName = any('color', { role: 'property' as const });
     const sourceValue = ref({ key: 'tone' }, { type: 'variable' });
     const node = decl({
       name: sourceName,
@@ -487,21 +490,23 @@ describe('Declaration', () => {
       return originalPrepareRegistration(renderContext);
     };
     const node = decl({
-      name: any('src'),
+      name: any('src', { role: 'property' as const }),
       value
     }, { assign: AssignmentType.MergeSequence });
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.value.type).toBe('Sequence');
-    expect(prepared.value.toTrimmedString()).toBe('$.src one');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((prepared.value as Node).type).toBe('Sequence');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((prepared.value as Node).toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
     expect(value.registrationPrepared).toBe(false);
   });
 
   it('normalizes assignment registration without deriving a declaration surface', async () => {
     const node = decl({
-      name: any('src'),
+      name: any('src', { role: 'property' as const }),
       value: any('one')
     }, { assign: AssignmentType.MergeSequence });
     const originalDerive = Reflect.get(node, 'derive');
@@ -516,7 +521,8 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.value.toTrimmedString()).toBe('$.src one');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((prepared.value as Node).toTrimmedString()).toBe('$.src one');
     expect(deriveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -544,13 +550,15 @@ describe('Declaration', () => {
     try {
       const sourceNameLeaf = any('color');
       const node = decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `border-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [sourceNameLeaf]
-        }),
+        }, { role: 'property' as const }) as unknown as Any<'property'>,
         value: ref({ key: 'tone' }, { type: 'variable' })
       });
-      const sourceName = node.name;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceName = node.name as Node;
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('border-color: red');
@@ -724,9 +732,10 @@ describe('Declaration', () => {
     const value = new Sequence([interpolatedValue]);
     value._location = interpolatedValue.location;
     const trivia = createTriviaMap({
-      before: new Map([[interpolatedValue.location[0], [token(' ', 'WS', 49)]]])
+      before: new Map([[interpolatedValue.location[0]!, [token(' ', 'WS', 49)]]])
     }) satisfies TriviaMap;
-    context = new Context({ trivia });
+    context = new Context();
+    context.printState.trivia = trivia;
     const node = rules([
       vardecl({
         name: any('string_w_comment'),
@@ -931,7 +940,7 @@ describe('Declaration', () => {
     const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[23, tokens]]),
-      after: new Map([[value.location[3], tokens]])
+      after: new Map([[value.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
@@ -946,7 +955,7 @@ describe('Declaration', () => {
     const tokens = [token('/* survive */', 'BlockComment'), token(' '), token('/* me too */', 'BlockComment')];
     const trivia = createTriviaMap({
       before: new Map([[35, tokens]]),
-      after: new Map([[name.location[3], tokens]])
+      after: new Map([[name.location[3]!, tokens]])
     }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
@@ -957,11 +966,11 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' }),
+      }, { assign: AssignmentType.Add }),
       decl({
         name: any('background-color'),
         value: any('foo')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -974,11 +983,11 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' }),
+      }, { assign: AssignmentType.Add }),
       decl({
         name: any('background-color'),
         value: any('foo')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
     const originalCopy = Node.prototype.cloneForPlacement;
     let scalarCopies = 0;
@@ -1094,7 +1103,7 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+_:' })
+      }, { assign: AssignmentType.MergeSequence })
     ]);
     await root.prepareRegistration(context);
     const prior = root;
@@ -1103,7 +1112,7 @@ describe('Declaration', () => {
     const node = decl({
       name: any('background-color'),
       value: any('blue')
-    }, { assign: '+_:' });
+    }, { assign: AssignmentType.MergeSequence });
     const originalSequenceEvalNode = Sequence.prototype.evalNode;
     let sequenceEvalCalls = 0;
     Sequence.prototype.evalNode = function evalNodeForCounting(
@@ -1129,7 +1138,7 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
     await root.prepareRegistration(context);
     context.root = root;
@@ -1138,13 +1147,14 @@ describe('Declaration', () => {
     const node = decl({
       name: any('background-color'),
       value: any('blue')
-    }, { assign: '+:' });
+    }, { assign: AssignmentType.Add });
     const buffer = createRenderBuffer('segmented');
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.value.parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((node.value as Node).parent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1152,7 +1162,7 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
     await root.prepareRegistration(context);
     context.root = root;
@@ -1160,7 +1170,7 @@ describe('Declaration', () => {
     const node = decl({
       name: any('background-color'),
       value: any('blue')
-    }, { assign: '+:' });
+    }, { assign: AssignmentType.Add });
     type WriteDeclarationValueSyntax = (
       valueParts: unknown,
       options: unknown,
@@ -1197,7 +1207,7 @@ describe('Declaration', () => {
       decl({
         name: any('--tokens'),
         value: any('red')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
     await root.prepareRegistration(context);
     context.root = root;
@@ -1205,12 +1215,13 @@ describe('Declaration', () => {
     const node = decl({
       name: any('--tokens'),
       value: any('blue')
-    }, { assign: '+:' });
+    }, { assign: AssignmentType.Add });
     const buffer = createRenderBuffer('segmented');
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.value.parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((node.value as Node).parent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
@@ -1264,7 +1275,8 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
       kind: 'list',
-      value: [value.value[1], value.value[2].value[0]]
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      value: [value.value[1], (value.value[2] as List).value[0]]
     });
   });
 
@@ -1273,7 +1285,8 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
       kind: 'space',
-      value: [value.value[1], value.value[2].value[0]]
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      value: [value.value[1], (value.value[2] as Sequence).value[0]]
     });
   });
 
@@ -1294,11 +1307,11 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' }),
+      }, { assign: AssignmentType.Add }),
       decl({
         name: any('background-color'),
         value: any('foo')
-      }, { assign: '+:' })
+      }, { assign: AssignmentType.Add })
     ]);
 
     const css = await renderNodeToString(node, context);
@@ -1313,11 +1326,11 @@ describe('Declaration', () => {
       decl({
         name: any('background-color'),
         value: any('red')
-      }, { assign: '+:' }),
+      }, { assign: AssignmentType.Add }),
       decl({
         name: any('background-color'),
         value: any('foo')
-      }, { assign: '+:' }),
+      }, { assign: AssignmentType.Add }),
       decl({
         name: any('background'),
         value: ref({ key: 'background-color' }, { type: 'declaration' })
@@ -1336,11 +1349,11 @@ describe('Declaration', () => {
         decl({
           name: any('background-color'),
           value: any('red')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         decl({
           name: any('background-color'),
           value: any('foo')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         rules([
           decl({
             name: any('background'),
@@ -1351,7 +1364,8 @@ describe('Declaration', () => {
     ]);
 
     const parent = node.rules[0]!;
-    const child = parent.rules[2]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const child = (parent as unknown as { rules: Node[] }).rules[2]!;
     child.parent = parent;
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -1654,7 +1668,7 @@ describe('Declaration', () => {
     const node = decl({ name, value });
     node._location = [0, 1, 1, 12, 2, 6];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token('\n', 'WS', 6)]]])
+      before: new Map([[value.location[0]!, [token('\n', 'WS', 6)]]])
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('color: white');

@@ -31,7 +31,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
-  rules: Node[];
+  rules: Rules | Node[];
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
