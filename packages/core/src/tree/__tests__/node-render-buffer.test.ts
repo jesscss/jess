@@ -100,6 +100,7 @@ class SourceOnlyNode extends Node<string> {
 }
 
 class AsyncValueNode extends Node<string> {
+  declare value: string;
   constructor(
     value: string,
     private readonly resolved: Node = any(value)
@@ -117,8 +118,7 @@ class AsyncValueNode extends Node<string> {
   }
 
   override toTrimmedString(options?: Parameters<Node['toTrimmedString']>[0]) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const source = `source-${Reflect.get(this, 'value') as string}`;
+    const source = `source-${this.value}`;
     getPrintOptions(options).writer.add(source);
     return source;
   }

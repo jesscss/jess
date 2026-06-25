@@ -27,14 +27,14 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectRule extends Node<string> {
+  declare value: string;
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     const w = getPrintOptions(options).writer!;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const v = Reflect.get(this, 'value') as string;
+    const v = this.value;
     w.add(v);
     return v;
   }

@@ -111,17 +111,6 @@ type RulesResolveState = {
   kind: 'public-resolve';
 };
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
@@ -656,6 +645,7 @@ export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOpt
   get options(): O & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
+  set options(value: O & NodeOptions);
   eval(context: Context): MaybePromise<this>;
 }
 
@@ -4008,7 +3998,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

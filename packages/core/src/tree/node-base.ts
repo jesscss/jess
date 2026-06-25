@@ -676,7 +676,8 @@ export abstract class Node<
       }
     });
     if (arguments.length > 0) {
-      Reflect.set(this, 'value', this._processNodes(value));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (this as unknown as { value: unknown }).value = this._processNodes(value);
     }
     this._location = location;
     this._options = options;

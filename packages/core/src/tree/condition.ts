@@ -27,18 +27,6 @@ export type ConditionOptions = {
 
 type ConditionResultValue = Node | boolean;
 
-function getWriterTextSincePosition(writer: { position(): number }, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
   eval(context: Context): MaybePromise<Bool>;
 }
@@ -94,7 +82,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const options = getPrintOptions(rawOptions);
     const position = options.writer.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(options.writer, position);
+    return options.writer.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

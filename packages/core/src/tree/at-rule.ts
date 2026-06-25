@@ -389,7 +389,7 @@ function setAtRuleBodyEvalPrelude(
   if (record.writeEvaluatedPrelude) {
     record.evalFrame.adopt(prelude);
     record.evalFrame.prelude = prelude;
-    Reflect.set(record.evalFrame, '_valueOf', undefined);
+    record.evalFrame._valueOf = undefined;
   }
 }
 
@@ -528,10 +528,10 @@ function applyAtRuleBodyPublicResultState(
   if (record.evaluatedPrelude && record.evaluatedPrelude !== node.prelude) {
     node.adopt(record.evaluatedPrelude);
     node.prelude = record.evaluatedPrelude;
-    Reflect.set(node, '_valueOf', undefined);
+    node._valueOf = undefined;
   }
   if (evaluatedBody && evaluatedBody.rules !== node.rules) {
-    Reflect.set(node, 'rules', evaluatedBody.rules);
+    (node as { rules: Node[] }).rules = evaluatedBody.rules;
     for (let i = 0; i < node.rules.length; i++) {
       node.adopt(node.rules[i]!);
     }
@@ -569,8 +569,7 @@ function attachAtRuleBodyOuterScope(rules: Rules, context: Context): Rules {
 }
 
 function createAtRuleBodyEvalSurface(node: AtRule, context: Context): Rules {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- ownRules is private; Reflect allows module-internal access
-  const surface = new Rules((Reflect.get(node, 'ownRules') as (rules: Node[]) => Node[]).call(node, node.rules));
+  const surface = new Rules(node.ownRules(node.rules));
   surface.parent = node;
   surface.sourceNode = node;
   return attachAtRuleBodyOuterScope(surface, context);
@@ -600,7 +599,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   frames: (Ruleset | AtRule)[] | undefined;
 
-  protected _valueOf: string | undefined;
+  _valueOf: string | undefined;
   name: AtRuleParts['name'];
   prelude: AtRuleParts['prelude'];
   declare readonly rules: Node[];
@@ -658,7 +657,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return (canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node)) as T;
   }
 
-  private ownRules(rules: Node[]): Node[] {
+  ownRules(rules: Node[]): Node[] {
     const owned = new Array<Node>(rules.length);
     for (let i = 0; i < rules.length; i++) {
       const copied = copyWithReusableLeavesPreservingComments(rules[i]!);
@@ -1158,7 +1157,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             }
             if (resolvedRules !== rules) {
               node = ensureDerived();
-              Reflect.set(node, 'rules', resolvedRules.rules);
+              (node as { rules: Node[] }).rules = resolvedRules.rules;
               node.registrationPrepared = true;
             }
             this.restoreBodyParentage(node);
@@ -1176,7 +1175,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       if (preparedRules !== rules) {
         node = ensureDerived();
-        Reflect.set(node, 'rules', preparedRules.rules);
+        (node as { rules: Node[] }).rules = preparedRules.rules;
         node.registrationPrepared = true;
       }
       this.restoreBodyParentage(node);

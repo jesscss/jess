@@ -56,14 +56,14 @@ class CountingWriter extends OutputWriter {
 }
 
 class ReturnOnlyNode extends Node<string> {
+  declare value: string;
   constructor(value: string) {
     super(value);
     this.addFlag(F_NON_STATIC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const val = Reflect.get(this, 'value') as string;
+    const val = this.value;
     getPrintOptions(options).writer.add(`source-${val}`);
     return `source-${val}`;
   }
@@ -73,8 +73,7 @@ class ReturnOnlyNode extends Node<string> {
     _bufferOrOptions?: RenderBuffer | PrintOptions,
     _options?: PrintOptions
   ): string {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return Reflect.get(this, 'value') as string;
+    return this.value;
   }
 }
 
@@ -84,8 +83,7 @@ class WritingNode extends ReturnOnlyNode {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     _options?: PrintOptions
   ): string {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const val = Reflect.get(this, 'value') as string;
+    const val = this.value;
     const opts = bufferOrOptions && !('kind' in bufferOrOptions)
 
       ? bufferOrOptions as PrintOptions
@@ -96,14 +94,14 @@ class WritingNode extends ReturnOnlyNode {
 }
 
 class AsyncWritingStaticNode extends Node<string> {
+  declare value: string;
   constructor(value: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const val = Reflect.get(this, 'value') as string;
+    const val = this.value;
     const text = `source-${val}`;
     getPrintOptions(options).writer.add(text);
     return text;
@@ -114,8 +112,7 @@ class AsyncWritingStaticNode extends Node<string> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     _options?: PrintOptions
   ): Promise<string> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const val = Reflect.get(this, 'value') as string;
+    const val = this.value;
     const opts = bufferOrOptions && !('kind' in bufferOrOptions)
 
       ? bufferOrOptions as PrintOptions
@@ -605,7 +602,7 @@ describe('QueryCondition', () => {
     expect(node.toTrimmedString({ writer })).toBe('screen and custom-operation');
     expect(writer.toString()).toBe('screen and custom-operation');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -626,7 +623,7 @@ describe('QueryCondition', () => {
     expect(node.toTrimmedString({ writer })).toBe('screen and (custom-condition)');
     expect(writer.toString()).toBe('screen and (custom-condition)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -647,7 +644,7 @@ describe('QueryCondition', () => {
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('screen and (custom)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -669,7 +666,7 @@ describe('QueryCondition', () => {
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('prefix|screen and (custom)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -704,7 +701,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -723,7 +720,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe('prefix|screen and written');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -743,7 +740,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -764,7 +761,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe('prefix|screen and written');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });

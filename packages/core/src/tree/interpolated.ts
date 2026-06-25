@@ -28,7 +28,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = Reflect.get(replacement, 'value') as unknown;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const arg = (replacement as unknown as { value: unknown }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -37,7 +38,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    const value = Reflect.get(replacement, 'value') as unknown;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const value = (replacement as unknown as { value: unknown }).value;
     if (value instanceof Node) {
       return value;
     }

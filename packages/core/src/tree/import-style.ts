@@ -993,15 +993,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       evaluatedRules.options.importBoundary === true
       || (isNode(evaluatedRules.sourceNode, N.Rules) && evaluatedRules.sourceNode.options.importBoundary === true)
     );
-    // Rules interface declares get options() without a setter, but Node base provides one; bypass via Reflect.set
-    Reflect.set(out, 'options', {
+    out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
       importBoundary: hasImportBoundary,
       referenceMode: isReferenceMode,
       readonly
-    });
+    };
     importPlacementOptionsStates.set(out, {
       referenceMode: isReferenceMode,
       rulesVisibility: out.options.rulesVisibility

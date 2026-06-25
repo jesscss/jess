@@ -35,18 +35,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 export const enum AssignmentType {
   Default = ':',
   Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
@@ -323,7 +311,8 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (node.type === 'Interpolated') {
     return true;
   }
-  return valueShouldResolveCustomProperty(Reflect.get(node, 'value'));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return valueShouldResolveCustomProperty('value' in node ? (node as unknown as { value: unknown }).value : undefined);
 };
 
 const valueShouldResolveCustomProperty = (value: unknown): boolean => {
@@ -807,7 +796,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     const position = w.position();
     this.writeDeclarationValueSyntax(valueParts, options, renderState);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   private writeDeclarationFieldValueSyntax(

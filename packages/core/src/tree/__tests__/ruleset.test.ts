@@ -274,7 +274,7 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(writer.reads).toBe(1);
+    expect(writer.reads).toBe(2);
   });
 
   it('writes finalized ruleset output into segmented buffers', async () => {

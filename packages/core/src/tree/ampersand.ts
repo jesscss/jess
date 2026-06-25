@@ -14,18 +14,6 @@ import { atIndex } from './util/collections.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -592,7 +580,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

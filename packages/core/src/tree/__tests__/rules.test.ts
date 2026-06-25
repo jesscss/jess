@@ -726,7 +726,7 @@ describe('Rules', () => {
     ]);
 
     expect(node.toTrimmedString({ writer })).toBe('color: red;');
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {

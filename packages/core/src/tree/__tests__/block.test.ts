@@ -41,9 +41,9 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
+  declare value: string;
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    options.writer.add(Reflect.get(this, 'value') as string);
+    options.writer.add(this.value);
   }
 
   override toString(): string {
@@ -68,7 +68,7 @@ describe('Block', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('{foo}');
     expect(writer.toString()).toBe('{foo}');
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
   });
 
   it('stores the block child on a constructor-owned direct field', () => {

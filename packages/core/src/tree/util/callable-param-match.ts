@@ -140,7 +140,8 @@ export function matchCallableParams({
       for (let j = argPos; j < args.length; j++) {
         rest[j - argPos] = args[j]!;
       }
-      const restValue = Reflect.get(param, 'value') as unknown;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const restValue = (param as unknown as { value: unknown }).value;
       const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[paramIndex] = {
         name: restName,
@@ -195,7 +196,8 @@ export function matchCallableParams({
       };
       signatureParts[i] = getCallableNodeSignature(paramNodeValue);
     } else if (param.type === 'Rest') {
-      const restValue = Reflect.get(param, 'value') as unknown;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const restValue = (param as unknown as { value: unknown }).value;
       const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[i] = {
         name: restName,

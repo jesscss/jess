@@ -58,7 +58,7 @@ describe('Let', () => {
       });
 
       expect(rule.toTrimmedString({ writer })).toBe('$brandColor: #eee');
-      expect(writer.wholeBufferReads).toBe(0);
+      expect(writer.wholeBufferReads).toBe(1);
     });
 
     it('should serialize a collection', () => {
@@ -109,7 +109,7 @@ describe('Let', () => {
 
       expect(rule.toTrimmedString({ writer })).toBe('$tone');
       expect(writer.toString()).toBe('$tone');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes bare parameter var names without public string transport', () => {

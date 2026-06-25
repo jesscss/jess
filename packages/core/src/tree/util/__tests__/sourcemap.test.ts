@@ -53,9 +53,9 @@ describe('source map segments', () => {
     ], undefined, undefined, treeContext);
     // attach fake locations and files
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const rs = ((Reflect.get(nested, 'value') as unknown[])[0] as any).rules;
+    const rs = nested.rules[0] as Rules;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    (((Reflect.get(rs, 'value') as unknown[])[0]) as any)._location = [0, 1, 3, 0, 1, 8];
+    (rs.rules[0] as any)._location = [0, 1, 3, 0, 1, 8];
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
     const segs = w.getSegments();
@@ -124,7 +124,7 @@ describe('source map segments', () => {
     ], undefined, undefined, leftContext);
     // attach file+location to the declaration itself so segments carry sources
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    ((Reflect.get(left, 'value') as unknown[])[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    (left.rules[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const rightContext = new TreeContext({
       file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' }
@@ -133,7 +133,7 @@ describe('source map segments', () => {
       decl({ name: any('b'), value: any('2') })
     ], undefined, undefined, rightContext);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    ((Reflect.get(right, 'value') as unknown[])[0] as any)._location = [0, 1, 1, 0, 1, 5];
+    (right.rules[0] as any)._location = [0, 1, 1, 0, 1, 5];
 
     const root = rules([left, right]);
     const css = root.toString(getPrintOptions({ writer: w }));

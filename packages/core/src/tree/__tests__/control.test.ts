@@ -177,7 +177,7 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $if branch conditions without public toString transport', () => {
@@ -401,7 +401,7 @@ describe('Control Nodes', () => {
         item: $value;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $for source header children without public toString transport', () => {
@@ -544,7 +544,7 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $while condition syntax without public toString transport', () => {

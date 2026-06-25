@@ -214,18 +214,6 @@ type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 type CallRenderArgOptions = { evaluateCalcArgs: boolean };
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 function writeCallNodeTextToActiveWriter(
   node: Node,
   printOptions: FinalPrintOptions,
@@ -238,7 +226,7 @@ function writeCallNodeTextToActiveWriter(
     writer.trimHorizontalStartSince(position);
     writer.trimHorizontalEndSince(position);
   }
-  return getWriterTextSincePosition(writer, position);
+  return writer.getSince(position);
 }
 
 function getRenderedCallNameText(name: string | Node | unknown): string | undefined {
@@ -1499,7 +1487,6 @@ export class Call extends Node<CallValue, CallOptions> {
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
           isNode(evaluatedName, N.Mixin | N.Ruleset)
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           || ((evaluatedName as object) instanceof MixinCollection)
           || Array.isArray(evaluatedName)
         ) {
@@ -1536,7 +1523,6 @@ export class Call extends Node<CallValue, CallOptions> {
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             || ((evaluatedName as object) instanceof MixinCollection)
             || Array.isArray(evaluatedName)
           )
@@ -1637,7 +1623,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   /** @internal */

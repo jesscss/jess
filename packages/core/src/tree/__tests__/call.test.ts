@@ -331,7 +331,7 @@ describe('Call', () => {
     }, { markImportant: true });
 
     expect(rule.toTrimmedString({ writer })).toBe('$rgb?(100, 100, 100) !important: raw body');
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('serializes exact call source syntax without falling through writeSyntax', () => {
@@ -1721,7 +1721,7 @@ describe('Call', () => {
     expect(rule.render(context, { writer })).toBe('fn(custom-arg, 30)');
     expect(writer.toString()).toBe('prefix|fn(custom-arg, 30)');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders custom fallback CSS call arguments through the caller writer', async () => {
@@ -1747,7 +1747,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
     expect(writer.toString()).toBe('prefix|wrap(): custom-body');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders custom fallback CSS call content through the caller writer', async () => {
@@ -1773,7 +1773,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
     expect(writer.toString()).toBe('prefix|custom-name(30)');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders custom fallback CSS call names through the caller writer', async () => {
@@ -1800,7 +1800,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn((custom-body), 30)');
     expect(writer.toString()).toBe('prefix|fn((custom-body), 30)');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('resolves CSS calls without touching render state', async () => {

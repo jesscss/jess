@@ -34,10 +34,11 @@ function getKnownQueryConditionSourceText(node: Node): string | undefined {
   if (node instanceof Color) {
     return typeof node.node === 'string' ? node.node : undefined;
   }
-  if (node instanceof QueryCondition) {
-    const parts = new Array(node.value.length);
-    for (let i = 0; i < node.value.length; i++) {
-      const text = getKnownQueryConditionSourceText(node.value[i]!);
+  if (node.constructor === QueryCondition) {
+    const qc = node as QueryCondition;
+    const parts = new Array(qc.value.length);
+    for (let i = 0; i < qc.value.length; i++) {
+      const text = getKnownQueryConditionSourceText(qc.value[i]!);
       if (text === undefined) {
         return undefined;
       }
@@ -45,62 +46,53 @@ function getKnownQueryConditionSourceText(node: Node): string | undefined {
     }
     return parts.join(' ');
   }
-  if (node instanceof Paren) {
-    const open = node.options?.delimiter === 'square' ? '[' : '(';
-    const close = node.options?.delimiter === 'square' ? ']' : ')';
-    if (!node.value) {
-      return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+  if (node.constructor === Paren) {
+    const paren = node as Paren;
+    const open = paren.options?.delimiter === 'square' ? '[' : '(';
+    const close = paren.options?.delimiter === 'square' ? ']' : ')';
+    if (!paren.value) {
+      return `${paren.options?.escaped ? '~' : ''}${open}${close}`;
     }
-    const value = getKnownQueryConditionSourceText(node.value);
+    const value = getKnownQueryConditionSourceText(paren.value);
     if (value === undefined) {
       return undefined;
     }
-    return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+    return `${paren.options?.escaped ? '~' : ''}${open}${value}${close}`;
   }
-  if (node instanceof Condition) {
-    const left = getKnownQueryConditionSourceText(node.left);
+  if (node.constructor === Condition) {
+    const cond = node as Condition;
+    const left = getKnownQueryConditionSourceText(cond.left);
     if (left === undefined) {
       return undefined;
     }
-    const needsParens = Boolean(node.right || node.negate);
-    let out = node.negate ? 'not ' : '';
+    const needsParens = Boolean(cond.right || cond.negate);
+    let out = cond.negate ? 'not ' : '';
     if (needsParens) {
       out += '(';
     }
     out += left;
-    if (node.operator && node.right) {
-      const right = getKnownQueryConditionSourceText(node.right);
+    if (cond.operator && cond.right) {
+      const right = getKnownQueryConditionSourceText(cond.right);
       if (right === undefined) {
         return undefined;
       }
-      out += ` ${node.operator} ${right}`;
+      out += ` ${cond.operator} ${right}`;
     }
     if (needsParens) {
       out += ')';
     }
     return out;
   }
-  if (node instanceof Operation) {
-    const left = getKnownQueryConditionSourceText(node.left);
-    const right = getKnownQueryConditionSourceText(node.right);
+  if (node.constructor === Operation) {
+    const op = node as Operation;
+    const left = getKnownQueryConditionSourceText(op.left);
+    const right = getKnownQueryConditionSourceText(op.right);
     if (left === undefined || right === undefined) {
       return undefined;
     }
-    return `${left} ${node.operator} ${right}`;
+    return `${left} ${op.operator} ${right}`;
   }
   return undefined;
-}
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
 }
 
 /**
@@ -271,7 +263,7 @@ export class QueryCondition extends Sequence {
               if (w.position() === before) {
                 w.add(out);
               } else {
-                return getWriterTextSincePosition(w, before);
+                return w.getSince(before);
               }
               options.suppressBoundaryTrivia = saved;
               return out;
@@ -300,7 +292,7 @@ export class QueryCondition extends Sequence {
             if (w.position() === before) {
               w.add(rendered);
             } else if (!canTrustText) {
-              return getWriterTextSincePosition(w, before);
+              return w.getSince(before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -315,7 +307,7 @@ export class QueryCondition extends Sequence {
         if (w.position() === before) {
           w.add(out);
         } else if (!canTrustText) {
-          return getWriterTextSincePosition(w, before);
+          return w.getSince(before);
         }
       }
       options.suppressBoundaryTrivia = saved;
@@ -365,7 +357,7 @@ export class QueryCondition extends Sequence {
     }
     const position = printOptions.writer.position();
     this.writeSyntax(printOptions);
-    return getWriterTextSincePosition(printOptions.writer, position);
+    return printOptions.writer.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -399,7 +391,7 @@ export class QueryCondition extends Sequence {
       }
       const position = prepared.writer.position();
       this.writeQueryConditionSyntax(this.value, prepared);
-      const rendered = getWriterTextSincePosition(prepared.writer, position);
+      const rendered = prepared.writer.getSince(position);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;

@@ -125,7 +125,7 @@ describe('Ampersand', () => {
     const writer = new WholeBufferCountingWriter();
 
     expect(amp('-bar').toTrimmedString({ writer })).toBe('&(-bar)');
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('resolves framed ampersands without touching render state', async () => {

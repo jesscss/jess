@@ -72,18 +72,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 function copySelectorForRulesetMetadata(selector: Selector | string): Selector | string {
   // A bare-string selector (strings-not-nodes model) is immutable — return as-is.
   if (typeof selector === 'string') {
@@ -584,7 +572,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.attachSelectorBitsToNode(sourceNode, selectorBits);
       }
     }
-    this.attachSelectorBitsToValue('value' in node ? Reflect.get(node as object, 'value') : undefined, selectorBits);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this.attachSelectorBitsToValue('value' in node ? (node as unknown as { value: unknown }).value : undefined, selectorBits);
   }
 
   private attachSelectorBitsToValue(value: unknown, selectorBits: Context['selectorBits']): void {
@@ -1115,7 +1104,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const w = opts.writer!;
     const position = w.position();
     this.writeSyntax(opts);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

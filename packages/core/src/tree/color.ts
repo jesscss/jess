@@ -159,7 +159,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     }
     if (isNode(value) && value.type === 'Num') {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return Reflect.get(value, 'number') as number;
+      return (value as unknown as { number: number }).number;
     }
     if (isChannelTuple(value)) {
       return value;
@@ -604,7 +604,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     if (isNode(b, N.Dimension) || b.type === 'Num') {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const bVal = isNode(b, N.Dimension) ? b.number : Reflect.get(b, 'number') as number;
+      const bVal = isNode(b, N.Dimension) ? b.number : (b as unknown as { number: number }).number;
       const bUnit = isNode(b, N.Dimension) ? b.unit : '';
       const unitMode = context?.opts?.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';

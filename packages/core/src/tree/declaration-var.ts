@@ -8,20 +8,8 @@ import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import type { LocationInfo } from './node-base.js';
 import { Nil } from './nil.js';
-import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -68,13 +56,13 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
         const nameText = this.name.value.replace(/\s+$/u, '');
         w.add('$', this);
         w.add(nameText, this.name);
-        return getWriterTextSincePosition(w, position);
+        return w.getSince(position);
       }
       this.writeBareParameterSyntax(options);
-      return getWriterTextSincePosition(w, position);
+      return w.getSince(position);
     }
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   private writeBareParameterSyntax(options: FinalPrintOptions): void {

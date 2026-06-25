@@ -122,7 +122,7 @@ export function finalizeCallableOutput({
 
   if (state.outputRules.length === 1) {
     const output = state.outputRules[0]!;
-    Reflect.set(output, 'options', {
+    output.options = {
       ...output.options,
       rulesVisibility: {
         Ruleset: 'public',
@@ -130,7 +130,7 @@ export function finalizeCallableOutput({
         VarDeclaration: 'public',
         Mixin: 'public'
       }
-    });
+    };
     attachMixinOutputSlot(
       output,
       resolveSingleOutputSourceRules(output),

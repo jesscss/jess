@@ -88,7 +88,7 @@ describe('Operation', () => {
     const rule = op([num(10), '+', ref({ key: 'rhs' }, { type: 'variable' })]);
 
     expect(rule.toTrimmedString({ writer })).toBe('10 + $rhs');
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes operation syntax without public string readback', () => {

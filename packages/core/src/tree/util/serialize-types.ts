@@ -163,7 +163,8 @@ function serializeNodeChildFields(n: Node, depth: number, opts: Required<Seriali
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
-  const roleValue = Reflect.get(n, 'role') as unknown;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const roleValue = 'role' in n ? (n as unknown as { role: unknown }).role : undefined;
   const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
@@ -184,7 +185,8 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     return childFieldsStr ? `${open}\n${childFieldsStr}\n${pad})` : `${open})`;
   }
 
-  const value = Reflect.get(n, 'value') as unknown;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const value = 'value' in n ? (n as unknown as { value: unknown }).value : undefined;
   // If the main value is a primitive, include it inline
   if (
     value === null
