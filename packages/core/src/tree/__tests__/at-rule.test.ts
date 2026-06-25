@@ -27,6 +27,7 @@ let context: Context;
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  tokenTypeIdx: 0,
   startOffset: 0,
   endOffset: image.length - 1,
   startLine: 1,
@@ -61,7 +62,8 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
-    return super.preview(fn, preserveSegments);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return super.preview(fn as () => string | void, preserveSegments) as MaybePromise<string>;
   }
 
   override restore(mark: number): void {
@@ -285,11 +287,12 @@ describe('AtRule', () => {
     rules([parentAtRule]);
     const prelude = any('screen');
     prelude.addFlags(F_MAY_ASYNC);
-    prelude.eval = async (evalContext: Context) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    prelude.eval = (async (evalContext: Context) => {
       await Promise.resolve();
       expect(evalContext.rulesContext).toBe(savedRulesContext);
       return any('print');
-    };
+    }) as any;
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
       prelude,
@@ -300,7 +303,8 @@ describe('AtRule', () => {
     const evaluated = await Promise.resolve(node.eval(context));
     expect(evaluated).toBeInstanceOf(AtRule);
     expect(evaluated).not.toBe(node);
-    expect((evaluated as AtRule).prelude?.toTrimmedString()).toBe('print');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(((evaluated as AtRule).prelude as Node | undefined)?.toTrimmedString()).toBe('print');
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
@@ -317,7 +321,7 @@ describe('AtRule', () => {
     node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow(`'missing' is not defined`);
     expect(context.frames).toEqual([savedFrame]);
   });
 
@@ -335,7 +339,7 @@ describe('AtRule', () => {
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow(`'missing' is not defined`);
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -356,7 +360,7 @@ describe('AtRule', () => {
     context.frames = [savedFrame];
     context.rulesetFrames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow(`'missing' is not defined`);
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
@@ -373,7 +377,7 @@ describe('AtRule', () => {
     node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow(`'missing' is not defined`);
     expect(context.frames).toEqual([savedFrame]);
   });
 
@@ -391,7 +395,7 @@ describe('AtRule', () => {
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow(`'missing' is not defined`);
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -619,10 +623,11 @@ describe('AtRule', () => {
   it('registers async nested layer names from invocation records without mutating source children', async () => {
     const nestedPrelude = any('child');
     nestedPrelude.addFlag(F_MAY_ASYNC);
-    nestedPrelude.eval = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    nestedPrelude.eval = (async (_evalContext: Context) => {
       await Promise.resolve();
       return any('child');
-    };
+    }) as any;
     const nestedBody = rules([
       ruleset({
         selector: el('.inner'),
@@ -1100,7 +1105,7 @@ describe('AtRule', () => {
         ruleset({
           selector: el('to'),
           rules: [
-            decl({ name: 'opacity', value: dimension([1]) })
+            decl({ name: 'opacity', value: dimension(1) })
           ]
         })
       ]
@@ -1433,12 +1438,12 @@ describe('AtRule', () => {
     const originalHasVisibleRules = Rules.prototype.hasVisibleRules;
     Rules.prototype.hasVisibleRules = function throwAfterEval(
       this: Rules,
-      ..._args: Parameters<typeof originalHasVisibleRules>
+      ...args: Parameters<typeof originalHasVisibleRules>
     ): ReturnType<typeof originalHasVisibleRules> {
       if (this !== originalRules && this.rules.length === 1) {
         throw new Error('hasVisibleRules failed');
       }
-      return originalHasVisibleRules.apply(this, _args);
+      return originalHasVisibleRules.apply(this, args);
     };
 
     try {
@@ -1484,8 +1489,10 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(sourceName.parent).toBe(node);
-    expect(sourcePrelude?.parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((sourceName as Node).parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((sourcePrelude as Node | undefined)?.parent).toBe(node);
     expect(sourceRules[0]?.parent).toBe(node);
     expect(node.prelude).toBe(sourcePrelude);
     if (resolved instanceof AtRule) {
@@ -1603,7 +1610,8 @@ describe('AtRule', () => {
       }
     `);
     expect(node.prelude).toBe(sourcePrelude);
-    expect(sourcePrelude?.parent).toBe(node);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((sourcePrelude as Node | undefined)?.parent).toBe(node);
     expect(node.rules).toBe(sourceRules.rules);
     expect(sourceRules.parent).toBeUndefined();
     expect(node.evaluated).toBe(false);
@@ -1643,7 +1651,8 @@ describe('AtRule', () => {
 
     expect(first).not.toBe(node);
     expect(first).not.toBe(second);
-    expect(second.prelude?.toTrimmedString()).toBe('screen');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((second.prelude as Node | undefined)?.toTrimmedString()).toBe('screen');
     expect(node.prelude).toBe(sourcePrelude);
     expect(node.rules).toBe(sourceRules.rules);
     expect(sourcePrelude.parent).toBe(node);
@@ -1673,7 +1682,7 @@ describe('AtRule', () => {
       ruleset({
         selector: el('to'),
         rules: [
-          decl({ name: 'opacity', value: dimension([1]) })
+          decl({ name: 'opacity', value: dimension(1) })
         ]
       })
     ]);
@@ -1748,12 +1757,12 @@ describe('AtRule', () => {
     const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
     const trivia = createTriviaMap({
       before: new Map([
-        [prelude.location[0], leading],
+        [prelude.location[0]!, leading],
         [55, trailing]
       ]),
       after: new Map([
-        [name.location[3], leading],
-        [prelude.location[3], trailing]
+        [name.location[3]!, leading],
+        [prelude.location[3]!, trailing]
       ])
     }) satisfies TriviaMap;
     const node = atrule({
@@ -1904,7 +1913,8 @@ describe('AtRule', () => {
       name: any('@namespace', { role: 'atkeyword' }),
       prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
     });
-    node.getHeaderString = () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (node as unknown as AtRule).getHeaderString = () => {
       throw new Error('direct leaf at-rule writeSyntax should not use header string transport');
     };
 

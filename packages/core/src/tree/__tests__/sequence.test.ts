@@ -4,7 +4,7 @@ import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, type FlatRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 
@@ -36,15 +36,17 @@ class DirectText extends Node<string> {
 
   override toTrimmedString(options?: PrintOptions): string {
     const w = getPrintOptions(options).writer!;
-    w.add(this.value);
-    return this.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const v = Reflect.get(this, 'value') as string;
+    w.add(v);
+    return v;
   }
 }
 
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   if (!isNode(evald, N.Rules)) {
-    throw new Error(`Expected Rules root, received ${evald.type}`);
+    throw new Error('Expected Rules root');
   }
   context.root = evald;
   context.rulesContext = evald;
@@ -259,7 +261,8 @@ describe('Sequence', () => {
 
   it('writes dynamic sync direct sequence render output into shared flat buffers with one mark', () => {
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const sequenceNode = seq([
@@ -449,7 +452,8 @@ describe('Sequence', () => {
 
   it('writes static sequence render output into shared flat buffers with one mark', () => {
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const sequenceNode = seq([
@@ -722,7 +726,7 @@ describe('Sequence', () => {
       image: '  ',
       startOffset: 2,
       endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenTypeIdx: WS.tokenTypeIdx!,
       tokenType: WS
     }] satisfies IToken[];
     const trivia = createTriviaMap({
@@ -763,7 +767,8 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
 
     expect(rule.toTrimmedString({
       trivia
@@ -779,7 +784,8 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
     context.opts.trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('1020');
@@ -794,7 +800,8 @@ describe('Sequence', () => {
     const first = any('is', undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
     rule.evaluated = true;
 
     expect(rule.toTrimmedString({
@@ -808,7 +815,7 @@ describe('Sequence', () => {
       image: ' ',
       startOffset: 2,
       endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenTypeIdx: WS.tokenTypeIdx!,
       tokenType: WS
     }] satisfies IToken[];
     const trivia = createTriviaMap({
@@ -819,7 +826,8 @@ describe('Sequence', () => {
     const first = any('is', undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
     rule.evaluated = true;
 
     expect(rule.toTrimmedString({
@@ -834,7 +842,7 @@ describe('Sequence', () => {
       image: '  ',
       startOffset: 2,
       endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenTypeIdx: WS.tokenTypeIdx!,
       tokenType: WS
     }] satisfies IToken[];
     const trivia = createTriviaMap({
@@ -845,7 +853,8 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
 
     expect(rule.toTrimmedString({
       trivia
@@ -858,7 +867,7 @@ describe('Sequence', () => {
       image: '  ',
       startOffset: 2,
       endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenTypeIdx: WS.tokenTypeIdx!,
       tokenType: WS
     }] satisfies IToken[];
     const trivia = createTriviaMap({
@@ -869,7 +878,8 @@ describe('Sequence', () => {
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
     const rule = seq([first, second]);
-    rules([rule], undefined, undefined, treeContext);
+    const rNode = rules([rule]);
+    rNode._treeContext = treeContext;
     context.opts.trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('10  20');

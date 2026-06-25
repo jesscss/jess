@@ -114,9 +114,10 @@ describe('Rules', () => {
     const child = decl({ name: 'color', value: any('red') });
     const node = rules([child]);
 
-    expect(Object.prototype.hasOwnProperty.call(node, "value")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(node, 'value')).toBe(false);
     expect(node.rules[0]).toBe(child);
-    expect(node.constructor.childKeys).toEqual(['rules']);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((node.constructor as typeof Node).childKeys).toEqual(['rules']);
   });
 
   it.skip('assigns position linearly for nested rules', async () => {
@@ -134,15 +135,15 @@ describe('Rules', () => {
     node = await node.eval(context);
     let index = node.index;
     expect(index).toBe(0);
-    expect(node.at(1)?.index).toBeGreaterThan(index);
-    index = node.at(1)?.index ?? index;
-    expect(node.at(2)?.index).toBeGreaterThan(index);
-    index = node.at(2)?.index ?? index;
+    expect(node.at(1)!.index).toBeGreaterThan(index);
+    index = node.at(1)!.index;
+    expect(node.at(2)!.index).toBeGreaterThan(index);
+    index = node.at(2)!.index;
     const childRules = expectRulesNode(node.at(2));
-    expect(childRules.at(0)?.index).toBeGreaterThan(index);
-    index = childRules.at(1)?.index ?? index;
-    expect(childRules.at(2)?.index).toBeGreaterThan(index);
-    expect(expectRulesNode(childRules.at(2)).at(0)?.index).toBeGreaterThan(index);
+    expect(childRules.at(0)!.index).toBeGreaterThan(index);
+    index = childRules.at(1)!.index;
+    expect(childRules.at(2)!.index).toBeGreaterThan(index);
+    expect(expectRulesNode(childRules.at(2)).at(0)!.index).toBeGreaterThan(index);
   });
 
   it('keeps Rules render flags render-local', () => {
@@ -416,14 +417,18 @@ describe('Rules', () => {
     const node = rules([child]);
     context.root = rules([]);
     const originalRender = child.render;
-    child.render = function countAsyncChildRender(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    child.render = (function countAsyncChildRender(
       this: typeof child,
       childContext: Context,
-      bufferOrOptions?: Parameters<typeof originalRender>[1],
-      options?: Parameters<typeof originalRender>[2]
-    ): ReturnType<typeof originalRender> {
-      return Promise.resolve().then(() => originalRender.call(this, childContext, bufferOrOptions, options));
-    };
+      bufferOrOptions?: unknown,
+      options?: unknown
+    ) {
+      return Promise.resolve().then(() =>
+
+        (originalRender as Function).call(this, childContext, bufferOrOptions, options)
+      );
+    } as unknown) as typeof originalRender;
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
     expect(node.evaluated).toBe(false);
@@ -439,7 +444,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     const originalResolve = root.resolve;
@@ -469,7 +475,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     root.toString = () => {
@@ -489,7 +496,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     root.resolve = () => {
@@ -508,7 +516,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     root.toString = () => {
@@ -620,7 +629,8 @@ describe('Rules', () => {
     let charsetSawActiveWriter = false;
     const importRule = atrule({
       name: any('@import', { role: 'atkeyword' }),
-      prelude: quoted(any('theme.css'))
+      prelude: quoted(any('theme.css')),
+      rules: []
     });
     charset.toTrimmedString = () => {
       throw new Error('Rules root serializer should write charset syntax directly');
@@ -722,19 +732,19 @@ describe('Rules', () => {
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
     const root = rules([
       ruleset({
-        selector: any('.a'),
+        selector: '.a',
         rules: [
           decl({ name: 'width', value: dimension([10, 'px']) })
         ]
       }),
       ruleset({
-        selector: any('.b'),
+        selector: '.b',
         rules: [
           decl({ name: 'width', value: dimension([20, 'px']) })
         ]
       }),
       ruleset({
-        selector: any('.c'),
+        selector: '.c',
         rules: [
           decl({ name: 'width', value: dimension([30, 'px']) })
         ]
@@ -759,13 +769,13 @@ describe('Rules', () => {
   it('keeps separate sibling rulesets with the same selector in separate blocks', async () => {
     const root = rules([
       ruleset({
-        selector: any('.same'),
+        selector: '.same',
         rules: [
           decl({ name: 'color', value: any('red') })
         ]
       }),
       ruleset({
-        selector: any('.same'),
+        selector: '.same',
         rules: [
           decl({ name: 'background', value: any('blue') })
         ]
@@ -1230,7 +1240,8 @@ describe('Rules', () => {
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        const scope3Rules = scope3.rules;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const scope3Rules = scope3.rules as Rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
@@ -1319,7 +1330,8 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
         }
         const width = expectDeclarationNode(grid.rules.at(0));
-        context.rulesContext = grid.rules;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        context.rulesContext = grid.rules as Rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
@@ -1479,13 +1491,14 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via direct rules.
-        let boxRules = boxRuleset.rules;
+
+        let boxRules: Rules | Node[] = boxRuleset.rules as Rules | Node[];
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
         // Rules owns a rules array, so use .rules.length or check if it's a Rules node
         if (!isNode(boxRules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
+          throw new Error('Expected Rules node');
         }
         expect(boxRules.rules.length).toBe(2);
 
@@ -1513,12 +1526,13 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.rules;
+
+        let box3Rules: Rules | Node[] = box3Ruleset.rules as Rules | Node[];
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
+          throw new Error('Expected Rules node');
         }
         expect(box3Rules.rules.length).toBe(2);
 

@@ -150,7 +150,8 @@ describe('Ampersand', () => {
       rules: []
     });
     context.rulesetFrames.push(frame);
-    frame.selector.toTrimmedString = () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (frame.selector as Selector).toTrimmedString = () => {
       throw new Error('Ampersand append placement should not snapshot selector text');
     };
 
@@ -169,7 +170,7 @@ describe('Ampersand', () => {
     const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
-      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+      throw new Error(`Expected Selector, got ${String(sourceSelector)}`);
     }
     const originalClone = sourceSelector.clone;
     let clonedSourceSelectors = 0;
@@ -264,9 +265,10 @@ describe('Ampersand', () => {
     const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
-      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+      throw new Error(`Expected Selector, got ${String(sourceSelector)}`);
     }
-    const sourceChildren = [...sourceSelector.value];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceChildren = [...(sourceSelector.value as unknown as Iterable<unknown>)];
 
     const resolved = await amp('-baz').resolve(context);
 
@@ -274,7 +276,8 @@ describe('Ampersand', () => {
     expect(resolved).not.toBe(sourceSelector);
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
-    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
   it('renders appended generated value without reparenting source value', async () => {
@@ -305,8 +308,10 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceParentChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceNestedChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
   it('extends appended generated value without reparenting source value', async () => {
@@ -347,8 +352,10 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceParentChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceNestedChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
@@ -560,9 +567,11 @@ describe('Ampersand', () => {
     });
     context.rulesetFrames.push(frame);
     let publicStringCalls = 0;
-    const originals = new Array<(typeof sourceSelector.value)[number]['toTrimmedString']>(sourceSelector.value.length);
+
+    const originals = new Array<Selector['toTrimmedString']>(sourceSelector.value.length);
     for (let index = 0; index < sourceSelector.value.length; index++) {
-      const selector = sourceSelector.value[index]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const selector = sourceSelector.value[index]! as Selector;
       originals[index] = selector.toTrimmedString;
       selector.toTrimmedString = function countPublicStringTransport(
         this: typeof selector,
@@ -575,7 +584,8 @@ describe('Ampersand', () => {
 
     const resolved = await amp('&-theme').resolve(context);
     for (let index = 0; index < sourceSelector.value.length; index++) {
-      sourceSelector.value[index]!.toTrimmedString = originals[index]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (sourceSelector.value[index]! as Selector).toTrimmedString = originals[index]!;
     }
 
     expect(resolved).toBeInstanceOf(Selector);
@@ -595,7 +605,8 @@ describe('Ampersand', () => {
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);
-    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(sourceChildren.map(child => (child as Selector).parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
   it('should validate each item individually when distributing template', async () => {
