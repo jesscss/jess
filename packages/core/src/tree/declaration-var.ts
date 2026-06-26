@@ -9,6 +9,8 @@ import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import type { LocationInfo } from './node-base.js';
 import { Nil } from './nil.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type RenderBuffer, isRenderBuffer } from './util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
@@ -45,6 +47,25 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     if (options?.paramVar) {
       this.addFlag(F_VISIBLE);
     }
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string | MaybePromise<string> {
+    // A visible parameter var (e.g. `$tone`) is a signature element: it renders
+    // its authored form directly and is never evaluated, prepared, or resolved.
+    // Going through the Declaration eval/render path would both evaluate it and
+    // recurse (its own value-state output is itself).
+    if (this._options?.paramVar && this.hasFlag(F_VISIBLE)) {
+      return this.renderSource(context, bufferOrOptions, options);
+    }
+    return isRenderBuffer(bufferOrOptions)
+      ? super.render(context, bufferOrOptions, options)
+      : super.render(context, bufferOrOptions);
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
