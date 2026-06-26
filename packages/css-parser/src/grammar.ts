@@ -74,12 +74,12 @@ const rw = trivia(oneOrMore(choice(ws, comment)));
 /**
  * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, `_`),
  * optionally preceded by `-`; subsequent chars add digits and `-`.
- * (TODO: CSS escapes -- `\hex`/`\char` -- are not yet handled here; see escape.css.)
+ * Includes CSS escapes (\\hex / \\char).
  * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
  * @see https://www.w3.org/TR/css-syntax-3/#ident-code-point
  */
-const ident = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const basicSel = regex(/(?:[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\d+(?:\.\d+)?%|\*)/);
+const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
@@ -148,7 +148,16 @@ export const {
   const PseudoSelector = node('PseudoSelector',
     parser({ trivia: rw }, sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')'))))),
     (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
-  const pseudoArg = choice(nth, g.SelectorList, scanTo(literal(')'), { skip: [balanced('(', ')')] }));
+  // `:nth-child(An+B of S)` — the `of <selector-list>` form. Without consuming the
+  // `of S`, `nth` would match just `An+B` and the choice would commit, leaving the
+  // outer `)` to fail. The last arm scans to `)` for arbitrary args, skipping
+  // balanced ()/[], strings, and comments so an inner `)` doesn't close it early.
+  // @see https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo
+  const pseudoArg = choice(
+    sequence(nth, optional(sequence(regex(/of(?![-\w])/i), g.SelectorList))),
+    g.SelectorList,
+    scanTo(literal(')'), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr, comment] })
+  );
 
   // ── Declarations ─────────────────────────────────────────────────────────
   /**
@@ -177,7 +186,7 @@ export const {
    * @see https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
    * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
    */
-  const propName = regex(/\*?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
@@ -243,7 +252,7 @@ export const {
     (c: any, r: any, s: any) => mk('QueryCondition', c, r, s));
   // Optional leading container name — an ident that is NOT a query keyword
   // (not/and/or/only), so `@container not (…)` keeps `not` in the condition.
-  const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
+  const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
   const queryPrelude = parser({ trivia: rw }, sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
