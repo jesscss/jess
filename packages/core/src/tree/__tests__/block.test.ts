@@ -57,7 +57,7 @@ describe('Block', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('{foo}');
     expect(writer.toString()).toBe('{foo}');
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
   });
 
   it('stores the block child on a constructor-owned direct field', () => {

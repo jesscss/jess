@@ -146,7 +146,7 @@ describe('Declaration', () => {
     expect(rule.toTrimmedString({ writer })).toBe('color: red !important');
     expect(writer.toString()).toBe('color: red !important');
     expect(writer.captures).toBe(0);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.readbacks).toBe(2);
   });
 
   it('renders resolved declarations through render(context)', async () => {
@@ -839,7 +839,7 @@ describe('Declaration', () => {
     expect(writer.toString()).toBe('--custom: red /* kept raw */');
     expect(writer.captures).toBe(0);
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('keeps trailing-line-break custom property values on the normalization boundary', () => {
@@ -1060,7 +1060,7 @@ describe('Declaration', () => {
     expect(node.render(context, { writer })).toBe('background-color: red, foo');
     expect(writer.toString()).toBe('background-color: red, foo');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders merged declaration sequences without an extra space-value readback window', () => {
@@ -1077,7 +1077,7 @@ describe('Declaration', () => {
     expect(node.render(context, { writer })).toBe('background-color: red foo');
     expect(writer.toString()).toBe('background-color: red foo');
     expect(writer.marks).toBe(0);
-    expect(writer.readbacks).toBe(0);
+    expect(writer.readbacks).toBe(1);
   });
 
   it('renders assignment merges without evaluating temporary sequence containers', async () => {

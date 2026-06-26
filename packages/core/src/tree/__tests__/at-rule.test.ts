@@ -308,7 +308,7 @@ describe('AtRule', () => {
     node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.frames).toEqual([savedFrame]);
   });
 
@@ -326,7 +326,7 @@ describe('AtRule', () => {
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -347,7 +347,7 @@ describe('AtRule', () => {
     context.frames = [savedFrame];
     context.rulesetFrames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
@@ -364,7 +364,7 @@ describe('AtRule', () => {
     node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.frames).toEqual([savedFrame]);
   });
 
@@ -382,7 +382,7 @@ describe('AtRule', () => {
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow("'missing' is not defined");
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -1149,7 +1149,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1181,7 +1181,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1216,7 +1216,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1250,7 +1250,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1294,7 +1294,7 @@ describe('AtRule', () => {
       await Promise.resolve();
       return body;
     };
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1424,7 +1424,7 @@ describe('AtRule', () => {
     const originalHasVisibleRules = Rules.prototype.hasVisibleRules;
     Rules.prototype.hasVisibleRules = function throwAfterEval(
       this: Rules,
-      ..._args: Parameters<typeof originalHasVisibleRules>
+      ...args: Parameters<typeof originalHasVisibleRules>
     ): ReturnType<typeof originalHasVisibleRules> {
       if (this !== originalRules && this.rules.length === 1) {
         throw new Error('hasVisibleRules failed');
@@ -1509,7 +1509,7 @@ describe('AtRule', () => {
     };
     evaluatedRules.eval = function evalReplacementBody(
       this: Rules,
-      ..._args: Parameters<typeof evaluatedRules.eval>
+      ...args: Parameters<typeof evaluatedRules.eval>
     ): ReturnType<typeof evaluatedRules.eval> {
       evaluatedRules.evaluated = true;
       return evaluatedRules;
@@ -2310,7 +2310,7 @@ describe('AtRule', () => {
 
   describe('collapse nesting at-rule categories', () => {
     it('keeps nested @starting-style in place when collapseNesting is true', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('[popover]:popover-open')]),
@@ -2339,7 +2339,7 @@ describe('AtRule', () => {
     });
 
     it('keeps leaf custom at-rules inside the current ruleset', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.box')]),
@@ -2408,7 +2408,7 @@ describe('AtRule', () => {
     });
 
     it('treats generated hoisted ampersand wrappers as transparent inside nested wrapper at-rules', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
           name: any('@supports', { role: 'atkeyword' }),
@@ -2480,7 +2480,7 @@ describe('AtRule', () => {
     });
 
     it('does not merge adjacent wrapper at-rules from distinct sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.one')]),
@@ -2525,7 +2525,7 @@ describe('AtRule', () => {
     });
 
     it('does not merge identical wrapper stacks across at-rule and hoisted-ruleset sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
           name: any('@supports', { role: 'atkeyword' }),
@@ -2989,7 +2989,7 @@ describe('AtRule', () => {
     });
 
     it('does not duplicate callable ruleset output inside nested media calls', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const navJustified = ruleset({
         selector: sel([el('.nav-justified')]),
         rules: [
@@ -3052,7 +3052,7 @@ describe('AtRule', () => {
 
   describe('serialization test for media.less AST', () => {
     it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),
