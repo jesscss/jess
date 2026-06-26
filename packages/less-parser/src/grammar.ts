@@ -144,10 +144,16 @@ const cssRules = rules((g: any) => {
   const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
     parser({ trivia: rw }, sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
+  // A bare name with nothing after it is NOT a statement — require args (a mixin
+  // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
+  // ident like `x` or `nonsense` would be silently accepted.
   const MixinOrQualifiedRule = node('MixinOrQualifiedRule',
     parser({ trivia: rw }, sequence(
-      g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard),
-      optional(choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))
+      g.mixinNamePath,
+      choice(
+        sequence(g.MixinArgs, optional(g.Guard), optional(choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))),
+        sequence(optional(g.Guard), choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))
+      )
     )),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
 
