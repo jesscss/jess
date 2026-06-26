@@ -234,9 +234,21 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
+  // Predictive custom-property value region — NO scanTo, NO skip. Content runs
+  // interleaved with recursively-balanced ()/[]/{} groups, each closed by expect().
+  // So an unmatched, stray, or CROSS-TYPE bracket (`({[ })`) surfaces a syntax error
+  // instead of being swallowed. noTrivia keeps the value verbatim; inside a group a
+  // `;` is content (only the group's own close ends it), at top level `;`/`}` end it.
+  const cpInnerContent = regex(/[^(){}[\]'"]+/);
+  const cpOuterContent = regex(/[^(){}[\];'"]+/);
+  const cpInner = many(choice(cpInnerContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr));
+  const cpParen = sequence(literal('('), g.cpInner, expect(literal(')'), ')'));
+  const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']'), ']'));
+  const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}'), '}'));
+  const cpValue = noTrivia(many(choice(cpOuterContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr)));
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(customProp, literal(':'),
-      choice(g.customValue, scanTo(choice(literal(';'), literal('}')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')], orEOF: true })),
+      choice(g.customValue, g.cpValue),
       optional(literal(';')))),
     (c: any, r: any, s: any) => mk('CustomDeclaration', c, r, s));
   const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
@@ -280,7 +292,7 @@ const cssRules = rules((g: any) => {
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardCondition, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
-    Ruleset, declarationList, Declaration, customValue, CustomDeclaration, anyDeclaration,
+    Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,
     parenBody, squareParenBody, Call, Paren, SquareParen, Quoted, anyValue, AtRuleBlock, AtRuleStatement, atRuleBody
   };
