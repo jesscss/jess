@@ -108,7 +108,37 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     this.name = value.name;
     this.params = value.params;
     this.guard = value.guard;
+    // A mixin owns its structural parts: name, params, and guard parent to the
+    // mixin (body is adopted below or via the Rules array in super()). This
+    // keeps scope resolution able to walk up from any part to the mixin, and
+    // keeps the canonical definition owning its parts when prepareRegistration
+    // builds a separate prepared wrapper from copies.
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.params instanceof Node) {
+      this.adopt(value.params);
+    }
+    if (value.guard instanceof Node) {
+      this.adopt(value.guard);
+    }
     this.removeFlag(F_VISIBLE);
+    // When a Rules wrapper was passed, record it as sourceNode so that
+    // createShallowCallableRulesSurface propagates it to the eval surface.
+    // This lets _storePreparedRegistrationNode recognize children as
+    // "reused source children" (node.parent === sourceRulesOf(surface))
+    // and skip re-adopting them, preserving the wrapper as their parent.
+    if (value.rules instanceof Rules) {
+      this.sourceNode = value.rules;
+      this.adopt(value.rules);
+      const wrapperRules = value.rules.rules;
+      for (let i = 0; i < wrapperRules.length; i++) {
+        const child = wrapperRules[i]!;
+        if (child instanceof Node) {
+          child.parent = value.rules;
+        }
+      }
+    }
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.
