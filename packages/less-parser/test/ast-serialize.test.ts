@@ -362,7 +362,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       prelude:
         (Expression
-          node:
+          value:
             (Reference
               target:
                 (Reference
@@ -1211,10 +1211,10 @@ describe('extend cases', () => {
     expect(extendCount).toBe(1);
     // Verify the Extend is in .c, not in .d
     expect(sExpr).toContainString('(BasicSelector \'.c\')');
-    expect(sExpr).toContainString('(BasicSelector \'.d\')');
+    expect(sExpr).toContain("selector: '.d'");
     // The Extend should be in the .c ruleset, not in the .d ruleset
     const cExtendIndex = sExpr.indexOf('(BasicSelector \'.c\')');
-    const dExtendIndex = sExpr.indexOf('(BasicSelector \'.d\')');
+    const dExtendIndex = sExpr.indexOf("selector: '.d'");
     const extendIndex = sExpr.indexOf('(Extend');
     expect(extendIndex).toBeGreaterThan(-1);
     expect(extendIndex).toBeLessThan(dExtendIndex); // Extend should come before .d

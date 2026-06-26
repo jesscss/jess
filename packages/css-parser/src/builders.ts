@@ -249,9 +249,14 @@ export class CssParser {
   protected _source = '';
   protected _strictEOF = false;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
+  protected _errors: Array<{ message: string; offset?: number }> = [];
 
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
+  }
+
+  protected _error(message: string, offset?: number) {
+    this._errors.push(offset !== undefined ? { message, offset } : { message });
   }
 
   // ── buildNode ─────────────────────────────────────────────────────────────
@@ -290,11 +295,30 @@ export class CssParser {
       case 'Url':               return this._buildUrl(children, loc);
       case 'Call':              return this._buildCall(rawChildren, loc);
       case 'Paren':             return this._buildParen(rawChildren, loc);
+      case 'SquareParen':       return this._buildSquareParen(rawChildren, loc);
       case 'Quoted':            return this._buildQuoted(children, loc);
       case 'AtRuleBlock':       return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'AtRuleStatement':   return this._buildAtRuleStatement(children, loc);
+      case 'BadStatement':      return this._buildBadStatement(loc) as unknown as JessNode;
       default:                  return new Any(leafText(children) || type, {}, loc);
     }
+  }
+
+  /**
+   * The grammar's last-resort catch-all (a `scanTo` arm) matched, meaning no real
+   * rule could parse this run of input. Record ONE syntax error (first failure
+   * wins — default "1 error and stop") and return a bare string so the swallowed
+   * text drops out of the AST instead of becoming a node. Empty / `;`-only runs
+   * are normal recovery and are not errors.
+   */
+  protected _buildBadStatement(loc: LocationInfo): string {
+    // NOTE: error emission intentionally disabled. The catch-all currently fires
+    // for VALID css the real rules don't yet cover (uppercase !important, &-nesting,
+    // unknown at-rules, complex custom-property values, legacy star-hack). Those
+    // rules must be completed before this can log a syntax error without false
+    // positives. Until then this stays pure silent recovery (baseline behaviour).
+    void loc;
+    return '';
   }
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -604,6 +628,21 @@ export class CssParser {
     const inner = this._betweenParens(spannedComponents(rawChildren));
     const { value } = this._assembleValue(inner, loc);
     return new Paren(value as unknown as Node, undefined, loc);
+  }
+
+  protected _buildSquareParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const open = items.findIndex(i => i.comp === '[');
+    let close = items.length;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i]!.comp === ']') {
+        close = i;
+        break;
+      }
+    }
+    const inner = items.slice(open + 1, close);
+    const { value } = this._assembleValue(inner, loc);
+    return new Paren(value as unknown as Node, { delimiter: 'square' } as any, loc);
   }
 
   protected _betweenParens(items: Spanned[]): Spanned[] {

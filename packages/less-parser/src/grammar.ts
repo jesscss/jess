@@ -8,7 +8,7 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, rules
+  not, scanTo, balanced, parser, trivia, noTrivia, rules
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
 import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
@@ -26,10 +26,15 @@ class BuilderHost extends LessGrammar {
 
   resetWarnings() {
     this._warnings = [];
+    this._errors = [];
   }
 
   getWarnings() {
     return this._warnings.slice();
+  }
+
+  getErrors() {
+    return this._errors.slice();
   }
 
   build(type: string, span: { start: number; end: number }, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>): unknown {
@@ -86,7 +91,7 @@ const cssRules = rules((g: any) => {
   const unknownTok = scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true });
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.MixinCall,
+      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule,
       sequence(g.Call, optional(literal(';'))), unknownTok
     ))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
@@ -96,24 +101,42 @@ const cssRules = rules((g: any) => {
   const important = sequence(literal('!'), literal('important'));
 
   // ── Less variable declaration / reference ───────────────────────────────────
+  const detachedBlock = sequence(literal('{'), g.declarationList, literal('}'));
   const VarDeclaration = node('VarDeclaration',
-    parser({ trivia: rw }, sequence(lessVar, literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))),
     (c: any, r: any, s: any) => mk('VarDeclaration', c, r, s));
-  const Reference = node('Reference',
-    parser({ trivia: rw }, sequence(lessVar, optional(sequence(literal('['), choice(ident, g.Quoted, lessVar), literal(']'))))),
-    (c: any, r: any, s: any) => mk('Reference', c, r, s));
-
-  // ── Mixins ───────────────────────────────────────────────────────────────
   // Regex-based content scan: one level of nested parens + strings, all as one leaf.
   // Avoids the balanced('(',')')-inside-scanTo CSTLeaf pollution bug (balanced uses
   // literal() internally, which pushes leaves into the enclosing node()'s collector).
+  // Defined here (before Reference) because refCall reuses it for accessor-chain calls.
   const mixinArgsContent = regex(/(?:[^()'"]|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|\((?:[^()'"]|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*")*\))*/);
+  // Accessor key tokens, in lookupOrCall's OR2 order: NestedReference ($@x / @@x),
+  // AtKeyword (@x), PropertyReference ($x), InterpolatedIdent (…@{x}…), Ident.
+  // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
+  const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
+  const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?@\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:@\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
+  const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
+  // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
+  const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(optional(refKey), literal(']'))));
+  const refCall = parser({ trivia: rw }, sequence(literal('('), optional(mixinArgsContent), literal(')')));
+  // varReference + lookupOrCall: a @variable glued to a chain of [accessor]/(call).
+  // noTrivia() forbids trivia (here: whitespace/comments) between the var and
+  // '[' / '(', keeping the chain contiguous (production's noSep()).
+  const Reference = node('Reference',
+    noTrivia(sequence(lessVar, many(choice(refIndex, refCall)))),
+    (c: any, r: any, s: any) => mk('Reference', c, r, s));
+
+  // ── Mixins ───────────────────────────────────────────────────────────────
   const MixinArgs = node('MixinArgs',
     parser({ trivia: rw }, sequence(literal('('), optional(mixinArgsContent), literal(')'))),
     (c: any, r: any, s: any) => mk('MixinArgs', c, r, s));
   const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
+  // MixinCall names must start with . or # — plain idents are properties, not mixins.
+  const mixinCallBasicSel = regex(/[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const mixinCallPath = parser({ trivia: rw }, sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel))));
   const MixinCall = node('MixinCall',
-    parser({ trivia: rw }, sequence(g.mixinNamePath, optional(g.MixinArgs), literal(';'))),
+    parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('MixinCall', c, r, s));
   const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
     parser({ trivia: rw }, sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
@@ -145,7 +168,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
     (c: any, r: any, s: any) => mk('InterpolatedSelector', c, r, s));
   const ExtendStatement = node('ExtendStatement',
-    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), regex(/::?/), literal('extend'), literal('('), g.pseudoArg, literal(')'), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), regex(/::?/), literal('extend'), g.pseudoSelectorParens, optional(literal(';')))),
     (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
@@ -162,17 +185,24 @@ const cssRules = rules((g: any) => {
   const AttributeSelector = node('AttributeSelector',
     parser({ trivia: rw }, sequence(literal('['), ident, optional(sequence(attrOp, choice(singleStr, doubleStr, ident), optional(attrMod))), literal(']'))),
     (c: any, r: any, s: any) => mk('AttributeSelector', c, r, s));
-  const PseudoSelector = node('PseudoSelector',
-    parser({ trivia: rw }, sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')'))))),
-    (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
+  // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
+  // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
+  // LessSelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
   const pseudoArg = choice(nth, g.LessSelectorList, scanTo(literal(')'), { skip: [balanced('(', ')')] }));
+  const pseudoSelectorParens = choice(
+    sequence(literal('('), choice(nth, g.LessSelectorList), literal(')')),
+    sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')')] }), literal(')'))
+  );
+  const PseudoSelector = node('PseudoSelector',
+    parser({ trivia: rw }, sequence(pseudoColon, ident, optional(g.pseudoSelectorParens))),
+    (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
     parser({ trivia: rw }, sequence(g.LessSelectorList, literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.ExtendStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';'),
+    g.VarDeclaration, g.ExtendStatement, g.Ruleset, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';'),
     sequence(scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true }), optional(literal(';')))
   )));
   const Declaration = node('Declaration',
@@ -189,7 +219,7 @@ const cssRules = rules((g: any) => {
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
   const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
   const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
-  const value = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.Quoted, g.anyValue);
+  const value = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   const EscapedValue = node('EscapedValue',
     parser({ trivia: rw }, sequence(literal('~'), choice(g.Paren, g.Quoted))),
     (c: any, r: any, s: any) => mk('EscapedValue', c, r, s));
@@ -203,6 +233,8 @@ const cssRules = rules((g: any) => {
   const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
   const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
+  const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)), (c: any, r: any, s: any) => mk('SquareParen', c, r, s));
   const Quoted = node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => mk('Quoted', c, r, s));
   const anyValue = choice(ident, anyValueTok);
 
@@ -219,13 +251,13 @@ const cssRules = rules((g: any) => {
   )));
 
   return {
-    Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, MixinCall,
+    Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardCondition, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, simpleSelector,
-    CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg,
+    CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, Call, Paren, Quoted, anyValue, AtRuleBlock, AtRuleStatement, atRuleBody
+    parenBody, squareParenBody, Call, Paren, SquareParen, Quoted, anyValue, AtRuleBlock, AtRuleStatement, atRuleBody
   };
 });
 
@@ -269,6 +301,7 @@ export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResu
   if (!r.ok) {
     errors.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
   }
+  errors.push(...host.getErrors());
 
   return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input), lexerResult: { errors: [] } };
 }
@@ -279,6 +312,9 @@ export class LessParser {
   constructor(_config?: Record<string, unknown>) {}
 
   parse(text: string, rule = 'stylesheet'): LessFnParseResult {
+    if (text.includes('`')) {
+      throw new Error('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.');
+    }
     return parseLessFn(text, rule);
   }
 }

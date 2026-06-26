@@ -92,14 +92,14 @@ describe('mediaInParens', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
-    expect(out).toContainString('(Expression\n            node:');
+    expect(out).toContainString('(Expression\n            value:');
     expect(out).toContainString('(Reference\n                  type: \'variable\'');
     expect(out).toContainString('(Call\n                    name:');
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('role: \'name\'');
     expect(out).toContainString('key:\n                          [\'#ns\', \'.breakpoint\']');
-    expect(tree.value[0]?.prelude?.node?.target?.name?.rawKey).toBe('#ns > .breakpoint');
+    expect(tree.rules[0]?.prelude?.value?.target?.name?.rawKey?.toString()).toBe('#ns.breakpoint');
   });
 
   it('should parse simple bare variable media query at top level as indexed reference', () => {

@@ -31,10 +31,15 @@ class BuilderHost extends CssParser {
 
   resetWarnings() {
     this._warnings = [];
+    this._errors = [];
   }
 
   getWarnings() {
     return this._warnings.slice();
+  }
+
+  getErrors() {
+    return this._errors.slice();
   }
 
   build(type: string, span: { start: number; end: number }, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>): unknown {
@@ -94,10 +99,15 @@ export const {
   Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement
 } = rules((g: any) => {
   const unknownTok = scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true });
+  // Last-resort recovery arm: when no real rule matches a run of input, swallow it
+  // up to the next delimiter and log ONE syntax error (see _buildBadStatement).
+  const BadStatement = node('BadStatement',
+    parser({ trivia: rw }, sequence(unknownTok, optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('BadStatement', c, r, s));
 
   // ── Root ──────────────────────────────────────────────────────────────────
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, unknownTok))),
+    parser({ trivia: rw }, many(choice(g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, BadStatement))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
@@ -131,11 +141,12 @@ export const {
 
   // ── Declarations ─────────────────────────────────────────────────────────
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'),
-    sequence(scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true }), optional(literal(';')))
+    g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'), BadStatement
   )));
 
-  const important = sequence(literal('!'), literal('important'));
+  // `!important` — keyword is case-insensitive; trivia between `!` and the
+  // keyword is allowed (the enclosing parser({ trivia }) skips it).
+  const important = sequence(literal('!'), regex(/important/i));
 
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(ident, literal(':'), g.valueList, optional(important), optional(literal(';')))),
@@ -229,6 +240,12 @@ export function parseCssFn(input: string): CssParseResult {
   const errors: Array<{ message: string; offset?: number }> = [];
   if (!r.ok) {
     errors.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
+  }
+  // Builder-logged syntax errors (catch-all recovery, structural checks). Cap at
+  // the first — default is "report 1 error and stop".
+  const builderErrors = host.getErrors();
+  if (builderErrors.length > 0 && errors.length === 0) {
+    errors.push(builderErrors[0]!);
   }
 
   return {
