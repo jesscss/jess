@@ -252,6 +252,14 @@ export class CssParser {
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
 
+  /**
+   * Whether the last-resort recovery arm (BadStatement) logs a syntax error.
+   * Opt-in per host: the css functional parser enables it; less-parser, which
+   * shares these builders but has its own (not-yet-complete) error semantics,
+   * leaves it off until its completeness/error work lands.
+   */
+  protected _emitParseErrors = false;
+
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
   }
@@ -300,6 +308,7 @@ export class CssParser {
       case 'Quoted':            return this._buildQuoted(children, loc);
       case 'AtRuleBlock':       return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'AtRuleStatement':   return this._buildAtRuleStatement(children, loc);
+      case 'UnknownAtRuleBlock': return this._buildUnknownAtRuleBlock(children, loc) as unknown as JessNode;
       case 'QueryAtRuleBlock':  return this._buildQueryAtRuleBlock(children, loc) as unknown as JessNode;
       case 'QueryCondition':    return this._buildQueryConditionRule(children, loc) as unknown as JessNode;
       case 'QueryInParens':     return this._buildQueryInParens(children, loc) as unknown as JessNode;
@@ -316,15 +325,18 @@ export class CssParser {
    * text drops out of the AST instead of becoming a node. Empty / `;`-only runs
    * are normal recovery and are not errors.
    */
+  /**
+   * The grammar's last-resort recovery arm matched — no real rule could parse this
+   * run of input. Log ONE syntax error (default: first failure wins, "1 error and
+   * stop") and return a bare string so the swallowed text drops out of the AST.
+   * Empty / `;`-only runs are normal recovery, not errors. Unknown at-rule bodies
+   * are opaque and parsed by a separate non-erroring rule, so they never reach here.
+   */
   protected _buildBadStatement(loc: LocationInfo): string {
-    // NOTE: error emission still DISABLED. After the css completeness fixes
-    // (!important case, &-nesting, at-rule body recovery, custom-property nesting
-    // via parseman balanced(), legacy star-hack) the catch-all's false positives
-    // dropped from 7 to 2: (1) escape.css — CSS escape forms the grammar still
-    // doesn't cover (\;, url(a;a), \62 olor, \@noat); (2) atrule-unknown.css — an
-    // UNKNOWN at-rule body is opaque, so the net must not error inside it (a
-    // context-aware suppression, not a completeness gap). Resolve both, then enable.
-    void loc;
+    const text = this._source.slice(loc[0], loc[3]).replace(/;+\s*$/, '').trim();
+    if (text && this._emitParseErrors && this._errors.length === 0) {
+      this._error('Unexpected input', loc[0]);
+    }
     return '';
   }
 
@@ -754,6 +766,21 @@ export class CssParser {
       { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
       undefined, loc
     );
+  }
+
+  /**
+   * An unknown at-rule with a `{}` block. The block is opaque (the UA owns its
+   * meaning), so it is scanned over without parsing or erroring — we keep the
+   * name and prelude text and drop the opaque body.
+   */
+  protected _buildUnknownAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const braceIdx = ls.findIndex(l => l.value === '{');
+    const preludeText = (braceIdx > 1 ? ls.slice(1, braceIdx) : [])
+      .map(l => l.value).join('').trim();
+    const prelude = preludeText ? new Any(preludeText, {}, loc) : undefined;
+    return new AtRule({ name, prelude: prelude as unknown as Node, rules: [] }, undefined, loc) as unknown as JessNode;
   }
 
   /**

@@ -25,6 +25,9 @@ import { CssParser, buildLazyTriviaMap } from './builders.js';
 // ---------------------------------------------------------------------------
 
 class BuilderHost extends CssParser {
+  // The css functional parser reports syntax errors from the recovery arm.
+  protected override _emitParseErrors = true;
+
   setSource(src: string) {
     this._source = src;
   }
@@ -114,7 +117,7 @@ export const {
 
   // ── Root ──────────────────────────────────────────────────────────────────
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, BadStatement))),
+    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, BadStatement))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
@@ -166,7 +169,7 @@ export const {
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";"), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";"), BadStatement
   )));
 
   /**
@@ -268,16 +271,25 @@ export const {
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
   }));
+  // Known block at-rules (besides the @media/@container/@supports queries) get a
+  // STRUCTURED body — garbage inside is a real error. Unknown at-rules have an
+  // OPAQUE block (the UA owns its meaning), so their body is scanned over and
+  // never errors. @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+  const knownBlockAtKeyword = regex(/@(?:layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
   const AtRuleBlock = node('AtRuleBlock',
-    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
     (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
+  const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
+  const UnknownAtRuleBlock = node('UnknownAtRuleBlock',
+    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}'))),
+    (c: any, r: any, s: any) => mk('UnknownAtRuleBlock', c, r, s));
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
   // Body of an at-rule block. BadStatement recovers a non-standard / unknown
   // at-rule body (e.g. an unknown `@future {…}`) instead of failing the block.
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";"), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";"), BadStatement
   )));
 
   return {
@@ -287,7 +299,7 @@ export const {
     valueList, valueSequence, value, parenBody,
     Dimension, Num, Color, Url, Call, Paren, Quoted, anyValue,
     AtRuleBlock, AtRuleStatement, atRuleBody,
-    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature
+    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature, UnknownAtRuleBlock
   };
 });
 
