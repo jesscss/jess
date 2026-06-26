@@ -106,8 +106,8 @@ function isTriviaMap(value: unknown): value is TriviaMap {
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
-  if (options.sourceMap === undefined && options.context?.opts?.sourceMap !== undefined) {
-    options.sourceMap = Boolean(options.context.opts.sourceMap);
+  if (options.sourceMap === undefined && options.context?.opts?.output?.sourceMap !== undefined) {
+    options.sourceMap = Boolean(options.context.opts.output.sourceMap);
   }
   options.writer ??= new OutputWriter(options.sourceMap === true);
   options.inFrames ??= [];
@@ -205,8 +205,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       );
       if (hasExplicitPrintState) {
         const detached = options;
-        if (detached.collapseNesting === undefined && detached.context?.opts?.collapseNesting !== undefined) {
-          detached.collapseNesting = Boolean(detached.context.opts.collapseNesting);
+        if (detached.collapseNesting === undefined && detached.context?.opts?.output?.collapseNesting !== undefined) {
+          detached.collapseNesting = Boolean(detached.context.opts.output.collapseNesting);
         }
         ensureFinalPrintOptions(detached);
         return detached;
@@ -214,16 +214,16 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       return prepareContextPrintState(options.context, options);
     }
     const resolved = options.context.printState;
-    if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-      resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+    if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+      resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
     }
     ensureFinalPrintOptions(resolved);
     return resolved;
   }
   const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
-  if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-    resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+  if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+    resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
   }
   // Always ensure frameState exists - nodes should not need to check for it
   ensureFinalPrintOptions(resolved);
@@ -255,7 +255,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.lastRenderedFrames = [];
   state.frameHeaders = [];
   state.depth = 0;
-  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.output?.sourceMap);
   state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;
@@ -270,8 +270,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
-  if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
-    state.collapseNesting = Boolean(context.opts.collapseNesting);
+  if (state.collapseNesting === undefined && context.opts.output?.collapseNesting !== undefined) {
+    state.collapseNesting = Boolean(context.opts.output.collapseNesting);
   }
 
   ensureFinalPrintOptions(state);

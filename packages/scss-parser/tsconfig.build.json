@@ -3,8 +3,13 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
-    "noEmit": false
+    "noEmit": false,
+    "paths": {
+      "@jesscss/css-parser": ["./node_modules/@jesscss/css-parser/lib/index.d.ts"],
+      "@jesscss/less-parser": ["./node_modules/@jesscss/less-parser/lib/index.d.ts"],
+      "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/parseman/**/*", "src/scssTokens.ts"],
   "exclude": []
 }

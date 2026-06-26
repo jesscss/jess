@@ -1675,7 +1675,7 @@ describe('Declaration', () => {
   });
 
   it('does not re-merge sequence assignments during post-eval coalescing in nested at-rules', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const node = rules([
       ruleset({
         selector: el('nav'),
@@ -1703,7 +1703,7 @@ describe('Declaration', () => {
   });
 
   it('coalesces sequence assignments emitted through nested $for output rules', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const node = rules([
       ruleset({
         selector: el('aside'),
@@ -1748,7 +1748,7 @@ describe('Declaration', () => {
   });
 
   it('coalesces sequence assignments emitted through tuple-pattern each()-style loops', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const node = rules([
       ruleset({
         selector: el('aside'),

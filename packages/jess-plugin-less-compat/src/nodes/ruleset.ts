@@ -14,7 +14,9 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
         return [];
       }
       if (selector instanceof SelectorList) {
-        return selector.value.map((s: Selector) => transformSelectorToLess(s, cache));
+        return selector.value
+          .filter((s): s is Selector => s instanceof Selector)
+          .map(s => transformSelectorToLess(s, cache));
       }
       return [transformSelectorToLess(selector, cache)];
     },
@@ -29,7 +31,9 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
     // Traverse selectors
     if (selector && !(selector instanceof Nil)) {
       if (selector instanceof SelectorList) {
-        const lessSelectors = selector.value.map((s: Selector) => toLessNode(s, { cache }));
+        const lessSelectors = selector.value
+          .filter((s): s is Selector => s instanceof Selector)
+          .map(s => toLessNode(s, { cache }));
         if (visitor.visitArray) {
           visitor.visitArray(lessSelectors);
         } else {

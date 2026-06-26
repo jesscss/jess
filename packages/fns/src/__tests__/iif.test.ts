@@ -18,11 +18,9 @@ describe('iif', () => {
    * @see https://github.com/ianstormtaylor/superstruct/issues/1194
    */
   it('rejects a missing thenValue', () => {
-    // @ts-expect-error - missing params
     expect(() => iif(true)).toThrow('Required argument \'thenValue\' is missing');
   });
   it('rejects an invalid condition', () => {
-    // @ts-expect-error - wrong argument type
     expect(() => iif(new Dimension({ number: 1, unit: 'px' }))).toThrow('Argument \'condition\' must be one of:');
   });
 

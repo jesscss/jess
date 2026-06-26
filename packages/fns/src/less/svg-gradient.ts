@@ -4,7 +4,7 @@ type GradientStop = { color: Color; position?: Dimension };
 
 function flattenSingle(node: Node): Node {
   while (node instanceof Paren) {
-    node = node.node!;
+    node = node.value!;
   }
   while (
     (node instanceof Sequence && node.value.length === 1)
@@ -12,7 +12,7 @@ function flattenSingle(node: Node): Node {
   ) {
     node = node instanceof List ? node.value[0]! : node.value[0]!;
     while (node instanceof Paren) {
-      node = node.node!;
+      node = node.value!;
     }
   }
   return node;
@@ -106,7 +106,7 @@ const svgGradient = defineFunction(
     const normalizeNode = async (node: Node): Promise<Node> => {
       let normalized = await node.eval(this.context);
       while (normalized instanceof Paren) {
-        normalized = await normalized.node!.eval(this.context);
+        normalized = await normalized.value!.eval(this.context);
       }
       if (normalized instanceof Sequence) {
         const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));

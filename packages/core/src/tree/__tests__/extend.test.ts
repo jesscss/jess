@@ -66,7 +66,7 @@ describe('Extend render', () => {
   });
 
   it('keeps extend behavior when rendered inside a ruleset', async () => {
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const node = rules([
       ruleset({
         selector: el('.base'),

@@ -191,8 +191,7 @@ describe('Attribute Selector', () => {
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
-    context = new Context({
-      collapseNesting: true,
+    context = new Context({ output: { collapseNesting: true },
       leakyRules: true
     });
 

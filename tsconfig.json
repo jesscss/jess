@@ -13,11 +13,17 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "jess": ["./packages/jess/lib"],
       "@jess/*": ["./packages/*/src"],
       "@jesscss/css-parser": ["./packages/css-parser/src/index.ts"],
-      "@jesscss/parser": ["./packages/parser/src/index.ts"]
+      "@jesscss/less-parser": ["./packages/less-parser/src/index.ts"],
+      "@jesscss/scss-parser": ["./packages/scss-parser/src/index.ts"],
+      "@jesscss/parser": ["./packages/parser/src/index.ts"],
+      "@jesscss/plugin-node-modules": ["./packages/jess-plugin-node-modules/src/index.ts"],
+      "@jesscss/plugin-less": ["./packages/jess-plugin-less/src/index.ts"],
+      "styles-config": ["./packages/config/src/index.ts"]
     },
     "plugins": [
   

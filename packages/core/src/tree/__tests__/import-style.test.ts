@@ -3109,7 +3109,7 @@ describe('Style import', () => {
     });
 
     it('import-reference: reference-imported mixins still hoist nested media output', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'reference-mixin-media.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -3417,7 +3417,7 @@ describe('Style import', () => {
 
     it('import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const nestedPath = resolve(process.cwd(), 'import-reference-issues/multiple-import-nested.jess');
       const importPath = resolve(process.cwd(), 'import-reference-issues/multiple-import.jess');
       localContext.sourceTrees.set(nestedPath, rules([
@@ -3651,7 +3651,7 @@ describe('Style import', () => {
 
     it('import-reference: reference-imported selector-list rulesets remain callable as mixins', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'import-reference-selector-list.jess');
       localContext.sourceTrees.set(referencedPath, rules([
         ruleset({

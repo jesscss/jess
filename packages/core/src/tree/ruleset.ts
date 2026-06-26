@@ -1145,7 +1145,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (atRule.getRenderRules().length === 0) {
       return true;
     }
-    return !context.opts.collapseNesting
+    return !context.opts.output?.collapseNesting
       && !context.bubbleRootAtRules
       && atRule.isRootOnly();
   }
@@ -2273,7 +2273,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       context.frames.length = pushedFrameCount;
       pushedFrames = false;
     };
-    const collapseNesting = context.opts.collapseNesting;
+    const collapseNesting = context.opts.output?.collapseNesting;
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
       this.frames = [...context.frames];
@@ -2334,7 +2334,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.adopt(selector);
       this.selector = selector;
       this.invalidateSelectorValueCache(selector);
-      if (context.opts.collapseNesting) {
+      if (context.opts.output?.collapseNesting) {
         this.hoistToRoot = true;
       }
       pushedRulesetFrameCount = context.rulesetFrames.length;

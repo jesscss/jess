@@ -87,6 +87,6 @@ export function createSassListResult(
   sep: SassListSep,
   bracketed = false
 ): List | Paren {
-  const list = new List([...value], sep === undefined ? undefined : { sep });
+  const list = new List([...items], sep === undefined ? undefined : { sep });
   return bracketed ? new Paren(list, { delimiter: 'square' }) : list;
 }

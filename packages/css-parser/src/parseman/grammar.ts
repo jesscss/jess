@@ -16,7 +16,7 @@
  */
 
 import {
-  Parser,
+  parser,
   sequence,
   choice,
   many,
@@ -26,9 +26,12 @@ import {
   literal,
   not,
   scanTo,
-  balanced
+  balanced,
+  type ParsemanParser,
+  type ParseError,
+  type Combinator as ParsemanCombinator
 } from 'parseman';
-import type { Span, RuleKeys } from 'parseman';
+import type { Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import { buildTriviaIndex } from 'parseman';
 import {
@@ -246,7 +249,7 @@ export type CssParseResult<T extends Node = Node> = {
 // CssParser
 // ---------------------------------------------------------------------------
 
-export class CssParser extends Parser<JessNode> {
+export class CssParser {
   // Trivia tokens — whitespace runs and block comments parsed *separately* so
   // capture records them as distinct tokens (and so whitespace, the descendant
   // combinator, is distinguishable from a comment-only gap).
@@ -255,17 +258,16 @@ export class CssParser extends Parser<JessNode> {
 
   // `rw` (declared before `_trivia` so it can reference it) consumes a run of
   // mixed whitespace and comments, each recorded as its own trivia token.
-  rw = oneOrMore(choice(this.ws, this.comment));
+  rw: ParsemanCombinator<unknown> = oneOrMore(choice(this.ws, this.comment));
 
   // Registers whitespace+comments as trivia; auto-skipped between sequence terms.
-  protected override _trivia = this.rw;
+  protected _trivia: ParsemanCombinator<unknown> = this.rw;
 
   // Record consumed trivia as separate CSTTrivia tokens in rawChildren.
-  protected override _captureTrivia = true;
+  protected _captureTrivia = true;
 
   // Makes the rule name optional in parse(): parse(text) === parse('Stylesheet', text).
-  // @ts-expect-error -- 'Stylesheet' is a valid RuleKeys<CssParser>; circular type inference prevents assignment
-  protected override _defaultRule = 'Stylesheet' as const;
+  protected _defaultRule = 'Stylesheet' as const;
 
   /** Source text of the in-progress parse; used by builders that emit verbatim text. */
   protected _source = '';
@@ -520,7 +522,7 @@ export class CssParser extends Parser<JessNode> {
   // no-unsafe-type-assertion rule for this bounded section only.
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 
-  protected override buildNode(
+  protected buildNode(
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
@@ -1042,26 +1044,39 @@ export class CssParser extends Parser<JessNode> {
   // Overrides Parser.parse to return a Jess-shaped result: the built tree, any
   // parse errors/warnings, and a before/after trivia map reconstructed from the
   // trivia tokens captured on each node's rawChildren during parsing.
-  // CssParseResult intentionally does not extend ParseDoc (different shape).
-  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
-  override parse(input: string): CssParseResult<Rules>;
-  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
-  override parse(ruleName: RuleKeys<this>, input: string): CssParseResult;
-  // @ts-expect-error -- CssParseResult is wider than ParseDoc; intentional override
-  override parse(a: string, b?: string): CssParseResult {
+  private _ruleCache = new Map<string, ParsemanParser<JessNode>>();
+
+  private _getParser(ruleName: string): ParsemanParser<JessNode> {
+    let p = this._ruleCache.get(ruleName);
+    if (!p) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rule = (this as unknown as Record<string, ParsemanParser<JessNode>>)[ruleName];
+      if (!rule) {
+        throw new Error(`Unknown rule: ${ruleName}`);
+      }
+      p = parser({ trivia: this._trivia, captureTrivia: this._captureTrivia }, rule);
+      this._ruleCache.set(ruleName, p);
+    }
+    return p;
+  }
+
+  parse(input: string): CssParseResult<Rules>;
+  parse(ruleName: string, input: string): CssParseResult;
+  parse(a: string, b?: string): CssParseResult {
     /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
     // Stash the source so builders can recover exact (trivia-inclusive) text
     // for rules that serialize their whole span verbatim (e.g. @charset).
     this._source = b === undefined ? a : b;
     this._warnings = [];  // collected by builders during the parse below
-    const doc = b === undefined
-      ? super.parse(a as RuleKeys<this>)
-      : super.parse(a as RuleKeys<this>, b);
+    const ruleName = b === undefined ? this._defaultRule : a;
+    const input = b === undefined ? a : b;
+    const doc = this._getParser(ruleName).parse(input);
 
     // Parseman builds the generic before/after trivia index from captured
     // rawChildren; we adapt its {value, span} tokens to Jess IToken-shaped
     // tokens for the TriviaMap.
-    const index = buildTriviaIndex(doc.tree);
+    const tree = doc.ok ? doc.value : null;
+    const index = buildTriviaIndex(tree);
     const adapt = (m: Map<number, Array<{ value: string; span: Span }>>) => {
       const out = new Map<number, TriviaToken[]>();
       for (const [offset, run] of m) {
@@ -1070,17 +1085,21 @@ export class CssParser extends Parser<JessNode> {
       return out;
     };
 
-    const errors = doc.errors.map(e => ({
-      message: e.expected?.join(', ') ?? 'Parse error',
-      offset: e.span?.start
-    }));
+    const errors: Array<{ message: string; offset: number | undefined }> = [];
+    if (!doc.ok) {
+      errors.push({ message: doc.expected.join(', ') || 'Parse error', offset: doc.span.start });
+    } else if (doc.errors) {
+      for (const e of doc.errors as ParseError[]) {
+        errors.push({ message: e.expected?.join(', ') ?? 'Parse error', offset: e.span?.start });
+      }
+    }
 
     // Completeness check: a tolerant top-level rule (e.g. Stylesheet's many())
     // can match a valid prefix and silently stop at malformed input. If the
     // built tree doesn't reach the end of the source (modulo trailing trivia),
     // the leftover is a parse error. Only applies to whole-document parses.
-    if (this._strictEOF && doc.tree && errors.length === 0) {
-      const end = doc.consumedEnd;
+    if (this._strictEOF && doc.ok && errors.length === 0) {
+      const end = doc.span.end;
       const rest = this._source.slice(end);
       if (rest.length > 0 && !TRAILING_TRIVIA_ONLY.test(rest)) {
         errors.push({ message: 'Unexpected input', offset: end });
@@ -1088,7 +1107,7 @@ export class CssParser extends Parser<JessNode> {
     }
 
     return {
-      tree: (doc.tree ?? nil()) as Node,
+      tree: (tree ?? nil()) as Node,
       errors,
       warnings: this._warnings.slice(),
       trivia: createTriviaMap({

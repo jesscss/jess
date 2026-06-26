@@ -867,7 +867,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const renderSourceBody = Boolean(
       sourceRules
       && canRenderStaticRuleArrayDirectly(sourceRules.rules)
-      && !context.opts.collapseNesting
+      && !context.opts.output?.collapseNesting
       && !hasHoistedRulesetParent
     );
     const bodyRules = renderSourceBody
@@ -1609,7 +1609,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     }
 
     // Store frames snapshot for hoisting serialization
-    if (context.opts.collapseNesting || node.hoistToRoot) {
+    if (context.opts.output?.collapseNesting || node.hoistToRoot) {
       const frames = [...context.frames];
       setAtRuleBodyEvalOutput(bodyEvalRecord, {
         frames

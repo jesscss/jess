@@ -183,6 +183,8 @@ type ValidateFunctionSignature<F extends (...args: any[]) => any> = F;
 export type RuntimeFunction = ((...args: any[]) => any) & {
   options?: DefineFunctionOptions;
   _internal?: (...args: any[]) => any;
+  call(thisArg: any, ...args: any[]): any;
+  apply(thisArg: any, args: any[]): any;
 };
 
 type DefineFunctionCallable<
@@ -193,6 +195,8 @@ type DefineFunctionCallable<
   (record: GetRecordType<T['params']>): ReturnType<F>;
   name: string;
   params: T['params'];
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
 } & (
   // Overloads for 1 parameter
   T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }]
@@ -272,9 +276,8 @@ export type DefinedFunction<
   T extends DefineFunctionOptions,
   F extends (...args: any[]) => any
 > = DefineFunctionCallable<T, F> & RuntimeFunction & {
-  /** @todo - This inference is not working correctly - fix later */
-  call(thisArg: any, ...args: Parameters<DefineFunctionCallable<T, F>>): ReturnType<F>;
-  apply(thisArg: any, args: Parameters<DefineFunctionCallable<T, F>>): ReturnType<F>;
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
 };
 
 function isOverloadedParams(params: DefineFunctionOptions['params']): params is readonly ParamDefinition[][] {

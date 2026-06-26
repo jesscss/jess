@@ -43,7 +43,7 @@ describe('CSS Nesting Collapse', () => {
   let context: Context;
 
   beforeEach(() => {
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
   });
 
   it('should collapse basic nested rulesets', async () => {

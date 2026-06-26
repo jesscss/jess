@@ -3,7 +3,7 @@ import { createLexerDefinition } from '@jesscss/css-parser';
 import { nil, type Node, type Rules, type IParseResult, type TreeContext } from '@jesscss/core';
 
 import { jessFragments, jessTokens } from './jessTokens.js';
-import { JessRecursiveParser, type JessParserConfig } from './jessRecursiveParser.js';
+import { JessRecursiveParser, type JessParserConfig, type JessTokenMap } from './jessRecursiveParser.js';
 
 export type JessRules = keyof {
   [K in keyof JessRecursiveParser as JessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -28,7 +28,8 @@ export class JessParser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new JessRecursiveParser(T, config);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this.parser = new JessRecursiveParser(T as JessTokenMap, config);
     this.parse = this.parse.bind(this);
   }
 

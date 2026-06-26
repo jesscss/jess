@@ -1163,7 +1163,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1195,7 +1195,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1230,7 +1230,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1264,7 +1264,7 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -1308,7 +1308,7 @@ describe('AtRule', () => {
       await Promise.resolve();
       return body;
     };
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
@@ -2329,7 +2329,7 @@ describe('AtRule', () => {
 
   describe('collapse nesting at-rule categories', () => {
     it('keeps nested @starting-style in place when collapseNesting is true', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('[popover]:popover-open')]),
@@ -2358,7 +2358,7 @@ describe('AtRule', () => {
     });
 
     it('keeps leaf custom at-rules inside the current ruleset', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.box')]),
@@ -2381,7 +2381,7 @@ describe('AtRule', () => {
     });
 
     it('does not compose root-only @keyframes children with parent selector context', async () => {
-      context = new Context({ collapseNesting: true, bubbleRootAtRules: true });
+      context = new Context({ output: { collapseNesting: true }, bubbleRootAtRules: true });
       const node = rules([
         ruleset({
           selector: sel([el('.onTop')]),
@@ -2427,7 +2427,7 @@ describe('AtRule', () => {
     });
 
     it('treats generated hoisted ampersand wrappers as transparent inside nested wrapper at-rules', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
           name: any('@supports', { role: 'atkeyword' }),
@@ -2499,7 +2499,7 @@ describe('AtRule', () => {
     });
 
     it('does not merge adjacent wrapper at-rules from distinct sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.one')]),
@@ -2544,7 +2544,7 @@ describe('AtRule', () => {
     });
 
     it('does not merge identical wrapper stacks across at-rule and hoisted-ruleset sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
           name: any('@supports', { role: 'atkeyword' }),
@@ -3008,7 +3008,7 @@ describe('AtRule', () => {
     });
 
     it('does not duplicate callable ruleset output inside nested media calls', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const navJustified = ruleset({
         selector: sel([el('.nav-justified')]),
         rules: [
@@ -3071,7 +3071,7 @@ describe('AtRule', () => {
 
   describe('serialization test for media.less AST', () => {
     it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),

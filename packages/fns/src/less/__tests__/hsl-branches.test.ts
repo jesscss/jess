@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Context, Dimension, List } from '@jesscss/core';
+import { Color, ColorFormat, Context, Dimension, List, RuntimeFunction } from '@jesscss/core';
 import hsl from '../hsl.js';
 import { hslImplementation } from '../hsl.js';
 
@@ -25,7 +25,7 @@ describe('hsl() branch coverage', () => {
     expect(result).toBeInstanceOf(Color);
     expect(result.options.format).toBe(ColorFormat.HSL);
 
-    const internalResult = await hslImplementation.call(
+    const internalResult = await (hslImplementation as RuntimeFunction).call(
       {
         caller: { options: { modernSyntax: true } },
         context: new Context(),
@@ -41,7 +41,7 @@ describe('hsl() branch coverage', () => {
 
   it('throws for invalid internal argument signatures', async () => {
     await expect(
-      hslImplementation.call(
+      (hslImplementation as RuntimeFunction).call(
         {
           context: new Context(),
           rawArgs: new List([]),

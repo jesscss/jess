@@ -88,7 +88,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   }
 
   it('1a. extend-clearfix with nesting – nested &:after inside block', async () => {
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(createExtendClearfixAst(), context, { context });
     expect(css.trim()).toBeString(
       `.clearfix,
@@ -112,7 +112,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   });
 
   it('1b. extend-clearfix without nesting – flat :is(...):after (Less-style)', async () => {
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(createExtendClearfixAst(), context, { context });
     expect(css.trim()).toBeString(
       `.clearfix,
@@ -169,7 +169,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         rules: [extend({ target: el('.c') })]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
 .rep_ace {
@@ -271,7 +271,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 :is(.replace, .rep_ace):is(.replace, .rep_ace),
@@ -323,7 +323,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
    */
   it('3. extend-nest.less – :is(...) .box and .submit:hover merged', async () => {
     // collapseNesting: true so output matches Less (flat :is() rules)
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const root = rules([
       ruleset({
         selector: el('.sidebar'),
@@ -495,7 +495,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   &:hover:extend(.button:hover) {}
 }
 `;
-    const context = new Context({ collapseNesting: true, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -654,7 +654,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ]
       })
     ]);
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
@@ -771,7 +771,7 @@ div:is(.ext5, .ext7),
         ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
@@ -838,7 +838,7 @@ div:is(.ext5, .ext7),
         ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
@@ -880,7 +880,7 @@ div:is(.ext5, .ext7),
 .ee:extend(.dd all,.bb) {}
 .ff:extend(.dd,.bb all) {}
 `;
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -909,7 +909,7 @@ div:is(.ext5, .ext7),
 
   it('5d. parsed full extend.less keeps exact nested matches out of the .aa .dd branch', async () => {
     const source = readFileSync(path.join(testData, 'tests-unit/extend/extend.less'), 'utf8');
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -937,7 +937,7 @@ div:is(.ext5, .ext7),
 }
 .dbl:extend(.e.e) {}
 `;
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

@@ -7059,7 +7059,7 @@ describe('Mixin', () => {
           ]
         })
       ]);
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const css = await renderNodeToString(node, context, { context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
@@ -7162,8 +7162,7 @@ describe('Mixin', () => {
     });
 
     it('keeps pseudo selector args isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7270,8 +7269,7 @@ describe('Mixin', () => {
     });
 
     it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7323,8 +7321,7 @@ describe('Mixin', () => {
     });
 
     it('keeps compound selector components isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7379,8 +7376,7 @@ describe('Mixin', () => {
     });
 
     it('keeps complex selector components isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7436,8 +7432,7 @@ describe('Mixin', () => {
     });
 
     it('keeps selector-list items isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7499,8 +7494,7 @@ describe('Mixin', () => {
     });
 
     it('keeps paren values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7550,8 +7544,7 @@ describe('Mixin', () => {
     });
 
     it('keeps quoted values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7597,8 +7590,7 @@ describe('Mixin', () => {
     });
 
     it('keeps sequence values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7643,8 +7635,7 @@ describe('Mixin', () => {
     });
 
     it('keeps declaration values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7689,8 +7680,7 @@ describe('Mixin', () => {
     });
 
     it('keeps interpolated declaration names isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7766,8 +7756,7 @@ describe('Mixin', () => {
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7824,8 +7813,7 @@ describe('Mixin', () => {
     });
 
     it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7869,8 +7857,7 @@ describe('Mixin', () => {
     });
 
     it('keeps bare ampersand selectors isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7914,8 +7901,7 @@ describe('Mixin', () => {
     });
 
     it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: false,
+      context = new Context({ output: { collapseNesting: false },
         leakyRules: true
       });
 
@@ -8649,7 +8635,7 @@ describe('Mixin', () => {
         })
       ]);
       context.root = root;
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
 
       const css = await renderNodeToString(root, context, { context });
 
@@ -8712,7 +8698,7 @@ describe('Mixin', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const typedTree5 = tree as unknown as RulesClass;
       context.root = typedTree5;
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
 
       const css = await renderNodeToString(typedTree5, context, { context });
 

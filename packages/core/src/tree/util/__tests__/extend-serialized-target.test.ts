@@ -50,7 +50,7 @@ describe('extend serialized target repro', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     const firstHeader = css.split('{')[0]?.trim() ?? '';

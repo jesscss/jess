@@ -65,7 +65,7 @@ describe('Mixin Recursion Detection', () => {
   beforeEach(() => {
     context = new Context({
       leakyRules: true,
-      collapseNesting: true
+      output: { collapseNesting: true }
     });
     context.depth = 2;
   });

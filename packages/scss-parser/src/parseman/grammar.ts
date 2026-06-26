@@ -117,7 +117,10 @@ export class ScssGrammar extends LessGrammar {
     let end = items.length;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === '!default' || c === '!global' || c === ';') { end = i; break; }
+      if (c === '!' || c === '!default' || c === '!global' || c === ';') {
+        end = i;
+        break;
+      }
     }
     const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
     const hasImportant = items.some(i => i.comp === '!' || i.comp === '!default' || i.comp === '!global');

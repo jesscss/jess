@@ -80,7 +80,7 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
 export class LessGrammar extends CssParser {
   // Public entry-point aliases (Chevrotain-era lowercase names → grammar rules),
   // resolved by Parseman's parse()/rule() so the adapter needs no lookup table.
-  protected override _aliases = {
+  protected _aliases = {
     stylesheet: 'Stylesheet',
     main: 'Stylesheet',
     declaration: 'anyDeclaration',

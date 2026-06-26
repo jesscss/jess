@@ -235,7 +235,7 @@ export async function evaluateRGBChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const { number: value } = evaluated.value;
+      const value = evaluated.number;
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
@@ -307,7 +307,8 @@ export async function evaluateHSLChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const { number: value, unit } = evaluated.value;
+      const value = evaluated.number;
+      const unit = evaluated.unit;
 
       // Handle different units for hue (deg, turn, rad, grad)
       if (unit === 'deg' || unit === '' || unit === undefined) {
@@ -334,7 +335,8 @@ export async function evaluateHSLChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    const { number: value, unit } = evaluated.value;
+    const value = evaluated.number;
+    const unit = evaluated.unit;
 
     // Handle percentage units for s/l
     if (unit === '%') {

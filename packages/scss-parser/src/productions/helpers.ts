@@ -204,7 +204,7 @@ export function desugarMapLookup(
   parser: ScssRecursiveParser,
   call: Call
 ): Node {
-  const { name, args: argsList } = call.value;
+  const { name, args: argsList } = call;
   if (typeof name !== 'string') {
     return call;
   }
@@ -271,7 +271,7 @@ export function makeNamespacedReference(
 }
 
 export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): Call {
-  const { name, args } = call.value;
+  const { name, args } = call;
   if (typeof name !== 'string') {
     return call;
   }

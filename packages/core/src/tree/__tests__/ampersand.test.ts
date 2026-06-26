@@ -424,7 +424,7 @@ describe('Ampersand', () => {
   it('should collapse value when in collapsing mode #1', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
@@ -438,7 +438,7 @@ describe('Ampersand', () => {
   it('should collapse value when in collapsing mode #2', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmpList([sel([amp()])]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
 
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
@@ -453,7 +453,7 @@ describe('Ampersand', () => {
 
   it('should order value when collapsing', async () => {
     let node = wrapAmp([amp(), el('h2')]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
@@ -467,7 +467,7 @@ describe('Ampersand', () => {
 
   it('should collapse value when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
@@ -480,7 +480,7 @@ describe('Ampersand', () => {
 
   it('should collapse value when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
@@ -494,7 +494,7 @@ describe('Ampersand', () => {
 
   it('should collapse value when ampersand has an appended value #1', async () => {
     let node = wrapAmp([amp('-1')]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
@@ -508,7 +508,7 @@ describe('Ampersand', () => {
 
   it('should collapse value when ampersand has an appended value #2', async () => {
     let node = wrapAmpList([sel([amp('-1')])]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one,
@@ -524,7 +524,7 @@ describe('Ampersand', () => {
 
   it('should reject invalid ampersand merge-template joins', async () => {
     const node = wrapAmpList([sel([amp('.fruit-&')])]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
 
@@ -545,7 +545,7 @@ describe('Ampersand', () => {
         ]
       })
     ]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toContain('.fruit-quoted-apple');
     expect(css).toContain('.fruit-quoted-satsuma');
@@ -625,13 +625,13 @@ describe('Ampersand', () => {
         ]
       })
     ]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
 
   it('should wrap inner lists in :is()', async () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
@@ -677,7 +677,7 @@ describe('Ampersand', () => {
         ]
       })
     ]);
-    context = new Context({ collapseNesting: true });
+    context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { context, collapseNesting: true });
     expect(css).toContain('* b[e]');
     expect(css).not.toContain(':is(* b)[e]');

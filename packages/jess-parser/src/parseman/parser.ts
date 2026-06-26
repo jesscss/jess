@@ -11,7 +11,7 @@ export type JessParserConfig = Record<string, never>;
 
 export type ParseResult<T extends Node = Node> = {
   tree: T | null;
-  errors: Array<{ message: string; offset: number }>;
+  errors: Array<{ message: string; offset?: number }>;
   warnings: Array<string>;
 };
 
@@ -56,10 +56,7 @@ export class JessParserParseman {
 
     return {
       tree,
-      errors: doc.errors.map(e => ({
-        message: e.expected?.join(', ') ?? 'Parse error',
-        offset: e.span?.start
-      })),
+      errors: doc.errors,
       warnings: []
     };
   }

@@ -4,7 +4,7 @@ import {
   type ColorData
 } from '@jesscss/core';
 
-type ColorAlpha = Color['value']['alpha'];
+type ColorAlpha = Color['_alphaValue'];
 
 export function formatColorOutput(
   input: Color,
