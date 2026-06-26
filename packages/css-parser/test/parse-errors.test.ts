@@ -26,10 +26,10 @@ function lineCol(src: string, offset: number): { line: number; column: number } 
 
 // [file, message-category substring, expected line, expected column]
 const CASES: Array<[string, string, number, number]> = [
-  ['invalid-selector.css', 'input', 1, 1],     // generic net (`$b`, `@{c}` aren't CSS)
-  ['no-selector.css', 'selector', 1, 1],       // specific: "No selector found"
-  ['atrule-no-semicolon.css', 'input', 2, 16], // `@content` with no ; or block
-  ['charset.css', 'input', 3, 1],              // @charset not first
+  ['invalid-selector.css', 'input', 1, 1],     // `$b`, `@{c}` aren't CSS → unparsed input
+  ['no-selector.css', 'input', 1, 1],          // bare `{` at top level → unparsed input
+  ['atrule-no-semicolon.css', '}', 2, 16],     // `@content` stops the body → expect('}') fires
+  ['charset.css', 'input', 3, 1],              // @charset not first → unparsed input
 ];
 
 describe('css syntax errors (parseCssFn)', () => {

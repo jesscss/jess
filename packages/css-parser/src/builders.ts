@@ -252,13 +252,6 @@ export class CssParser {
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
 
-  /**
-   * Whether the last-resort recovery arm (BadStatement) logs a syntax error.
-   * Opt-in per host: the css functional parser enables it; less-parser, which
-   * shares these builders but has its own (not-yet-complete) error semantics,
-   * leaves it off until its completeness/error work lands.
-   */
-  protected _emitParseErrors = false;
 
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
@@ -313,8 +306,6 @@ export class CssParser {
       case 'QueryCondition':    return this._buildQueryConditionRule(children, loc) as unknown as JessNode;
       case 'QueryInParens':     return this._buildQueryInParens(children, loc) as unknown as JessNode;
       case 'QueryFeature':      return this._buildQueryFeature(children, loc) as unknown as JessNode;
-      case 'MissingSelectorBlock': return this._buildMissingSelectorBlock(loc) as unknown as JessNode;
-      case 'BadStatement':      return this._buildBadStatement(loc) as unknown as JessNode;
       default:                  return new Any(leafText(children) || type, {}, loc);
     }
   }
@@ -333,21 +324,6 @@ export class CssParser {
    * Empty / `;`-only runs are normal recovery, not errors. Unknown at-rule bodies
    * are opaque and parsed by a separate non-erroring rule, so they never reach here.
    */
-  protected _buildBadStatement(loc: LocationInfo): string {
-    const text = this._source.slice(loc[0], loc[3]).replace(/;+\s*$/, '').trim();
-    if (text && this._emitParseErrors && this._errors.length === 0) {
-      this._error('Unexpected input', loc[0]);
-    }
-    return '';
-  }
-
-  /** A `{…}` block with no selector — report "No selector found" and drop it. */
-  protected _buildMissingSelectorBlock(loc: LocationInfo): string {
-    if (this._emitParseErrors && this._errors.length === 0) {
-      this._error('No selector found', loc[0]);
-    }
-    return '';
-  }
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     return new Rules(nodeChildren(children), undefined, loc);

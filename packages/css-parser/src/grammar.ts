@@ -13,7 +13,7 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, rules
+  not, scanTo, balanced, parser, trivia, rules, expect
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
 import { Node, type TriviaMap, nil } from '@jesscss/core';
@@ -25,9 +25,6 @@ import { CssParser, buildLazyTriviaMap } from './builders.js';
 // ---------------------------------------------------------------------------
 
 class BuilderHost extends CssParser {
-  // The css functional parser reports syntax errors from the recovery arm.
-  protected override _emitParseErrors = true;
-
   setSource(src: string) {
     this._source = src;
   }
@@ -108,28 +105,19 @@ export const {
   AttributeSelector, PseudoSelector, Declaration, CustomDeclaration,
   Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement
 } = rules((g: any) => {
-  const unknownTok = scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true });
-  // Last-resort recovery arm: when no real rule matches a run of input, swallow it
-  // up to the next delimiter and log ONE syntax error (see _buildBadStatement).
-  const BadStatement = node('BadStatement',
-    parser({ trivia: rw }, sequence(unknownTok, optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('BadStatement', c, r, s));
-
   // ── Root ──────────────────────────────────────────────────────────────────
+  // No catch-all arm: a run of input that matches no rule simply stops `many`,
+  // leaving unconsumed input the driver reports as one syntax error. Required
+  // closers below are wrapped in expect() so a missing one is reported (and
+  // recovered) by parseman rather than aborting the whole parse.
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.MissingSelectorBlock, BadStatement))),
+    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, literal('}'))),
+    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
-  // A `{ … }` block with no selector in front of it — a qualified rule must have a
-  // selector. Recognised so it can be reported ("No selector found") rather than
-  // silently swallowed. @see https://www.w3.org/TR/css-syntax-3/#qualified-rule
-  const MissingSelectorBlock = node('MissingSelectorBlock',
-    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))),
-    (c: any, r: any, s: any) => mk('MissingSelectorBlock', c, r, s));
 
   // ── Selectors ──────────────────────────────────────────────────────────────
   const SelectorList = node('SelectorList',
@@ -175,7 +163,7 @@ export const {
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";"), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";")
   )));
 
   /**
@@ -265,7 +253,7 @@ export const {
   const queryPrelude = parser({ trivia: rw }, sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
-    parser({ trivia: rw }, sequence(queryAtKeyword, queryPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    parser({ trivia: rw }, sequence(queryAtKeyword, queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('QueryAtRuleBlock', c, r, s));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
@@ -286,7 +274,7 @@ export const {
   // falling through to the opaque unknown-at-rule rule.
   const knownBlockAtKeyword = regex(/@(?:media|container|supports|layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
   const AtRuleBlock = node('AtRuleBlock',
-    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node('UnknownAtRuleBlock',
@@ -295,10 +283,10 @@ export const {
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
-  // Body of an at-rule block. BadStatement recovers a non-standard / unknown
-  // at-rule body (e.g. an unknown `@future {…}`) instead of failing the block.
+  // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
+  // and the block's expect('}') reports a syntax error at that point.
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";"), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";")
   )));
 
   return {
@@ -308,7 +296,7 @@ export const {
     valueList, valueSequence, value, parenBody,
     Dimension, Num, Color, Url, Call, Paren, Quoted, anyValue,
     AtRuleBlock, AtRuleStatement, atRuleBody,
-    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature, UnknownAtRuleBlock, MissingSelectorBlock
+    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature, UnknownAtRuleBlock
   };
 });
 
@@ -323,6 +311,26 @@ export type CssParseResult = {
   trivia: TriviaMap;
 };
 
+/**
+ * First offset at/after `from` holding real (non-trivia) input, or null if only
+ * whitespace/comments remain. Used to detect input the grammar could not consume
+ * — a syntax error the parser stopped short on. Mirrors the css `rw` trivia.
+ */
+function firstUnparsedOffset(input: string, from: number): number | null {
+  let i = from;
+  while (i < input.length) {
+    const c = input[i]!;
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { i++; continue; }
+    if (c === '/' && input[i + 1] === '*') {
+      const end = input.indexOf('*/', i + 2);
+      if (end === -1) return i;        // unterminated comment is itself an error
+      i = end + 2; continue;
+    }
+    return i;
+  }
+  return null;
+}
+
 export function parseCssFn(input: string): CssParseResult {
   host.setSource(input);
   host.resetWarnings();
@@ -334,7 +342,10 @@ export function parseCssFn(input: string): CssParseResult {
   const sheet = Stylesheet as unknown as
     | ((i: string, p: number, c: any) => any)
     | { parse(i: string, p: number, c: any): any };
-  const ctx = { trackLines: false, _triviaLog: triviaLog };
+  // _errors collects parseman's recover()/expect() ParseErrors (e.g. a missing
+  // closing brace) rather than the old hand-rolled BadStatement net.
+  const parseErrors: Array<{ span: { start: number }; expected: string[] }> = [];
+  const ctx = { trackLines: false, _triviaLog: triviaLog, _errors: parseErrors };
   const r = typeof sheet === 'function'
     ? sheet(input, 0, ctx)
     : sheet.parse(input, 0, ctx);
@@ -342,16 +353,23 @@ export function parseCssFn(input: string): CssParseResult {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const tree: Node = r.ok && r.value instanceof Node ? r.value : (nil() as unknown as Node);
 
-  const errors: Array<{ message: string; offset?: number }> = [];
+  // Three diagnostic sources, all position-tagged: a required token expect()
+  // missed, a hard top-level failure, and input the grammar stopped short of.
+  const collected: Array<{ message: string; offset?: number }> = [];
+  for (const e of parseErrors) {
+    const exp = e.expected.filter(x => x !== 'sentinel');
+    collected.push({ message: exp.length ? `expected ${exp.join(', ')}` : 'Unexpected input', offset: e.span.start });
+  }
   if (!r.ok) {
-    errors.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
+    collected.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
   }
-  // Builder-logged syntax errors (catch-all recovery, structural checks). Cap at
-  // the first — default is "report 1 error and stop".
-  const builderErrors = host.getErrors();
-  if (builderErrors.length > 0 && errors.length === 0) {
-    errors.push(builderErrors[0]!);
+  const leftoverAt = r.ok ? firstUnparsedOffset(input, r.span?.end ?? 0) : null;
+  if (leftoverAt !== null) {
+    collected.push({ message: 'Unexpected input', offset: leftoverAt });
   }
+  // Default: report ONE error and stop — the earliest by position.
+  collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
+  const errors = collected.length > 0 ? [collected[0]!] : [];
 
   return {
     tree,
