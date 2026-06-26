@@ -80,7 +80,7 @@ describe('Selector Productions', () => {
     it('should serialize unknown pseudo arguments from generic sequence nodes', () => {
       const { errors, tree, trivia } = parser.parse(':unknown(.sel.a) { color: red; }');
       expect(errors.length).toBe(0);
-      const ruleset = tree.value[0];
+      const ruleset = tree.rules[0];
       const selector = ruleset.selector;
 
       expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
@@ -112,7 +112,7 @@ describe('Selector Productions', () => {
       for (const [source, expected] of cases) {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
-        const ruleset = tree.value[0];
+        const ruleset = tree.rules[0];
         expect(ruleset.selector.toString({ trivia })).toBe(expected);
       }
     });
@@ -130,7 +130,7 @@ describe('Selector Productions', () => {
       for (const [source, expected, shape] of cases) {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
-        const ruleset = tree.value[0];
+        const ruleset = tree.rules[0];
         const selector = ruleset.selector;
         expect(selector.toString({ trivia })).toBe(expected);
         expect(serializeTypes(selector)).toContainString(shape);
@@ -161,7 +161,7 @@ describe('Selector Productions', () => {
       for (const [source, expected] of cases) {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
-        const ruleset = tree.value[0];
+        const ruleset = tree.rules[0];
         expect(ruleset.selector.toString({ trivia })).toBe(expected);
         expect(serializeTypes(ruleset.selector)).toContainString('(ComplexSelector');
       }
@@ -331,7 +331,7 @@ describe('Selector Productions', () => {
     it('should parse dimension in selector (for keyframes)', () => {
       const { errors, tree } = parser.parse('@keyframes test { 0% { color: red; } }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(BasicSelector');
+      expect(serializeTypes(tree)).toContain("selector: '0%'");
     });
   });
 

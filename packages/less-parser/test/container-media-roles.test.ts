@@ -8,7 +8,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
   test('@container simple query parses as QueryCondition in Paren', () => {
     const { tree, errors } = parser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0] as any;
     const prelude = atRule.prelude;
     const queryNode = prelude?.type === 'Sequence'
       ? prelude.value[0]
@@ -26,7 +26,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
   test('@media simple query parses as QueryCondition in Paren', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0] as any;
     const prelude = atRule.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     if (queryNode) {
@@ -74,7 +74,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
   test('multiple conditions create outer QueryCondition', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) and (height > 300px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.value[0] as any;
+    const atRule = tree.rules[0] as any;
     const prelude = atRule.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     // With multiple conditions, there should be an outer QueryCondition

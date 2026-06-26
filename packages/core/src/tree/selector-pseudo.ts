@@ -147,9 +147,49 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           }
           if (typeof part === 'string') {
             w.add(part, this);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           } else if (part && typeof (part as Node).toString === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             (part as Node).toString(options);
           }
+        }
+      } else if (isNode(arg, N.Sequence)) {
+        // Unknown-pseudo arg stored as Sequence for AST serialization.
+        // Render each Any item inline (no separators), using valueSpans for trivia.
+        const seqItems = arg.value;
+        const spans = this.valueSpans;
+        let srcIdx = 0;
+        let prevWasSpace = false;
+        for (let i = 0; i < seqItems.length; i++) {
+          const item = seqItems[i]!;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const itemStr = (item as unknown as { value?: unknown }).value;
+          if (itemStr === ' ') {
+            const run = (options.trivia && spans)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[(srcIdx + 1) * 3], options)
+              : undefined;
+            if (run) {
+              emitTriviaTokens(run, options);
+            } else {
+              w.add(' ', this);
+            }
+            srcIdx++;
+            prevWasSpace = true;
+            continue;
+          }
+          if (srcIdx > 0 && !prevWasSpace && options.trivia && spans) {
+            emitTriviaTokens(
+              consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[srcIdx * 3], options),
+              options
+            );
+          }
+          if (typeof itemStr === 'string') {
+            w.add(itemStr, this);
+          } else {
+            item.toString(options);
+          }
+          srcIdx++;
+          prevWasSpace = false;
         }
       } else if (isNode(arg, N.SelectorList)) {
         const argMark = w.mark();
@@ -230,6 +270,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const currentArg = this.arg;
     cloneFn ??= n => n.clone(deep);
     const clonedArg = deep && currentArg ? cloneFn(currentArg) : currentArg;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cloned = new PseudoSelector(
       {
         name: this.name,

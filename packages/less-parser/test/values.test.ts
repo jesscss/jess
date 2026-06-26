@@ -46,7 +46,7 @@ describe('value', () => {
     `, 'stylesheet');
 
     expect(errors.length).toBe(0);
-    const ruleset = tree.value[0]!;
+    const ruleset = tree.rules[0]!;
     const eachNode = ruleset.rules[0]!;
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
@@ -62,7 +62,7 @@ describe('value', () => {
     `, 'declarationList');
 
     expect(errors.length).toBe(0);
-    const eachNode = tree.value[0]!;
+    const eachNode = tree.rules[0]!;
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['v', 'i']);

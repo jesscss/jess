@@ -77,15 +77,14 @@ function summarizeArray(items: unknown[], opts: Required<SerializeTypesOptions>)
   return parts.join(', ');
 }
 
-function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
+function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>, forceMultiLine = false): string {
   const pad = indent(depth, opts.indentSize);
   if (arr.length === 0) {
     return `${pad}[]`;
   }
-  // Component arrays (nodes and/or strings — e.g. selector/sequence values)
-  // render multi-line, one element per line, with no separators.
-  const hasNodeOrString = arr.some(item => isJessNode(item) || typeof item === 'string');
-  if (hasNodeOrString) {
+  // Component arrays that contain Node instances render multi-line, one per line.
+  const hasNode = arr.some(item => isJessNode(item));
+  if (hasNode || forceMultiLine) {
     const childPad = indent(depth + 1, opts.indentSize);
     const inner = arr.map(item => (
       isJessNode(item)
@@ -94,11 +93,11 @@ function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeT
     )).join('\n');
     return `${pad}[\n${inner}\n${pad}]`;
   }
-  // Pure-primitive array (numbers/booleans); show compact
+  // String-only or pure-primitive arrays: compact on one line
   return `${pad}[${summarizeArray(arr, opts)}]`;
 }
 
-function serializePlainObject(obj: Record<string, unknown>, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
+function serializePlainObject(obj: Record<string, unknown>, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>, parentNodeType?: string): string {
   const keys = Object.keys(obj).filter(k => obj[k] !== undefined);
   if (keys.length === 0) {
     return '';
@@ -110,7 +109,11 @@ function serializePlainObject(obj: Record<string, unknown>, depth: number, opts:
       const inner = serializeNode(v, depth + 2, opts, visiting);
       lines.push(`${indent(depth + 1, opts.indentSize)}${key}:\n${inner}`);
     } else if (Array.isArray(v)) {
-      const inner = serializeArray(v, depth + 2, opts, visiting);
+      // Selector node arrays always render multi-line (one item per line)
+      const MULTILINE_VALUE_TYPES = new Set(['CompoundSelector', 'SelectorList', 'ComplexSelector', 'QueryCondition', 'Sequence']);
+      const forceMultiLine = (key === 'value' && MULTILINE_VALUE_TYPES.has(parentNodeType ?? ''))
+        || (key === 'arg' && parentNodeType === 'PseudoSelector');
+      const inner = serializeArray(v, depth + 2, opts, visiting, forceMultiLine);
       lines.push(`${indent(depth + 1, opts.indentSize)}${key}:\n${inner}`);
     } else if (isPlainObject(v)) {
       const inner = serializePlainObject(v as Record<string, unknown>, depth + 1, opts, visiting);
@@ -143,10 +146,12 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
 }
 
 function serializeNodeChildFields(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const childKeys = (n.constructor as typeof Node).childKeys;
   if (childKeys === undefined || childKeys === null) {
     return null;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const fields = n as unknown as Record<string, unknown>;
   const childValues: Record<string, unknown> = {};
   for (const key of childKeys) {
@@ -155,7 +160,7 @@ function serializeNodeChildFields(n: Node, depth: number, opts: Required<Seriali
       childValues[key] = value;
     }
   }
-  return serializePlainObject(childValues, depth, opts, visiting);
+  return serializePlainObject(childValues, depth, opts, visiting, n.type);
 }
 
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {

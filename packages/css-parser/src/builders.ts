@@ -312,11 +312,13 @@ export class CssParser {
    * are normal recovery and are not errors.
    */
   protected _buildBadStatement(loc: LocationInfo): string {
-    // NOTE: error emission intentionally disabled. The catch-all currently fires
-    // for VALID css the real rules don't yet cover (uppercase !important, &-nesting,
-    // unknown at-rules, complex custom-property values, legacy star-hack). Those
-    // rules must be completed before this can log a syntax error without false
-    // positives. Until then this stays pure silent recovery (baseline behaviour).
+    // NOTE: error emission still DISABLED. After the css completeness fixes
+    // (!important case, &-nesting, at-rule body recovery, custom-property nesting
+    // via parseman balanced(), legacy star-hack) the catch-all's false positives
+    // dropped from 7 to 2: (1) escape.css — CSS escape forms the grammar still
+    // doesn't cover (\;, url(a;a), \62 olor, \@noat); (2) atrule-unknown.css — an
+    // UNKNOWN at-rule body is opaque, so the net must not error inside it (a
+    // context-aware suppression, not a completeness gap). Resolve both, then enable.
     void loc;
     return '';
   }
