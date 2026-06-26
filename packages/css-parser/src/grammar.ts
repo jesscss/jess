@@ -72,8 +72,9 @@ const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const rw = trivia(oneOrMore(choice(ws, comment)));
 
 /**
- * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, or
- * `_`), optionally preceded by `-`; subsequent chars add digits and `-`.
+ * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, `_`),
+ * optionally preceded by `-`; subsequent chars add digits and `-`.
+ * (TODO: CSS escapes -- `\hex`/`\char` -- are not yet handled here; see escape.css.)
  * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
  * @see https://www.w3.org/TR/css-syntax-3/#ident-code-point
  */
@@ -176,7 +177,7 @@ export const {
    * @see https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
    * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
    */
-  const propName = regex(/\*?-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const propName = regex(/\*?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
