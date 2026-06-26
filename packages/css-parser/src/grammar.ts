@@ -71,6 +71,12 @@ const ws = regex(/[ \t\n\r\f]+/);
 const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const rw = trivia(oneOrMore(choice(ws, comment)));
 
+/**
+ * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, or
+ * `_`), optionally preceded by `-`; subsequent chars add digits and `-`.
+ * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
+ * @see https://www.w3.org/TR/css-syntax-3/#ident-code-point
+ */
 const ident = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const basicSel = regex(/(?:[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\d+(?:\.\d+)?%|\*)/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
@@ -125,7 +131,10 @@ export const {
   const CompoundSelector = node('CompoundSelector',
     parser({ trivia: rw }, oneOrMore(g.simpleSelector)),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
-  // `&` is the CSS nesting selector (https://www.w3.org/TR/css-nesting-1/).
+  /**
+   * `&` is the CSS nesting selector (the parent reference).
+   * @see https://www.w3.org/TR/css-nesting-1/#nest-selector
+   */
   const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), basicSel);
 
   const AttributeSelector = node('AttributeSelector',
@@ -141,24 +150,42 @@ export const {
   const pseudoArg = choice(nth, g.SelectorList, scanTo(literal(')'), { skip: [balanced('(', ')')] }));
 
   // ── Declarations ─────────────────────────────────────────────────────────
-  // CSS nesting: a rule body may contain nested rulesets and at-rules, not just
-  // declarations (https://www.w3.org/TR/css-nesting-1/).
+  /**
+   * A rule body. With CSS Nesting it interleaves declarations with nested
+   * rulesets and nested at-rules, not just declarations.
+   * @see https://www.w3.org/TR/css-nesting-1/#syntax
+   */
   const declarationList = parser({ trivia: rw }, many(choice(
     g.AtRuleBlock, g.AtRuleStatement, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'), BadStatement
   )));
 
-  // `!important` — keyword is case-insensitive; trivia between `!` and the
-  // keyword is allowed (the enclosing parser({ trivia }) skips it).
+  /**
+   * `!important`. Keyword is ASCII case-insensitive; trivia between `!` and the
+   * keyword is allowed (enclosing parser({ trivia }) skips it).
+   * @see https://www.w3.org/TR/css-cascade-4/#importance
+   */
   const important = sequence(literal('!'), regex(/important/i));
 
-  // Property name allows a leading `*` — the legacy IE7 star-hack (`*color: …`).
-  // `_prop` (IE6 underscore hack) already parses since `_` is an ident char.
-  // (When legacyMode lands, an off setting should report-and-recover on `*`, not
-  // silently accept — handled with the error-net.)
+  /**
+   * Property name. Standard names are idents; we also accept a leading `*` for the
+   * legacy IE7 star-hack (`*color: …`). `*` is NOT an ident-start code point and
+   * "would not start an identifier", so it is genuinely non-conformant — valid only
+   * as a hack. (`_prop`, the IE6 underscore hack, is just an ordinary ident: `_` IS
+   * an ident-start code point, so no special handling.) When legacyMode lands, an
+   * `off` setting should report-and-recover on `*`, not silently accept.
+   * @see https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
+   * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
+   */
   const propName = regex(/\*?-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
+  /**
+   * Custom property (`--foo: …`). Its value is a near-arbitrary declaration-value
+   * token stream with balanced (), [], {} — scanned to the terminating `;`/`}`,
+   * skipping balanced groups intact (parseman balanced() counts nested-pair depth).
+   * @see https://www.w3.org/TR/css-variables-1/#defining-variables
+   */
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(
       customProp, literal(':'),
@@ -192,6 +219,11 @@ export const {
   const anyValue = anyValueTok;
 
   // ── At-rules ───────────────────────────────────────────────────────────────
+  /**
+   * An at-rule is `@name <prelude>` ended by either a `{}` block or a `;`. The
+   * prelude is scanned up to the `{`/`;`, skipping balanced ()/[] and strings.
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+   */
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
   }));
@@ -201,6 +233,8 @@ export const {
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+  // Body of an at-rule block. BadStatement recovers a non-standard / unknown
+  // at-rule body (e.g. an unknown `@future {…}`) instead of failing the block.
   const atRuleBody = parser({ trivia: rw }, many(choice(
     g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';'), BadStatement
   )));
