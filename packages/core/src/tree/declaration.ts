@@ -1107,8 +1107,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): string {
     if (state.nil) {
       const output = state.output ?? this.materializeValueForSemantics(state.value);
-      const nilOut = output.toTrimmedString(isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
-      return isRenderBuffer(bufferOrOptions) ? writeRenderText(bufferOrOptions, nilOut) : nilOut;
+      return isRenderBuffer(bufferOrOptions)
+        ? output.render(context, bufferOrOptions, options)
+        : output.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const renderState = {

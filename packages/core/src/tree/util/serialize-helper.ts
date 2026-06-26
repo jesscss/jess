@@ -131,13 +131,20 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
 }
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {
-  return isNode(node, N.AtRule)
-    ? (
-        node === options?.atRuleBodyNode
-          ? options.atRuleBodyOverride
-          : node
-      )
-    : node;
+  if (!isNode(node, N.AtRule)) {
+    return node;
+  }
+  // AtRuleStatement shares the AtRule bit but extends Node (not Rules) — always a leaf.
+  if (!isNode(node, N.Rules)) {
+    return undefined;
+  }
+  if (node === options?.atRuleBodyNode) {
+    return options.atRuleBodyOverride;
+  }
+  // AtRules with no rules are statement at-rules (leaf form, no `{}` block).
+  // Return undefined so the serializer calls writeSyntax directly instead of
+  // trying to recurse into an empty container.
+  return (node as AtRule).getRenderRules().length > 0 ? node : undefined;
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -773,7 +780,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const renderedFrameSnapshot = saveArrayState(lastRenderedFrames);
         const frameHeaderSnapshot = saveArrayState(frameHeaders);
         const renderedPositionBaseline = w.position();
-        if (isNode(nn, N.Rules)) {
+        if (isNode(nn, N.Rules) && !isLeafAtRule) {
           const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
           );
@@ -907,6 +914,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!/^\s*$/.test(leading)) {
             w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
+          w.add(idt);
           w.add(out, nn);
         } else {
           if (!/^\s*$/.test(leading)) {

@@ -53,9 +53,9 @@ describe('callable special-case helper', () => {
     expect(result.output).toBeDefined();
     expect(result.output?.index).toBe(candidate.index);
     expect(result.output?.toString()).toContain('color: red;');
-    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate.rules);
+    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate);
     expect(getMixinOutputPlacementRecord(result.output!)).toEqual({
-      source: candidate.rules,
+      source: candidate,
       output: result.output
     });
   });

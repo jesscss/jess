@@ -291,7 +291,11 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
   while (cursor?.parent && depth++ < 10) {
     const parent = cursor.parent;
     const grandparent = parent.parent;
-    if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules)) {
+    // Lift through at-rule wrappers to the enclosing Rules scope, but stop before
+    // Mixin nodes: a Mixin's scope frame does not carry param live-slots — those
+    // live in the shallow eval surface created by createShallowCallableRulesSurface,
+    // which IS the current cursor when we reach this point.
+    if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules) && !isNode(grandparent, N.Mixin)) {
       cursor = grandparent;
       continue;
     }
@@ -496,6 +500,44 @@ function hasCommentChild(value: unknown): boolean {
     }
   }
   return false;
+}
+
+function writeLeafAtRuleHeader(
+  options: FinalPrintOptions,
+  node: Pick<AtRule, 'name' | 'prelude'>
+): boolean {
+  if (options.trivia) {
+    return false;
+  }
+  if (hasCommentChild(node.name) || hasCommentChild(node.prelude)) {
+    return false;
+  }
+  const w = options.writer;
+  const readNodeText = (n: string | Node): string => {
+    if (typeof n === 'string') {
+      return n;
+    }
+    const scalarText = atRuleScalarTokenText(n);
+    return scalarText ?? renderAtRuleHeaderNodeSyntax(n, options);
+  };
+  const nameText = readNodeText(node.name);
+  const prelude = node.prelude;
+  const preludeText = prelude ? readNodeText(prelude) : '';
+  const idt = indent(options.depth);
+  if (idt) {
+    w.add(idt);
+  }
+  w.add(nameText, node.name);
+  if (preludeText && hasNonAtRuleWhitespace(preludeText)) {
+    const nameEndsWithSpace = endsWithAtRuleWhitespace(nameText);
+    const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeText);
+    if (!(nameEndsWithSpace || preludeStartsWithSpace)) {
+      w.add(' ');
+    }
+    w.add(trimAtRuleLeadingWhitespace(preludeText, nameEndsWithSpace ? '' : ' '), prelude!);
+  }
+  w.add(';');
+  return true;
 }
 
 function isAtRuleBodyEvalRecordResult(value: unknown): value is AtRuleBodyEvalRecord {
@@ -785,6 +827,12 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
+    if (!this.rules.length) {
+      if (!writeLeafAtRuleHeader(options, this)) {
+        options.writer.add(this.getHeaderString(options));
+      }
+      return;
+    }
     serializeRulesContainer(this, options);
   }
 

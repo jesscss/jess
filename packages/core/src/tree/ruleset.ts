@@ -486,6 +486,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
+  /** The original Rules wrapper passed at construction time, if any. Used by the nil-selector direct render path. */
+  _passedRulesWrapper: Rules | undefined;
   /** Legacy canonical composed selector slot still used by extend post-processing. */
   declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
@@ -524,6 +526,28 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.selector = value.selector;
       this.guard = value.guard;
       this.selectorBeforeExtend = value.selectorBeforeExtend;
+      // Adopt selector and guard so their .parent points to this Ruleset node,
+      // matching the old childKeys-based _processNodes behavior.
+      if (value.selector instanceof Node) {
+        this.adopt(value.selector);
+      }
+      if (value.guard instanceof Node) {
+        this.adopt(value.guard);
+      }
+    }
+    // When a Rules wrapper was passed, adopt it so body.parent === this, and
+    // restore children's parent to the wrapper. super(rulesValue) set child.parent=this,
+    // but the wrapper is the canonical intermediate ancestor in the parent chain.
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      this.adopt(value.rules);
+      const wrapperRules = value.rules.rules;
+      for (let i = 0; i < wrapperRules.length; i++) {
+        const child = wrapperRules[i]!;
+        if (child instanceof Node) {
+          child.parent = value.rules;
+        }
+      }
     }
   }
 
@@ -1212,7 +1236,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   private evalNilSelectorForRender(context: Context): MaybePromise<Rules | Nil> {
     if (this.canRenderNilSelectorBodyDirectly()) {
-      return this.createNilSelectorOutputRules();
+      return this._passedRulesWrapper ?? this.createNilSelectorOutputRules();
     }
     const { guard } = this;
     if (!guard) {
@@ -1257,7 +1281,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return `${rendered}\n`;
     };
     const renderNilSelectorBodyDirectly = (): MaybePromise<string> => {
-      const output = this.createNilSelectorOutputRules();
+      const output = this._passedRulesWrapper ?? this.createNilSelectorOutputRules();
       const rendered = isRenderBuffer(bufferOrOptions)
         ? output.render(context, bufferOrOptions, options)
         : output.render(context, bufferOrOptions);
@@ -1657,6 +1681,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const kept: SelectorListItem[] = [];
     for (const item of parent.value) {
       if (typeof item === 'string') {
+        if (includeUntouchedSiblings && !seen.has(item)) {
+          seen.add(item);
+          kept.push(item);
+        }
         continue;
       }
       const keepItem = includeUntouchedSiblings
@@ -2037,6 +2065,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     ) {
       options.referenceFilterTargets = true;
     }
+    const renderSelectorSourceRef = renderSelector;
     if (!(renderSelector instanceof Nil)) {
       const needsVisibleSelectorClone = Ruleset.needsVisibleSelectorClone(renderSelector);
       if (options.referenceFilterTargets || needsVisibleSelectorClone) {
@@ -2044,6 +2073,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         renderSelector = copySelectorForRulesetMetadata(renderSelector) as Selector;
       }
     }
+    // For reusable-leaf selectors, copySelectorForRulesetMetadata returns the source node
+    // unchanged. Ensure we restore visibility after writing so the source is not mutated.
+    const renderSelectorWasVisible = renderSelector instanceof Nil || renderSelector.hasFlag(F_VISIBLE);
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
     const position = options.writer.position();
@@ -2056,6 +2088,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     } finally {
       options.trivia = savedTrivia;
       restorePrintState(options, saved);
+      // Restore source selector visibility if renderSelector is the same as the source
+      // (happens when the selector is a reusable leaf and no copy was made).
+      if (!renderSelectorWasVisible && renderSelector === renderSelectorSourceRef && !(renderSelector instanceof Nil)) {
+        renderSelector.removeFlag(F_VISIBLE);
+      }
     }
     return options.writer.position() !== position;
   }

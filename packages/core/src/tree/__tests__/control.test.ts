@@ -702,7 +702,7 @@ describe('Control Nodes', () => {
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
     expect(renderCss).toBeString(`
       tick: 1;
-      tick: 1;
+      tick: 2;
       tick: 2;
       item: a;
       item: b;

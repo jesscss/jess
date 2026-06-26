@@ -524,7 +524,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -559,7 +559,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.parent).toBe(node);
   });
 
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
@@ -586,7 +586,7 @@ describe('Rule', () => {
         font-family: Body;
       }
     `);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.parent).toBe(node);
   });
 
   it('keeps source selector and body parentage canonical during direct render', async () => {
@@ -1091,7 +1091,7 @@ describe('Rule', () => {
 
     expect(prepared).not.toBe(node);
     expect(selector.parent).toBe(node);
-    expect(prepared.rules).toBe(body);
+    expect(prepared.rules).toBe(body.rules);
   });
 
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
@@ -1129,20 +1129,25 @@ describe('Rule', () => {
       selector: el('.frame'),
       rules: []
     });
-    const body = rules([]);
-    body.eval = () => {
-      throw new Error('body eval failed');
-    };
     const node = ruleset({
       selector: el('.parent'),
-      rules: body
+      rules: []
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-
-    expect(() => node.eval(context)).toThrow('body eval failed');
-    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
-    expect(context.frames).toEqual([savedFrame]);
+    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+    // Patch the Rules prototype to simulate a synchronous throw during body evaluation.
+    const originalRulesEvalNode = RulesClass.prototype.evalNode;
+    RulesClass.prototype.evalNode = function rulesEvalNodeThrow() {
+      throw new Error('body eval failed');
+    };
+    try {
+      expect(() => node.eval(context)).toThrow('body eval failed');
+      expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+      expect(context.frames).toEqual([savedFrame]);
+    } finally {
+      RulesClass.prototype.evalNode = originalRulesEvalNode;
+    }
   });
 
   it('restores eval frames when body eval rejects', async () => {
@@ -1154,19 +1159,25 @@ describe('Rule', () => {
       selector: el('.frame'),
       rules: []
     });
-    const body = rules([]);
-    body.eval = () => Promise.reject(new Error('body eval failed'));
-    body.addFlag(F_MAY_ASYNC);
     const node = ruleset({
       selector: el('.parent'),
-      rules: body
+      rules: []
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-
-    await expect(node.eval(context)).rejects.toThrow('body eval failed');
-    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
-    expect(context.frames).toEqual([savedFrame]);
+    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+    // Patch the Rules prototype to simulate an async rejection during body evaluation.
+    const originalRulesEvalNode = RulesClass.prototype.evalNode;
+    RulesClass.prototype.evalNode = function rulesEvalNodeReject() {
+      return Promise.reject(new Error('body eval failed'));
+    };
+    try {
+      await expect(node.eval(context)).rejects.toThrow('body eval failed');
+      expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+      expect(context.frames).toEqual([savedFrame]);
+    } finally {
+      RulesClass.prototype.evalNode = originalRulesEvalNode;
+    }
   });
 
   it('resolves a ruleset without touching render state', async () => {

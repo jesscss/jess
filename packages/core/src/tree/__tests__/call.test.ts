@@ -1558,7 +1558,7 @@ describe('Call', () => {
     expect(topDeclaration.important).toBeUndefined();
     expect(nestedDeclaration.important).toBeUndefined();
     expect(topReplacement?.parent).toBe(root);
-    expect(nestedReplacement?.parent).toBe(nestedRules);
+    expect(nestedReplacement?.parent).toBe(nestedRuleset);
     expect(root.toTrimmedString()).toBeString(`
       color: red !important;
       .nested {

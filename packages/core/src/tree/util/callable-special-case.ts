@@ -4,7 +4,7 @@ import { F_MAY_ASYNC, type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
-import type { Rules } from '../rules.js';
+import { Rules } from '../rules.js';
 import { getMixinEntryRules, type MixinEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
@@ -48,7 +48,10 @@ export async function evaluateCallableSpecialCaseCandidate({
       return { handled: true };
     }
 
-    const sourceRules = getRootSourceRules(candidate);
+    // When the ruleset was constructed with a Rules wrapper, use it as sourceRules
+    // so children's parent pointers (which point to the wrapper) are preserved.
+    const passedWrapper = candidate._passedRulesWrapper;
+    const sourceRules = passedWrapper instanceof Rules ? passedWrapper : getRootSourceRules(candidate);
     let rules = createOwnedRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
     let needsCallerPlacementDuringEval = false;
