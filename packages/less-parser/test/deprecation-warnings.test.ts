@@ -22,6 +22,21 @@ describe('Deprecation warnings', () => {
     });
   });
 
+  describe('digit-leading-variable', () => {
+    it('parses a digit-leading variable name but warns it is deprecated', () => {
+      const { errors, warnings } = parser.parse('.a { @3: red; color: @3; }');
+      expect(errors).toHaveLength(0);   // still valid (Less.js accepts [\w-]+)
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.message).toContain('starts with a digit');
+      expect(warnings[0]?.deprecation).toBe('digit-leading-variable');
+    });
+
+    it('does not warn for a normal variable name', () => {
+      const { warnings } = parser.parse('.a { @ok: red; color: @ok; }');
+      expect(warnings).toHaveLength(0);
+    });
+  });
+
   describe('mixin-call-whitespace', () => {
     it('should warn when there is whitespace between mixin name and parentheses', () => {
       const { warnings } = parser.parse('.mixin ();');

@@ -117,6 +117,14 @@ export class LessGrammar extends CssParser {
     const items = spannedComponents(rawChildren);
     const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
+    // Less.js still accepts a digit-leading variable name (`@3`) — its name regex
+    // is `[\w-]+` — but it's a footgun (collides with numeric tokens), so flag it.
+    if (/^-?\d/.test(name)) {
+      this._warn(
+        `Variable name "@${name}" starts with a digit; digit-leading variable names are deprecated.`,
+        'digit-leading-variable'
+      );
+    }
     const colonIdx = items.findIndex(i => i.comp === ':');
     const afterColon = items[colonIdx + 1];
     if (afterColon?.comp === '{') {

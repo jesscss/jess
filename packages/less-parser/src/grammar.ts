@@ -81,8 +81,9 @@ const urlInner = regex(/(?:\\.|[^)"'\s])+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // Less-specific terminals.
-const lessVar = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const lessInterp = regex(/@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
+// First char may be a digit \u2014 Less allows numeric variable names (`@3`, `@{3}`).
+const lessVar = regex(/@-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
 
 // ---------------------------------------------------------------------------
 // Grammar — CSS base rules + Less overrides/additions (mirrors LessGrammar).
