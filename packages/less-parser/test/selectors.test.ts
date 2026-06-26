@@ -141,7 +141,7 @@ describe('Selector Productions', () => {
       const { errors, tree } = parser.parse('.foo { color: red; }');
       expect(errors.length).toBe(0);
       // Single simple selector is a bare string, not a CompoundSelector
-      expect(serializeTypes(tree)).toContainString("selector: '.foo'");
+      expect(serializeTypes(tree)).toContainString('selector: \'.foo\'');
     });
   });
 
@@ -223,19 +223,19 @@ describe('Selector Productions', () => {
     it('should parse class selector', () => {
       const { errors, tree } = parser.parse('.class { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString("'.class'");
+      expect(serializeTypes(tree)).toContainString('\'.class\'');
     });
 
     it('should parse id selector', () => {
       const { errors, tree } = parser.parse('#id { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString("'#id'");
+      expect(serializeTypes(tree)).toContainString('\'#id\'');
     });
 
     it('should parse universal selector', () => {
       const { errors, tree } = parser.parse('* { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString("'*'");
+      expect(serializeTypes(tree)).toContainString('\'*\'');
     });
 
     it('should parse ampersand selector', () => {
@@ -312,14 +312,14 @@ describe('Selector Productions', () => {
       // Pseudo selectors need an element or be nested
       const { errors, tree } = parser.parse('.test:hover { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString("'.test'");
+      expect(serializeTypes(tree)).toContainString('\'.test\'');
     });
 
     it('should parse attribute selector', () => {
       // Attribute selectors need an element or be nested
       const { errors, tree } = parser.parse('.test[attr] { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString("'.test'");
+      expect(serializeTypes(tree)).toContainString('\'.test\'');
     });
 
     it('should parse interpolated selector', () => {
@@ -331,7 +331,7 @@ describe('Selector Productions', () => {
     it('should parse dimension in selector (for keyframes)', () => {
       const { errors, tree } = parser.parse('@keyframes test { 0% { color: red; } }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContain("selector: '0%'");
+      expect(serializeTypes(tree)).toContain('selector: \'0%\'');
     });
   });
 
