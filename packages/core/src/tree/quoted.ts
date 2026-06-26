@@ -116,7 +116,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderQuotedSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)

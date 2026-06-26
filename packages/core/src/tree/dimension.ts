@@ -197,7 +197,8 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String(b.value ?? '').trim();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const text = String((b as { value?: unknown }).value ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }

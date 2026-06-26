@@ -3,7 +3,10 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
-    "noEmit": false
+    "noEmit": false,
+    "paths": {
+      "@jesscss/plugin-node-modules": ["./node_modules/@jesscss/plugin-node-modules/lib/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "../core/src/globals.d.ts"]
 }

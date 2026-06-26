@@ -3,11 +3,9 @@ import { Context } from '../../../context.js';
 import { any, decl, el, list, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
 import {
   callableRulesEntry,
-  getCallableEntryGuard,
-  getCallableEntryName,
-  getCallableEntryParams,
-  getMixinEntryRules
+  type CallableEntry
 } from '../callable-entry.js';
+import type { CallableParamMatch } from '../callable-param-match.js';
 import {
   createCallableOuterRules,
   createOwnedCallableRulesSurface,
@@ -50,12 +48,7 @@ describe('callable candidate loop helper', () => {
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
     expect(outputState.sourceRules).toBe(candidate);
@@ -88,7 +81,7 @@ describe('callable candidate loop helper', () => {
     });
     expect(bindingInfo).toBeDefined();
 
-    const resolvedParamBindings = new WeakMap();
+    const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();
     resolvedParamBindings.set(candidate, bindingInfo!);
     const outputState = createCallableOutputState();
     await executeCallableCandidateLoop({
@@ -107,12 +100,7 @@ describe('callable candidate loop helper', () => {
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
     expect(outputState.sourceRules).toBe(candidate);
@@ -148,12 +136,7 @@ describe('callable candidate loop helper', () => {
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
     expect(outputState.outputRules).toHaveLength(1);

@@ -184,7 +184,7 @@ export function guardDefault(this: P, T: TokenMap) {
       return;
     }
     ctx.hasDefault = true;
-    return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), $.context);
+    return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard));
   };
 }
 
@@ -249,7 +249,7 @@ export function guardAnd(this: P, T: TokenMap): ProductionRule {
             const location = Array.isArray(right!.location) && right!.location.length === 6
               ? right!.location as LocationInfo
               : undefined;
-            right = new DefaultGuard('default()', undefined, location, $.context);
+            right = new DefaultGuard('default()', undefined, location);
           }
           if (not) {
             let [,,, endOffset, endLine, endColumn] = right.location!;
@@ -299,7 +299,7 @@ export function guardInParens(this: P, T: TokenMap) {
       const location = Array.isArray(node.location) && node.location.length === 6
         ? node.location as LocationInfo
         : undefined;
-      node = new DefaultGuard('default()', undefined, location, $.context);
+      node = new DefaultGuard('default()', undefined, location);
     }
     node = node;
     return new Paren(node, undefined, $.endRule(), $.context);
@@ -359,7 +359,7 @@ export function comparison(this: P, T: TokenMap) {
       const location = Array.isArray(right.location) && right.location.length === 6
         ? right.location as LocationInfo
         : undefined;
-      right = new DefaultGuard('default()', undefined, location, $.context);
+      right = new DefaultGuard('default()', undefined, location);
     }
     left = new Condition(
       [left, normalizeComparisonOperator(op.image), right],
@@ -666,15 +666,14 @@ export function lookupOrCall(this: P, T: TokenMap) {
                 tokenStr = '$' + tokenStr;
               }
             }
-            let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            let rawResult = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            let result: typeof rawResult | Quoted = rawResult;
             if (type === 'index') {
-              result = typeof result === 'string'
-                ? new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context)
-                : new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
+              result = new Quoted(rawResult, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
             }
 
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
-            const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
+            const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
               const existingKey = target.key;
               let mergedKeys: string[];
@@ -743,7 +742,8 @@ export function mixinArgList(this: P, T: TokenMap): ProductionRule {
         const [head, ...rest] = commaNodes;
         let hasDeclarations = false;
         if (head instanceof VarDeclaration) {
-          const nodes = [head.value, ...rest];
+          const headValue = head.value instanceof Node ? head.value : undefined;
+          const nodes = headValue ? [headValue, ...rest] : [...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
           const value = new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
           semiNodes.push(new VarDeclaration({

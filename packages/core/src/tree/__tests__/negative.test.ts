@@ -54,7 +54,7 @@ describe('Negative', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = negative(num(10), undefined, undefined, treeContext);
+    const node = new Negative(num(10), undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });

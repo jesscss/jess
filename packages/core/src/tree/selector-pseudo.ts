@@ -219,8 +219,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           const omitGeneratedWrapper = this.generated
             && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
             && arg.value.length === 1;
-          this._requiredKeySet = omitGeneratedWrapper
-            ? arg.value[0]!.requiredKeySet
+          const firstItem = arg.value[0]!;
+          this._requiredKeySet = omitGeneratedWrapper && typeof firstItem !== 'string'
+            ? firstItem.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;

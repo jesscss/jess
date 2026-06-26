@@ -229,14 +229,14 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   // selector (e.g. .issue-2586-somepage .content not just .content).
   if (currentFrame) {
     const rs = currentFrame;
-    const fullSel = rs.value?.selector;
+    const fullSel = rs.selector;
     let usedParentListComposition = false;
     if (!authoredSelector) {
       const ownSel = getRulesetOwnSelector(rs);
       const parentFrame = context.rulesetFrames.at(-2);
       const parentSel = (
         parentFrame && isNode(parentFrame, N.Ruleset)
-          ? parentFrame.value?.selector
+          ? parentFrame.selector
           : undefined
       );
       if (
@@ -258,13 +258,13 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
       }
     }
     if (!authoredSelector && !usedParentListComposition) {
-      if (fullSel && !(fullSel instanceof Nil)) {
+      if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
         resolvedSel = fullSel;
       } else {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-        const parentSel = currentFrame.value?.selector;
-        if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
+        const parentSel = currentFrame.selector;
+        if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             copySelectorForExtendRecord(parentSel, selectorBits),
             Combinator.create(' '),
@@ -343,13 +343,17 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.value.map(item => (typeof item === 'string' ? item : copySelector(item)) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
               continue;
             }
           }
+        }
+        if (typeof part === 'string') {
+          parts.push(part);
+          continue;
         }
         const repl = materialize(part);
         parts.push(copySelector(repl) as ComplexSelectorComponent);
@@ -392,7 +396,8 @@ function hasMaterializableImplicitAmpersand(
 
     if (isNode(node, N.ComplexSelector)) {
       return node.value.some(part => (
-        !isNode(part, N.Combinator)
+        typeof part !== 'string'
+        && !isNode(part, N.Combinator)
         && visit(part)
       ));
     }

@@ -14,14 +14,14 @@ import {
  * e.g.
  *  .a:extend(.b), .c:extend(.d);
  */
-export interface ExtendList extends Node<Extend[]> {
+export interface ExtendList extends Node<Extend[], NodeOptions> {
   eval(context: Context): ExtendList;
 }
 
-export class ExtendList extends Node<Extend[]> {
-  static override childKeys = ['nodes'] as const;
+export class ExtendList extends Node<Extend[], NodeOptions> {
+  static override childKeys = ['value'] as const;
 
-  readonly nodes: Extend[];
+  declare readonly value: Extend[];
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -29,7 +29,6 @@ export class ExtendList extends Node<Extend[]> {
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.nodes = value;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -42,7 +41,7 @@ export class ExtendList extends Node<Extend[]> {
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
     const options = getPrintOptions(rawOptions);
-    if (this.nodes.length === 0) {
+    if (this.value.length === 0) {
       options.writer.add(';', this);
       return ';';
     }
@@ -63,7 +62,7 @@ export class ExtendList extends Node<Extend[]> {
   }
 
   private renderExtendEffects(context: Context): MaybePromise<void> {
-    const nodes = this.nodes;
+    const nodes = this.value;
     for (let i = 0; i < nodes.length; i++) {
       const out = nodes[i]!.runEffect(context);
       if (isThenable(out)) {
@@ -79,11 +78,12 @@ export class ExtendList extends Node<Extend[]> {
     index: number
   ): Promise<void> {
     await pending;
-    const nodes = this.nodes;
+    const nodes = this.value;
     for (let i = index; i < nodes.length; i++) {
       await nodes[i]!.runEffect(context);
     }
   }
 }
 
-export const extendList = defineType(ExtendList, 'ExtendList');
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+export const extendList = defineType(ExtendList as any, 'ExtendList');

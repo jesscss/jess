@@ -20,7 +20,7 @@ describe('callable guard helpers', () => {
       hasDefault: false,
       candidateGuard: dynamicGuard,
       paramBindingsLength: 0,
-      rules: [],
+      rules: rules([]),
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
@@ -28,7 +28,7 @@ describe('callable guard helpers', () => {
       hasDefault: true,
       candidateGuard: dynamicGuard,
       paramBindingsLength: 0,
-      rules: [],
+      rules: rules([]),
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
@@ -38,7 +38,7 @@ describe('callable guard helpers', () => {
       hasDefault: false,
       candidateGuard: staticGuard,
       paramBindingsLength: 0,
-      rules: [],
+      rules: rules([]),
       parent: rules([]),
       createOuterRules: createCallableOuterRules
     });
@@ -113,10 +113,11 @@ describe('callable guard helpers', () => {
     const parent = rules([]);
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    dynamicGuard.eval = async (evalContext: Context) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    dynamicGuard.eval = (async (evalContext: Context) => {
       expect(evalContext.rulesContext).toBe(callableRules);
       return new Bool(evalContext.isDefault === true);
-    };
+    }) as unknown as (context: Context) => Bool;
 
     const result = await evaluateCallableGuard({
       context,
@@ -148,10 +149,11 @@ describe('callable guard helpers', () => {
     const parent = rules([]);
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    dynamicGuard.eval = async (evalContext: Context) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    dynamicGuard.eval = (async (evalContext: Context) => {
       expect(evalContext.rulesContext).toBe(callableRules);
       return new Bool(true);
-    };
+    }) as unknown as (context: Context) => Bool;
 
     const result = await evaluateCallableGuard({
       context,

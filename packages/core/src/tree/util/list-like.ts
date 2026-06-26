@@ -2,11 +2,12 @@ import { List } from '../list.js';
 import { Sequence } from '../sequence.js';
 import { Block } from '../block.js';
 import { Node } from '../node.js';
+import { Paren } from '../paren.js';
 
 export type ListItems = readonly Node[];
 
-function isParenLike(node: Node): boolean {
-  return node.type === 'Paren';
+function isParenLike(node: Node): node is Paren {
+  return node instanceof Paren;
 }
 
 function unwrapListContainer(node: Node): List | Sequence | undefined {
@@ -44,7 +45,10 @@ export function isBracketedList(node: Node): boolean {
     return node.options?.type === 'square' && unwrapListContainer(node) !== undefined;
   }
   const { parent } = node;
-  if ((parent instanceof Block ? parent.value : parent?.value) !== node) {
+  if (!parent) {
+    return false;
+  }
+  if ((parent instanceof Block ? parent.value : parent instanceof Paren ? parent.value : undefined) !== node) {
     return false;
   }
   if (isParenLike(parent)) {

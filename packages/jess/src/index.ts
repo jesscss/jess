@@ -359,7 +359,10 @@ const resolvePackageImportEntry = (specifier: string, fromDir?: string): string 
     && '.' in packageJson.exports
     ? packageJson.exports['.']
     : undefined;
-  const exportImport = typeof rootExport === 'object' ? rootExport.import : undefined;
+  const rawImport = rootExport !== null && typeof rootExport === 'object' && 'import' in rootExport
+    ? (rootExport as Record<string, unknown>).import
+    : undefined;
+  const exportImport = typeof rawImport === 'string' ? rawImport : undefined;
   const entry = moduleEntry ?? exportImport;
   if (!entry) {
     return undefined;
@@ -798,11 +801,12 @@ export class Compiler {
       contextOptions.disableScriptModules
       || contextOptions.disablePluginRule
     );
-    contextOptions.collapseNesting = resolved.printOptions.collapseNesting;
+    const cfgOutput = typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
+      ? resolved.effectiveConfig.output
+      : null;
     contextOptions.output = {
-      ...(typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
-        ? resolved.effectiveConfig.output
-        : {}),
+      compress: cfgOutput?.compress,
+      sourceMap: typeof cfgOutput?.sourceMap === 'boolean' ? cfgOutput.sourceMap : Boolean(cfgOutput?.sourceMap),
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
@@ -1077,7 +1081,7 @@ export class Compiler {
 
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
-      collapseNesting: context.opts.collapseNesting,
+      collapseNesting: context.opts.output?.collapseNesting,
       context
     };
 

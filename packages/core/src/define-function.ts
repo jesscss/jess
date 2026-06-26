@@ -183,6 +183,8 @@ type ValidateFunctionSignature<F extends (...args: any[]) => any> = F;
 export type RuntimeFunction = ((...args: any[]) => any) & {
   options?: DefineFunctionOptions;
   _internal?: (...args: any[]) => any;
+  call(thisArg: any, ...args: any[]): any;
+  apply(thisArg: any, args: any[]): any;
 };
 
 type DefineFunctionCallable<
@@ -193,6 +195,8 @@ type DefineFunctionCallable<
   (record: GetRecordType<T['params']>): ReturnType<F>;
   name: string;
   params: T['params'];
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
 } & (
   // Overloads for 1 parameter
   T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }]
@@ -272,9 +276,8 @@ export type DefinedFunction<
   T extends DefineFunctionOptions,
   F extends (...args: any[]) => any
 > = DefineFunctionCallable<T, F> & RuntimeFunction & {
-  /** @todo - This inference is not working correctly - fix later */
-  call(thisArg: any, ...args: Parameters<DefineFunctionCallable<T, F>>): ReturnType<F>;
-  apply(thisArg: any, args: Parameters<DefineFunctionCallable<T, F>>): ReturnType<F>;
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
 };
 
 function isOverloadedParams(params: DefineFunctionOptions['params']): params is readonly ParamDefinition[][] {
@@ -319,6 +322,7 @@ export function defineFunction<
    * Parameter names are inferred from the params array: name, value, etc.
    * All calls are converted to positional format before calling the internal function.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const result: DefinedFunction<T, F> = function(...args: any[]): ReturnType<F> {
     const rawParams = options?.params;
     if (!rawParams) {
@@ -1064,7 +1068,8 @@ function validateValue(value: any, expectedType: ArgType | readonly ArgType[], p
   }
 
   // Handle single type
-  if (!isValidType(value, expectedType)) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  if (!isValidType(value, expectedType as ArgType)) {
     const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
     const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
     return {

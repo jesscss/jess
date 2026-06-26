@@ -1,28 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { Visitor, TreeVisitor, ABORT } from '../index.js';
-import { ruleset, rules, decl, any } from '../../tree/index.js';
+import { ruleset, rules, decl, any, type Declaration, type Ruleset, nil } from '../../tree/index.js';
 
 describe('Visitor Pattern', () => {
   describe('accept() method', () => {
     it('should visit node itself first, then children', () => {
       const visited: string[] = [];
 
-      const visitor: Visitor = {
-        enter: (node) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const visitor = {
+        enter: (node: { type?: string } | undefined) => {
           visited.push(`enter:${node?.type}`);
         },
-        ruleset: (node) => {
+        ruleset: (node: unknown) => {
           visited.push(`ruleset`);
           return node;
         },
-        declaration: (node) => {
+        declaration: (node: unknown) => {
           visited.push(`declaration`);
           return node;
         }
-      };
+      } as unknown as Visitor;
 
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null, rules: [declaration] });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [declaration] });
 
       rs.accept(visitor);
 
@@ -39,37 +41,41 @@ describe('Visitor Pattern', () => {
     });
 
     it('should handle node replacement', () => {
-      const visitor: Visitor = {
-        declaration: (node) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const visitor = {
+        declaration: (node: unknown) => {
           // Replace with new declaration
           return decl({ name: 'background', value: any('blue') });
         }
-      };
+      } as unknown as Visitor;
 
       const declaration = decl({ name: 'color', value: any('red') });
       const result = declaration.accept(visitor);
 
       expect(result.type).toBe('Declaration');
-      expect(result.name.valueOf()).toBe('background');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((result as Declaration).name.valueOf()).toBe('background');
     });
 
     it('should recursively visit children', () => {
       const visited: string[] = [];
 
-      const visitor: Visitor = {
-        ruleset: (node) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const visitor = {
+        ruleset: (node: unknown) => {
           visited.push('ruleset');
           return node;
         },
-        declaration: (node) => {
+        declaration: (node: unknown) => {
           visited.push('declaration');
           return node;
         }
-      };
+      } as unknown as Visitor;
 
       const decl1 = decl({ name: 'color', value: any('red') });
       const decl2 = decl({ name: 'background', value: any('blue') });
-      const rs = ruleset({ selector: null, rules: [decl1, decl2] });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [decl1, decl2] });
 
       rs.accept(visitor);
 
@@ -83,12 +89,12 @@ describe('Visitor Pattern', () => {
       const visited: string[] = [];
 
       class TestVisitor extends TreeVisitor {
-        override ruleset(node: any) {
+        override ruleset(node: Ruleset) {
           visited.push('ruleset');
           return node;
         }
 
-        override declaration(node: any) {
+        override declaration(node: Declaration) {
           visited.push('declaration');
           return node;
         }
@@ -96,7 +102,8 @@ describe('Visitor Pattern', () => {
 
       const visitor = new TestVisitor();
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null, rules: [declaration] });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [declaration] });
 
       visitor.visit(rs);
 
@@ -110,7 +117,8 @@ describe('Visitor Pattern', () => {
     it('should handle ABORT symbol', () => {
       const visited: string[] = [];
 
-      const visitor: Visitor = {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const visitor = {
         enter: () => {
           visited.push('enter');
           return ABORT;
@@ -118,11 +126,12 @@ describe('Visitor Pattern', () => {
         ruleset: () => {
           visited.push('ruleset');
         }
-      };
+      } as unknown as Visitor;
 
-      const rs = ruleset({ selector: null, rules: [] });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [] });
       const visitorInstance = new (class extends Visitor {
-        visit(n: any) {
+        override visit(n: Parameters<Visitor['visit']>[0]) {
           return super.visit(n);
         }
       })();

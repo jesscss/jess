@@ -39,7 +39,7 @@ describe('callable output helpers', () => {
       restrictMixinOutputLookup: true,
       createEmptyOutput: (source) => {
         seenSource = source;
-        return rules([], undefined, undefined, source.sourceRoot?._treeContext).inherit(source);
+        return rules([]).inherit(source);
       },
       createWrapperOutput: () => {
         throw new Error('should not create wrapper output');
@@ -98,7 +98,7 @@ describe('callable output helpers', () => {
       createEmptyOutput: () => {
         throw new Error('should not create empty output');
       },
-      createWrapperOutput: source => rules([], undefined, undefined, source.sourceRoot?._treeContext).inherit(source),
+      createWrapperOutput: source => rules([]).inherit(source),
       resolveSingleOutputSourceRules: outputRules => outputRules,
       isIndexedRuleChild: () => true
     });
@@ -151,7 +151,7 @@ describe('callable output helpers', () => {
       createEmptyOutput: () => {
         throw new Error('should not create empty output');
       },
-      createWrapperOutput: source => rules([], undefined, undefined, source.sourceRoot?._treeContext).inherit(source),
+      createWrapperOutput: source => rules([]).inherit(source),
       resolveSingleOutputSourceRules: outputRules => outputRules,
       isIndexedRuleChild: () => true
     });

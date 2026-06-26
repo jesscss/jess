@@ -3,7 +3,7 @@ import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
 
 /**
@@ -26,7 +26,7 @@ export class RawRules extends Rules {
     return w.getSince(mark);
   }
 
-  override writeBracedSyntax(options: FinalPrintOptions): void {
+  writeBracedSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('{');
     for (let i = 0; i < this.rules.length; i++) {
@@ -75,9 +75,10 @@ export class RawRules extends Rules {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     // RawRules is source-only even though it inherits from Rules, whose render
     // path evaluates child rules. Opt back into the base Node source renderer.
-    return isRenderBuffer(bufferOrOptions)
-      ? Node.prototype.render.call(this, context, bufferOrOptions, options)
-      : Node.prototype.render.call(this, context, bufferOrOptions);
+    // Call Node.prototype.render directly to use source render, not the Rules eval path.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const nodeRender = Node.prototype.render as (context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions) => MaybePromise<string>;
+    return nodeRender.call(this, context, bufferOrOptions, options);
   }
 }
 

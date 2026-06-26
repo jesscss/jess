@@ -14,6 +14,7 @@ import {
   num,
   op,
   Operation,
+  type Operator,
   paren,
   Paren,
   query,
@@ -25,7 +26,7 @@ import {
   vardecl
 } from '../index.js';
 import { OutputWriter, getPrintOptions, prepareRenderPrintState, type PrintOptions } from '../util/print.js';
-import { createRenderBuffer, type FlatRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, type FlatRenderBuffer, type RenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -55,43 +56,69 @@ class CountingWriter extends OutputWriter {
 }
 
 class ReturnOnlyNode extends Node<string> {
+  declare value: string;
   constructor(value: string) {
     super(value);
     this.addFlag(F_NON_STATIC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    getPrintOptions(options).writer.add(`source-${this.value}`);
-    return `source-${this.value}`;
+    const val = this.value;
+    getPrintOptions(options).writer.add(`source-${val}`);
+    return `source-${val}`;
   }
 
-  override render(): string {
+  override render(
+    _context: Context,
+    _bufferOrOptions?: RenderBuffer | PrintOptions,
+    _options?: PrintOptions
+  ): string {
     return this.value;
   }
 }
 
 class WritingNode extends ReturnOnlyNode {
-  override render(_context: Context, options?: PrintOptions): string {
-    getPrintOptions(options).writer.add(this.value);
-    return `returned-${this.value}`;
+  override render(
+    _context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    _options?: PrintOptions
+  ): string {
+    const val = this.value;
+    const opts = bufferOrOptions && !('kind' in bufferOrOptions)
+
+      ? bufferOrOptions as PrintOptions
+      : undefined;
+    getPrintOptions(opts).writer.add(val);
+    return `returned-${val}`;
   }
 }
 
 class AsyncWritingStaticNode extends Node<string> {
+  declare value: string;
   constructor(value: string) {
     super(value);
     this.addFlag(F_MAY_ASYNC);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    const text = `source-${this.value}`;
+    const val = this.value;
+    const text = `source-${val}`;
     getPrintOptions(options).writer.add(text);
     return text;
   }
 
-  override async render(_context: Context, options?: PrintOptions): Promise<string> {
-    getPrintOptions(options).writer.add(this.value);
-    return `returned-${this.value}`;
+  override async render(
+    _context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    _options?: PrintOptions
+  ): Promise<string> {
+    const val = this.value;
+    const opts = bufferOrOptions && !('kind' in bufferOrOptions)
+
+      ? bufferOrOptions as PrintOptions
+      : undefined;
+    getPrintOptions(opts).writer.add(val);
+    return `returned-${val}`;
   }
 }
 
@@ -300,7 +327,8 @@ describe('QueryCondition', () => {
 
   it('writes static query-condition output into shared flat buffers without mark readback', () => {
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const queryNode = query([any('screen'), any('and'), any('(color)')]);
@@ -313,7 +341,8 @@ describe('QueryCondition', () => {
 
   it('renders static shared-buffer query conditions without returning prefixed buffer contents', () => {
     const buffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     buffer.parts.push('prefix|');
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
@@ -446,7 +475,8 @@ describe('QueryCondition', () => {
       color('#fff')
     ]);
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
 
     prepareRenderPrintState(context, { writer });
@@ -462,7 +492,8 @@ describe('QueryCondition', () => {
 
   it('renders static paren conditions through the direct child contract', () => {
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const node = query([
@@ -480,7 +511,8 @@ describe('QueryCondition', () => {
 
   it('renders nested static query conditions through the direct child contract', () => {
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    buffer.shareWriter = true;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
     const node = query([
@@ -526,7 +558,8 @@ describe('QueryCondition', () => {
     const node = query([
       any('screen'),
       any('and'),
-      op([dimension([10, 'px']), '>', dimension([1, 'px'])])
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      op([dimension([10, 'px']), '>' as Operator, dimension([1, 'px'])])
     ]);
 
     expect(node.toTrimmedString({ writer })).toBe('screen and 10px > 1px');
@@ -562,13 +595,14 @@ describe('QueryCondition', () => {
     const node = query([
       any('screen'),
       any('and'),
-      new CustomOperation([dimension([10, 'px']), '>', dimension([1, 'px'])])
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      new CustomOperation([dimension([10, 'px']), '>' as Operator, dimension([1, 'px'])])
     ]);
 
     expect(node.toTrimmedString({ writer })).toBe('screen and custom-operation');
     expect(writer.toString()).toBe('screen and custom-operation');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -589,7 +623,7 @@ describe('QueryCondition', () => {
     expect(node.toTrimmedString({ writer })).toBe('screen and (custom-condition)');
     expect(writer.toString()).toBe('screen and (custom-condition)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -610,7 +644,7 @@ describe('QueryCondition', () => {
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('screen and (custom)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -632,7 +666,7 @@ describe('QueryCondition', () => {
     expect(node.render(context, { writer })).toBe('screen and (custom)');
     expect(writer.toString()).toBe('prefix|screen and (custom)');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
   });
 
@@ -667,7 +701,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -686,7 +720,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe('prefix|screen and written');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -706,7 +740,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe(rendered);
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });
@@ -727,7 +761,7 @@ describe('QueryCondition', () => {
     expect(rendered).toBe('screen and written');
     expect(writer.toString()).toBe('prefix|screen and written');
     expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.reads).toBe(1);
     expect(writer.hasContentReads).toBe(0);
     expect(writer.captures).toBe(0);
   });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { any, vardecl } from '../../index.js';
+import type { List } from '../../list.js';
+import type { Node } from '../../node.js';
 import { getBindingCellValue } from '../../scope-frame.js';
 import { F_VISIBLE } from '../../node.js';
 import { Sequence } from '../../sequence.js';
@@ -40,7 +42,8 @@ describe('callable live slot helper', () => {
       defineArguments: true
     });
 
-    const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!) as unknown as List<Node>;
 
     expect(argumentsValue.value.map((node: any) => node.valueOf())).toEqual(['blue', 'one', 'two']);
   });
@@ -52,7 +55,8 @@ describe('callable live slot helper', () => {
       defineArguments: true
     });
 
-    const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!) as unknown as List<Node>;
 
     expect(argumentsValue.value.map((node: any) => node.valueOf())).toEqual(['left', 'middle', 'right']);
   });

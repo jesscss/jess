@@ -19,89 +19,80 @@ import {
 } from './util/render-buffer.js';
 
 function getKnownQueryConditionSourceText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Anonymous':
-    case 'Keyword':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Dimension':
-    case 'Num':
-      return typeof node.number === 'number'
-        ? `${node.number}${'unit' in node && node.unit ? node.unit : ''}`
-        : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    default:
-      if (node.constructor === QueryCondition) {
-        const parts = new Array(node.value.length);
-        for (let i = 0; i < node.value.length; i++) {
-          const text = getKnownQueryConditionSourceText(node.value[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          parts[i] = text;
-        }
-        return parts.join(' ');
+  if (node instanceof Any) {
+    return node.value;
+  }
+  if (node instanceof Dimension) {
+    return `${node.number}${node.unit ?? ''}`;
+  }
+  if (node instanceof Num) {
+    return `${node.number}`;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node.constructor === QueryCondition) {
+    const qc = node as QueryCondition;
+    const parts = new Array(qc.value.length);
+    for (let i = 0; i < qc.value.length; i++) {
+      const text = getKnownQueryConditionSourceText(qc.value[i]!);
+      if (text === undefined) {
+        return undefined;
       }
-      if (node.constructor === Paren) {
-        const open = node.options?.delimiter === 'square' ? '[' : '(';
-        const close = node.options?.delimiter === 'square' ? ']' : ')';
-        if (!node.value) {
-          return `${node.options?.escaped ? '~' : ''}${open}${close}`;
-        }
-        const value = getKnownQueryConditionSourceText(node.value);
-        if (value === undefined) {
-          return undefined;
-        }
-        return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownQueryConditionSourceText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownQueryConditionSourceText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownQueryConditionSourceText(node.left);
-        const right = getKnownQueryConditionSourceText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
+      parts[i] = text;
+    }
+    return parts.join(' ');
+  }
+  if (node.constructor === Paren) {
+    const paren = node as Paren;
+    const open = paren.options?.delimiter === 'square' ? '[' : '(';
+    const close = paren.options?.delimiter === 'square' ? ']' : ')';
+    if (!paren.value) {
+      return `${paren.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownQueryConditionSourceText(paren.value);
+    if (value === undefined) {
       return undefined;
+    }
+    return `${paren.options?.escaped ? '~' : ''}${open}${value}${close}`;
   }
-}
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
+  if (node.constructor === Condition) {
+    const cond = node as Condition;
+    const left = getKnownQueryConditionSourceText(cond.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(cond.right || cond.negate);
+    let out = cond.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (cond.operator && cond.right) {
+      const right = getKnownQueryConditionSourceText(cond.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${cond.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
   }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
+  if (node.constructor === Operation) {
+    const op = node as Operation;
+    const left = getKnownQueryConditionSourceText(op.left);
+    const right = getKnownQueryConditionSourceText(op.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${op.operator} ${right}`;
   }
-  return out;
+  return undefined;
 }
 
 /**
@@ -246,7 +237,7 @@ export class QueryCondition extends Sequence {
       const rendered = this.renderQueryConditionChild(value[i]!, options, context);
       if (isThenable(rendered)) {
         return (rendered as Promise<string | void>)
-          .then((text) => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
+          .then(text => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
       }
       out += rendered ?? '';
     }
@@ -272,7 +263,7 @@ export class QueryCondition extends Sequence {
               if (w.position() === before) {
                 w.add(out);
               } else {
-                return getWriterTextSincePosition(w, before);
+                return w.getSince(before);
               }
               options.suppressBoundaryTrivia = saved;
               return out;
@@ -301,7 +292,7 @@ export class QueryCondition extends Sequence {
             if (w.position() === before) {
               w.add(rendered);
             } else if (!canTrustText) {
-              return getWriterTextSincePosition(w, before);
+              return w.getSince(before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -316,7 +307,7 @@ export class QueryCondition extends Sequence {
         if (w.position() === before) {
           w.add(out);
         } else if (!canTrustText) {
-          return getWriterTextSincePosition(w, before);
+          return w.getSince(before);
         }
       }
       options.suppressBoundaryTrivia = saved;
@@ -366,14 +357,13 @@ export class QueryCondition extends Sequence {
     }
     const position = printOptions.writer.position();
     this.writeSyntax(printOptions);
-    return getWriterTextSincePosition(printOptions.writer, position);
+    return printOptions.writer.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const printOptions = buffer ? options : bufferOrOptions;
     const sharesWriter = Boolean(buffer && 'shareWriter' in buffer && buffer.shareWriter);
     const prepared = buffer
       ? sharesWriter
@@ -384,7 +374,8 @@ export class QueryCondition extends Sequence {
               : new OutputWriter(false, buffer.kind === 'flat' ? buffer.parts : undefined)
           })
         : prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, printOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, buffer ? undefined : bufferOrOptions as PrintOptions | undefined);
     if (this.hasFlag(F_STATIC)) {
       const directText = !prepared.trivia ? getKnownQueryConditionSourceText(this) : undefined;
       if (directText !== undefined) {
@@ -400,7 +391,7 @@ export class QueryCondition extends Sequence {
       }
       const position = prepared.writer.position();
       this.writeQueryConditionSyntax(this.value, prepared);
-      const rendered = getWriterTextSincePosition(prepared.writer, position);
+      const rendered = prepared.writer.getSince(position);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;

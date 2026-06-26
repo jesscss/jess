@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
-import { any, decl, el, extend, ExtendFlag, rules, ruleset, sel, sellist } from '../index.js';
+import { any, decl, el, extend, ExtendFlag, rules, ruleset, sel, sellist, Node } from '../index.js';
 import { Extend } from '../extend.js';
 import { ExtendList, extendList } from '../extend-list.js';
 import { N } from '../node-type.js';
@@ -57,7 +57,7 @@ describe('Extend render', () => {
   it('preserves parser tree context on extend lists', () => {
     const treeContext = new TreeContext();
     const child = extend({ target: el('.base') });
-    const node = extendList([child], undefined, undefined, treeContext);
+    const node = new ExtendList([child], undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
     expect(node.nodes).toEqual([child]);
@@ -66,7 +66,7 @@ describe('Extend render', () => {
   });
 
   it('keeps extend behavior when rendered inside a ruleset', async () => {
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const node = rules([
       ruleset({
         selector: el('.base'),
@@ -173,8 +173,10 @@ describe('Extend render', () => {
       await root.eval(context);
 
       expect(sourceLeafClones).toBe(0);
-      expect(parentItems.map(item => item.parent)).toEqual(parentItems.map(() => parentSelector));
-      expect(childParts.map(part => part.parent)).toEqual(childParts.map(() => childSelector));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect(parentItems.map(item => (item as Node).parent)).toEqual(parentItems.map(() => parentSelector));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect(childParts.map(part => (part as Node).parent)).toEqual(childParts.map(() => childSelector));
 
       const registeredSelector = context.extends[0]?.[1];
       expect(registeredSelector).toBeDefined();
@@ -185,11 +187,12 @@ describe('Extend render', () => {
       }
 
       const [generatedParent, combinator, generatedChild] = registeredSelector.value;
-      expect(combinator.valueOf()).toBe(' ');
+      expect(combinator!.valueOf()).toBe(' ');
       expect(generatedChild).not.toBe(childSelector);
 
       if (!isNode(generatedParent, N.PseudoSelector) || !generatedParent.arg || !isNode(generatedParent.arg, N.SelectorList)) {
-        throw new Error(`Expected generated :is(...) parent wrapper, got ${generatedParent.type}`);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        throw new Error(`Expected generated :is(...) parent wrapper, got ${(generatedParent as unknown as Node | undefined)?.type}`);
       }
 
       expect(generatedParent.generated).toBe(true);

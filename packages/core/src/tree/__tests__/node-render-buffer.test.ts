@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
+  type Any,
+  type AnyRole,
   Anonymous,
   Selector,
   amp,
@@ -87,7 +89,7 @@ const rejectingAdapterNode = {
 };
 
 class SourceOnlyNode extends Node<string> {
-  override resolve() {
+  override resolve(_context: Context): never {
     throw new Error('base render should not resolve source-only nodes');
   }
 
@@ -98,6 +100,7 @@ class SourceOnlyNode extends Node<string> {
 }
 
 class AsyncValueNode extends Node<string> {
+  declare value: string;
   constructor(
     value: string,
     private readonly resolved: Node = any(value)
@@ -106,11 +109,11 @@ class AsyncValueNode extends Node<string> {
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override eval() {
+  override eval(_context: Context) {
     return Promise.resolve(this.resolved);
   }
 
-  override resolve() {
+  override resolve(_context: Context) {
     return Promise.resolve(this.resolved);
   }
 
@@ -330,7 +333,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Dimension', node: dimension([10, 'px']), expected: '10px' },
       { surface: 'Color', node: color('#ff0000'), expected: '#ff0000' },
       { surface: 'Quoted', node: quoted('theme.css'), expected: '"theme.css"' },
-      { surface: 'Url', node: url(quoted(ref({ key: 'asset' }, { type: 'variable' }))), expected: 'url("image.png")' },
+      { surface: 'Url', node: url(quoted(any('image.png'))), expected: 'url("image.png")' },
       { surface: 'Comment', node: comment('/* note */'), expected: '/* note */' },
       { surface: 'Nil', node: nil(), expected: '', expectedParts: [] },
       { surface: 'Combinator', node: co('>'), expected: '>' },
@@ -348,7 +351,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Paren', node: paren(any('screen')), expected: '(screen)' },
       { surface: 'Negative', node: negative(dimension([2, 'px'])), expected: '-2px' },
       { surface: 'Operation', node: op([dimension([10, 'px']), '+', dimension([5, 'px'])]), expected: '15px' },
-      { surface: 'Call', node: call({ name: 'rgb', args: list([dimension([1]), dimension([2]), dimension([3])]) }), expected: 'rgb(1, 2, 3)' },
+      { surface: 'Call', node: call({ name: 'rgb', args: list([dimension(1), dimension(2), dimension(3)]) }), expected: 'rgb(1, 2, 3)' },
       { surface: 'Reference', node: ref({ key: 'brand' }, { type: 'variable' }), expected: 'red' },
       { surface: 'Declaration', node: decl({ name: 'color', value: any('red') }), expected: 'color: red' },
       {
@@ -412,9 +415,9 @@ describe('renderNodeToBuffer', () => {
         ),
         expected: '.active'
       },
-      { surface: 'Expression', node: expr(op([dimension([2]), '+', dimension([3])])), expected: '5' },
-      { surface: 'Range', node: range({ start: dimension([1]), end: dimension([3]), step: dimension([1]) }) },
-      { surface: 'Condition', node: condition([dimension([2]), '>', dimension([1])]), expected: 'true' },
+      { surface: 'Expression', node: expr(op([dimension(2), '+', dimension(3)])), expected: '5' },
+      { surface: 'Range', node: range({ start: dimension(1), end: dimension(3), step: dimension(1) }) },
+      { surface: 'Condition', node: condition([dimension(2), '>', dimension(1)]), expected: 'true' },
       { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
@@ -460,7 +463,8 @@ describe('renderNodeToBuffer', () => {
       { surface: 'List', node: list([any('one'), new AsyncValueNode('two')]), expected: 'one, two' },
       { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
       { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
-      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset')), expected: '"asset"' },
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' },
       { surface: 'Url', node: url(new AsyncValueNode('asset')), expected: 'url(asset)' }
     ];
 
@@ -513,8 +517,8 @@ describe('renderNodeToBuffer', () => {
           pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
           iterable: {
             kind: 'range',
-            start: dimension([1]),
-            end: dimension([1]),
+            start: dimension(1),
+            end: dimension(1),
             includeStart: true,
             includeEnd: true
           },
@@ -542,7 +546,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'MixinCollection',
         node: new MixinCollection([
           callableRulesEntry(
-            { rules: [decl({ name: 'color', value: any('red') })] },
+            { rules: rules([decl({ name: 'color', value: any('red') })]) },
             undefined,
             0
           )
@@ -607,8 +611,8 @@ describe('renderNodeToBuffer', () => {
           pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
           iterable: {
             kind: 'range',
-            start: dimension([1]),
-            end: dimension([1]),
+            start: dimension(1),
+            end: dimension(1),
             includeStart: true,
             includeEnd: true
           },

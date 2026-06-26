@@ -49,6 +49,8 @@ export enum N {
   Collection        = 1 << 24,
   Ruleset           = 1 << 25,
   AtRule            = 1 << 26,
+  /** AtRuleStatement shares the AtRule bit (32-bit mask exhausted). Use instanceof AtRuleStatement for exact identity. */
+  AtRuleStatement   = AtRule,
 
   // Other types
   Reference         = 1 << 27,
@@ -114,6 +116,7 @@ export const nodeTypeBits: Record<string, number> = {
   Collection: N.Collection,
   Ruleset: N.Ruleset,
   AtRule: N.AtRule,
+  AtRuleStatement: N.AtRule,
   Reference: N.Reference,
   Comment: N.Comment,
   JsFunction: N.JsFunction,

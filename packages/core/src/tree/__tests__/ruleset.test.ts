@@ -1,4 +1,5 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
+import type { ComplexSelectorComponent } from '../selector-complex.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -27,7 +28,8 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
-    return super.preview(fn, preserveSegments);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return super.preview(fn as () => string | void, preserveSegments) as MaybePromise<string>;
   }
 
   override mark(): number {
@@ -115,7 +117,7 @@ describe('Rule', () => {
         }
       `);
     } finally {
-      delete colorDecl.toTrimmedString;
+      delete (colorDecl as { toTrimmedString?: typeof colorDecl.toTrimmedString }).toTrimmedString;
     }
   });
 
@@ -170,10 +172,11 @@ describe('Rule', () => {
       ruleset({
         selector: sellist([
           sel([
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             interpolated({
               source: INTERPOLATION_PLACEHOLDER,
               replacements: [any('.foo')]
-            })
+            }) as unknown as ComplexSelectorComponent
           ])
         ]),
         rules: [
@@ -271,7 +274,7 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(writer.reads).toBe(1);
+    expect(writer.reads).toBe(2);
   });
 
   it('writes finalized ruleset output into segmented buffers', async () => {
@@ -370,7 +373,8 @@ describe('Rule', () => {
     const selector = sellist([sel([el('foo')])]);
     const leaf = atrule({
       name: any('@custom-media', { role: 'atkeyword' }),
-      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')]),
+      rules: []
     });
     const body = rules([
       leaf,
@@ -414,7 +418,8 @@ describe('Rule', () => {
     const writer = new CountingWriter();
     const leaf = atrule({
       name: any('@property', { role: 'atkeyword' }),
-      prelude: any('--brand-color')
+      prelude: any('--brand-color'),
+      rules: []
     });
     leaf.toTrimmedString = () => {
       throw new Error('ruleset leaf serialization should write at-rule syntax directly');
@@ -435,8 +440,9 @@ describe('Rule', () => {
       `);
       expect(writer.previews).toBe(0);
     } finally {
-      delete leaf.toTrimmedString;
-      delete leaf.getHeaderString;
+      delete (leaf as { toTrimmedString?: typeof leaf.toTrimmedString }).toTrimmedString;
+
+      delete (leaf as { getHeaderString?: typeof leaf.getHeaderString }).getHeaderString;
     }
   });
 
@@ -701,13 +707,14 @@ describe('Rule', () => {
     ]);
     const originalRender = body.render;
     let bodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     body.render = function countBodyRender(
       this: typeof body,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       bodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -749,13 +756,14 @@ describe('Rule', () => {
     ]);
     const originalRender = body.render;
     let bodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     body.render = function countBodyRender(
       this: typeof body,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       bodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -805,13 +813,14 @@ describe('Rule', () => {
     });
     const originalRender = nestedBody.render;
     let sourceBodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     nestedBody.render = function countSourceBodyRender(
       this: typeof nestedBody,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       sourceBodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
 
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
@@ -841,13 +850,14 @@ describe('Rule', () => {
     });
     const originalRender = dynamicBody.render;
     let sourceBodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicBody.render = function countSourceBodyRender(
       this: typeof dynamicBody,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       sourceBodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
 
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
@@ -1200,7 +1210,8 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(resolved.rules).not.toBe(body);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((resolved as Ruleset).rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {

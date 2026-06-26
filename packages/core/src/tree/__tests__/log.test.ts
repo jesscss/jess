@@ -151,7 +151,8 @@ describe('Log node', () => {
     logger.warn = warnSpy;
     const buffer = createRenderBuffer('flat');
     const message = new Any('async direct message');
-    message.eval = () => Promise.resolve(new Any('async direct message'));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    message.eval = (() => Promise.resolve(new Any('async direct message'))) as unknown as typeof message.eval;
     const logNode = new Log({
       level: 'warn',
       message

@@ -56,12 +56,15 @@ const COMBINATORS = new Set<string>([' ', '>', '+', '~', '|', '||']);
 
 function toCombinator(image: string): Combinators {
   if (COMBINATORS.has(image)) {
-    return image;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return image as Combinators;
   }
   throw new Error(`Unexpected selector combinator "${image}".`);
 }
 
-function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponent {
+type ComplexSelectorComponentNode = Exclude<ComplexSelectorComponent, string>;
+
+function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponentNode {
   return node instanceof Call
     || (node instanceof Selector
       && !(node instanceof SelectorList)
@@ -140,7 +143,7 @@ export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 
-function getAmpersandTemplateValue(image: string): string | Nil | undefined {
+function getAmpersandTemplateValue(image: string): string | undefined {
   if (image === '&') {
     return undefined;
   }
@@ -404,7 +407,8 @@ export function relativeSelector(this: P, T: TokenMap) {
             }
           } else {
             if (!isComplexSelectorComponentNode(targetNode)) {
-              throw new Error(`Expected selector component after relative combinator; got ${targetNode?.type ?? 'none'}.`);
+              const targetType = typeof targetNode === 'string' ? 'string' : (targetNode as Node | undefined)?.type ?? 'none';
+              throw new Error(`Expected selector component after relative combinator; got ${targetType}.`);
             }
             let nodes = [combinator, targetNode];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
@@ -603,7 +607,8 @@ export function complexSelector(this: P, T: TokenMap): ProductionRule {
     if (!RECORDING_PHASE) {
       const location = $.endRule();
       selector = value!.length === 1
-        ? value![0]
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        ? value![0] as Selector | undefined
         : new ComplexSelector(value!, undefined, location, $.context);
     }
 
@@ -1143,7 +1148,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
       return;
     }
     let nameVal = getInterpolatedOrString(name!.image);
-    let nameNode: Node;
+    let nameNode: Any | Interpolated;
     if (!(nameVal instanceof Interpolated)) {
       nameNode = new Any(nameVal, { role: 'ident' }, $.getLocationInfo(name!), $.context);
     } else {

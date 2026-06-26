@@ -23,7 +23,7 @@ describe('callable collection helper', () => {
     const root = rules([
       mixinDef,
       ruleset({
-        selector: any('.use'),
+        selector: '.use',
         rules: callerRules.rules
       })
     ]);

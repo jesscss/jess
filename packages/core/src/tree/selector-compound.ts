@@ -68,7 +68,7 @@ export function isStringCompoundSelectorComponent(value: unknown): value is stri
 export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   static override childKeys = ['value'] as const;
 
-  readonly value: CompoundSelectorComponent[];
+  override readonly value: CompoundSelectorComponent[];
 
   constructor(
     value: CompoundSelectorComponent[],
@@ -106,6 +106,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const node = new CompoundSelector(
       ownedValue,
       this._options ? { ...this._options } : undefined,
@@ -228,7 +229,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     return this.renderCompoundSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeComponents(this.evaluateComponentsSync(context, false), true);

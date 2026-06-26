@@ -15,7 +15,7 @@ type FinalizeCallableOutputOptions = {
   createEmptyOutput: (sourceRules: Rules) => Rules;
   createWrapperOutput: (sourceRules: Rules, restrictMixinOutputLookup: boolean) => Rules;
   resolveSingleOutputSourceRules: (output: Rules) => Rules;
-  isIndexedRuleChild: (node: Rules['value'][number]) => boolean;
+  isIndexedRuleChild: (node: Rules['rules'][number]) => boolean;
 };
 
 type FinalizeCallableEvalOutputOptions = FinalizeCallableOutputOptions & {

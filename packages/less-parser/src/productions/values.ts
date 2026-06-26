@@ -24,6 +24,7 @@ import {
   Dimension,
   Num,
   negative,
+  Negative,
   Rest,
   VarDeclaration,
   Expression,
@@ -45,7 +46,8 @@ function toOperator(image: string): Operator {
     return '/';
   }
   if (OPERATORS.has(image)) {
-    return image;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return image as Operator;
   }
   throw new Error(`Unexpected operator "${image}".`);
 }
@@ -198,7 +200,7 @@ function createEachPattern(
       }
       if (isNode(param, N.Any) && param.role === 'property') {
         return new VarDeclaration({
-          name: new Any(param.value, { role: 'property' }, param.location, param.sourceRoot?._treeContext),
+          name: new Any(param.value, { role: 'property' }, param._location?.length ? param._location : undefined, param.sourceRoot?._treeContext),
           value: new Any('', { role: 'any' })
         }, { paramVar: true }, param.location, context);
       }
@@ -269,7 +271,7 @@ export function expressionSum(this: P, T: TokenMap) {
       }
 
       const operation = new Operation(
-        [left, toOperator(op), right!],
+        [left, toOperator(op!), right!],
         undefined,
         $.getLocationFromNodes([left, right!]),
         $.context
@@ -484,7 +486,7 @@ export function customBlock(this: P, T: TokenMap) {
     }
     const startNode = new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context);
     const endNode = new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context);
-    return new Sequence([startNode, ...value!, endNode], undefined, location, $.context);
+    return new Sequence([startNode, ...nodes!, endNode], undefined, location, $.context);
   };
 }
 
@@ -548,7 +550,7 @@ export function expressionValue(this: P, T: TokenMap) {
     ]);
     let location = $.endRule();
     if (minus) {
-      return negative(node, undefined, location, $.context);
+      return new Negative(node, undefined, location, $.context);
     }
     return node;
   };
@@ -718,7 +720,7 @@ export function ifFunction(this: P, T: TokenMap) {
     } else {
       isCssBranch = false;
       let node: Node = firstNode;
-      const parenValue = node instanceof Paren ? node.node : undefined;
+      const parenValue = node instanceof Paren ? node.value : undefined;
       const condNode = parenValue instanceof Node ? parenValue : node;
       args = new List([condNode]);
 
@@ -770,7 +772,7 @@ export function booleanFunction(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
 
     let location = $.endRule();
-    const argValue = arg instanceof Paren ? arg.node : undefined;
+    const argValue = arg instanceof Paren ? arg.value : undefined;
     const conditionNode = argValue instanceof Node ? argValue : arg;
     const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
     return exprNode;

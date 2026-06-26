@@ -18,18 +18,6 @@ export interface Block extends Node<Node, BlockOptions> {
   eval(context: Context): Block;
 }
 
-function getWriterTextSincePosition(writer: { position(): number }, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 /**
  * A block like `{ ... }` or `[ ... ]`. This is used
  * for things like custom properties and unknown at-rules.
@@ -78,7 +66,7 @@ export class Block extends Node<Node, BlockOptions> {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }
     w.add(end);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -91,7 +79,7 @@ export class Block extends Node<Node, BlockOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {

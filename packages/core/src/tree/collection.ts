@@ -47,9 +47,11 @@ export class Collection extends Rules {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     // Collection is source-only even though it inherits from Rules, whose render
     // path evaluates child rules. Opt back into the base Node source renderer.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const render = Node.prototype.render as (context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions) => string | MaybePromise<string>;
     return isRenderBuffer(bufferOrOptions)
-      ? Node.prototype.render.call(this, context, bufferOrOptions, options)
-      : Node.prototype.render.call(this, context, bufferOrOptions);
+      ? render.call(this, context, bufferOrOptions, options)
+      : render.call(this, context, bufferOrOptions);
   }
 }
 

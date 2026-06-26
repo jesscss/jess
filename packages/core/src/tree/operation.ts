@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type Node
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { OutputWriter, getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -22,18 +22,6 @@ export type OperationValue = [
   op: Operator,
   right: Node
 ];
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 
 type OperationRenderResult =
   | Node
@@ -125,7 +113,7 @@ export class Operation extends Node<OperationValue> {
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -203,12 +191,15 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const explicitWriter = renderBuffer ? undefined : bufferOrOptions?.writer;
-    const printOptions = renderBuffer
+    // bufferOrOptions is PrintOptions | undefined when not a RenderBuffer
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const printOptionsArg = bufferOrOptions as PrintOptions | undefined;
+    const explicitWriter = renderBuffer ? undefined : printOptionsArg?.writer;
+    const printOptions: PrintOptions | undefined = renderBuffer
       ? prepareBufferPrintState(context, options)
       : explicitWriter
-        ? prepareBufferPrintState(context, bufferOrOptions)
-        : bufferOrOptions;
+        ? prepareBufferPrintState(context, printOptionsArg)
+        : printOptionsArg;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
       const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;

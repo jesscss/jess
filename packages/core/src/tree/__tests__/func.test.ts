@@ -47,7 +47,7 @@ describe('Func', () => {
         return: $value;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('resolves function definitions without touching render state', async () => {

@@ -33,6 +33,7 @@ import {
 } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
+import { AtRuleStatement } from './at-rule-statement.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
@@ -54,7 +55,7 @@ export type RulesetValue = {
    * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  rules: Node[];
+  rules: Rules | Node[];
   guard?: string | Condition | Nil;
   /**
    * When this ruleset is extended, we store its selector before the first extend.
@@ -69,18 +70,6 @@ type RawComplexSelectorPart = string | ' ' | '>' | '+' | '~';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
-}
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
 }
 
 function copySelectorForRulesetMetadata(selector: Selector | string): Selector | string {
@@ -393,15 +382,20 @@ function createRawSelectorBranchNode(
 ): SimpleSelector | CompoundSelector | undefined {
   const pseudoName = readRawAmpersandPseudoSelector(value);
   if (pseudoName) {
-    return markStaticSelector(CompoundSelector.create([
+    const compound = new CompoundSelector([
       new Ampersand(undefined, undefined, location, treeContext),
       new PseudoSelector({ name: pseudoName }, undefined, location, treeContext)
-    ], undefined, location, treeContext));
+    ], undefined, location, treeContext);
+    compound.generated = true;
+    return markStaticSelector(compound);
   }
   const parts = splitRawCompoundSelector(value);
-  return parts
-    ? markStaticSelector(CompoundSelector.create(parts, undefined, location, treeContext))
-    : undefined;
+  if (!parts) {
+    return undefined;
+  }
+  const compound = new CompoundSelector(parts, undefined, location, treeContext);
+  compound.generated = true;
+  return markStaticSelector(compound);
 }
 
 function createRawSelectorNode(
@@ -420,7 +414,9 @@ function createRawSelectorNode(
       }
       branches.push(surface);
     }
-    return markStaticSelector(SelectorList.create(branches, undefined, location, treeContext));
+    const list = new SelectorList(branches, undefined, location, treeContext);
+    list.generated = true;
+    return markStaticSelector(list);
   }
   const relativeParts = splitRawRelativeSelector(value);
   if (relativeParts) {
@@ -432,7 +428,9 @@ function createRawSelectorNode(
   }
   const compoundParts = splitRawCompoundSelector(value);
   if (compoundParts && compoundParts.length > 1) {
-    return markStaticSelector(CompoundSelector.create(compoundParts, undefined, location, treeContext));
+    const compound = new CompoundSelector(compoundParts, undefined, location, treeContext);
+    compound.generated = true;
+    return markStaticSelector(compound);
   }
   return undefined;
 }
@@ -455,7 +453,9 @@ function createRawComplexSelectorSurface(
     }
     components.push(component as ComplexSelectorComponent);
   }
-  return markStaticSelector(ComplexSelector.create(components, undefined, location, treeContext));
+  const complex = new ComplexSelector(components, undefined, location, treeContext);
+  complex.generated = true;
+  return markStaticSelector(complex);
 }
 
 type RulesetOptions = NodeOptions & {
@@ -542,9 +542,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private ownRules(value: RulesetValue['rules']): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyOwnedWithReusableLeaves(value[i]!);
+    const arr = value instanceof Rules ? value.rules : value;
+    const owned = new Array<Node>(arr.length);
+    for (let i = 0; i < arr.length; i++) {
+      const copied = copyOwnedWithReusableLeaves(arr[i]!);
       if (!(copied instanceof Node)) {
         throw new TypeError('Expected ruleset rule copy to remain a node');
       }
@@ -571,7 +572,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.attachSelectorBitsToNode(sourceNode, selectorBits);
       }
     }
-    this.attachSelectorBitsToValue(node.value, selectorBits);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this.attachSelectorBitsToValue('value' in node ? (node as unknown as { value: unknown }).value : undefined, selectorBits);
   }
 
   private attachSelectorBitsToValue(value: unknown, selectorBits: Context['selectorBits']): void {
@@ -597,8 +599,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (selector instanceof Selector || selector instanceof Nil) {
       return selector;
     }
-    if (typeof selector === 'string' || selector instanceof Node) {
-      const rawSelector = (typeof selector === 'string' ? selector : selector.valueOf()).trim();
+    if (typeof selector === 'string') {
+      const rawSelector = selector.trim();
       const materialized = createRawSelectorNode(
         rawSelector,
         this.location.length ? this.location : undefined,
@@ -614,7 +616,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
     const pseudoName = readRawAmpersandPseudoSelector(rawSelector);
     if (pseudoName) {
-      return CompoundSelector.create([
+      return new CompoundSelector([
         new Ampersand(undefined, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext),
         new PseudoSelector({ name: pseudoName }, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
       ], undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
@@ -630,13 +632,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.sourceRoot?._treeContext
       ));
     }
-    return CompoundSelector.create(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
+    return new CompoundSelector(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
   private withParts(
     parts: RulesetValue,
     sourceParts: RulesetValue = {
-      selector: this.selector,
+      selector: this.selector!,
       rules: this.rules,
       ...(this.guard !== undefined && { guard: this.guard }),
       ...(this.selectorBeforeExtend !== undefined && {
@@ -672,6 +674,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const rules = deep
       ? this.rules.map(rule => cloneFn(rule))
       : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new Ruleset(
       {
         selector: clonePart(this.selector) ?? this.selector!,
@@ -710,6 +713,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const composed = childStr.includes('&')
         ? childStr.replace(/&/g, parentStr)
         : `${parentStr} ${childStr}`;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return composed as unknown as Selector;
     }
     const library = child.keySetLibrary ?? parent.keySetLibrary;
@@ -724,6 +728,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // Child is a SelectorList: compose each item independently. Each item
     // carries its own explicit-vs-implicit & semantics.
     if (isNode(child, N.SelectorList)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const items = (child as SelectorList).value as Selector[];
       const out: Selector[] = [];
       for (const item of items) {
@@ -731,6 +736,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         // A bare-& item substituted with a list parent comes back as a list:
         // flatten its items into the outer result.
         if (isNode(composed, N.SelectorList)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           out.push(...((composed as SelectorList).value as Selector[]));
         } else {
           out.push(composed);
@@ -766,6 +772,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private static _ownComplexComponentForCompose(component: ComplexSelectorComponent): ComplexSelectorComponent {
+    if (typeof component === 'string') {
+      return component;
+    }
     const owned = copyOwnedWithReusableLeaves(component);
     if (
       owned instanceof SimpleSelector
@@ -875,7 +884,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           : [Ruleset._toSimpleSelector(parent)];
         const merged = [...parentComponents, ...suffix];
         if (merged.length === 1) {
-          return attachSelectorBitLibrary(merged[0]!, library);
+          const single = merged[0]!;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          return attachSelectorBitLibrary(single instanceof Selector ? single : single as unknown as Selector, library);
         }
         return attachSelectorBitLibrary(CompoundSelector.create(merged).inherit(compound), library);
       }
@@ -894,10 +905,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           const lastPart = parentParts[lastIdx]!;
           const existing: CompoundSelectorComponent[] = isNode(lastPart, N.CompoundSelector)
             ? lastPart.value
-            : [Ruleset._toSimpleSelector(lastPart)];
+            : typeof lastPart !== 'string' ? [Ruleset._toSimpleSelector(lastPart)] : [lastPart];
           const merged = [...existing, ...suffix];
+          const mergedSingle = merged[0]!;
           parentParts[lastIdx] = merged.length === 1
-            ? Ruleset._toComplexComponent(merged[0]!)
+            ? (typeof mergedSingle !== 'string' ? Ruleset._toComplexComponent(mergedSingle) : mergedSingle)
             : CompoundSelector.create(merged);
         }
         return attachSelectorBitLibrary(ComplexSelector.create(parentParts).inherit(compound), library);
@@ -930,7 +942,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
     }
     if (newComponents.length === 1) {
-      return attachSelectorBitLibrary(newComponents[0]!, library);
+      const single = newComponents[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return attachSelectorBitLibrary(single instanceof Selector ? single : single as unknown as Selector, library);
     }
     return attachSelectorBitLibrary(CompoundSelector.create(newComponents).inherit(compound), library);
   }
@@ -941,6 +955,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const newParts: ComplexSelectorComponent[] = [];
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]!;
+      if (typeof part === 'string') {
+        continue;
+      }
       if (isNode(part, N.Ampersand)) {
         const leftTight = Ruleset._isTightCombinatorAt(parts, i - 1);
         const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
@@ -1060,7 +1077,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
     this._valueOf = undefined;
     this._composedSelector = undefined;
-    nextSelector ??= this.selector;
+    if (nextSelector === undefined) {
+      const sel = this.selector;
+      nextSelector = typeof sel === 'string' ? undefined : sel;
+    }
 
     const cacheOwner = this._selectorCacheOwner;
     if (!cacheOwner || cacheOwner === this) {
@@ -1084,7 +1104,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const w = opts.writer!;
     const position = w.position();
     this.writeSyntax(opts);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -1105,7 +1125,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (isNode(rule, N.Comment) || isNode(rule, N.Nil)) {
       return true;
     }
-    if (isNode(rule, N.AtRuleStatement) && rule.hasFlag(F_STATIC)) {
+    if (rule instanceof AtRuleStatement && rule.hasFlag(F_STATIC)) {
       return true;
     }
     if (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC)) {
@@ -1120,11 +1140,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!rule.hasFlag(F_STATIC)) {
       return false;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const atRule = rule as AtRule;
     if (atRule.getRenderRules().length === 0) {
       return true;
     }
-    return !context.opts.collapseNesting
+    return !context.opts.output?.collapseNesting
       && !context.bubbleRootAtRules
       && atRule.isRootOnly();
   }
@@ -1205,6 +1226,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return isThenable(guardPasses)
         ? (guardPasses as Promise<boolean>).then(passes => passes ? this.evalNilSelectorBodyForRender(context) : new Nil())
         : guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
+    }
+    if (typeof guard === 'string') {
+      throw new TypeError('String guard must be materialized before nil-selector render evaluation');
     }
     const ownedGuard = copyOwnedWithReusableLeaves(guard);
     if (!(ownedGuard instanceof Node)) {
@@ -1464,13 +1488,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         || sel.hasFlag(F_EXTEND_TARGET)
         || Ruleset.hasExtendedTopLevelSelector(sel)
       )
-        ? (simplified ?? Ruleset.unwrapGeneratedReferenceIs(sel))
+        ? (() => {
+            const unwrapped = simplified ?? Ruleset.unwrapGeneratedReferenceIs(sel);
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            return typeof unwrapped === 'string' ? unwrapped as unknown as Selector : unwrapped;
+          })()
         : new Nil();
     }
     const seen = new Set<string>();
     const kept: SelectorListItem[] = [];
     let sawAddedSelector = false;
     for (const item of sel.value) {
+      if (typeof item === 'string') {
+        continue;
+      }
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         sawAddedSelector = true;
         const key = item.valueOf();
@@ -1485,6 +1516,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     if (!sawAddedSelector) {
       for (const item of sel.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         if (!item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
           continue;
         }
@@ -1502,7 +1536,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return new Nil();
     }
     if (kept.length === 1) {
-      return kept[0]!;
+      const single = kept[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return typeof single === 'string' ? single as unknown as Selector : single;
     }
     return SelectorList.create(kept).inherit(sel);
   }
@@ -1516,6 +1552,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of sel.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         const keepItem = includeUntouchedSiblings
           ? !item.hasFlag(F_EXTEND_TARGET)
           : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1546,6 +1585,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const kept: SelectorListItem[] = [];
       const seen = new Set<string>();
       for (const item of arg.value) {
+        if (typeof item === 'string') {
+          continue;
+        }
         const keepItem = includeUntouchedSiblings
           ? !item.hasFlag(F_EXTEND_TARGET)
           : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1600,6 +1642,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     let hasAnyAdded = false;
     for (let i = 0; i < parent.value.length; i++) {
       const item = parent.value[i]!;
+      if (typeof item === 'string') {
+        continue;
+      }
       if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
         hasAnyAdded = true;
         break;
@@ -1611,6 +1656,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const seen = new Set<string>();
     const kept: SelectorListItem[] = [];
     for (const item of parent.value) {
+      if (typeof item === 'string') {
+        continue;
+      }
       const keepItem = includeUntouchedSiblings
         ? !item.hasFlag(F_EXTEND_TARGET)
         : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
@@ -1631,7 +1679,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return undefined;
     }
     if (kept.length === 1) {
-      return kept[0]!;
+      const single = kept[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return typeof single === 'string' ? single as unknown as Selector : single;
     }
     return SelectorList.create(kept).inherit(parent);
   }
@@ -1680,6 +1730,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
         const items = isNode(arg, N.SelectorList) ? arg.value : [arg];
         for (const item of items) {
+          if (typeof item === 'string') {
+            continue;
+          }
           if (item.hasFlag(F_EXTEND_TARGET)) {
             continue;
           }
@@ -1750,9 +1803,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return undefined;
     }
     if (isNode(selector, N.PseudoSelector) && selector.generated === true && selector.name === ':is') {
-      return selector.arg instanceof Selector
-        ? Ruleset.unwrapGeneratedReferenceIs(selector.arg)
-        : undefined;
+      if (!(selector.arg instanceof Selector)) {
+        return undefined;
+      }
+      const unwrapped = Ruleset.unwrapGeneratedReferenceIs(selector.arg);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return typeof unwrapped === 'string' ? unwrapped as unknown as Selector : unwrapped;
     }
     if (isNode(selector, N.SelectorList)) {
       let changed = false;
@@ -1777,8 +1833,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           const unwrapped = Ruleset.unwrapGeneratedReferenceIs(component.arg);
           if (isNode(unwrapped, N.CompoundSelector)) {
             components.push(...unwrapped.value);
-          } else {
+          } else if (typeof unwrapped !== 'string') {
             components.push(Ruleset._toSimpleSelector(unwrapped));
+          } else {
+            components.push(unwrapped);
           }
           changed = true;
           continue;
@@ -1788,9 +1846,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       if (!changed) {
         return undefined;
       }
-      return components.length === 1
-        ? components[0]!
-        : CompoundSelector.create(components).inherit(selector);
+      if (components.length === 1) {
+        const single = components[0]!;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        return typeof single === 'string' ? single as unknown as Selector : single;
+      }
+      return CompoundSelector.create(components).inherit(selector);
     }
     if (isNode(selector, N.ComplexSelector)) {
       let changed = false;
@@ -1805,8 +1866,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           const unwrapped = Ruleset.unwrapGeneratedReferenceIs(part.arg);
           if (isNode(unwrapped, N.ComplexSelector)) {
             parts.push(...unwrapped.value);
-          } else {
+          } else if (typeof unwrapped !== 'string') {
             parts.push(Ruleset._toComplexComponent(unwrapped));
+          } else {
+            parts.push(unwrapped);
           }
           changed = true;
           continue;
@@ -1852,6 +1915,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         referenceComposeAmpCount > 1
       ) ?? rawParentComposed
       : rawParentComposed;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
     const structuralParent = (
       !parentAtRule?.isRootOnly()
@@ -1861,8 +1925,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     )
       ? this.parent.parent.selector
       : null;
-    const composeParent = parentComposed ?? (
-      structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
+    const composeParent: Selector | null = parentComposed ?? (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      structuralParent && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
     );
     let cached = getCachedComposedSelector(options, this);
     if (!cached) {
@@ -1921,19 +1986,21 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return false;
     }
 
-    let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) as Selector | Nil : selector;
     const canReferenceFilter = !(renderSelector instanceof Nil)
       && (
         Ruleset.hasExtendedTopLevelSelector(renderSelector)
         || renderSelector.hasFlag(F_EXTEND_TARGET)
       );
-    const simplifiedGeneratedIs = canReferenceFilter && !options.collapseNesting
+    const simplifiedGeneratedIs = canReferenceFilter && !options.collapseNesting && !(renderSelector instanceof Nil)
       ? Ruleset.simplifyGeneratedIsSelector(renderSelector)
       : undefined;
     const referenceFilteredLocal = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
       && canReferenceFilter
+      && !(renderSelector instanceof Nil)
     )
       ? (simplifiedGeneratedIs ?? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector))
       : undefined;
@@ -1973,7 +2040,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!(renderSelector instanceof Nil)) {
       const needsVisibleSelectorClone = Ruleset.needsVisibleSelectorClone(renderSelector);
       if (options.referenceFilterTargets || needsVisibleSelectorClone) {
-        renderSelector = copySelectorForRulesetMetadata(renderSelector);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        renderSelector = copySelectorForRulesetMetadata(renderSelector) as Selector;
       }
     }
     Ruleset.ensureSelectorVisible(renderSelector);
@@ -2028,9 +2096,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       : normalizeIndent(header, idt)) + '\n';
   }
 
-  override prepareRegistration(context: Context): MaybePromise<Ruleset> {
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
-      return this._prepareRulesetRegistration(context);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return this._prepareRulesetRegistration(context) as MaybePromise<this>;
     }
     return this;
   }
@@ -2093,14 +2162,16 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   private _storeOwnSelector(node: Ruleset, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
-    const ownSelector = !(selector instanceof Nil)
-      ? copySelectorForRulesetMetadata(selector as Selector)
+    const ownSelector: Selector | Nil = !(selector instanceof Nil)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ? copySelectorForRulesetMetadata(selector) as Selector
       : selector;
     this.attachSelectorBits(ownSelector, selectorBits);
-    if (node.options) {
-      (node.options as RulesetOptions).ownSelector = ownSelector;
+    if (node._options) {
+      (node._options as RulesetOptions).ownSelector = ownSelector;
     } else {
-      node.options = { ownSelector } as RulesetOptions;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      node._options = { ownSelector } as unknown as RulesetOptions & NodeOptions;
     }
   }
 
@@ -2145,7 +2216,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const rulesetFrameCount = context.rulesetFrames.length;
       context.rulesetFrames.push(rulesetNode);
       if (extendRoot) {
-        context.extendRoots.registerRoot(node, extendRoot);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        context.extendRoots.registerRoot(node as unknown as Rules, extendRoot);
       }
       let preparedRules: MaybePromise<Node>;
       try {
@@ -2186,7 +2258,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
   }
 
-  override evalNode(context: Context): MaybePromise<Ruleset | Rules | Nil> {
+  override evalNode(context: Context): MaybePromise<Rules> {
     if (this.evaluated) {
       return this;
     }
@@ -2201,13 +2273,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       context.frames.length = pushedFrameCount;
       pushedFrames = false;
     };
-    const collapseNesting = context.opts.collapseNesting;
+    const collapseNesting = context.opts.output?.collapseNesting;
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
       this.frames = [...context.frames];
     }
 
-    const finishEvaluatedRules = (evaluatedRules: Rules | Nil): Ruleset | Rules | Nil => {
+    const finishEvaluatedRules = (evaluatedRules: Rules | Nil): Rules | Nil => {
       restorePushedEvalFrames();
       if (evaluatedRules instanceof Nil) {
         return evaluatedRules;
@@ -2216,7 +2288,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)
       // In that case, return it directly without wrapping back in Ruleset
       if (this.selector instanceof Nil) {
-        return evaluatedRules === this
+        return (evaluatedRules as unknown) === this
           ? new Rules(
               this.rules,
               this.options ? { ...this.options } : undefined,
@@ -2226,8 +2298,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           : evaluatedRules;
       }
 
-      if (evaluatedRules !== this) {
-        this.rules = evaluatedRules.rules;
+      if ((evaluatedRules as unknown) !== this) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (this as unknown as { rules: Node[] }).rules = evaluatedRules.rules;
         for (let i = 0; i < this.rules.length; i++) {
           this.adopt(this.rules[i]!);
         }
@@ -2238,7 +2311,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
       return this;
     };
-    const evalBodyAfterGuard = (guardResult: Nil | undefined): MaybePromise<Ruleset | Rules | Nil> => {
+    const evalBodyAfterGuard = (guardResult: Nil | undefined): MaybePromise<Rules | Nil> => {
       // If guard failed, return Nil (ruleset produces no output)
       if (guardResult instanceof Nil) {
         return finishEvaluatedRules(guardResult);
@@ -2261,7 +2334,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.adopt(selector);
       this.selector = selector;
       this.invalidateSelectorValueCache(selector);
-      if (context.opts.collapseNesting) {
+      if (context.opts.output?.collapseNesting) {
         this.hoistToRoot = true;
       }
       pushedRulesetFrameCount = context.rulesetFrames.length;
@@ -2289,14 +2362,16 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     let { guard } = this;
     // Guard was already set to Nil (failed in a previous eval)
     if (guard instanceof Nil) {
-      return finishEvaluatedRules(guard);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return finishEvaluatedRules(guard) as MaybePromise<Rules>;
     }
     // Evaluate guard at definition time (not call time like mixins)
     // This is different from mixins because rulesets can't use caller scope for guards
     if (guard) {
       const guardResult = guard instanceof Condition
         ? guard.evaluateBoolean(context)
-        : (guard as Node).eval(context);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        : (guard as unknown as Node).eval(context);
       const finishGuard = (result: boolean | Node): Nil | undefined => {
         const guardPasses = typeof result === 'boolean'
           ? result
@@ -2310,16 +2385,19 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.guard = undefined;
         return undefined;
       };
-      return isThenable(guardResult)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
-        : evalBodyAfterGuard(finishGuard(guardResult));
+        : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
-    return evalBodyAfterGuard(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>;
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
   value: RulesetValue | RulesetParams[0],
   options?: RulesetParams[1],

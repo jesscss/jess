@@ -44,6 +44,7 @@ import {
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
+import type { AtRuleStatement } from './at-rule-statement.js';
 import type { StyleImport } from './import-style.js';
 import {
   assignScopeFrameVariable,
@@ -78,7 +79,6 @@ import {
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
-import { isIndexedRuleChild } from './util/callable-surface.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findWritableSetDefinedDeclarationOccurrence,
@@ -111,17 +111,6 @@ type RulesResolveState = {
   kind: 'public-resolve';
 };
 
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
@@ -294,7 +283,7 @@ function writeRulesRenderOutput(
   directSourceRender: boolean
 ): MaybePromise<string> {
   const prepared = prepareBufferPrintState(context, options);
-  const text = node.type === 'Rules' && !directSourceRender
+  const text = node instanceof Rules && !directSourceRender
     ? (
         node === context.root || source === context.root
           ? node._toDocumentString(prepared)
@@ -390,7 +379,7 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
+  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) && node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
@@ -400,7 +389,7 @@ function childRulesOf(node: Node): Rules | undefined {
 }
 
 function childCallableRulesOf(node: Node): Rules | undefined {
-  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
+  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule)) && node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
@@ -500,7 +489,7 @@ function rulesMayContainExtends(rules: Rules): boolean {
 
 function rulesMayContainReferenceImports(rules: Rules): boolean {
   if (
-    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    rules.options.referenceMode === true
     || rules._hasReferenceImports
     || rules.hasReferenceImportChildSurface
   ) {
@@ -528,7 +517,7 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
 
 function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
   return (
-    (rules.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+    rules.options.referenceMode === true
     || rules._hasReferenceImports
     || rules.hasReferenceImportChildSurface
   );
@@ -653,12 +642,10 @@ export type RulesOptions = {
 };
 
 export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
-  get options(): RulesOptions & NodeOptions & {
+  get options(): O & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
-  set options(options: RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  });
+  set options(value: O & NodeOptions);
   eval(context: Context): MaybePromise<this>;
 }
 
@@ -845,7 +832,7 @@ function setAssignmentTargetBinding(
  * ]
  */
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
-  static override childKeys = ['rules'] as const;
+  static override childKeys: readonly string[] = ['rules'] as const;
 
   readonly rules: Node[];
 
@@ -911,11 +898,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     } else {
       value = [...source];
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return this.derive(value) as this;
   }
 
   derive(value: Node[] = [...this.rules]): Rules {
     const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const Ctor = this.constructor as new (
       value: Node[],
       options?: RulesOptions,
@@ -1067,7 +1056,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._hasReferenceImports = (
       this._hasReferenceImports
       || this.hasReferenceImportChildSurface
-      || (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      || this.options.referenceMode === true
     );
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
@@ -1235,7 +1224,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this.hasReferenceImportChildSurface
       || (
         this._hasReferenceImports
-        && (this.options as { referenceMode?: boolean } | undefined)?.referenceMode !== true
+        && this.options.referenceMode !== true
       )
     );
   }
@@ -1554,7 +1543,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       let selector = node.selector;
-      if (isNode(selector, N.Nil)) {
+      if (!selector || isNode(selector, N.Nil) || typeof selector === 'string') {
         continue;
       }
       const ownSelector = isSelectorLikeNode(node.options.ownSelector)
@@ -1576,13 +1565,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
       if (isNode(selector, N.SelectorList)) {
-        for (let selectorIndex = 0; selectorIndex < selector.value.length; selectorIndex++) {
-          this.addDirectCallableSelectorEntries(
-            lookupKey,
-            node,
-            getOrderedSelectorKeys(selector.value[selectorIndex]!),
-            bucket
-          );
+        for (const item of selector.value) {
+          if (typeof item !== 'string') {
+            this.addDirectCallableSelectorEntries(
+              lookupKey,
+              node,
+              getOrderedSelectorKeys(item),
+              bucket
+            );
+          }
         }
         continue;
       }
@@ -1590,7 +1581,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const parentSelector = isNode(node.parent?.parent, N.Ruleset)
           ? (node.parent.parent as Ruleset).selector
           : undefined;
-        const parentKeys = parentSelector && !isNode(parentSelector, N.Nil)
+        const parentKeys = parentSelector && !isNode(parentSelector, N.Nil) && typeof parentSelector !== 'string'
           ? getOrderedSelectorKeys(parentSelector)
           : [];
         if (
@@ -2959,7 +2950,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             simpleLookupOptions ??= {
               hasTarget: options.hasTarget,
               local: options.local,
-              includeRulesets: options.terminalMixinOnly !== true,
+              includeRulesets: !options.terminalMixinOnly,
               searchParents: false
             };
             let simpleCallableCovered = false;
@@ -2997,7 +2988,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 resolved = simpleCallableMatches;
               }
             }
-            if (resolved === undefined && options.terminalMixinOnly !== true) {
+            if (resolved === undefined && !options.terminalMixinOnly) {
               const simpleCallableRulesets = ruleset.findVisibleExactCallableRulesetPath(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
@@ -3173,7 +3164,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 fallbackMissCovered = false;
                 break;
               }
-              fallbackFrame = fallbackFrame.fallbackFrame;
+              fallbackFrame = fallbackFrame.fallbackFrame!;
             }
             if (nested === undefined && fallbackMissCovered) {
               descendantMissCovered = true;
@@ -3549,7 +3540,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const ctx = options.context;
     const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
     const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
-    const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    const ownReferenceMode = this.options.referenceMode === true;
     if (ownReferenceMode && options.referenceMode !== true) {
       options.referenceMode = true;
       options.referenceRenderEnabled = false;
@@ -3601,7 +3592,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         for (const importRule of ctx.topImports) {
           if (isNode(importRule, N.AtRule)) {
             const importPrelude = importRule.prelude;
-            if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
+            if (importPrelude && typeof importPrelude !== 'string' && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
               if (!isThenable(maybePrelude)) {
                 importRule.prelude = maybePrelude as Node;
@@ -3673,7 +3664,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mergedOptions = { ...options, rulesVisibility };
     super();
     this._location = location;
-    this._options = mergedOptions;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    this._options = mergedOptions as unknown as typeof this._options;
     this.rules = this._processNodes(value ?? []);
     this._sourceRoot = this;
     this._treeContext = treeContext;
@@ -3756,7 +3748,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isNode(only, N.Any) && only.role === 'any';
     };
     const isBlockContainer = (node: Node): node is Ruleset | AtRule => {
-      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && Boolean(node.rules));
+      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && node instanceof Rules && Boolean(node.rules));
     };
 
     let emittedCount = 0;
@@ -3823,7 +3815,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     };
     const saved = savePrintState(options, ['referenceMode']);
     if (
-      (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      this.options.referenceMode === true
       && options.referenceMode !== true
     ) {
       options.referenceMode = true;
@@ -3903,7 +3895,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         };
         return isThenable(childRule)
           ? childRule.then(finishChildRule)
-          : finishChildRule(childRule);
+          : finishChildRule();
       }
       if (isRulesetOrAtRule) {
         emitLeadingBlockCommentForNode(n);
@@ -3955,7 +3947,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
         return;
       }
-      const output = n.render(context, options);
+      const output = n.render(context!, options);
       const finishOutput = (resolvedOutput: string): void => {
         restorePrintState(options, leafSaved);
         if (!w.hasContentSince(leafMark)) {
@@ -4006,7 +3998,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -4128,18 +4120,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const iterateRules = (rules: Rules) => {
       for (let n of rules.rules) {
         if (isNode(n, N.Declaration)) {
-          let { value } = n.value;
+          let value = n.value;
           let { important } = n;
           let { name } = n;
           if (convertToPrimitives) {
-            let primitive = value.valueOf();
+            let primitive: string | number | boolean | undefined = value instanceof Node
+              ? value.valueOf()
+              : (Array.isArray(value) ? undefined : value);
             let outputValue = important ? `${primitive} ${important}` : primitive;
             if (outputValue === undefined) {
               continue;
             }
             output.set(name.toString(), outputValue);
           } else {
-            let outputValue = important ? new Sequence([n, important]) : n;
+            let outputValue = important instanceof Node ? new Sequence([n, important]) : n;
             output.set(name.toString(), outputValue);
           }
         } else if (n instanceof Rules) {
@@ -4305,7 +4299,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             if (variableHit.readonly || variableHit.cell.readonly) {
               throw new ReferenceError(`"${key}" is readonly`);
             }
-            let assignedValue = node.value;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            let assignedValue = node.value as Node;
             if (context) {
               const evaluatedValue = assignedValue.eval(context);
               if (!isThenable(evaluatedValue)) {
@@ -4335,7 +4330,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const result = resultOccurrence.node;
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-          let assignedValue = node.value;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          let assignedValue = node.value as Node;
           if (context) {
             const evaluatedValue = assignedValue.eval(context);
             if (!isThenable(evaluatedValue)) {
@@ -4501,7 +4497,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (target < 0) {
       let indexedCount = 0;
       for (let i = 0; i < this.rules.length; i++) {
-        if (isIndexedRuleChild(this.rules[i]!)) {
+        if (!isNode(this.rules[i]!, N.Comment)) {
           indexedCount++;
         }
       }
@@ -4513,7 +4509,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let current = 0;
     for (let i = 0; i < this.rules.length; i++) {
       const node = this.rules[i]!;
-      if (!isIndexedRuleChild(node)) {
+      if (isNode(node, N.Comment)) {
         continue;
       }
       if (current === target) {
@@ -4605,7 +4601,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _isNestableAtRuleBody(): boolean {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
-    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.name.valueOf()) : false;
+    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(String(parentAtRule.name.valueOf())) : false;
   }
 
   /**
@@ -4639,7 +4635,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
-      const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
+      const nodeIndex = !isNode(node, N.Comment) ? indexedRuleCount++ : undefined;
       if (isNode(node, N.Any) && node.role === 'charset') {
         // Charset is root output-order bookkeeping, not name registration.
         if (!context.currentCharset) {
@@ -4659,7 +4655,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isImportAtRule(node)) {
         // CSS @import hoisting is output-order bookkeeping, not name registration.
         // Preserve the prelude as authored; evaluating here can strip comment tokens.
-        queueTopImport(context, node);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        queueTopImport(context, node as unknown as AtRuleStatement);
         node.registrationPrepared = true;
         const placeholder = new Nil(
           '',
@@ -4738,7 +4735,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const canReuseCanonicalDeclaration = (
-      isNode(node, N.Declaration | N.VarDeclaration)
+      (isNode(node, N.Declaration) || isNode(node, N.VarDeclaration))
       && !node.options?.assign
       && !node.options?.normalizedFromAssign
     );
@@ -4784,7 +4781,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.type === 'StyleImport') {
         return false;
       }
-      if (isNode(node, N.Declaration | N.VarDeclaration) && !node.options?.setDefined) {
+      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !node.options?.setDefined) {
         if (!this._hasStaticName(node)) {
           return false;
         }
@@ -5355,7 +5352,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return decl.value;
+      const v = decl.value;
+      return v instanceof Node ? v : undefined;
     };
     const replaceOwnedDeclaration = (
       ownerRules: Rules,

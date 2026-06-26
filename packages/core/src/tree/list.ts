@@ -156,7 +156,8 @@ function emitListSeparator(
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {
-    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    const sepStr = sep ?? ',';
+    options.writer.add(preserveLeadingWhitespace ? sepStr : `${sepStr} `);
   }
   if (leadingTrivia) {
     emitTriviaTokens(
@@ -374,10 +375,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.renderListSyntax(value, prepared);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const out = this.renderListSyntax(value as T[], prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -389,9 +393,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
     const out = renderListValueDirect(context, this.value, prepared, this.sep ?? ',');
     return buffer
       ? writeRenderText(buffer, out)
@@ -404,9 +410,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
     const out = renderListValueDirectMaybe(context, this.value, prepared, this.sep ?? ',');
     if (isThenable(out)) {
       return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);

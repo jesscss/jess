@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, call, decl, el, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
+import type { Node } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
 import {
   createOwnedCallableRulesSurface,
@@ -154,7 +155,8 @@ describe('callable special-case helper', () => {
       restrictMixinOutputLookup: true,
       candidateName: candidate.name,
       candidateParams: candidate.params,
-      candidateGuard: candidate.guard,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      candidateGuard: candidate.guard as Node | undefined,
       createOwnedRules: createOwnedCallableRulesSurface,
       createUnlockedRules: createUnlockedCallableRulesSurface,
       getRootSourceRules

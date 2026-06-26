@@ -55,7 +55,10 @@ export function attachSelectorBitLibrary<T extends Selector>(
 }
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
-  static override childKeys = ['value'] as const;
+  static override childKeys: readonly string[] | null = ['value'];
+
+  declare readonly value: IfAny<T, NodeValue, T>;
+
   isSelector = true;
 
   protected _valueOf: string | undefined;
@@ -128,7 +131,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this.evalNode(context);
   }
 
-  writeSyntax(options: FinalPrintOptions): void {
+  override writeSyntax(options: FinalPrintOptions): void {
     this.toTrimmedString(options);
   }
 

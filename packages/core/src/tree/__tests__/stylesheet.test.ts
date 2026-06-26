@@ -17,7 +17,7 @@ describe('Stylesheet', () => {
 
     expect(root).toBeInstanceOf(Rules);
     expect(root.type).toBe('Stylesheet');
-    expect(root.rules).toBe(root.value);
+    expect(root.rules).toBe(Reflect.get(root, 'value'));
     expect(isNode(root, N.Rules)).toBe(true);
     expect(root.sourceRoot).toBe(root);
     expect(declaration.rulesParent).toBe(root);

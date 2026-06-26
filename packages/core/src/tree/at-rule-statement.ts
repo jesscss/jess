@@ -50,10 +50,11 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this._treeContext = treeContext;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): AtRuleStatement {
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     cloneFn ??= n => n.clone(deep);
     const name = deep && this.name instanceof Node ? cloneFn(this.name) : this.name;
     const prelude = deep && this.prelude instanceof Node ? cloneFn(this.prelude) : this.prelude;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new AtRuleStatement(
       {
         name,
@@ -62,14 +63,15 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       this._options ? { ...this._options } : undefined,
       this._location?.length ? this._location : undefined,
       this._treeContext
-    ).inherit(this);
+    ).inherit(this) as this;
   }
 
   override resolve(context: Context): MaybePromise<AtRuleStatement> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    return this.eval(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this.eval(context) as MaybePromise<AtRuleStatement>;
   }
 
   protected override evalNode(context: Context): MaybePromise<AtRuleStatement> {
@@ -116,6 +118,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     options?: PrintOptions
   ): MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return super.render(context, bufferOrOptions as RenderBuffer, options);
     }
     const evaluated = this.eval(context);
@@ -137,28 +140,34 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       : `${String(this.name.valueOf())} ${String(this.prelude.valueOf())}`;
   }
 
-  private writeField(field: AtRuleStatementField, options: FinalPrintOptions, trimLeading = false): void {
-    if (typeof field === 'string') {
-      options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(field) : field, this);
-      return;
-    }
-    const scalarValue = (field as { value?: unknown }).value;
-    if (typeof scalarValue === 'string') {
-      options.writer.add(trimLeading ? trimLeadingHeaderWhitespace(scalarValue) : scalarValue, field);
-      return;
-    }
-    if (field instanceof Node) {
-      field.writeSyntax(options);
-      return;
-    }
-  }
-
   override writeSyntax(options: FinalPrintOptions): void {
     const writer = options.writer;
-    this.writeField(this.name, options);
+    if (typeof this.name === 'string') {
+      writer.add(this.name, this);
+    } else {
+      const type = this.name.type;
+      if (type === 'Any' || type === 'Anonymous' || type === 'Keyword') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const v = (this.name as { value?: unknown }).value;
+        writer.add(typeof v === 'string' ? v : String(this.name.valueOf()), this.name);
+      } else {
+        this.name.writeSyntax(options);
+      }
+    }
     if (this.prelude !== undefined && this.prelude !== '') {
       writer.add(' ');
-      this.writeField(this.prelude, options, true);
+      if (typeof this.prelude === 'string') {
+        writer.add(trimLeadingHeaderWhitespace(this.prelude), this);
+      } else {
+        const type = this.prelude.type;
+        if (type === 'Any' || type === 'Anonymous' || type === 'Keyword') {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const v = (this.prelude as { value?: unknown }).value;
+          writer.add(trimLeadingHeaderWhitespace(typeof v === 'string' ? v : String(this.prelude.valueOf())), this.prelude);
+        } else {
+          this.prelude.writeSyntax(options);
+        }
+      }
     }
     writer.add(';', this);
   }

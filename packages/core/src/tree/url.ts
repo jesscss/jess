@@ -65,7 +65,7 @@ export class Url extends Node<Node> {
     if (isNode(value, N.Quoted)) {
       const quotedValue = value.value;
       if (isNode(quotedValue)) {
-        return String(quotedValue.value);
+        return String(quotedValue.valueOf());
       }
       return quotedValue;
     }
@@ -83,7 +83,8 @@ export class Url extends Node<Node> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as import('./util/print.js').PrintOptions | undefined);
     const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Context } from '../../context.js';
 import {
   any,
@@ -22,6 +23,7 @@ import {
   query,
   quoted,
   rules,
+  Rules,
   Ruleset,
   ruleset,
   sel,
@@ -73,7 +75,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -123,7 +125,7 @@ describe('extend integration (eval -> toString)', () => {
 
     // Step 0
     {
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(makeRoot(false), context, { context });
       expect(css).toBeString(`
         .replace.replace,
@@ -138,7 +140,7 @@ describe('extend integration (eval -> toString)', () => {
 
     // Step 1 (expected Less output, from `tests-unit/extend-selector/extend-selector.css`)
     {
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(makeRoot(true), context, { context });
       expect(css).toBeString(`
         :is(.replace, .rep_ace):is(.replace, .rep_ace),
@@ -220,7 +222,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     try {
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
 
       expect(extendingLeafClones).toBe(0);
@@ -282,7 +284,7 @@ describe('extend integration (eval -> toString)', () => {
         })
       ]);
 
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
       expect(sourceLeafClones).toBe(0);
 
@@ -302,10 +304,12 @@ describe('extend integration (eval -> toString)', () => {
 
   it('materializes async selector-list parent extend records without cloning source-free leaves', async () => {
     const originalAmpersandEval = Ampersand.prototype.eval;
-    Ampersand.prototype.eval = function evalAsync(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (Ampersand.prototype as unknown as { eval: (context: Context) => MaybePromise<Node> }).eval = function evalAsync(
+      this: Node,
       context: Context
-    ) {
-      return Promise.resolve(Node.evalStatic(this, context));
+    ): MaybePromise<Node> {
+      return Promise.resolve(Node.evalStatic(this, context)) as Promise<Node>;
     };
 
     const parentA = el('.parent-a');
@@ -350,7 +354,7 @@ describe('extend integration (eval -> toString)', () => {
         })
       ]);
 
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
       expect(sourceLeafClones).toBe(0);
       expect(css).toBeString(`
@@ -394,7 +398,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -431,32 +435,39 @@ describe('extend integration (eval -> toString)', () => {
         ]
       })
     ]);
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const evald = await root.eval(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const evaldRules = evald as unknown as Rules;
     const isDeclarationNamed = (node: unknown, name: string): node is Declaration => (
       node instanceof Declaration
       && (node.name.valueOf?.() ?? node.name) === name
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      && Array.isArray(node.rules.rules)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      && Array.isArray((node.rules as unknown as Rules).rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const outerBb = evald.rules.find(
+    const outerBb = evaldRules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'background'))
-        && node.rules.rules.some(rule => rule instanceof Ruleset)
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    const inner = outerBb?.rules.rules.find(
-      (node): node is Ruleset =>
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const inner = (outerBb?.rules as unknown as Rules)?.rules.find(
+      (node: Node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'color'))
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = inner?.selector.valueOf() ?? '';
+    const innerSelectorStr = inner?.selector?.valueOf() ?? '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');
@@ -512,7 +523,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -572,7 +583,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [extend({ target: el('.mb') })]
       })
     ]);
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
     expect(css).toBeString(`
       .a {
@@ -631,7 +642,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -690,7 +701,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -908,7 +919,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(typeof registrationSerialized).toBe('string');
     expect(registrationSerialized).toMatchSnapshot();
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const evald = await root.eval(context);
     const postEvalSerialized = serializeTypes(evald, serializeOpts);
     expect(typeof postEvalSerialized).toBe('string');
@@ -966,7 +977,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [extend({ target: el('.mb') })]
       })
     ]);
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(root, context, { context });
     expect(css).toBeString(`
       .a {
@@ -1024,7 +1035,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -1076,7 +1087,7 @@ describe('extend integration (eval -> toString)', () => {
           ]
         })
       ]);
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
       // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
@@ -1114,7 +1125,7 @@ describe('extend integration (eval -> toString)', () => {
           ]
         })
       ]);
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
       expect(css).toBeString(`
         @media screen {
@@ -1152,7 +1163,7 @@ describe('extend integration (eval -> toString)', () => {
           ]
         })
       ]);
-      const context = new Context({ collapseNesting: false });
+      const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
       expect(css).toBeString(`
         @media screen {
@@ -1218,7 +1229,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -1260,7 +1271,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
@@ -1295,7 +1306,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`

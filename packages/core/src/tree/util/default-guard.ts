@@ -21,7 +21,8 @@ export function getDefaultGuardValue(node: Node | undefined, context: Context): 
     return Boolean(context.isDefault);
   }
   if (node.type === 'Paren') {
-    const { value } = node;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const value = (node as unknown as { value: unknown }).value;
     return getDefaultGuardValue(value instanceof Node ? value : undefined, context);
   }
   if (node.type === 'Any' && String(node.valueOf?.() ?? '') === 'default()') {

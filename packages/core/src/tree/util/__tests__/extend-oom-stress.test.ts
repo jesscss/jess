@@ -367,7 +367,7 @@ describe('OOM stress: selectorCompare SelectorList normalization', () => {
     // still be fast.
     const N = 200;
     const itemsA: Selector[] = Array.from({ length: N }, (_, i) => sel([el(`.item-${i}`)]));
-    const itemsB: Selector[] = [...valueA].reverse(); // same items, reversed order
+    const itemsB: Selector[] = [...itemsA].reverse(); // same items, reversed order
 
     const listA = sellist(itemsA);
     const listB = sellist(itemsB);

@@ -46,7 +46,7 @@ function emitSelectorListItem(
 export class SelectorList extends Selector<SelectorListItem[]> {
   static override childKeys = ['value'] as const;
 
-  readonly value: SelectorListItem[];
+  override readonly value: SelectorListItem[];
 
   constructor(
     value: SelectorListItem[],
@@ -242,7 +242,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     return super.compare(b);
   }
 
-  override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);

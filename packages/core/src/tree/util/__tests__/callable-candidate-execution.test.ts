@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
+import type { Condition } from '../../condition.js';
 import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
+import type { Node } from '../../node.js';
 import {
   createCallableOuterRules,
   createOwnedCallableRulesSurface,
@@ -68,14 +70,16 @@ describe('callable candidate execution helper', () => {
     const context = new Context({ leakyRules: true });
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    dynamicGuard.eval = async evalContext => new Bool(evalContext.isDefault === true);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    dynamicGuard.eval = (async (evalContext: Context) => new Bool(evalContext.isDefault === true)) as unknown as (context: Context) => Bool;
 
     const candidate = mixin({
       name: any('.button'),
       rules: [
         decl({ name: 'color', value: any('red') })
       ],
-      guard: dynamicGuard
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      guard: dynamicGuard as unknown as Condition
     });
     const definitionParent = rules([candidate]);
     const callSiteRules = rules([]);
@@ -96,7 +100,8 @@ describe('callable candidate execution helper', () => {
       context,
       hasDefault: true,
       candidate,
-      candidateGuard: candidate.guard,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      candidateGuard: candidate.guard as Node | undefined,
       candidateParams: candidate.params,
       candidateState,
       nodeArgs: [],

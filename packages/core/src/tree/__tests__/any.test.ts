@@ -1,7 +1,7 @@
 import { any, keyword, seq } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { OutputWriter } from '../util/print.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -41,7 +41,7 @@ describe('Any and Keyword', () => {
       return 'not-foo';
     };
 
-    node.writeSyntax({ writer });
+    node.writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('foo');
     expect(writer.marks).toBe(0);

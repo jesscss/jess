@@ -6,6 +6,7 @@ import { Node, defineType } from './node.js';
  */
 export class JsObject extends Node<Record<string, any>> {
   static override childKeys = null;
+  declare readonly value: Record<string, any>;
 
   override resolve(_context: Context): this {
     return this;

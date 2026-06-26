@@ -29,42 +29,42 @@ import {
  * $each(list, iterate);
  */
 export async function eachImplementation(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const mixinRules = mixin.rules;
-    let keys: [string, string, string] = ['value', 'key', 'index'];
-    if (mixin instanceof Mixin) {
-      const { params } = mixin;
-      if (params) {
-        let paramList = params.value;
-        let key0 = paramList[0]?.toTrimmedString();
-        let key1 = paramList[1]?.toTrimmedString();
-        let key2 = paramList[2]?.toTrimmedString();
-        const parsedKeys = [key0, key1, key2];
-        for (let i = 0; i < parsedKeys.length; i++) {
-          if (parsedKeys[i]) {
-            keys[i] = parsedKeys[i]!;
-          }
+  const mixinRules = mixin.rules;
+  let keys: [string, string, string] = ['value', 'key', 'index'];
+  if (mixin instanceof Mixin) {
+    const { params } = mixin;
+    if (params) {
+      let paramList = params.value;
+      let key0 = paramList[0]?.toTrimmedString();
+      let key1 = paramList[1]?.toTrimmedString();
+      let key2 = paramList[2]?.toTrimmedString();
+      const parsedKeys = [key0, key1, key2];
+      for (let i = 0; i < parsedKeys.length; i++) {
+        if (parsedKeys[i]) {
+          keys[i] = parsedKeys[i]!;
         }
       }
     }
-    const vars: [VarDeclaration, VarDeclaration, VarDeclaration] = [
-      new VarDeclaration({
-        name: new Any(keys[0], { role: 'property' }),
-        value: new Nil()
-      }, { paramVar: true }),
-      new VarDeclaration({
-        name: new Any(keys[1], { role: 'property' }),
-        value: new Nil()
-      }, { paramVar: true }),
-      new VarDeclaration({
-        name: new Any(keys[2], { role: 'property' }),
-        value: new Nil()
-      }, { paramVar: true })
-    ];
-    return new For({
-      pattern: { kind: 'tuple', values: vars },
-      iterable: { kind: 'node', value: list },
-      rules: mixinRules
-    });
+  }
+  const vars: [VarDeclaration, VarDeclaration, VarDeclaration] = [
+    new VarDeclaration({
+      name: new Any(keys[0], { role: 'property' }),
+      value: new Nil()
+    }, { paramVar: true }),
+    new VarDeclaration({
+      name: new Any(keys[1], { role: 'property' }),
+      value: new Nil()
+    }, { paramVar: true }),
+    new VarDeclaration({
+      name: new Any(keys[2], { role: 'property' }),
+      value: new Nil()
+    }, { paramVar: true })
+  ];
+  return new For({
+    pattern: { kind: 'tuple', values: vars },
+    iterable: { kind: 'node', value: list },
+    rules: mixinRules
+  });
 }
 
 const each = defineFunction(

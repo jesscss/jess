@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import {
   color,
   hsv
 } from '../less/index.js';
 
-import { Color, ColorFormat, Context, Quoted, Dimension } from '@jesscss/core';
+import { Color, ColorFormat, Context, Quoted, Dimension, type RuntimeFunction } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 
 let context: Context;
@@ -72,7 +73,7 @@ describe('color', () => {
   });
 
   it('rejects missing argument', () => {
-    expect(() => color.call(context)).toThrow('Required argument \'c\' is missing');
+    expect(() => (color as RuntimeFunction).call(context)).toThrow('Required argument \'c\' is missing');
   });
 
   it('rejects wrong argument type', () => {

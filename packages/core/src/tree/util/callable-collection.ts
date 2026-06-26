@@ -15,7 +15,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     this.entries = value;
   }
 
-  override adopt() {
+  override adopt(_node?: Node) {
     return this;
   }
 

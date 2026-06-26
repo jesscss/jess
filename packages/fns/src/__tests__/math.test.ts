@@ -23,7 +23,6 @@ describe('math', () => {
     dim = new Dimension({ number: 2.4, unit: 'px' });
   });
   it('rejects a non-dimension', () => {
-    // @ts-expect-error - incorrect type
     expect(() => floor('1')).toThrowError('Argument \'value\' must be one of:');
   });
 

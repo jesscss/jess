@@ -17,6 +17,7 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
   */
   let alpha: Node | number = 1;
   if (one instanceof Sequence) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const val = one.value as Dimension[];
     one = val[0]!;
     two = val[1]!;
@@ -26,10 +27,13 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
      *   function caller? Or parsed differently?
      */
     if (three instanceof Operation) {
-      const [left, , right] = three.value;
-      three = left as Dimension;
-      alpha = right as Dimension;
+      const op = three;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      three = op.left as Dimension;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      alpha = op.right as Dimension;
     }
   }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return ([one, two, three, alpha].map(v => getNumber(v, true)) as [number, number, number, number]);
 }

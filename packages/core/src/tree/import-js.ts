@@ -61,7 +61,8 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
       w.add('@-from ');
       path.writeSyntax(options);
       w.add(' import ');
-      const first = imports[0];
+      // imports.length > 0 is guaranteed by the `imports?.length` check above
+      const first = imports[0]!;
       const firstName = typeof first === 'string' ? first : (Array.isArray(first) ? first[0] : first.name);
       const firstAlias = typeof first === 'string' ? undefined : (Array.isArray(first) ? first[1] : first.alias);
       if (imports.length === 1 && firstName === '*' && firstAlias) {
@@ -72,7 +73,8 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
           if (i > 0) {
             w.add(', ');
           }
-          const specifier = imports[i];
+          // i is within bounds since we loop i < imports.length
+          const specifier = imports[i]!;
           if (typeof specifier === 'string') {
             w.add(specifier);
             continue;

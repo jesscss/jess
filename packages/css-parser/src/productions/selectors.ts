@@ -574,7 +574,8 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       if (value.length === 1) {
-        return value[0]!;
+        const first = value[0]!;
+        return typeof first !== 'string' ? first : undefined;
       }
       return new ComplexSelector(value as ComplexSelectorValue, undefined, location, this.context);
     }

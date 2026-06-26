@@ -11,6 +11,7 @@ import type {
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
+import type { StylesConfig } from './types.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -53,7 +54,6 @@ export interface ContextOptions {
    * generate a separate module for calculated CSS variables.
    */
   dynamic?: boolean;
-  collapseNesting?: boolean;
 
   mathMode?: MathMode;
   unitMode?: UnitMode;
@@ -94,6 +94,9 @@ export interface ContextOptions {
    * When false, errors are collected and processing continues.
    */
   breakOnError?: boolean;
+
+  /** Output options — mirrors StylesConfig['output']; overrides any config-file setting. */
+  output?: StylesConfig['output'];
 
   /**
    * Lazily supplies an importer plugin after path resolution proves a module
@@ -484,6 +487,9 @@ export class Context {
     }
     if (opts.bubbleRootAtRules !== undefined) {
       this._bubbleRootAtRules = opts.bubbleRootAtRules;
+    }
+    if (opts.output?.compress !== undefined) {
+      this.printState.compress = opts.output.compress;
     }
   }
 

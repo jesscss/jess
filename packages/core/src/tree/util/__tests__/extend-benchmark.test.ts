@@ -20,7 +20,8 @@ import {
   ruleset,
   decl,
   extend,
-  any
+  any,
+  ExtendFlag
 } from '../../../index.js';
 import type { Selector } from '../../../index.js';
 import { applyExtendsToSelector, extendSelector } from '../extend.js';
@@ -115,6 +116,7 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
 
     // Build compound: :is(.a1,...,.aN):is(.b1,...,.bN):is(.c1,...,.cN)
     const prefixes = ['a', 'b', 'c'];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const target = compound(
       Array.from({ length: IS_BLOCKS }, (_, block) =>
         is(sellist(
@@ -163,6 +165,7 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
     const SELECTORS = 200;
     const INSTRUCTIONS = 20;
     const items: Selector[] = Array.from({ length: SELECTORS }, (_, i) => el(`.item-${i}`));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const target = sellist(items) as unknown as Selector;
     const finds = Array.from({ length: INSTRUCTIONS }, (_, i) =>
       el(`.item-${i * 10}`)
@@ -202,9 +205,11 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
    */
   it('Scenario 4: compound find consuming from compound target', () => {
     const ITERS = 500;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const target = compound([
       el('.a'), el('.b'), el('.c'), el('.d'), el('.e')
     ]) as unknown as Selector;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const find = compound([el('.b'), el('.d')]) as unknown as Selector;
     const extendWith = el('.z');
 
@@ -240,6 +245,7 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
     const selectors: Selector[] = Array.from({ length: N_RULESETS }, (_, i) => {
       if (i % 3 === 0) {
         // Compound with :is()
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return compound([
           el(`.cls-${i}`),
           is(sellist([el(`.alt-${i}-a`), el(`.alt-${i}-b`)]))
@@ -308,7 +314,7 @@ describe('Extend pipeline benchmark: walk vs legacy', () => {
         ...Array.from({ length: N }, (_, i) =>
           ruleset({
             selector: sellist([sel([el(`.child-${i}`)])]),
-            rules: [extend({ target: el('.base'), all: true })]
+            rules: [extend({ target: el('.base'), flag: ExtendFlag.All })]
           })
         )
       ]);

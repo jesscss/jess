@@ -820,7 +820,7 @@ export function functionCall(this: P, T: TokenMap): ProductionRule {
       return mapped as unknown as any;
     }
     const call = mapped as Call;
-    const { name, args } = call.value;
+    const { name, args } = call;
 
     if (typeof name === 'string' && name === 'selector.parse') {
       const argValues = isNode(args, N.List) ? (args as List).value : [];

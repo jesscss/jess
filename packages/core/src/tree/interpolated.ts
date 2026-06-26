@@ -28,7 +28,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const arg = (replacement as unknown as { value: unknown }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -37,7 +38,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    const value = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const value = (replacement as unknown as { value: unknown }).value;
     if (value instanceof Node) {
       return value;
     }
@@ -271,7 +273,7 @@ export class Interpolated<
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderEvaluatedReplacementText(context, prepared);
     const finish = (rendered: string): string => buffer ? writeRenderText(buffer, rendered) : rendered;
     return isThenable(out)

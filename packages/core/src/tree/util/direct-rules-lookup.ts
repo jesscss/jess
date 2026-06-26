@@ -2,7 +2,8 @@ import type { Context } from '../../context.js';
 import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
-import type { Rules, RulesOptions } from '../rules.js';
+import { Rules } from '../rules.js';
+import type { RulesVisibility } from '../rules.js';
 import { lookupScopeFrameVariable } from '../scope-frame.js';
 import { isNode } from './is-node.js';
 import {
@@ -152,7 +153,7 @@ function isRulesetBodyScope(rules: Rules): boolean {
 function getDeclarationVisibility(
   rules: Rules,
   strategy: DeclarationLookupStrategy
-): RulesOptions['rulesVisibility'][string] | undefined {
+): RulesVisibility | undefined {
   return strategy.visibilityKey === undefined
     ? undefined
     : rules.options.rulesVisibility?.[strategy.visibilityKey];
@@ -214,7 +215,7 @@ function getDirectDeclarationBucket(
   const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (!isNode(node, N.Declaration | N.VarDeclaration)) {
+    if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
       continue;
     }
     if (node.options?.setDefined) {
@@ -222,7 +223,7 @@ function getDirectDeclarationBucket(
     }
     if (String(node.name.valueOf()) === key) {
       bucket ??= [];
-      bucket.push(node);
+      bucket.push(node as Declaration);
     }
   }
   if (!bucket) {
@@ -521,17 +522,17 @@ function findWithinScopeSurface(
       includeFallbackFrames: false,
       searchParents: false
     });
-    const liveSource = frameHit.kind === 'live'
-      ? frameHit.sourceNode
-      : undefined;
+    const liveHit = frameHit.kind === 'live' ? frameHit : undefined;
+    const liveSource = liveHit?.sourceNode;
     if (
-      liveSource
+      liveHit
+      && liveSource
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
       const liveOccurrence = createDeclarationOccurrence(liveSource);
       countDirectLookup?.('declaration.liveBindingHit');
-      state.readonly ||= Boolean(frameHit.readonly || frameHit.cell.readonly || liveSource.options?.readonly);
+      state.readonly ||= Boolean(liveHit.readonly || liveHit.cell.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
         state.optionalMatch = liveOccurrence;
@@ -737,7 +738,8 @@ function findDeclarationLookupWithStrategy(
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
-      rules = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      const nextRulesNode: object | undefined = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = nextRulesNode instanceof Rules ? nextRulesNode : undefined;
       continue;
     }
     if (!searchParents) {
@@ -753,7 +755,8 @@ function findDeclarationLookupWithStrategy(
     rules = parentStep.rules;
     start = parentStep.start;
     if (!rules && strategy.includeFallbackFrames && optionalMatch === undefined) {
-      rules = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      const fallbackRulesNode = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = fallbackRulesNode instanceof Rules ? fallbackRulesNode : undefined;
       searchingFallback = true;
     }
   }

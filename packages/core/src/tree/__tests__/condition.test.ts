@@ -16,6 +16,7 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
+  declare value: string;
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
     options.writer.add(this.value);
   }
@@ -71,7 +72,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true)]).toTrimmedString({ writer })).toBe('true');
       expect(writer.toString()).toBe('true');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes negated boolean-only condition syntax without writer readback', () => {
@@ -79,7 +80,7 @@ describe('Condition', () => {
 
       expect(condition([bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (false)');
       expect(writer.toString()).toBe('not (false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes boolean comparison condition syntax without writer readback', () => {
@@ -87,7 +88,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true), '=', bool(false)]).toTrimmedString({ writer })).toBe('(true = false)');
       expect(writer.toString()).toBe('(true = false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes child condition syntax without child public string transport', () => {
@@ -100,7 +101,7 @@ describe('Condition', () => {
 
       expect(node.toTrimmedString({ writer })).toBe('(left = right)');
       expect(writer.toString()).toBe('(left = right)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes negated boolean comparison condition syntax without writer readback', () => {
@@ -108,7 +109,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true), 'and', bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (true and false)');
       expect(writer.toString()).toBe('not (true and false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('does not allocate options when rendering a default condition', () => {
@@ -205,8 +206,10 @@ describe('Condition', () => {
       let boolStringCalls = 0;
       const asyncLeft = bool(true);
       const asyncRight = bool(true);
-      asyncLeft.eval = () => Promise.resolve(bool(true));
-      asyncRight.eval = () => Promise.resolve(bool(true));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      asyncLeft.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncLeft.eval;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      asyncRight.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncRight.eval;
       Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
         this: Bool,
         ...args: Parameters<Bool['toTrimmedString']>

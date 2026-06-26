@@ -1448,7 +1448,7 @@ export function scssEachAtRule(this: P, T: TokenMap): ProductionRule {
       return rawExpr;
     }
 
-    const expr = isNode(rawExpr, N.Expression) ? rawExpr.node : rawExpr;
+    const expr = isNode(rawExpr, N.Expression) ? rawExpr.value : rawExpr;
 
     $.CONSUME($.T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
