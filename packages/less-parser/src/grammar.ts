@@ -8,7 +8,7 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, rules
+  not, scanTo, balanced, parser, trivia, noTrivia, rules, expect
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
 import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
@@ -75,7 +75,9 @@ const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
 const urlOpen = regex(/url\(/i);
-const urlInner = regex(/[^)"'\s]+/);
+// Unquoted url() body: any run of non-delimiter chars, with CSS escapes (\" \( …)
+// so escaped quotes/parens inside the URL don't terminate it.
+const urlInner = regex(/(?:\\.|[^)"'\s])+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // Less-specific terminals.
@@ -88,11 +90,12 @@ const lessInterp = regex(/@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*
 
 const cssRules = rules((g: any) => {
   // ── Root (Less: + VarDeclaration, MixinCall, detached Call) ─────────────────
-  const unknownTok = scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true });
+  // No catch-all: unmatched input stops `many`; the driver reports the unconsumed
+  // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
       g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule,
-      sequence(g.Call, optional(literal(';'))), unknownTok
+      sequence(g.Call, optional(literal(';'))), literal(';')
     ))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
@@ -136,7 +139,7 @@ const cssRules = rules((g: any) => {
   const mixinCallBasicSel = regex(/[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const mixinCallPath = parser({ trivia: rw }, sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel))));
   const MixinCall = node('MixinCall',
-    parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('MixinCall', c, r, s));
   const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
     parser({ trivia: rw }, sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
@@ -161,8 +164,10 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('Guard', c, r, s));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
+  // `&` optionally glued to an alphanumeric suffix (`&1`, `&-bar`) — Less appends
+  // it to the parent selector. The `&(…)` form keeps its paren scan.
   const LessAmpersand = node('LessAmpersand',
-    parser({ trivia: rw }, sequence(literal('&'), optional(sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'))))),
+    parser({ trivia: rw }, sequence(regex(/&[_a-zA-Z0-9-]*/), optional(sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'))))),
     (c: any, r: any, s: any) => mk('LessAmpersand', c, r, s));
   const InterpolatedSelector = node('InterpolatedSelector',
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
@@ -172,12 +177,16 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
+  // `sel when (…)` is a guarded ruleset: `when` followed by `(` is the guard
+  // keyword, NOT another selector — stop the selector run before it (in both the
+  // compound run and the complex run, since `& when` has no mixin-path fallback).
+  const whenAhead = regex(/when(?![-\w])[ \t\n\r\f]*\(/i);
   const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.LessAmpersand, g.InterpolatedSelector, basicSel);
   const CompoundSelector = node('CompoundSelector',
-    parser({ trivia: rw }, oneOrMore(g.simpleSelector)),
+    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), g.simpleSelector)))),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
   const LessComplexSelector = node('LessComplexSelector',
-    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector)))),
+    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(whenAhead), g.CompoundSelector)))),
     (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s));
   const LessSelectorList = node('LessSelectorList',
     parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))),
@@ -199,7 +208,7 @@ const cssRules = rules((g: any) => {
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.LessSelectorList, literal('{'), g.declarationList, literal('}'))),
+    parser({ trivia: rw }, sequence(g.LessSelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
   // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
   // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
@@ -209,11 +218,10 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';'),
-    sequence(scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true }), optional(literal(';')))
+    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';')
   )));
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
   const CustomDeclaration = node('CustomDeclaration',
@@ -248,7 +256,7 @@ const cssRules = rules((g: any) => {
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] }));
   const AtRuleBlock = node('AtRuleBlock',
-    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
@@ -290,13 +298,39 @@ export type LessFnParseResult = {
   lexerResult: { errors: Array<unknown> };
 };
 
+/**
+ * First offset at/after `from` holding real (non-trivia) input, or null if only
+ * whitespace / block / line comments remain — the point the grammar stopped short
+ * on. Mirrors the less `rw` trivia (ws + block + line comments).
+ */
+function firstUnparsedOffset(input: string, from: number): number | null {
+  let i = from;
+  while (i < input.length) {
+    const c = input[i]!;
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { i++; continue; }
+    if (c === '/' && input[i + 1] === '*') {
+      const end = input.indexOf('*/', i + 2);
+      if (end === -1) return i;
+      i = end + 2; continue;
+    }
+    if (c === '/' && input[i + 1] === '/') {
+      const nl = input.indexOf('\n', i + 2);
+      if (nl === -1) return null;
+      i = nl + 1; continue;
+    }
+    return i;
+  }
+  return null;
+}
+
 export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResult {
   host.setSource(input);
   host.resetWarnings();
   const ruleName = ALIASES[rule] ?? rule;
   const fn = (cssRules as Record<string, unknown>)[ruleName];
   const triviaLog: number[] = [];
-  const ctx = { trackLines: false, _triviaLog: triviaLog };
+  const parseErrors: Array<{ span: { start: number }; expected: string[] }> = [];
+  const ctx = { trackLines: false, _triviaLog: triviaLog, _errors: parseErrors };
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
   const r = typeof fn === 'function'
     ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
@@ -304,11 +338,24 @@ export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResu
 
   const tree: Node = r.ok && r.value instanceof Node ? r.value : (nil() as unknown as Node);
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
-  const errors: Array<{ message: string; offset?: number }> = [];
-  if (!r.ok) {
-    errors.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
+
+  // Same model as parseCssFn: expect()/recover() ParseErrors, a hard top-level
+  // failure, and any unconsumed input — report the earliest (one error, stop).
+  const collected: Array<{ message: string; offset?: number }> = [];
+  for (const e of parseErrors) {
+    const exp = e.expected.filter(x => x !== 'sentinel');
+    collected.push({ message: exp.length ? `expected ${exp.join(', ')}` : 'Unexpected input', offset: e.span.start });
   }
-  errors.push(...host.getErrors());
+  if (!r.ok) {
+    collected.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
+  }
+  const leftoverAt = r.ok ? firstUnparsedOffset(input, r.span?.end ?? 0) : null;
+  if (leftoverAt !== null) {
+    collected.push({ message: 'Unexpected input', offset: leftoverAt });
+  }
+  collected.push(...host.getErrors());
+  collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
+  const errors = collected.length > 0 ? [collected[0]!] : [];
 
   return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input), lexerResult: { errors: [] } };
 }
