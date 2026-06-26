@@ -114,7 +114,7 @@ export const {
 
   // ── Root ──────────────────────────────────────────────────────────────────
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, BadStatement))),
+    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, BadStatement))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export const {
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.AtRuleBlock, g.AtRuleStatement, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";"), BadStatement
   )));
 
   /**
@@ -219,6 +219,37 @@ export const {
   // Non-ident value tokens only; ident-led values are handled by Call above.
   const anyValue = anyValueTok;
 
+  // ── At-rule query preludes (@media / @container / @supports) ────────────────
+  // Logic reference: productions/atRules.ts (the Chevrotain parser). Node shapes
+  // are improved: a comparison feature is QueryCondition(['name','op', value]) —
+  // plain strings for name+operator, a real node for the value; not/and/or stay
+  // Keyword nodes; `(X)` is Paren(X); `name: value` is a Declaration.
+  // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
+  const mfComparison = regex(/<=|>=|[<>=]/);
+  const QueryFeature = node('QueryFeature',
+    parser({ trivia: rw }, sequence(ident, optional(choice(
+      sequence(literal(':'), g.valueList),
+      sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
+    )))),
+    (c: any, r: any, s: any) => mk('QueryFeature', c, r, s));
+  const QueryInParens = node('QueryInParens',
+    parser({ trivia: rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))),
+    (c: any, r: any, s: any) => mk('QueryInParens', c, r, s));
+  const QueryCondition = node('QueryCondition',
+    parser({ trivia: rw }, choice(
+      sequence(regex(/not(?![-\w])/i), g.QueryInParens),
+      sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
+    )),
+    (c: any, r: any, s: any) => mk('QueryCondition', c, r, s));
+  // Optional leading container name — an ident that is NOT a query keyword
+  // (not/and/or/only), so `@container not (…)` keeps `not` in the condition.
+  const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
+  const queryPrelude = parser({ trivia: rw }, sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
+  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const QueryAtRuleBlock = node('QueryAtRuleBlock',
+    parser({ trivia: rw }, sequence(queryAtKeyword, queryPrelude, literal('{'), g.atRuleBody, literal('}'))),
+    (c: any, r: any, s: any) => mk('QueryAtRuleBlock', c, r, s));
+
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
    * An at-rule is `@name <prelude>` ended by either a `{}` block or a `;`. The
@@ -237,7 +268,7 @@ export const {
   // Body of an at-rule block. BadStatement recovers a non-standard / unknown
   // at-rule body (e.g. an unknown `@future {…}`) instead of failing the block.
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';'), BadStatement
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";"), BadStatement
   )));
 
   return {
@@ -246,7 +277,8 @@ export const {
     Declaration, CustomDeclaration, declarationList,
     valueList, valueSequence, value, parenBody,
     Dimension, Num, Color, Url, Call, Paren, Quoted, anyValue,
-    AtRuleBlock, AtRuleStatement, atRuleBody
+    AtRuleBlock, AtRuleStatement, atRuleBody,
+    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature
   };
 });
 

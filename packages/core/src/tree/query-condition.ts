@@ -18,7 +18,10 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 
-function getKnownQueryConditionSourceText(node: Node): string | undefined {
+function getKnownQueryConditionSourceText(node: Node | string): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
   if (node instanceof Any) {
     return node.value;
   }
@@ -155,7 +158,13 @@ export class QueryCondition extends Sequence {
    * `canWriteStaticChildDirect`, delete this compatibility branch, and make
    * this method a straight `node.writeSyntax(options)` call.
    */
-  private writeStaticChild(node: Node, options: FinalPrintOptions): void {
+  private writeStaticChild(node: Node | string, options: FinalPrintOptions): void {
+    // A query condition's value may hold plain strings for the feature name and
+    // comparison operator (e.g. ['width', '>', <Dimension>]) — write them verbatim.
+    if (typeof node === 'string') {
+      options.writer.add(node);
+      return;
+    }
     if (this.canWriteStaticChildDirect(node)) {
       node.writeSyntax(options);
       return;

@@ -35,6 +35,7 @@ import {
   Sequence, List,
   Call, Paren, Url,
   Quoted,
+  QueryCondition, Keyword,
   AtRule, AtRuleStatement,
   AttributeSelector, type AttributeSelectorValue,
   PseudoSelector
@@ -299,6 +300,10 @@ export class CssParser {
       case 'Quoted':            return this._buildQuoted(children, loc);
       case 'AtRuleBlock':       return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'AtRuleStatement':   return this._buildAtRuleStatement(children, loc);
+      case 'QueryAtRuleBlock':  return this._buildQueryAtRuleBlock(children, loc) as unknown as JessNode;
+      case 'QueryCondition':    return this._buildQueryConditionRule(children, loc) as unknown as JessNode;
+      case 'QueryInParens':     return this._buildQueryInParens(children, loc) as unknown as JessNode;
+      case 'QueryFeature':      return this._buildQueryFeature(children, loc) as unknown as JessNode;
       case 'BadStatement':      return this._buildBadStatement(loc) as unknown as JessNode;
       default:                  return new Any(leafText(children) || type, {}, loc);
     }
@@ -749,6 +754,86 @@ export class CssParser {
       { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
       undefined, loc
     );
+  }
+
+  /**
+   * A media/container feature inside `(...)`. Node shapes (improved over the
+   * Chevrotain `Any(x,{role})` wrapping): `name <op> value` → QueryCondition with
+   * the name and operator as PLAIN STRINGS and a real value node; `name: value`
+   * → Declaration; a bare boolean feature → QueryCondition(['name']).
+   */
+  protected _buildQueryFeature(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const name = ls[0]?.value ?? '';
+    if (ls[1]?.value === ':') {
+      const value = nodes[0] ?? new Any('', {}, loc);
+      return new Declaration({ name, value: value as unknown as Node }, undefined, loc) as unknown as JessNode;
+    }
+    if (ls.length >= 2) {
+      const parts: Array<string | Node> = [name];
+      let ni = 0;
+      for (let i = 1; i < ls.length; i++) {
+        parts.push(ls[i]!.value);
+        if (nodes[ni]) parts.push(nodes[ni++]!);
+      }
+      return new QueryCondition(parts as unknown as Node[], undefined, loc) as unknown as JessNode;
+    }
+    return new QueryCondition([name] as unknown as Node[], undefined, loc) as unknown as JessNode;
+  }
+
+  /** `( condition | feature )` → Paren(inner). */
+  protected _buildQueryInParens(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const inner = nodeChildren(children)[0];
+    return new Paren(inner as unknown as Node, undefined, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `not (X)` → QueryCondition([Keyword('not'), Paren]); `(X) (and|or) (Y)…` →
+   * QueryCondition([Paren, Keyword('and'), Paren, …]); a single `(X)` passes the
+   * Paren through unwrapped (matching the Chevrotain "single node returns directly").
+   */
+  protected _buildQueryConditionRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const opLeaves = children.filter(
+      (c): c is CSTLeaf => c._tag === 'leaf' && /^(?:not|and|or)$/i.test((c as CSTLeaf).value)
+    );
+    const nodes = nodeChildren(children);
+    if (opLeaves[0]?.value.toLowerCase() === 'not') {
+      return new QueryCondition(
+        [new Keyword('not', undefined, loc), nodes[0]!] as unknown as Node[], undefined, loc
+      ) as unknown as JessNode;
+    }
+    if (opLeaves.length === 0) {
+      return nodes[0] as JessNode;
+    }
+    const parts: Node[] = [nodes[0]!];
+    let ni = 1;
+    for (const op of opLeaves) {
+      parts.push(new Keyword(op.value, undefined, loc) as unknown as Node);
+      if (nodes[ni]) parts.push(nodes[ni++]!);
+    }
+    return new QueryCondition(parts, undefined, loc) as unknown as JessNode;
+  }
+
+  /** `@media/@container/@supports <queryPrelude> { body }` → AtRule with a parsed
+   *  Sequence prelude (query conditions + optional leading container name). */
+  protected _buildQueryAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
+    const nameLeaf = preludeChildren.find(
+      (c): c is CSTLeaf => c._tag === 'leaf' && (c as CSTLeaf).value !== ','
+    );
+    const preludeItems: Node[] = [];
+    if (nameLeaf) preludeItems.push(new Any(nameLeaf.value, { role: 'ident' }, loc) as unknown as Node);
+    preludeItems.push(...nodeChildren(preludeChildren));
+    const prelude = new Sequence(preludeItems, undefined, loc);
+    return new AtRule(
+      { name, prelude: prelude as unknown as Node, rules: nodeChildren(bodyChildren) },
+      undefined, loc
+    ) as unknown as JessNode;
   }
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 }
