@@ -47,7 +47,6 @@ import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
 import type { StyleImport } from './import-style.js';
 import {
-  assignScopeFrameVariable,
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
   createVarDeclarationBindingEntry,
@@ -130,9 +129,21 @@ type UncoveredCallableResult =
   | MixinEntry[]
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
-function syncDeclarationValue(declaration: Declaration, value: Node): void {
-  declaration.value = value;
-  declaration.adopt(value);
+/**
+ * Evaluate a setDefined assignment's right-hand side. The value is left lazy
+ * when there is no eval context (registration-time assignment): it is a value
+ * node that the binding cell holds and reads dereference later.
+ */
+function evalSetDefinedAssignedValue(node: Declaration, context?: Context): Node {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  let assignedValue = node.value as Node;
+  if (context) {
+    const evaluatedValue = assignedValue.eval(context);
+    if (!isThenable(evaluatedValue)) {
+      assignedValue = evaluatedValue;
+    }
+  }
+  return assignedValue;
 }
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImport {
@@ -4287,35 +4298,37 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
        * older non-variable declaration placement behavior.
        */
       if (node.options?.setDefined) {
-        let key = node.name.toString();
-        if (isNode(node, N.VarDeclaration) && this._scopeFrame) {
-          const variableHit = lookupScopeFrameVariable(this._scopeFrame, key, {
-            bailOnPendingDeclarations: true,
-            blockedSource: source => source === node,
-            filter: source => source !== node,
-            includeAssignmentTargets: true
-          });
-          if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
-            if (variableHit.readonly || variableHit.cell.readonly) {
-              throw new ReferenceError(`"${key}" is readonly`);
-            }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            let assignedValue = node.value as Node;
-            if (context) {
-              const evaluatedValue = assignedValue.eval(context);
-              if (!isThenable(evaluatedValue)) {
-                assignedValue = evaluatedValue;
+        const key = node.name.toString();
+        // setDefined is an assignment, not a declaration: it overwrites the
+        // existing binding's runtime value. That value lives in a per-scope
+        // ScopeFrame cell, so the write stays isolated to this mixin invocation
+        // / loop iteration. The AST node is a shared template reused across
+        // every invocation — we must never mutate it here.
+        if (isNode(node, N.VarDeclaration)) {
+          // When this scope already has a frame, it models the live binding
+          // chain (params, declaration cells, imported assignment targets), so
+          // resolve through it without rebuilding or crawling source `rules`.
+          const frame = this._scopeFrame;
+          if (frame) {
+            const variableHit = lookupScopeFrameVariable(frame, key, {
+              bailOnPendingDeclarations: true,
+              blockedSource: source => source === node,
+              filter: source => source !== node,
+              includeAssignmentTargets: true
+            });
+            if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
+              if (variableHit.readonly || variableHit.cell.readonly) {
+                throw new ReferenceError(`"${key}" is readonly`);
               }
+              variableHit.cell.value = evalSetDefinedAssignedValue(node, context);
+              return;
             }
-            variableHit.cell.value = assignedValue;
-            const sourceNode = variableHit.sourceNode;
-            if (isNode(sourceNode, N.VarDeclaration)) {
-              syncDeclarationValue(sourceNode, assignedValue);
+            if (variableHit.kind === 'miss') {
+              throw new ReferenceError(`"${key}" is not defined`);
             }
-            return;
-          }
-          if (variableHit.kind === 'miss') {
-            throw new ReferenceError(`"${key}" is not defined`);
+            // kind === 'uncovered': the frame can't model this assignment
+            // surface (optional / dynamic targets). Fall to the occurrence
+            // crawl, which resolves the owner Rules and writes its cell.
           }
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
@@ -4330,17 +4343,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const result = resultOccurrence.node;
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          let assignedValue = node.value as Node;
-          if (context) {
-            const evaluatedValue = assignedValue.eval(context);
-            if (!isThenable(evaluatedValue)) {
-              assignedValue = evaluatedValue;
-            }
-          }
-          if (isNode(result.parent, N.Rules)) {
-            syncDeclarationValue(result, assignedValue);
-            assignScopeFrameVariable(result.parent._scopeFrame, key, assignedValue);
+          const owner = result.parent;
+          if (isNode(owner, N.Rules)) {
+            // Write the existing binding cell on the owner scope. The cell is
+            // the per-frame runtime value that reads dereference; we never
+            // mutate the shared AST node, so mixin invocations / loop
+            // iterations that reuse the same node stay isolated.
+            owner.writeSetDefinedBindingCell(key, result, evalSetDefinedAssignedValue(node, context));
           }
           return;
         }
@@ -4448,6 +4457,42 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (rebuildCallableCache && this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
     }
+  }
+
+  /**
+   * Overwrite the runtime binding cell for an existing variable owned by this
+   * scope, as resolved by the setDefined occurrence crawl. Prefers a built
+   * frame's modeled cell (which also covers imported assignment targets);
+   * otherwise updates the declaration-index cell directly without allocating a
+   * scope frame. Never mutates the AST node — the cell is the per-frame value
+   * that reads dereference, keeping reused mixin/loop bodies isolated.
+   */
+  private writeSetDefinedBindingCell(key: string, declaration: Node, value: Node): void {
+    if (this._scopeFrame) {
+      const hit = lookupScopeFrameVariable(this._scopeFrame, key, {
+        includeAssignmentTargets: true,
+        searchParents: false
+      });
+      if (hit.kind === 'live' || hit.kind === 'declaration') {
+        hit.cell.value = value;
+        return;
+      }
+    }
+    if (this.varsByName === undefined) {
+      this.prepareScopeFrameDeclarationIndex();
+    }
+    const bucket = this.varsByName?.get(key);
+    if (!bucket || bucket.length === 0) {
+      return;
+    }
+    let entry = bucket[bucket.length - 1]!;
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      if (bucket[i]!.sourceNode === declaration) {
+        entry = bucket[i]!;
+        break;
+      }
+    }
+    entry.cell.value = value;
   }
 
   getDeclarationLookupVersion(key: string): number {

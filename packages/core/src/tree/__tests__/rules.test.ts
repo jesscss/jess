@@ -1240,8 +1240,7 @@ describe('Rules', () => {
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const scope3Rules = scope3.rules as unknown as Rules;
+        const scope3Rules = scope3;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
@@ -1695,8 +1694,9 @@ describe('Rules', () => {
           });
         }
 
+        // setDefined writes the runtime cell, not the shared AST node.
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
-        expect(original.value.toString()).toBe('three');
+        expect(original.value.toString()).toBe('one');
       });
 
       it('updates parent-frame modeled setDefined declaration cells without direct occurrence crawl', () => {
@@ -1749,7 +1749,8 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
-        expect(original.value.toString()).toBe('three');
+        // The shared AST node is untouched; only the runtime cell changes.
+        expect(original.value.toString()).toBe('one');
       });
 
       it('treats covered setDefined variable misses as authoritative without direct occurrence crawl', () => {
@@ -1931,7 +1932,8 @@ describe('Rules', () => {
         }
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
-        expect(importedDecl.value.toString()).toBe('three');
+        // Assignment writes the imported binding cell, never the AST node.
+        expect(importedDecl.value.toString()).toBe('one');
       });
 
       it('leaves unmodeled imported setDefined assignment targets uncovered for direct fallback', () => {
@@ -1955,7 +1957,10 @@ describe('Rules', () => {
 
         child.registerNode(assignment, undefined, context);
 
-        expect(optionalDecl.value.toString()).toBe('three');
+        // Uncovered target falls to the occurrence crawl, which writes the
+        // owner's declaration cell — the AST node stays as authored.
+        expect(optional.varsByName?.get('one')?.at(-1)?.cell.value?.toString()).toBe('three');
+        expect(optionalDecl.value.toString()).toBe('one');
       });
 
       it('leaves dynamic public imported setDefined assignment targets uncovered', () => {
@@ -2063,7 +2068,8 @@ describe('Rules', () => {
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
-        expect(publicDecl.value.toString()).toBe('three');
+        // The shared public/optional AST nodes are never mutated by the write.
+        expect(publicDecl.value.toString()).toBe('two');
         expect(optionalDecl.value.toString()).toBe('one');
       });
 
@@ -2139,8 +2145,9 @@ describe('Rules', () => {
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
+        // Neither shared AST node is mutated — only the resolved cell changes.
         expect(earlierDecl.value.toString()).toBe('one');
-        expect(laterDecl.value.toString()).toBe('three');
+        expect(laterDecl.value.toString()).toBe('two');
       });
 
       it('refreshes carried imported setDefined assignment summaries after late child registration', () => {
@@ -2231,7 +2238,8 @@ describe('Rules', () => {
 
         expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
-        expect(publicDecl.value.toString()).toBe('three');
+        // The carried public AST node is untouched; the write lands on the cell.
+        expect(publicDecl.value.toString()).toBe('one');
       });
 
       it('does not allocate late setDefined assignment frame cells shadowed by current bindings', () => {
@@ -2260,7 +2268,9 @@ describe('Rules', () => {
 
         child.registerNode(assignment, undefined, context);
 
-        expect(parentDecl.value.toString()).toBe('three');
+        // The current (shadowing) binding cell receives the write; nodes stay put.
+        expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(parentDecl.value.toString()).toBe('root');
         expect(publicDecl.value.toString()).toBe('public');
       });
 
@@ -2293,8 +2303,10 @@ describe('Rules', () => {
 
         child.registerNode(assignment, undefined, context);
 
+        // The later public target's cell receives the write; AST nodes stay put.
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
         expect(earlierDecl.value.toString()).toBe('earlier');
-        expect(laterDecl.value.toString()).toBe('three');
+        expect(laterDecl.value.toString()).toBe('later');
       });
 
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
@@ -2368,8 +2380,10 @@ describe('Rules', () => {
 
         node.registerNode(assignment, undefined, context);
 
+        // The write updates the declaration-index cell directly — no scope
+        // frame is allocated just to perform a setDefined assignment.
         expect(node._scopeFrame).toBeUndefined();
-        expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
+        expect(node.varsByName?.get('one')?.at(-1)?.cell.value?.toString()).toBe('three');
       });
 
       it('fails to set if existing variable is in readonly rules', async () => {
