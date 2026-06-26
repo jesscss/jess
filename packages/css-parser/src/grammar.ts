@@ -151,8 +151,13 @@ export const {
   // keyword is allowed (the enclosing parser({ trivia }) skips it).
   const important = sequence(literal('!'), regex(/important/i));
 
+  // Property name allows a leading `*` — the legacy IE7 star-hack (`*color: …`).
+  // `_prop` (IE6 underscore hack) already parses since `_` is an ident char.
+  // (When legacyMode lands, an off setting should report-and-recover on `*`, not
+  // silently accept — handled with the error-net.)
+  const propName = regex(/\*?-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(ident, literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(
