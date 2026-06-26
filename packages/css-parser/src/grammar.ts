@@ -125,7 +125,8 @@ export const {
   const CompoundSelector = node('CompoundSelector',
     parser({ trivia: rw }, oneOrMore(g.simpleSelector)),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, basicSel);
+  // `&` is the CSS nesting selector (https://www.w3.org/TR/css-nesting-1/).
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), basicSel);
 
   const AttributeSelector = node('AttributeSelector',
     parser({ trivia: rw }, sequence(
@@ -140,8 +141,10 @@ export const {
   const pseudoArg = choice(nth, g.SelectorList, scanTo(literal(')'), { skip: [balanced('(', ')')] }));
 
   // ── Declarations ─────────────────────────────────────────────────────────
+  // CSS nesting: a rule body may contain nested rulesets and at-rules, not just
+  // declarations (https://www.w3.org/TR/css-nesting-1/).
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'), BadStatement
+    g.AtRuleBlock, g.AtRuleStatement, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';'), BadStatement
   )));
 
   // `!important` — keyword is case-insensitive; trivia between `!` and the
@@ -194,7 +197,7 @@ export const {
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
+    g.AtRuleBlock, g.AtRuleStatement, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';'), BadStatement
   )));
 
   return {
