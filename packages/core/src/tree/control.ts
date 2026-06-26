@@ -52,6 +52,19 @@ function normalizeRulesBody(owner: string, rules: unknown): Node[] {
   return arr;
 }
 
+// When a Rules wrapper was passed, adopt it so wrapper.parent === owner and
+// restore children's parent to the wrapper (super() set them to owner).
+function adoptRulesWrapper(owner: Rules, wrapper: Rules): void {
+  owner.adopt(wrapper);
+  const wrapperRules = wrapper.rules;
+  for (let i = 0; i < wrapperRules.length; i++) {
+    const child = wrapperRules[i]!;
+    if (child instanceof Node) {
+      child.parent = wrapper;
+    }
+  }
+}
+
 function makeDirectiveRulesPublic(rules: Rules<any>) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
@@ -158,6 +171,31 @@ async function runWithRulesContext<T>(
 
 function deriveIterationChild(node: Node): Node {
   return copyWithReusableLeaves(node);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the VarDeclaration field type of each binding decl.
+function cloneForPattern(pattern: ForPattern, cloneFn: (n: Node) => Node): ForPattern {
+  if (pattern.kind === 'single') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return { kind: 'single', value: cloneFn(pattern.value) as VarDeclaration };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const values = pattern.values.map(v => cloneFn(v) as VarDeclaration) as [VarDeclaration, ...VarDeclaration[]];
+  return { kind: 'tuple', values };
+}
+
+function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): ForIterable {
+  if (iterable.kind === 'node') {
+    return { kind: 'node', value: cloneFn(iterable.value) };
+  }
+  return {
+    kind: 'range',
+    start: cloneFn(iterable.start),
+    end: cloneFn(iterable.end),
+    ...(iterable.step !== undefined && { step: cloneFn(iterable.step) }),
+    includeStart: iterable.includeStart,
+    includeEnd: iterable.includeEnd
+  };
 }
 
 function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
@@ -427,6 +465,7 @@ export class If extends Rules<IfValue> {
   readonly condition: Node;
   readonly else: IfValue['else'];
   declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -443,6 +482,10 @@ export class If extends Rules<IfValue> {
       makeDirectiveRulesPublic(this.else);
     }
     makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
+    }
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
@@ -516,7 +559,7 @@ export class If extends Rules<IfValue> {
       conditionPasses = condition instanceof Bool && condition.value === true;
     }
     if (conditionPasses) {
-      return renderControlRules(createIterationEvalSurface(this), context, buffer, options);
+      return renderControlRules(this._passedRulesWrapper ?? createIterationEvalSurface(this), context, buffer, options);
     }
     return this.else
       ? renderControlRules(this.else, context, buffer, options)
@@ -552,6 +595,7 @@ export class For extends Rules<StructuredLoopValue> {
   readonly pattern: ForPattern;
   readonly iterable: ForIterable;
   declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -575,6 +619,53 @@ export class For extends Rules<StructuredLoopValue> {
       }
     }
     makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
+      // Carry function bindings from the source wrapper so iteration surfaces
+      // can look them up during eval (createIterationEvalSurface reads this.functionsByName).
+      if (value.rules.functionsByName) {
+        for (const [name, fn] of value.rules.functionsByName) {
+          this.setFunctionBinding(name, fn);
+        }
+      }
+    }
+  }
+
+  // For carries a structured value (pattern + iterable + body), so the base
+  // Rules.clone — which reconstructs from a bare Node[] — cannot rebuild it.
+  // Clone the structured parts too so the source loop template is not mutated
+  // when a placement clone re-adopts shared binding/iterable nodes.
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+    const cloneChild = cloneFn ?? (n => n.clone(deep));
+    const rules = deep
+      ? this.rules.map(rule => cloneChild(rule))
+      : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return new For(
+      {
+        pattern: cloneForPattern(this.pattern, cloneChild),
+        iterable: cloneForIterable(this.iterable, cloneChild),
+        rules
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.sourceRoot?._treeContext
+    ).inherit(this) as this;
+  }
+
+  override derive(value: Node[] = [...this.rules]): For {
+    const cloneChild = (n: Node): Node => n.clone(true);
+    return new For(
+      {
+        pattern: cloneForPattern(this.pattern, cloneChild),
+        iterable: cloneForIterable(this.iterable, cloneChild),
+        rules: value
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.sourceRoot?._treeContext
+    ).inherit(this);
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {
@@ -722,6 +813,7 @@ export class While extends Rules<WhileValue> {
 
   readonly condition: Node;
   declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -733,6 +825,10 @@ export class While extends Rules<WhileValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
     makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
+    }
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
@@ -833,7 +929,6 @@ export class While extends Rules<WhileValue> {
           iterationRules = preparedIterationRules;
         }
         output += await iterationRules.render(context, buffer, options);
-        await syncWhileState(stateRules, iterationRules, context);
       }
     });
     return output;
