@@ -8,7 +8,7 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, rules, expect
+  not, scanTo, balanced, parser, trivia, noTrivia, rules, expect, sepBy
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
 import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
@@ -132,8 +132,16 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('Reference', c, r, s));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
+  // Structured mixin args: the COMBINATORS split on the separators (sepBy), each
+  // arg VALUE an opaque chunk scanned to the next top-level `,` `;` or `)` (values
+  // are freeform — scanTo is the right tool *here*, and balanced skips keep commas
+  // inside nested ()/[]/{}/strings out of the split). The builder reads the
+  // pre-split chunks/separators (no string _splitTopLevel) and rejects mixing `,`
+  // and `;` to separate args. See _buildMixinArgs.
+  const argChunk = scanTo(choice(literal(','), literal(';'), literal(')')),
+    { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}'), singleStr, doubleStr] });
   const MixinArgs = node('MixinArgs',
-    parser({ trivia: rw }, sequence(literal('('), optional(mixinArgsContent), literal(')'))),
+    parser({ trivia: rw }, sequence(literal('('), optional(sepBy(sepBy(argChunk, literal(',')), literal(';'))), literal(')'))),
     (c: any, r: any, s: any) => mk('MixinArgs', c, r, s));
   const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.

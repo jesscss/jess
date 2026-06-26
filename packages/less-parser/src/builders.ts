@@ -679,23 +679,33 @@ export class LessGrammar extends CssParser {
 
   private _buildMixinArgs(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const nodes = nodeChildren(children);
-    const innerNodes = nodes.filter(n => n.type !== 'List');
-    const innerLs = ls.filter(l => l.value !== '(' && l.value !== ')');
-    if (innerNodes.length === 0 && innerLs.length === 0) {
+    // The grammar (sepBy + scanTo) has already split the args at top-level `,`/`;`
+    // (respecting nested ()/[]/{}/strings) — walk the chunks/separators into
+    // `;`-groups of `,`-separated chunks. No string _splitTopLevel.
+    const groups: string[][] = [[]];
+    let semicolonMode = false;
+    for (const l of ls) {
+      const v = l.value;
+      if (v === '(' || v === ')') continue;
+      if (v === ';') { semicolonMode = true; groups.push([]); continue; }
+      if (v === ',') continue;            // chunk separator within the current group
+      const t = v.trim();
+      if (t) groups[groups.length - 1]!.push(t);
+    }
+    // Reject mixing `,` and `;` to SEPARATE ARGS: in semicolon mode, a group with
+    // two or more NAMED args (commas separating named args) is the illegal mix.
+    // Commas inside one arg's value (`@a: 1, 2, 3`) are fine — one named chunk.
+    const isNamed = (c: string) => /^@[\w-]+\s*:/.test(c);
+    if (semicolonMode && groups.some(g => g.filter(isNamed).length >= 2)) {
+      this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc[0]);
+    }
+    if (groups.every(g => g.length === 0)) {
       return new List([] as any, {} as any, loc);
     }
-    const inner = innerLs.map(l => l.value).join('');
-    const trimmed = inner.trim();
-    if (!trimmed && innerNodes.length === 0) {
-      return new List([] as any, {} as any, loc);
-    }
-    // Check if built nodes include a Rest parameter
-    if (innerNodes.length > 0) {
-      return new List(innerNodes as any, {} as any, loc);
-    }
-    const sep = trimmed.includes(';') ? ';' : ',';
-    const items = this._splitTopLevel(trimmed, sep)
+    // semicolon mode → each `;`-group is one arg (its commas are a value list);
+    // comma mode → each chunk is its own arg.
+    const sep = semicolonMode ? ';' : ',';
+    const items = (semicolonMode ? groups.map(g => g.join(', ')) : groups[0]!)
       .map(p => p.trim()).filter(Boolean)
       .map(p => this._mixinParamPart(p, loc));
     return new List(items as any, { sep } as any, loc);
