@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, Selector, vardecl } from '../index.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -491,8 +491,7 @@ describe('Operation', () => {
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       }),
       ruleset({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        selector: any('.probe') as unknown as Selector,
+        selector: '.probe',
         rules: [
           decl({
             name: 'margin',
