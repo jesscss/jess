@@ -117,13 +117,19 @@ export const {
 
   // ── Root ──────────────────────────────────────────────────────────────────
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, BadStatement))),
+    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.MissingSelectorBlock, BadStatement))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node('Ruleset',
     parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
+  // A `{ … }` block with no selector in front of it — a qualified rule must have a
+  // selector. Recognised so it can be reported ("No selector found") rather than
+  // silently swallowed. @see https://www.w3.org/TR/css-syntax-3/#qualified-rule
+  const MissingSelectorBlock = node('MissingSelectorBlock',
+    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))),
+    (c: any, r: any, s: any) => mk('MissingSelectorBlock', c, r, s));
 
   // ── Selectors ──────────────────────────────────────────────────────────────
   const SelectorList = node('SelectorList',
@@ -275,7 +281,10 @@ export const {
   // STRUCTURED body — garbage inside is a real error. Unknown at-rules have an
   // OPAQUE block (the UA owns its meaning), so their body is scanned over and
   // never errors. @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
-  const knownBlockAtKeyword = regex(/@(?:layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
+  // media/container/supports are included so a non-paren-query prelude
+  // (`@media screen { … }`) still gets a structured (erroring) body rather than
+  // falling through to the opaque unknown-at-rule rule.
+  const knownBlockAtKeyword = regex(/@(?:media|container|supports|layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
   const AtRuleBlock = node('AtRuleBlock',
     parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, literal('}'))),
     (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
@@ -299,7 +308,7 @@ export const {
     valueList, valueSequence, value, parenBody,
     Dimension, Num, Color, Url, Call, Paren, Quoted, anyValue,
     AtRuleBlock, AtRuleStatement, atRuleBody,
-    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature, UnknownAtRuleBlock
+    QueryAtRuleBlock, QueryCondition, QueryInParens, QueryFeature, UnknownAtRuleBlock, MissingSelectorBlock
   };
 });
 
