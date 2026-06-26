@@ -117,7 +117,7 @@ describe('@container at-rule parsing and serialization', () => {
                   [
                     (Keyword [role=keyword] 'not')
                     (Paren
-                      node:
+                      value:
                         (QueryCondition
       `);
   });
@@ -227,7 +227,7 @@ describe('@media at-rule - QueryCondition parsing', () => {
     expect(out).toContainString(`
       prelude:
         (Paren
-          node:
+          value:
             (QueryCondition
               value:
                 [
@@ -303,7 +303,7 @@ describe('@container - container query type functions', () => {
     expect(out).toContainString(`name: 'scroll-state'`);
     expect(out).toContainString(`
                   (Paren
-                    node:
+                    value:
                       (Declaration
       `);
   });
