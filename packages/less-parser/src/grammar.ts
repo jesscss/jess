@@ -148,13 +148,18 @@ const cssRules = rules((g: any) => {
   // A bare name with nothing after it is NOT a statement — require args (a mixin
   // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
   // ident like `x` or `nonsense` would be silently accepted.
+  // Two combinator-distinguished forms — the PARSER decides validity, not a
+  // post-hoc name check:
+  //   block form: `name [args] [guard] { … }` — a mixin definition or qualified
+  //               rule (name path may be a bare selector); a `{}` body is required.
+  //   call  form: `path [args] [guard] [;]` — a mixin CALL; the path MUST start
+  //               with `.`/`#` (mixinCallPath). A bare ident like `nonsense;` is
+  //               not a `.`/`#` path and has no block, so it matches NEITHER and is
+  //               reported as unconsumed input.
   const MixinOrQualifiedRule = node('MixinOrQualifiedRule',
-    parser({ trivia: rw }, sequence(
-      g.mixinNamePath,
-      choice(
-        sequence(g.MixinArgs, optional(g.Guard), optional(choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))),
-        sequence(optional(g.Guard), choice(sequence(literal('{'), g.declarationList, literal('}')), literal(';')))
-      )
+    parser({ trivia: rw }, choice(
+      sequence(g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard), literal('{'), g.declarationList, literal('}')),
+      sequence(g.mixinCallPath, optional(g.MixinArgs), optional(g.Guard), optional(important), optional(literal(';')))
     )),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
 
