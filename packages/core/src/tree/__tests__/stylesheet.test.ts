@@ -17,7 +17,9 @@ describe('Stylesheet', () => {
 
     expect(root).toBeInstanceOf(Rules);
     expect(root.type).toBe('Stylesheet');
-    expect(root.rules).toBe(Reflect.get(root, 'value'));
+    // Slim Rules root: children live in `rules`; there is no `value` payload.
+    expect(root.rules[0]).toBe(declaration);
+    expect(Reflect.get(root, 'value')).toBeUndefined();
     expect(isNode(root, N.Rules)).toBe(true);
     expect(root.sourceRoot).toBe(root);
     expect(declaration.rulesParent).toBe(root);
@@ -49,7 +51,12 @@ describe('Stylesheet', () => {
     });
     const context = new Context();
 
+    // Declaration values can be arbitrary expressions and must be hydrated to
+    // nodes before evaluation.
     expect(() => stringDeclaration.evalNode(context)).toThrow('String-backed declaration values must be hydrated');
-    expect(() => stringRuleset.eval(context)).toThrow('String-backed ruleset selectors must be hydrated');
+    // String-backed ruleset selectors, by contrast, materialize lazily on
+    // demand (createRawSelectorNode), so evaluation does not require them to be
+    // pre-hydrated and does not throw.
+    expect(() => stringRuleset.eval(context)).not.toThrow();
   });
 });
