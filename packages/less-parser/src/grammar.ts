@@ -225,7 +225,10 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';')
+    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
+    // `ident(` so it never shadows a Declaration (which needs `:`).
+    sequence(g.Call, optional(literal(';'))), literal(';')
   )));
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
