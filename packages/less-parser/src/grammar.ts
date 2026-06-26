@@ -201,8 +201,15 @@ const cssRules = rules((g: any) => {
   const Ruleset = node('Ruleset',
     parser({ trivia: rw }, sequence(g.LessSelectorList, literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
+  // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
+  // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
+  // plain declaration or a `.name { }` ruleset. (declarationList only had MixinCall,
+  // which has no body, so nested definitions e.g. `.vars(){…}` were unmodelled.)
+  const NestedMixinDefinition = node('MixinOrQualifiedRule',
+    parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
+    (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.ExtendStatement, g.Ruleset, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';'),
+    g.VarDeclaration, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration, literal(';'),
     sequence(scanTo(choice(literal(';'), literal('{'), literal('}'), literal(',')), { orEOF: true }), optional(literal(';')))
   )));
   const Declaration = node('Declaration',
