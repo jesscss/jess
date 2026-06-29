@@ -625,6 +625,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // while `sourceNode` still points at the canonical imported tree for the
     // surface's own declarations. See LIVE_BINDING_ARCHITECTURE.md §4.
     placement.parent = importSite;
+    // Mark as an inline placement so the scope-frame parent-walk re-points the
+    // shared canonical children up the import-site chain (LIVE_BINDING §4).
+    placement.options.inlinePlacement = true;
     importPlacementStates.set(placement, state);
     return placement;
   }

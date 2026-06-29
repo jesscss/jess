@@ -650,6 +650,14 @@ export type RulesOptions = {
   importBoundary?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
+  /**
+   * Marks an `import`-type inline placement surface: its shared canonical
+   * children resolve free vars up the DYNAMIC import-site scope chain (the
+   * surface's frame parent), not their static imported-tree parent. Set by the
+   * import placement; consumed by the scope-frame parent-walk fix in
+   * `_evalPreparedRules`. See LIVE_BINDING_ARCHITECTURE.md §4.
+   */
+  inlinePlacement?: boolean;
 };
 
 export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
@@ -5897,7 +5905,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // surface (`rules !== this`, e.g. a mixin output) keeps its own wired parent
     // (its lexical definition scope), which must not be overwritten by the call
     // site. See LIVE_BINDING_ARCHITECTURE.md §4.
-    if (enclosingScope && rules === this && rules !== enclosingScope) {
+    if (
+      rules === this
+      && enclosingScope?.options.inlinePlacement === true
+      && rules !== enclosingScope
+    ) {
+      // This is a direct child of an `import` inline placement: its static
+      // parent is the imported tree, but it must resolve free vars up the
+      // import-site scope. Re-point its frame's lexical parent to the placement
+      // surface (whose own frame parent is the import site). Only level-1
+      // children hit this — deeper nodes have a correct in-tree static parent.
       rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);
