@@ -660,7 +660,7 @@ export class CssParser {
     return items.slice(open + 1, close);
   }
 
-  protected _assembleArgs(items: Spanned[], loc: LocationInfo) {
+  protected _assembleArgs(items: Spanned[], loc: LocationInfo): List {
     if (items.some(it => it.comp === ';')) {
       const semiSegs: Spanned[][] = [[]];
       for (const it of items) {
