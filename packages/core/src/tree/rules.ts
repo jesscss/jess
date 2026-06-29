@@ -921,12 +921,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       location?: LocationInfo,
       treeContext?: TreeContext
     ) => Rules;
+    // Thin surface: construct EMPTY (so the constructor parents nothing) and
+    // SHARE the children — push without adopting, so a shared canonical child's
+    // parent is never overwritten. `sourceNode` is the surface's only link back
+    // to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
     const derived = new Ctor(
-      value,
+      [],
       this.options ? { ...this.options } : undefined,
       sourceLocation,
       this.sourceRoot?._treeContext
     );
+    derived.sourceNode = this.sourceNode ?? this;
+    for (let i = 0; i < value.length; i++) {
+      derived.rules.push(value[i]!);
+    }
     derived.inherit(this);
     derived.resetDerivedState(this);
 
