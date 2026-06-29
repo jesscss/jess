@@ -199,6 +199,12 @@ function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): Fo
 }
 
 function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
+  // TODO(§4/§6.2): make this a true thin surface like mixin/import — SHARE the
+  // canonical body children and mark `options.thinSurface`, with the loop
+  // counter/value/key as the only per-iteration live slots. Blocked because
+  // `deriveIterationChild` (comment→nil, ampersand→derive) and body-declaration
+  // registration are currently done per-iteration on owned copies; those
+  // placement transforms must move to context/render time first.
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
     sourceRules.rules.map(deriveIterationChild)
