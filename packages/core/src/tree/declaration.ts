@@ -577,17 +577,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    cloneFn ??= n => n.clone(deep);
+  override clone(cloneFn?: (n: Node) => Node): this {
     const cloneNode = <T extends Node>(part: T): T => (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete node field type supplied by this declaration part.
-      deep ? cloneFn(part) as T : part
+      cloneFn ? cloneFn(part) as T : part
     );
     const cloneValue = (part: DeclarationValue['value']): DeclarationValue['value'] => (
-      deep && part instanceof Node ? cloneNode(part) : part
+      cloneFn && part instanceof Node ? cloneNode(part) : part
     );
     const cloneImportant = (part: DeclarationValue['important']): DeclarationValue['important'] => (
-      deep && part instanceof Node ? cloneNode(part) : part
+      cloneFn && part instanceof Node ? cloneNode(part) : part
     );
     return this.withParts({
       name: this.name instanceof Node ? cloneNode(this.name) : this.name,

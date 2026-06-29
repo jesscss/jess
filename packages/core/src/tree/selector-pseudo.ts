@@ -267,10 +267,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  override clone(cloneFn?: (n: Node) => Node): this {
     const currentArg = this.arg;
-    cloneFn ??= n => n.clone(deep);
-    const clonedArg = deep && currentArg ? cloneFn(currentArg) : currentArg;
+    const clonedArg = cloneFn && currentArg ? cloneFn(currentArg) : currentArg;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cloned = new PseudoSelector(
       {

@@ -132,33 +132,6 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
   }
 }
 
-function copyImportPlacementAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const derived = node.derive();
-  return derived instanceof Node ? derived : undefined;
-}
-
-function copyImportPlacementNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return new Comment(
-      node.value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  const derivedAmpersand = copyImportPlacementAmpersand(node);
-  if (derivedAmpersand) {
-    return derivedAmpersand;
-  }
-  if (node.canReuseAsLeaf()) {
-    return node.reuseAsLeaf();
-  }
-  return node.clone(true, copyImportPlacementNode);
-}
-
 function getInlineSourceLocation(source: string): NodeLocation {
   let line = 1;
   let column = 1;
@@ -573,6 +546,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options?: {
       preserveSourceNode?: boolean;
       resetScopeFrame?: boolean;
+      shareChildren?: boolean;
     }
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
@@ -591,7 +565,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     if (childNodes) {
       for (const childNode of childNodes) {
-        wrapped.adopt(childNode);
+        // Thin placement shares the canonical children (push without adopting,
+        // so the source tree is never re-parented); other callers own them.
+        if (!options?.shareChildren) {
+          wrapped.adopt(childNode);
+        }
         wrapped.rules.push(childNode);
       }
     }
@@ -614,13 +592,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+    // Thin placement: SHARE the imported source children directly (the
+    // canonical tree is never copied). Per-placement state lives in the
+    // placement state record / scope frame, not in copied nodes.
     const children = new Array<Node>(sourceRules.rules.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
-      const child = copyImportPlacementNode(source);
-      children[index] = child;
-      childSegments[index] = createPlacementChildSegment(source, child, index);
+      children[index] = source;
+      childSegments[index] = createPlacementChildSegment(source, source, index);
     }
     return {
       source: sourceRules,
@@ -630,7 +610,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private materializeImportPlacementState(state: ImportPlacementState): Rules {
-    const placement = this.deriveRulesSurface(state.source, state.children);
+    const placement = this.deriveRulesSurface(state.source, state.children, {
+      shareChildren: true,
+      preserveSourceNode: true
+    });
     importPlacementStates.set(placement, state);
     return placement;
   }

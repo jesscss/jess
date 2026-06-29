@@ -211,10 +211,9 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     ).inherit(this);
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const cloneChild = cloneFn ?? (n => n.clone(deep));
-    const rules = deep
-      ? this.rules.map(rule => cloneChild(rule))
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const rules = cloneFn
+      ? this.rules.map(rule => cloneFn(rule))
       : [...this.rules];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return this.withParts({

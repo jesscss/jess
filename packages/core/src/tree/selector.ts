@@ -111,8 +111,8 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return inherited;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const cloned = super.clone(deep, cloneFn);
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const cloned = super.clone(cloneFn);
     cloned.keySetLibrary = this.keySetLibrary;
     return cloned;
   }

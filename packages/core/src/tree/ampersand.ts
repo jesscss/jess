@@ -678,8 +678,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return amp;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newNode = super.clone(deep, cloneFn) as this;
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const newNode = super.clone(cloneFn) as this;
     if (this._selectorContainer) {
       newNode._selectorContainer = this._selectorContainer;
     }

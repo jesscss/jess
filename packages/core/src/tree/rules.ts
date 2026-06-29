@@ -897,11 +897,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * Rules clones still need to preserve function bindings so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
-  override clone(copyChildren?: boolean, cloneFn?: (n: Node) => Node): this {
+  override clone(cloneFn?: (n: Node) => Node): this {
     const source = this.rules;
     let value: Node[];
-    if (copyChildren) {
-      cloneFn ??= n => n.clone(copyChildren);
+    if (cloneFn) {
       value = new Array<Node>(source.length);
       for (let i = 0; i < source.length; i++) {
         value[i] = cloneFn(source[i]!);

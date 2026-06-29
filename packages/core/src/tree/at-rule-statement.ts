@@ -50,10 +50,9 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this._treeContext = treeContext;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    cloneFn ??= n => n.clone(deep);
-    const name = deep && this.name instanceof Node ? cloneFn(this.name) : this.name;
-    const prelude = deep && this.prelude instanceof Node ? cloneFn(this.prelude) : this.prelude;
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const name = cloneFn && this.name instanceof Node ? cloneFn(this.name) : this.name;
+    const prelude = cloneFn && this.prelude instanceof Node ? cloneFn(this.prelude) : this.prelude;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new AtRuleStatement(
       {

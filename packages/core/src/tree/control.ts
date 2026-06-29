@@ -636,16 +636,17 @@ export class For extends Rules<StructuredLoopValue> {
   // Rules.clone — which reconstructs from a bare Node[] — cannot rebuild it.
   // Clone the structured parts too so the source loop template is not mutated
   // when a placement clone re-adopts shared binding/iterable nodes.
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const cloneChild = cloneFn ?? (n => n.clone(deep));
-    const rules = deep
-      ? this.rules.map(rule => cloneChild(rule))
-      : [...this.rules];
+  override clone(cloneFn?: (n: Node) => Node): this {
+    // Shallow: share the body children; the pattern's binding decls and the
+    // iterable are shallow-cloned (one node each, shared value) because the For
+    // constructor adopts them and must not reparent the source template's nodes.
+    const mapPart = cloneFn ?? ((n: Node) => n.clone());
+    const rules = cloneFn ? this.rules.map(cloneFn) : [...this.rules];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new For(
       {
-        pattern: cloneForPattern(this.pattern, cloneChild),
-        iterable: cloneForIterable(this.iterable, cloneChild),
+        pattern: cloneForPattern(this.pattern, mapPart),
+        iterable: cloneForIterable(this.iterable, mapPart),
         rules
       },
       this._options ? { ...this._options } : undefined,
@@ -655,11 +656,10 @@ export class For extends Rules<StructuredLoopValue> {
   }
 
   override derive(value: Node[] = [...this.rules]): For {
-    const cloneChild = (n: Node): Node => n.clone(true);
     return new For(
       {
-        pattern: cloneForPattern(this.pattern, cloneChild),
-        iterable: cloneForIterable(this.iterable, cloneChild),
+        pattern: cloneForPattern(this.pattern, n => n.clone()),
+        iterable: cloneForIterable(this.iterable, n => n.clone()),
         rules: value
       },
       this._options ? { ...this._options } : undefined,

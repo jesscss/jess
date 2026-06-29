@@ -1020,18 +1020,24 @@ export abstract class Node<
    * object creation, and the low utility of preserving the original
    * node, I think we should just only clone when we need to.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  /**
+   * Shallow clone: a new node with this node's shape, SHARING its child nodes.
+   * There is NO deep-clone option — the live-binding/placement layer is thin
+   * replacement over a shared canonical source tree, never a sub-tree copy. A
+   * caller may pass `cloneFn` to map its DIRECT child nodes (e.g. share a leaf,
+   * substitute a single node); `cloneFn` must not recurse into a deep copy.
+   */
+  clone(cloneFn?: (n: Node) => Node): this {
     if (!hasNodeValue(this)) {
       throw new TypeError(`${this.type} must implement clone() for direct fields`);
     }
     let cloned = this.cloneValue(this.value);
 
-    if (deep) {
-      cloneFn ??= n => n.clone(deep);
+    if (cloneFn) {
       if (cloned instanceof Node) {
         cloned = cloneFn(cloned);
       } else {
-        this._deepCloneChildren(cloned, cloneFn);
+        this._mapChildNodes(cloned, cloneFn);
       }
     }
 
@@ -1103,27 +1109,31 @@ export abstract class Node<
     if (reuseLeaves && this.canReuseAsLeaf()) {
       return this.reuseAsLeaf();
     }
-    const clone = this.clone(true, (n) => {
+    // Thin placement: a new surface node that SHARES this node's child nodes.
+    // Per-placement runtime state lives in side maps / the binding layer, never
+    // in a deep-cloned sub-tree. We only map direct child nodes to apply
+    // placement policy at this level (strip comments, reuse inert leaves); we do
+    // NOT recurse into a deep copy.
+    const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
-        return n.cloneForPlacement(options);
+        const nilNode = n.nil?.() || n._createMinimalNil();
+        return nilNode.inherit(n);
       }
-      return reuseLeaves && n.canReuseAsLeaf()
-        ? n.reuseAsLeaf()
-        : n.cloneForPlacement(options);
+      return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
     this._copyPlacementMetadataTo(clone);
     clone.frozen = true;
     return clone;
   }
 
-  private _deepCloneChildren(value: unknown, cloneFn: (n: Node) => Node) {
+  private _mapChildNodes(value: unknown, cloneFn: (n: Node) => Node) {
     if (isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         const item = value[i];
         if (item instanceof Node) {
           value[i] = cloneFn(item);
         } else if (isArray(item)) {
-          this._deepCloneChildren(item, cloneFn);
+          this._mapChildNodes(item, cloneFn);
         }
       }
     } else if (isPlainObject(value)) {
@@ -1132,9 +1142,9 @@ export abstract class Node<
         if (v instanceof Node) {
           value[k] = cloneFn(v);
         } else if (isArray(v)) {
-          this._deepCloneChildren(v, cloneFn);
+          this._mapChildNodes(v, cloneFn);
         } else if (isPlainObject(v)) {
-          this._deepCloneChildren(v, cloneFn);
+          this._mapChildNodes(v, cloneFn);
         }
       }
     }

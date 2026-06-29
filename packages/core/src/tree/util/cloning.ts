@@ -18,56 +18,6 @@ export function reuseLeaf<T extends Node>(node: T): T {
   return node;
 }
 
-/**
- * Clone an output/eval surface while sharing inert source-free scalar leaves.
- * Unlike `copyWithReusableLeaves`, this preserves comments because mixin/import
- * output needs direct comment children at each generated placement.
- */
-export function cloneWithReusableLeaves<T extends Node>(node: T): T {
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
-  }
-  const cloneChild = (child: Node): Node => cloneWithReusableLeaves(child);
-  const clone = node.clone(true, cloneChild);
-  copyRenderMetadata(node, clone);
-  return clone;
-}
-
-/**
- * Clones a list of output children while preserving reusable scalar leaves.
- */
-export function cloneChildrenWithReusableLeaves<T extends Node>(nodes: readonly T[]): T[] {
-  const out = new Array<T>(nodes.length);
-  for (let i = 0; i < nodes.length; i++) {
-    out[i] = cloneWithReusableLeaves(nodes[i]!);
-  }
-  return out;
-}
-
-type FrameMetadataNode = Node & {
-  frames?: unknown;
-};
-
-function hasFrameMetadata(node: Node): node is FrameMetadataNode {
-  return 'frames' in node;
-}
-
-function copyRenderMetadata(source: Node, target: Node): void {
-  target.hoistToRoot = source.hoistToRoot;
-  if (hasFrameMetadata(source)) {
-    const frames = source.frames;
-    if (Array.isArray(frames)) {
-      const frameCopy = new Array<unknown>(frames.length);
-      for (let i = 0; i < frames.length; i++) {
-        frameCopy[i] = frames[i];
-      }
-      (target as FrameMetadataNode).frames = frameCopy;
-    } else {
-      (target as FrameMetadataNode).frames = undefined;
-    }
-  }
-}
-
 function deriveAmpersand(node: Node): Node | undefined {
   if (!isNode(node, N.Ampersand)) {
     return undefined;

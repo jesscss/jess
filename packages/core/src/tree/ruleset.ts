@@ -689,13 +689,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return node;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    cloneFn ??= n => n.clone(deep);
+  override clone(cloneFn?: (n: Node) => Node): this {
     const clonePart = <T extends Node | string | undefined>(part: T): T => (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete selector/guard field type supplied by this ruleset part.
-      deep && part instanceof Node ? cloneFn(part) as T : part
+      cloneFn && part instanceof Node ? cloneFn(part) as T : part
     );
-    const rules = deep
+    const rules = cloneFn
       ? this.rules.map(rule => cloneFn(rule))
       : [...this.rules];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
