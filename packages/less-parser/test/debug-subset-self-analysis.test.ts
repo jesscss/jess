@@ -55,6 +55,13 @@ function createParser(enabledOverrides: readonly string[]) {
   return new SubsetLessParser(T as LessTokenMap, new Set(enabledOverrides));
 }
 
+// performSelfAnalysis is a protected chevrotain method; expose it for the
+// debug harness without widening the parser class itself.
+function runSelfAnalysis(parser: SubsetLessParser): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  (parser as unknown as { performSelfAnalysis(): void }).performSelfAnalysis();
+}
+
 describe('debug override subset self-analysis', () => {
   it('documents the override/addition split', () => {
     expect(overrideNames.length).toBeGreaterThan(0);
@@ -63,7 +70,7 @@ describe('debug override subset self-analysis', () => {
 
   it('supports enabling no Less overrides', () => {
     const parser = createParser([]);
-    expect(() => parser.performSelfAnalysis()).not.toThrow();
+    expect(() => runSelfAnalysis(parser)).not.toThrow();
   });
 
   it('supports an override subset from SUBSET env', () => {
@@ -73,7 +80,7 @@ describe('debug override subset self-analysis', () => {
       .filter(Boolean);
 
     const parser = createParser(subset);
-    parser.performSelfAnalysis();
+    runSelfAnalysis(parser);
     expect(true).toBe(true);
   });
 });

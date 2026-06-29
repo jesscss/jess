@@ -22,7 +22,7 @@ describe('Less full-suite (minus invalid files)', () => {
         const { lexerResult, errors } = lessParser.parse(contents);
         if (lexerResult.errors.length || errors.length) {
           if (lexerResult.errors.length) {
-            console.error('lexer errors:', lexerResult.errors.map(e => e.message ?? e));
+            console.error('lexer errors:', lexerResult.errors.map((e: any) => e.message ?? e));
           }
           if (errors.length) {
             // Log details to debug regressions in a Vitest-compatible way

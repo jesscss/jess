@@ -1,8 +1,26 @@
 import { Parser } from '../src/index.js';
-import { Ampersand, Context, serializeTypes, TreeContext } from '@jesscss/core';
+import { Ampersand, Context, serializeTypes, TreeContext, N, isNode, type Node, type Selector } from '@jesscss/core';
 
 const parser = new Parser();
 const isAmpersand = (node: unknown): node is Ampersand => node instanceof Ampersand;
+
+function rulesetSelector(n: Node | string | undefined): Selector {
+  if (!isNode(n, N.Ruleset)) {
+    throw new Error('Expected a ruleset');
+  }
+  const { selector } = n;
+  if (!isNode(selector, N.Selector)) {
+    throw new Error('Expected a selector node');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return selector as unknown as Selector;
+}
+
+// collapseNesting is a render-time option that the Context constructor's public
+// option type does not declare, although the runtime accepts it.
+function contextOptions(opts: Record<string, unknown>): ConstructorParameters<typeof Context>[0] {
+  return opts as ConstructorParameters<typeof Context>[0];
+}
 
 describe('Selector Productions', () => {
   describe('relativeSelector', () => {
@@ -81,7 +99,7 @@ describe('Selector Productions', () => {
       const { errors, tree, trivia } = parser.parse(':unknown(.sel.a) { color: red; }');
       expect(errors.length).toBe(0);
       const ruleset = tree.rules[0];
-      const selector = ruleset.selector;
+      const selector = rulesetSelector(ruleset);
 
       expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
       expect(serializeTypes(selector)).toContainString(`
@@ -113,7 +131,7 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.rules[0];
-        expect(ruleset.selector.toString({ trivia })).toBe(expected);
+        expect(rulesetSelector(ruleset).toString({ trivia })).toBe(expected);
       }
     });
 
@@ -131,7 +149,7 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.rules[0];
-        const selector = ruleset.selector;
+        const selector = rulesetSelector(ruleset);
         expect(selector.toString({ trivia })).toBe(expected);
         expect(serializeTypes(selector)).toContainString(shape);
       }
@@ -162,8 +180,8 @@ describe('Selector Productions', () => {
         const { errors, tree, trivia } = parser.parse(source);
         expect(errors.length).toBe(0);
         const ruleset = tree.rules[0];
-        expect(ruleset.selector.toString({ trivia })).toBe(expected);
-        expect(serializeTypes(ruleset.selector)).toContainString('(ComplexSelector');
+        expect(rulesetSelector(ruleset).toString({ trivia })).toBe(expected);
+        expect(serializeTypes(rulesetSelector(ruleset))).toContainString('(ComplexSelector');
       }
     });
 
@@ -264,7 +282,7 @@ describe('Selector Productions', () => {
 
     it('keeps parsed ampersand prefix templates on the current parser-to-core semantics', async () => {
       const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
-      const context = new Context({ collapseNesting: true });
+      const context = new Context(contextOptions({ collapseNesting: true }));
 
       expect(errors.length).toBe(0);
       const css = await tree.render(context, { context, collapseNesting: true });
@@ -278,7 +296,7 @@ describe('Selector Productions', () => {
 
     it('keeps parsed ampersand mid-template forms on the current parser-to-core semantics', async () => {
       const { errors, tree } = parser.parse('.parent { &(.foo-&-bar) { color: red; } }');
-      const context = new Context({ collapseNesting: true });
+      const context = new Context(contextOptions({ collapseNesting: true }));
 
       expect(errors.length).toBe(0);
       const css = await tree.render(context, { context, collapseNesting: true });
@@ -410,6 +428,7 @@ describe('Selector Productions', () => {
     it('allows selector lists when each extend target is allowed', () => {
       const context = new TreeContext({ allowExtendSelectors: ['simple'] });
       const localParser = new Parser();
+      // @ts-expect-error -- the bound parse() collapses its overloads, hiding the third (context) argument the 'stylesheet' rule accepts at runtime.
       const { errors, tree } = localParser.parse('.parent { &:extend(.base, .other); }', 'stylesheet', { context });
 
       expect(errors).toHaveLength(0);

@@ -1,8 +1,15 @@
-import { Context, serializeTypes } from '@jesscss/core';
+import { Context, serializeTypes, N, isNode, type Node } from '@jesscss/core';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { Parser } from '../src/index.js';
 import { resolveLessTestDataRoot } from './test-data.js';
+
+function atRulePrelude(n: Node | string | undefined): any {
+  if (!isNode(n, N.AtRule)) {
+    throw new Error('Expected an at-rule');
+  }
+  return n.prelude;
+}
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -99,7 +106,7 @@ describe('mediaInParens', () => {
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('role: \'name\'');
     expect(out).toContainString('key:\n                          [\'#ns\', \'.breakpoint\']');
-    expect(tree.rules[0]?.prelude?.value?.target?.name?.rawKey?.toString()).toBe('#ns.breakpoint');
+    expect(atRulePrelude(tree.rules[0])?.value?.target?.name?.rawKey?.toString()).toBe('#ns.breakpoint');
   });
 
   it('should parse simple bare variable media query at top level as indexed reference', () => {
