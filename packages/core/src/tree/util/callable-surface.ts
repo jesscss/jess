@@ -3,7 +3,6 @@ import { F_VISIBLE, Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
-import { cloneWithReusableLeaves } from './cloning.js';
 
 export function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -28,14 +27,10 @@ function createShallowCallableRulesSurface(sourceRules: Rules): Rules {
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
-    // Clone-per-call: the eval surface owns its own copy of each body child, so
-    // it is a real self-contained scope — params (live slots), body-level vars,
-    // and detached-ruleset closures all resolve against THIS surface's frame,
-    // and the shared canonical body is never mutated across calls. (Scalar
-    // leaves are still shared by cloneWithReusableLeaves, so the clone is cheap.)
-    const clone = cloneWithReusableLeaves(source[i]!);
-    clone.parent = output;
-    output.rules.push(clone);
+    // Share the canonical body children (the AST is an immutable template). The
+    // per-call eval surface carries call state in its attached scope frame, not
+    // in cloned nodes; the body resolves against this surface via context.
+    output.rules.push(source[i]!);
   }
   return output;
 }
