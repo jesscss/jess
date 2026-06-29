@@ -88,24 +88,30 @@ Behavior:
 
 This **subsumes**, and these should collapse into it (see DRY_AUDIT.md):
 - `createShallowCallableRulesSurface` + `createOwned/UnlockedCallableRulesSurface`
-  — ✅ now share children and set `options.thinSurface`.
+  — ✅ share children; `sourceNode` → canonical body.
 - the import placement surface (`materializeImportPlacementState`) — ✅ shares
-  children, takes the import site as lexical parent, sets `options.thinSurface`.
+  children, takes the import site as lexical parent; `sourceNode` → imported tree.
 - `createDerivedIterationRulesSurface` / `createIterationEvalSurface` — ⏳ STILL
   COPIES per iteration (`deriveIterationChild`). Blocked: comment→nil /
   ampersand→derive transforms and per-iteration body-declaration registration run
-  on owned copies. Move those to context/render time, then share + `thinSurface`.
+  on owned copies. Move those to context/render time, then share.
 - ruleset `createNilSelectorDirectOutputRules`
 - the per-class `clone()` overrides used for placement
 
-**The unified mechanism (implemented for mixin + import):** a thin surface sets
-`options.thinSurface = true`. In `Rules._evalPreparedRules`, a direct child of a
-`thinSurface` re-points its scope-frame *lexical parent* to that surface — whose
-own frame holds the placement's lexical parent + per-placement live slots (mixin
-params, import `with`/`set`, loop counter). The shared children thus resolve free
-vars up the placement scope with NO reparent and NO clone. This is the single
-parent-walk fix; every node-re-use site marks `thinSurface` rather than inventing
-its own copy/reparent path.
+**The unified mechanism (implemented for mixin + import) — NO marker flag.** A
+thin surface's identity is intrinsic: it is a Rules whose `sourceNode` points at
+a **different** canonical Rules (the shared body it re-uses); a canonical node
+points at itself / nothing. In `Rules._evalPreparedRules`, a child evaluated
+under such a surface re-points its scope-frame *lexical parent* to that surface —
+whose own frame holds the placement's lexical parent + per-placement live slots
+(mixin params, import `with`/`set`, loop counter). Shared children thus resolve
+free vars up the placement scope with NO reparent and NO clone. One behavior for
+every node-re-use site, keyed on what the node IS — not a stamped option.
+
+> Known wart: the canonical `Mixin` constructor also sets `sourceNode` (= its
+> body) — the scope wrapper smell. The walk fix excludes `Mixin` explicitly;
+> drop that guard once the Mixin.sourceNode wrapper is eliminated (§3 wrapper
+> work / `parseman-wrapper-is-scope-identity`).
 
 `clone()` itself is **shallow-only** (shared children, copied options, no
 adopt) and exists only for genuine "new node, same shape" needs — not placement.

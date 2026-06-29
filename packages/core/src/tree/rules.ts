@@ -650,17 +650,6 @@ export type RulesOptions = {
   importBoundary?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
-  /**
-   * Marks a THIN SURFACE: a Rules that re-uses a shared set of canonical
-   * children (a mixin/ruleset body call, a style import, a loop body) over a
-   * per-placement scope frame. Its direct shared children resolve free vars up
-   * the DYNAMIC placement chain — by re-pointing their scope frame's lexical
-   * parent to this surface (whose own frame holds the placement's lexical parent
-   * + any per-placement live slots) — instead of their static canonical parent.
-   * The one frame model for all node re-use (§4 / §6.2). Consumed by the
-   * parent-walk fix in `_evalPreparedRules`. See LIVE_BINDING_ARCHITECTURE.md.
-   */
-  thinSurface?: boolean;
 };
 
 export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
@@ -5910,15 +5899,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // site. See LIVE_BINDING_ARCHITECTURE.md §4.
     if (
       rules === this
-      && enclosingScope?.options.thinSurface === true
       && rules !== enclosingScope
+      // A THIN SURFACE is intrinsically a Rules whose `sourceNode` points at a
+      // DIFFERENT canonical Rules — it re-uses that shared canonical body over a
+      // per-placement scope frame (a mixin/ruleset body call, a style import). A
+      // canonical node instead points at itself / nothing.
+      && isNode(enclosingScope?.sourceNode, N.Rules)
+      && enclosingScope.sourceNode !== enclosingScope
+      // WART: the canonical `Mixin` constructor also sets `sourceNode` (= its
+      // body) — the scope wrapper smell. Exclude it here; drop this guard once
+      // the Mixin.sourceNode wrapper is eliminated (see
+      // parseman-wrapper-is-scope-identity, task: "Eliminate Mixin sourceNode").
+      && !isNode(enclosingScope, N.Mixin)
     ) {
-      // This is a direct child of a THIN SURFACE (mixin body, style import, loop
-      // body): its static parent is the canonical source tree, but it must
-      // resolve free vars up the placement scope. Re-point its frame's lexical
-      // parent to the surface (whose frame holds the placement's lexical parent
-      // + live slots). Only level-1 children hit this — deeper nodes have a
-      // correct in-tree static parent. One frame model for all node re-use.
+      // A child evaluated under a thin surface resolves its free vars up the
+      // PLACEMENT scope, not its static canonical parent. Re-point its
+      // scope-frame lexical parent to the surface — whose frame holds the
+      // placement's lexical parent + per-placement live slots (params, import
+      // with/set). One behavior for every node-re-use site, keyed on what the
+      // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
+      // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
       rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);

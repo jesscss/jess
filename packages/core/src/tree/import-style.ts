@@ -625,9 +625,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // while `sourceNode` still points at the canonical imported tree for the
     // surface's own declarations. See LIVE_BINDING_ARCHITECTURE.md §4.
     placement.parent = importSite;
-    // Thin surface: the scope-frame parent-walk re-points the shared canonical
-    // children up the import-site chain (LIVE_BINDING §4 / §6.2).
-    placement.options.thinSurface = true;
+    // Thin surface identity is intrinsic: `placement.sourceNode` already points
+    // at the canonical imported tree (preserveSourceNode above), so the
+    // scope-frame parent-walk re-points the shared children up the import-site
+    // chain with no marker. See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
     importPlacementStates.set(placement, state);
     return placement;
   }
