@@ -328,7 +328,7 @@ const ALIASES: Record<string, string> = {
 export type LessFnParseResult = {
   tree: Node;
   errors: Array<{ message: string; offset?: number }>;
-  warnings: Array<{ message: string }>;
+  warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
   lexerResult: { errors: Array<unknown> };
 };
@@ -343,21 +343,24 @@ function firstUnparsedOffset(input: string, from: number): number | null {
   while (i < input.length) {
     const c = input[i]!;
     if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') {
-      i++; continue;
+      i++;
+      continue;
     }
     if (c === '/' && input[i + 1] === '*') {
       const end = input.indexOf('*/', i + 2);
       if (end === -1) {
         return i;
       }
-      i = end + 2; continue;
+      i = end + 2;
+      continue;
     }
     if (c === '/' && input[i + 1] === '/') {
       const nl = input.indexOf('\n', i + 2);
       if (nl === -1) {
         return null;
       }
-      i = nl + 1; continue;
+      i = nl + 1;
+      continue;
     }
     return i;
   }

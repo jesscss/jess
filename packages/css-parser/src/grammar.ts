@@ -307,7 +307,7 @@ export const {
 export type CssParseResult = {
   tree: Node;
   errors: Array<{ message: string; offset?: number }>;
-  warnings: Array<{ message: string }>;
+  warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
 };
 
@@ -321,14 +321,16 @@ function firstUnparsedOffset(input: string, from: number): number | null {
   while (i < input.length) {
     const c = input[i]!;
     if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') {
-      i++; continue;
+      i++;
+      continue;
     }
     if (c === '/' && input[i + 1] === '*') {
       const end = input.indexOf('*/', i + 2);
       if (end === -1) {
-        return i;
-      }        // unterminated comment is itself an error
-      i = end + 2; continue;
+        return i; // unterminated comment is itself an error
+      }
+      i = end + 2;
+      continue;
     }
     return i;
   }
