@@ -20,7 +20,8 @@ function lineCol(src: string, offset: number): { line: number; column: number } 
   let last = -1;
   for (let i = 0; i < offset; i++) {
     if (src[i] === '\n') {
-      line++; last = i;
+      line++;
+      last = i;
     }
   }
   return { line, column: offset - last };
