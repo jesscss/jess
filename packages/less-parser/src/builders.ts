@@ -708,7 +708,9 @@ export class LessGrammar extends CssParser {
         continue;
       }
       if (v === ';') {
-        semicolonMode = true; groups.push([]); continue;
+        semicolonMode = true;
+        groups.push([]);
+        continue;
       }
       if (v === ',') {
         continue;
@@ -1182,7 +1184,7 @@ export class LessGrammar extends CssParser {
     const opts: string[] = optMatch ? optMatch[1]!.split(',').map(s => s.trim()) : [];
     const ls2 = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const builtNodes = nodeChildren(children);
-    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | "'"; value?: unknown } | undefined;
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
     let pathNode: Quoted | undefined;
     if (quotedNode) {
       const quote = quotedNode.quote ?? '"';
@@ -1195,7 +1197,7 @@ export class LessGrammar extends CssParser {
       // Fallback: extract path from preludeText (AtRuleStatement uses scanTo leaves)
       const _qm = preludeText.match(/(['"])([^'"]+)\1/);
       if (_qm) {
-        const quote: '"' | "'" = _qm[1] === "'" ? "'" : '"';
+        const quote: '"' | '\'' = _qm[1] === '\'' ? '\'' : '"';
         const inner = _qm[2]!;
         const innerNode = new Any(inner, { role: 'any' }, loc) as unknown as string;
         pathNode = new Quoted(innerNode, { quote }, loc);
@@ -1396,11 +1398,14 @@ export class LessGrammar extends CssParser {
         let accKey: JessNode | string | number;
         let accType: 'variable' | 'index';
         if (accInner === '') {
-          accKey = -1; accType = 'index';
+          accKey = -1;
+          accType = 'index';
         } else if (accInner.startsWith('@')) {
-          accKey = accInner.slice(1); accType = 'variable';
+          accKey = accInner.slice(1);
+          accType = 'variable';
         } else {
-          accKey = new Quoted(accInner, {}, loc) as unknown as JessNode; accType = 'index';
+          accKey = new Quoted(accInner, {}, loc) as unknown as JessNode;
+          accType = 'index';
         }
         const acc = new Reference(
           { target: varBase as any, key: accKey as any } as unknown as ReferenceValue,
@@ -1492,7 +1497,7 @@ export class LessGrammar extends CssParser {
     const preludeText = this._source.slice(loc[0], loc[3]);
     const ls3 = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const builtNodes = nodeChildren(children);
-    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | "'"; value?: unknown } | undefined;
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
     let rawPath = '';
     let pathNode: Quoted | undefined;
     if (quotedNode) {
@@ -1508,7 +1513,7 @@ export class LessGrammar extends CssParser {
       // Fallback: extract from preludeText (AtRuleStatement uses scanTo, not Quoted node)
       const qm = /(['"])((?:[^'"\\]|\\.)*)\1/.exec(preludeText);
       if (qm) {
-        const quote: '"' | "'" = qm[1] === "'" ? "'" : '"';
+        const quote: '"' | '\'' = qm[1] === '\'' ? '\'' : '"';
         const inner = qm[2]!;
         rawPath = inner;
         const innerNode = new Any(inner, { role: 'any' }, loc) as unknown as string;
