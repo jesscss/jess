@@ -617,7 +617,7 @@ export class CssParser {
     return new Url(inner as unknown as Node, undefined, loc);
   }
 
-  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode | string {
     const items = spannedComponents(rawChildren);
     const name = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     if (!items.some(it => it.comp === '(')) {
@@ -720,7 +720,7 @@ export class CssParser {
     return new Quoted(text.slice(1, -1), { quote: text[0] as '"' | '\'' }, loc);
   }
 
-  protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
     const preludeText = ls.slice(1)
@@ -738,7 +738,7 @@ export class CssParser {
     );
   }
 
-  protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
     if (name.toLowerCase() === '@charset') {
