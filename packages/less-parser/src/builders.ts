@@ -169,8 +169,8 @@ export class LessGrammar extends CssParser {
       const rv = rawValue as any;
       // Grammar bug: parseman leaks '[' into CST but accessor fails → Reference(target, key=''|Quoted(''))
       const rvKey = rv?.key;
-      const isEmptyKey = rvKey === '' || rvKey === undefined ||
-        (rvKey && typeof rvKey === 'object' && rvKey.type === 'Quoted' && (rvKey.value === '' || rvKey.valueOf?.() === ''));
+      const isEmptyKey = rvKey === '' || rvKey === undefined
+        || (rvKey && typeof rvKey === 'object' && rvKey.type === 'Quoted' && (rvKey.value === '' || rvKey.valueOf?.() === ''));
       const grammarPartialAccessor =
         rv && rv.type === 'Reference' && rv.target !== undefined && isEmptyKey;
       const accMatch = /^\s*\[([^\]]+)\]/.exec(afterVal);
@@ -259,7 +259,9 @@ export class LessGrammar extends CssParser {
           i += 2;
         } else {
           const args = this._buildRefCallArgs(ls[i + 1]!.value, loc);
-          if (args) payload.args = args;
+          if (args) {
+            payload.args = args;
+          }
           i += 3; // '(', content, ')'
         }
         base = new Call(payload as any, {}, loc) as unknown as JessNode;
@@ -280,7 +282,7 @@ export class LessGrammar extends CssParser {
     const type: 'variable' | 'index' = keyStr.startsWith('@') ? 'variable' : 'index';
     let result: string | JessNode = getInterpolatedOrString(keyStr, loc) as string | JessNode;
     if (type === 'index') {
-      result = new Quoted(result as any, { quote: "'" }, loc) as unknown as JessNode;
+      result = new Quoted(result as any, { quote: '\'' }, loc) as unknown as JessNode;
     }
     return new Reference(
       { target: base as any, key: result as any } as unknown as ReferenceValue,
@@ -296,7 +298,9 @@ export class LessGrammar extends CssParser {
    */
   private _buildRefCallArgs(content: string, loc: LocationInfo): JessNode | null {
     const trimmed = content.trim();
-    if (!trimmed) return null;
+    if (!trimmed) {
+      return null;
+    }
     const parts = trimmed.split(',').map(p => p.trim()).filter(Boolean);
     const items = parts.map(p => p.startsWith('@')
       ? new Reference(p.slice(1), { type: 'variable' as const }, loc) as unknown as Node
@@ -381,7 +385,7 @@ export class LessGrammar extends CssParser {
       const rawTargetText = m ? m[1]!.trim() : '';
       // Split comma-separated targets to detect per-target all flags.
       const rawParts = this._splitTopLevel(rawTargetText, ',');
-      const parts = rawParts.map(part => {
+      const parts = rawParts.map((part) => {
         const trimmed = part.trim();
         const hasPartAll = /\ball\b/.test(trimmed) || /!all/.test(trimmed);
         const flag = hasPartAll ? ExtendFlag.All : ExtendFlag.Exact;
@@ -499,7 +503,9 @@ export class LessGrammar extends CssParser {
 
   protected override _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
     const result = super._assembleSegment(seg, loc);
-    if (!Array.isArray(result) || result.length < 2) return result as Component;
+    if (!Array.isArray(result) || result.length < 2) {
+      return result as Component;
+    }
     const comps = result as Component[];
     const isNsName = (c: unknown): c is string =>
       typeof c === 'string' && /^[#.]-?[_a-zA-Z-￿]/.test(c.trim());
@@ -509,7 +515,9 @@ export class LessGrammar extends CssParser {
     const isRoundParen = (c: unknown): c is JessNode =>
       !!c && typeof c === 'object' && (c as any).type === 'Paren'
       && (c as any)._options?.delimiter !== 'square';
-    if (!isNsName(comps[0])) return comps as unknown as Component;
+    if (!isNsName(comps[0])) {
+      return comps as unknown as Component;
+    }
     // Consume all leading #/.-prefixed strings as namespace path segments.
     // A single token like '#ns.breakpoint' also gets split into sub-segments.
     const splitNsToken = (s: string): string[] => s.match(/[#.][^#.]*/g) ?? [s];
@@ -534,13 +542,21 @@ export class LessGrammar extends CssParser {
       const innerVal = innerNode ?? (item as any).value;
       const isEmpty = !innerVal
         || (typeof innerVal === 'object' && innerVal.type === 'Any' && !String((innerVal as any).value ?? '').trim());
-      if (isEmpty) return -1;
+      if (isEmpty) {
+        return -1;
+      }
       // @variable accessor → string key (strip @)
-      if (typeof innerVal === 'string' && innerVal.trim().startsWith('@')) return innerVal.trim().slice(1);
+      if (typeof innerVal === 'string' && innerVal.trim().startsWith('@')) {
+        return innerVal.trim().slice(1);
+      }
       // @variable accessor in a Reference node (from SquareParen grammar rule)
-      if (typeof innerVal === 'object' && innerVal.type === 'Reference') return innerVal as unknown as JessNode;
+      if (typeof innerVal === 'object' && innerVal.type === 'Reference') {
+        return innerVal as unknown as JessNode;
+      }
       // Plain identifier → Quoted node
-      if (typeof innerVal === 'string') return new Quoted(innerVal.trim(), {}, loc) as unknown as JessNode;
+      if (typeof innerVal === 'string') {
+        return new Quoted(innerVal.trim(), {}, loc) as unknown as JessNode;
+      }
       // @variable Reference → extract its .key string; other nodes → .key or node
       return (innerVal as any)?.key ?? innerVal;
     };
@@ -558,7 +574,9 @@ export class LessGrammar extends CssParser {
         const isEmpty = !innerContent || (innerContent.type === 'Any' && !String(innerContent.value ?? '').trim());
         const argsNode = isEmpty ? null : this._parenToArgs(item, loc);
         const callPayload: Record<string, unknown> = { name: base };
-        if (argsNode) callPayload.args = argsNode;
+        if (argsNode) {
+          callPayload.args = argsNode;
+        }
         base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
         i++;
       } else {
@@ -686,11 +704,19 @@ export class LessGrammar extends CssParser {
     let semicolonMode = false;
     for (const l of ls) {
       const v = l.value;
-      if (v === '(' || v === ')') continue;
-      if (v === ';') { semicolonMode = true; groups.push([]); continue; }
-      if (v === ',') continue;            // chunk separator within the current group
+      if (v === '(' || v === ')') {
+        continue;
+      }
+      if (v === ';') {
+        semicolonMode = true; groups.push([]); continue;
+      }
+      if (v === ',') {
+        continue;
+      }            // chunk separator within the current group
       const t = v.trim();
-      if (t) groups[groups.length - 1]!.push(t);
+      if (t) {
+        groups[groups.length - 1]!.push(t);
+      }
     }
     // Reject mixing `,` and `;` to SEPARATE ARGS: in semicolon mode, a group with
     // two or more NAMED args (commas separating named args) is the illegal mix.
@@ -856,15 +882,15 @@ export class LessGrammar extends CssParser {
     const isMixinName = name.startsWith('.') || name.startsWith('#');
     const ref = isMixinName
       ? new Reference(
-          { key: refKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
-          { type: 'mixin-ruleset', role: 'name' } as any,
-          loc
-        )
+        { key: refKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+        { type: 'mixin-ruleset', role: 'name' } as any,
+        loc
+      )
       : new Reference(
-          { key: refKey } as unknown as ReferenceValue,
-          { type: 'function', silentFail: true, fallbackValue: true } as any,
-          loc
-        );
+        { key: refKey } as unknown as ReferenceValue,
+        { type: 'function', silentFail: true, fallbackValue: true } as any,
+        loc
+      );
     const hasArgs2 = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
     const hasSemi = ls.some(l => l.value === ';');
     if (hasSemi && !hasExplicitParens) {
@@ -887,7 +913,9 @@ export class LessGrammar extends CssParser {
   }
 
   private _selectorHasNestedExtend(sel: JessNode | string | undefined): boolean {
-    if (!sel || typeof sel === 'string') return false;
+    if (!sel || typeof sel === 'string') {
+      return false;
+    }
     if (sel.type === 'PseudoSelector') {
       const arg = (sel as unknown as { arg?: JessNode }).arg;
       return arg ? this._treeHasExtend(arg) : false;
@@ -899,7 +927,9 @@ export class LessGrammar extends CssParser {
   }
 
   private _treeHasExtend(node: JessNode): boolean {
-    if (node instanceof Extend) return true;
+    if (node instanceof Extend) {
+      return true;
+    }
     if (node instanceof CompoundSelector || node instanceof ComplexSelector) {
       return node.value.some(p => this._treeHasExtend(p as JessNode));
     }
@@ -917,8 +947,12 @@ export class LessGrammar extends CssParser {
   ) {
     const base = super._buildRuleset(children, rawChildren, loc);
     const selector = base.selector;
-    if (!selector) return base;
-    if (typeof selector === 'string') return base;
+    if (!selector) {
+      return base;
+    }
+    if (typeof selector === 'string') {
+      return base;
+    }
     if (this._selectorHasNestedExtend(selector as unknown as JessNode)) {
       this._error(':extend() is not allowed inside a pseudo-class selector', loc[0]);
     }
@@ -934,7 +968,9 @@ export class LessGrammar extends CssParser {
       const { cleanedSelector, extractedExtends } = this._extractExtendsFromSelector(
         selector as unknown as JessNode, loc
       );
-      if (extractedExtends.length === 0) return base;
+      if (extractedExtends.length === 0) {
+        return base;
+      }
       return new Ruleset(
         { selector: cleanedSelector as any, rules: [...extractedExtends, ...baseRules] },
         undefined, loc
@@ -950,14 +986,20 @@ export class LessGrammar extends CssParser {
       const normalized = typeof item === 'string'
         ? new BasicSelector(item as string, undefined, loc) as unknown as JessNode
         : item as unknown as JessNode;
-      if (normalized !== item) anyNormalized = true;
+      if (normalized !== item) {
+        anyNormalized = true;
+      }
       const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(normalized, loc);
       perSelector.push({ clean: cs, extends: ee });
-      if (ee.length > 0) anyExtends = true;
+      if (ee.length > 0) {
+        anyExtends = true;
+      }
     }
 
     if (!anyExtends) {
-      if (!anyNormalized) return base;
+      if (!anyNormalized) {
+        return base;
+      }
       // No extends, but string items were normalized — rebuild with BasicSelector items.
       const normalizedItems = perSelector.map(s => s.clean).filter(Boolean);
       const combinedSel = normalizedItems.length === 1
@@ -1000,7 +1042,9 @@ export class LessGrammar extends CssParser {
           {}, loc
         ) as unknown as JessNode);
       }
-      if (clean !== undefined) cleanedItems.push(clean);
+      if (clean !== undefined) {
+        cleanedItems.push(clean);
+      }
     }
 
     const combinedSel = cleanedItems.length === 1
@@ -1033,21 +1077,26 @@ export class LessGrammar extends CssParser {
         } else if (part instanceof List) {
           // List of Extend nodes from multi-target :extend()
           for (const item of (part as any).value ?? []) {
-            if (item instanceof Extend) extractedExtends.push(item as unknown as JessNode);
-            else newParts.push(item);
+            if (item instanceof Extend) {
+              extractedExtends.push(item as unknown as JessNode);
+            } else {
+              newParts.push(item);
+            }
           }
         } else {
           newParts.push(part);
         }
       }
-      if (extractedExtends.length === 0) return { cleanedSelector: selector, extractedExtends: [] };
+      if (extractedExtends.length === 0) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
       const cleanedSelector = newParts.length === 0
         ? '&'
         : newParts.length === 1
           // Single string part → wrap as BasicSelector so serializeTypes shows the type
           ? (typeof newParts[0] === 'string'
-            ? new BasicSelector(newParts[0], undefined, loc) as unknown as JessNode
-            : newParts[0] as JessNode)
+              ? new BasicSelector(newParts[0], undefined, loc) as unknown as JessNode
+              : newParts[0] as JessNode)
           : new CompoundSelector(newParts, undefined, loc) as unknown as JessNode;
       return { cleanedSelector, extractedExtends };
     }
@@ -1060,12 +1109,16 @@ export class LessGrammar extends CssParser {
         if (part instanceof CompoundSelector) {
           const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(part as unknown as JessNode, loc);
           allExtends.push(...ee);
-          if (cs !== undefined) newParts.push(cs);
+          if (cs !== undefined) {
+            newParts.push(cs);
+          }
         } else {
           newParts.push(part);
         }
       }
-      if (allExtends.length === 0) return { cleanedSelector: selector, extractedExtends: [] };
+      if (allExtends.length === 0) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
       const newComplex = newParts.length === 1
         ? newParts[0] as JessNode
         : new ComplexSelector(newParts as any, undefined, loc) as unknown as JessNode;
@@ -1083,10 +1136,16 @@ export class LessGrammar extends CssParser {
           loc
         );
         allExtends.push(...ee);
-        if (ee.length > 0 || typeof item === 'string') changed = true;
-        if (cs !== undefined) cleanedItems.push(cs);
+        if (ee.length > 0 || typeof item === 'string') {
+          changed = true;
+        }
+        if (cs !== undefined) {
+          cleanedItems.push(cs);
+        }
       }
-      if (!changed) return { cleanedSelector: selector, extractedExtends: [] };
+      if (!changed) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
       if (allExtends.length === 0) {
         // No extends, but strings were normalized to BasicSelector
         const newSel = cleanedItems.length === 1
@@ -1160,26 +1219,44 @@ export class LessGrammar extends CssParser {
     if (isCssImport || opts.includes('css')) {
       const nameAny = new Any(name, { role: 'atkeyword' }, loc) as unknown as Node;
       const preludeItems: JessNode[] = [];
-      if (pathNode) preludeItems.push(pathNode as unknown as JessNode);
+      if (pathNode) {
+        preludeItems.push(pathNode as unknown as JessNode);
+      }
       const prelude = new Sequence(preludeItems as any, undefined, loc);
       return new AtRuleStatement({ name: nameAny, prelude }, undefined, loc) as unknown as JessNode;
     }
     const isForward = name === '@-export';
     const importType: 'import' | 'compose' = isForward ? 'compose' : 'import';
     const importOpts: Record<string, unknown> = {
-      once: !opts.includes('multiple'),
+      once: !opts.includes('multiple')
     };
-    if (opts.includes('reference')) importOpts.reference = true;
-    if (opts.includes('multiple')) importOpts.multiple = true;
-    if (opts.includes('optional')) importOpts.optional = true;
-    if (opts.includes('inline')) importOpts.inline = true;
-    if (opts.includes('less')) importOpts.type = 'less';
-    if (mediaNode) importOpts.postlude = mediaNode;
-    if (isForward) importOpts.forward = true;
+    if (opts.includes('reference')) {
+      importOpts.reference = true;
+    }
+    if (opts.includes('multiple')) {
+      importOpts.multiple = true;
+    }
+    if (opts.includes('optional')) {
+      importOpts.optional = true;
+    }
+    if (opts.includes('inline')) {
+      importOpts.inline = true;
+    }
+    if (opts.includes('less')) {
+      importOpts.type = 'less';
+    }
+    if (mediaNode) {
+      importOpts.postlude = mediaNode;
+    }
+    if (isForward) {
+      importOpts.forward = true;
+    }
     const nsMatch2 = /\bas\s+([^\s;(]+)/.exec(preludeText);
     const namespace = nsMatch2?.[1];
     const styleImportOptions: Record<string, unknown> = { type: importType, importOptions: importOpts };
-    if (namespace) styleImportOptions.namespace = namespace;
+    if (namespace) {
+      styleImportOptions.namespace = namespace;
+    }
     return new StyleImport(
       { path: pathNode as any },
       styleImportOptions as any,
@@ -1217,9 +1294,15 @@ export class LessGrammar extends CssParser {
 
     const buildWord = (w: string): JessNode => {
       const mv = singleVarRe.exec(w);
-      if (mv) return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
-      if (MEDIA_KEYWORDS.has(w.toLowerCase())) return new Any(w, { role: 'keyword' } as any, loc) as unknown as JessNode;
-      if (COMPARISON_OPS.has(w)) return new Any(w, { role: 'operator' } as any, loc) as unknown as JessNode;
+      if (mv) {
+        return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
+      }
+      if (MEDIA_KEYWORDS.has(w.toLowerCase())) {
+        return new Any(w, { role: 'keyword' } as any, loc) as unknown as JessNode;
+      }
+      if (COMPARISON_OPS.has(w)) {
+        return new Any(w, { role: 'operator' } as any, loc) as unknown as JessNode;
+      }
       return new Any(w, { role: 'ident' } as any, loc) as unknown as JessNode;
     };
 
@@ -1251,8 +1334,11 @@ export class LessGrammar extends CssParser {
           let depth = 1;
           let j = i + 1;
           while (j < t.length && depth > 0) {
-            if (t[j] === '(') depth++;
-            else if (t[j] === ')') depth--;
+            if (t[j] === '(') {
+              depth++;
+            } else if (t[j] === ')') {
+              depth--;
+            }
             j++;
           }
           tokens.push(buildParen(t.slice(i + 1, j - 1)));
@@ -1261,7 +1347,9 @@ export class LessGrammar extends CssParser {
           i++;
         } else {
           let j = i;
-          while (j < t.length && !/\s/.test(t[j]!) && t[j] !== '(') j++;
+          while (j < t.length && !/\s/.test(t[j]!) && t[j] !== '(') {
+            j++;
+          }
           tokens.push(buildWord(t.slice(i, j)));
           i = j;
         }
@@ -1274,9 +1362,11 @@ export class LessGrammar extends CssParser {
       let depth = 0;
       let start = 0;
       for (let i = 0; i < t.length; i++) {
-        if (t[i] === '(') depth++;
-        else if (t[i] === ')') depth--;
-        else if (t[i] === ',' && depth === 0) {
+        if (t[i] === '(') {
+          depth++;
+        } else if (t[i] === ')') {
+          depth--;
+        } else if (t[i] === ',' && depth === 0) {
           parts.push(t.slice(start, i).trim());
           start = i + 1;
         }
@@ -1354,7 +1444,9 @@ export class LessGrammar extends CssParser {
             }
           }
           const callPayload: Record<string, unknown> = { name: base };
-          if (argsNode) callPayload.args = argsNode;
+          if (argsNode) {
+            callPayload.args = argsNode;
+          }
           base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
         }
         if (accText) {
@@ -1372,7 +1464,9 @@ export class LessGrammar extends CssParser {
     };
 
     const commaItems = splitCommas(text);
-    if (commaItems.length === 1) return buildItem(commaItems[0]!);
+    if (commaItems.length === 1) {
+      return buildItem(commaItems[0]!);
+    }
     return new List(commaItems.map(buildItem) as any, undefined, loc) as unknown as JessNode;
   }
 
@@ -1448,12 +1542,13 @@ export class LessGrammar extends CssParser {
     ) as unknown as JessNode;
   }
 
-
   private _parenToArgs(paren: JessNode, loc: LocationInfo): JessNode | null {
     // Convert Paren content to List of mixin args.
     // Handles patterns like @foo: bar (keyword args) and bare values.
     const inner = (paren as any).value ?? (paren as any).node;
-    if (!inner) return null;
+    if (!inner) {
+      return null;
+    }
     const items: JessNode[] = [];
     // Inner may be a Sequence node OR a raw Component array (e.g. [Reference, ':', 'bar'])
     const isSeq = inner && typeof inner === 'object' && inner.type === 'Sequence';
@@ -1472,9 +1567,9 @@ export class LessGrammar extends CssParser {
         const item = seqItems[j]!;
         // Check for Reference (potential @foo) followed by ':' and value
         if (
-          item.type === 'Reference' &&
-          j + 2 < seqItems.length &&
-          (seqItems[j + 1] as any)?.value === ':'
+          item.type === 'Reference'
+          && j + 2 < seqItems.length
+          && (seqItems[j + 1] as any)?.value === ':'
         ) {
           const varName = (item as any).key ?? '';
           const nameAny = new Any(varName, { role: 'property' }, loc) as unknown as JessNode;
@@ -1496,9 +1591,13 @@ export class LessGrammar extends CssParser {
       }
     } else if (inner) {
       const isEmptyAny = inner.type === 'Any' && !String((inner as any).value ?? '').trim();
-      if (!isEmptyAny) items.push(inner as JessNode);
+      if (!isEmptyAny) {
+        items.push(inner as JessNode);
+      }
     }
-    if (items.length === 0) return null;
+    if (items.length === 0) {
+      return null;
+    }
     return new List(items as any, undefined, loc) as unknown as JessNode;
   }
 
@@ -1519,13 +1618,19 @@ export class LessGrammar extends CssParser {
     const first = valItems[0]?.comp;
     const isVarRef = (x: unknown): x is JessNode =>
       !!x && typeof x === 'object' && (x as any).type === 'Reference';
-    if (!isSel(first) && !isVarRef(first)) return null;
+    if (!isSel(first) && !isVarRef(first)) {
+      return null;
+    }
     // Must have at least one SquareParen accessor when starting with a variable ref
-    if (isVarRef(first) && valItems.length < 2) return null;
+    if (isVarRef(first) && valItems.length < 2) {
+      return null;
+    }
     const hasSquareAfterVar = isVarRef(first) && valItems.slice(1).some(vi =>
       isJessNodeVal(vi.comp) && (vi.comp as any).type === 'Paren' && (vi.comp as any)._options?.delimiter === 'square'
     );
-    if (isVarRef(first) && !hasSquareAfterVar) return null;
+    if (isVarRef(first) && !hasSquareAfterVar) {
+      return null;
+    }
 
     // Parse selector chain with interleaved calls.
     // Each "segment ()" pair becomes a Call; subsequent "> segment" chains further.
@@ -1573,15 +1678,21 @@ export class LessGrammar extends CssParser {
         // Split compound selectors like '#ns.breakpoint' → ['#ns', '.breakpoint']
         const seg = (c as string).trim();
         const splitSeg = seg.match(/[#.][^#.]*/g) ?? [seg];
-        for (const s of splitSeg) pendingSegments.push(s);
+        for (const s of splitSeg) {
+          pendingSegments.push(s);
+        }
         i++;
       } else if (isCombinator(c) && i + 1 < valItems.length && isSel(valItems[i + 1]?.comp)) {
         // Combinator between segments — skip
         i++;
       } else if (isJessNodeVal(c) && (c as any).type === 'Paren' && (c as any)._options?.delimiter === 'square') {
         // Square paren: accessor on current base
-        if (pendingSegments.length > 0) base = flushPendingAsRef();
-        if (base === null) break;
+        if (pendingSegments.length > 0) {
+          base = flushPendingAsRef();
+        }
+        if (base === null) {
+          break;
+        }
         const sqInnerRaw = (c as any).node ?? (c as any).value;
         const sqIsEmpty = !sqInnerRaw
           || (typeof sqInnerRaw === 'object' && sqInnerRaw.type === 'Any' && !String((sqInnerRaw as any).value ?? '').trim());
@@ -1615,12 +1726,18 @@ export class LessGrammar extends CssParser {
         i++;
       } else if (isJessNodeVal(c) && (c as any).type === 'Paren') {
         // Round paren: flush pending segments as Reference (if any), then wrap in Call
-        if (pendingSegments.length === 0 && base === null) break; // unexpected ()
-        if (pendingSegments.length > 0) base = flushPendingAsRef();
+        if (pendingSegments.length === 0 && base === null) {
+          break;
+        } // unexpected ()
+        if (pendingSegments.length > 0) {
+          base = flushPendingAsRef();
+        }
         // Extract args from the Paren's inner node (may be null for empty parens)
         const argsNode = this._parenToArgs(c as JessNode, loc);
         const callPayload: Record<string, unknown> = { name: base as any };
-        if (argsNode) callPayload.args = argsNode;
+        if (argsNode) {
+          callPayload.args = argsNode;
+        }
         base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
         hasMidCall = true;
         i++;
@@ -1630,8 +1747,12 @@ export class LessGrammar extends CssParser {
     }
 
     // Must have consumed all valItems
-    if (i !== valItems.length) return null;
-    if (pendingSegments.length === 0 && base === null) return null;
+    if (i !== valItems.length) {
+      return null;
+    }
+    if (pendingSegments.length === 0 && base === null) {
+      return null;
+    }
 
     // If we still have pending segments (no trailing call), flush them
     if (pendingSegments.length > 0) {
@@ -1675,7 +1796,9 @@ export class LessGrammar extends CssParser {
             }
           }
           const callPayload: Record<string, unknown> = { name: base as any };
-          if (argsNode) callPayload.args = argsNode;
+          if (argsNode) {
+            callPayload.args = argsNode;
+          }
           base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
         }
       }

@@ -29,4 +29,3 @@ describe('nthValue', () => {
     expect(errors.length).toBe(0);
   });
 });
-

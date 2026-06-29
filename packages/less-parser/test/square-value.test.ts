@@ -14,4 +14,3 @@ describe('squareValue', () => {
     expect(errors.length).toBe(0);
   });
 });
-

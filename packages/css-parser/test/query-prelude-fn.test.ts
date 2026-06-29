@@ -14,11 +14,10 @@ import { serializeTypes } from '@jesscss/core';
 const prelude = (css: string) => {
   const r = parseCssFn(css);
   expect(r.errors).toHaveLength(0);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   return (r.tree as any).rules[0].prelude;
 };
 const render = (css: string) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (parseCssFn(css).tree as any).toString();
 };
 

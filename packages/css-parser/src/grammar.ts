@@ -163,7 +163,7 @@ export const {
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(";")
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   )));
 
   /**
@@ -286,7 +286,7 @@ export const {
   // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
   // and the block's expect('}') reports a syntax error at that point.
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(";")
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
   )));
 
   return {
@@ -320,10 +320,14 @@ function firstUnparsedOffset(input: string, from: number): number | null {
   let i = from;
   while (i < input.length) {
     const c = input[i]!;
-    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { i++; continue; }
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') {
+      i++; continue;
+    }
     if (c === '/' && input[i + 1] === '*') {
       const end = input.indexOf('*/', i + 2);
-      if (end === -1) return i;        // unterminated comment is itself an error
+      if (end === -1) {
+        return i;
+      }        // unterminated comment is itself an error
       i = end + 2; continue;
     }
     return i;

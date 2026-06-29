@@ -11,8 +11,8 @@ import * as lessProductions from '../src/productions/index.js';
 
 type LessFactory = (this: CssRecursiveParser, T: LessTokenMap) => (...args: unknown[]) => unknown;
 
-const overrideNames = Object.keys(lessProductions).filter((name) => name in cssProductions);
-const additionNames = Object.keys(lessProductions).filter((name) => !(name in cssProductions));
+const overrideNames = Object.keys(lessProductions).filter(name => name in cssProductions);
+const additionNames = Object.keys(lessProductions).filter(name => !(name in cssProductions));
 
 class SubsetLessParser extends CssRecursiveParser {
   declare T: LessTokenMap;
@@ -69,7 +69,7 @@ describe('debug override subset self-analysis', () => {
   it('supports an override subset from SUBSET env', () => {
     const subset = (process.env.SUBSET ?? '')
       .split(',')
-      .map((value) => value.trim())
+      .map(value => value.trim())
       .filter(Boolean);
 
     const parser = createParser(subset);

@@ -16,8 +16,8 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
         ? prelude.value[0]
         : prelude;
     expect(queryNode.type).toBe('Paren');
-    expect(queryNode.node.type).toBe('QueryCondition');
-    expect(queryNode.node.value.length).toBe(3);
+    expect(queryNode.value.type).toBe('QueryCondition');
+    expect(queryNode.value.value.length).toBe(3);
     const out = serializeTypes(tree);
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
@@ -31,8 +31,8 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
-      expect(queryNode.node.type).toBe('QueryCondition');
-      expect(queryNode.node.value.length).toBe(3);
+      expect(queryNode.value.type).toBe('QueryCondition');
+      expect(queryNode.value.value.length).toBe(3);
     }
     const out = serializeTypes(tree);
     expect(out).toContain('QueryCondition');

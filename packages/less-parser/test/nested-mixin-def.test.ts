@@ -17,8 +17,8 @@ describe('nested mixin definitions', () => {
     expect(r.errors).toHaveLength(0);
     const ser = serializeTypes(r.tree);
     expect(ser).toContain('(Mixin');
-    expect(ser).toContain("'.vars'");
-    expect(ser).toContain("'sub'");      // the body declaration survives
+    expect(ser).toContain('\'.vars\'');
+    expect(ser).toContain('\'sub\'');      // the body declaration survives
   });
 
   test('a guarded nested definition `.m(@a) when (@a) { … }` parses', () => {

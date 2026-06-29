@@ -19,7 +19,9 @@ function lineCol(src: string, offset: number): { line: number; column: number } 
   let line = 1;
   let last = -1;
   for (let i = 0; i < offset; i++) {
-    if (src[i] === '\n') { line++; last = i; }
+    if (src[i] === '\n') {
+      line++; last = i;
+    }
   }
   return { line, column: offset - last };
 }
@@ -29,7 +31,7 @@ const CASES: Array<[string, string, number, number]> = [
   ['invalid-selector.css', 'input', 1, 1],     // `$b`, `@{c}` aren't CSS → unparsed input
   ['no-selector.css', 'input', 1, 1],          // bare `{` at top level → unparsed input
   ['atrule-no-semicolon.css', '}', 2, 16],     // `@content` stops the body → expect('}') fires
-  ['charset.css', 'input', 3, 1],              // @charset not first → unparsed input
+  ['charset.css', 'input', 3, 1]              // @charset not first → unparsed input
 ];
 
 describe('css syntax errors (parseCssFn)', () => {

@@ -27,7 +27,7 @@ function resolveBootstrap(): string | null {
   const candidates = [
     path.resolve(__dirname, '../../../node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.css'),
     path.join(home, 'git/oss/less.js/packages/test-data/tests-config/3rd-party/bootstrap4.css'),
-    path.join(home, 'git/worktrees/less.js/less-4x/packages/test-data/tests-config/3rd-party/bootstrap4.css'),
+    path.join(home, 'git/worktrees/less.js/less-4x/packages/test-data/tests-config/3rd-party/bootstrap4.css')
   ];
   return candidates.find(p => fs.existsSync(p)) ?? null;
 }
@@ -45,7 +45,7 @@ describe.skipIf(!bootstrapPath)('parseCssFn — bootstrap4.css baseline', () => 
     expect(r.errors).toHaveLength(0);
     // Structural sanity: Bootstrap is ~1078 top-level rules; guard against a
     // grammar change silently dropping large chunks. Loose bound, not brittle.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const rules = (r.tree as any).rules?.length ?? 0;
     expect(rules).toBeGreaterThan(1000);
   });

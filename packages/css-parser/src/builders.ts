@@ -252,7 +252,6 @@ export class CssParser {
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
 
-
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
   }
@@ -787,7 +786,9 @@ export class CssParser {
       let ni = 0;
       for (let i = 1; i < ls.length; i++) {
         parts.push(ls[i]!.value);
-        if (nodes[ni]) parts.push(nodes[ni++]!);
+        if (nodes[ni]) {
+          parts.push(nodes[ni++]!);
+        }
       }
       return new QueryCondition(parts as unknown as Node[], undefined, loc) as unknown as JessNode;
     }
@@ -822,7 +823,9 @@ export class CssParser {
     let ni = 1;
     for (const op of opLeaves) {
       parts.push(new Keyword(op.value, undefined, loc) as unknown as Node);
-      if (nodes[ni]) parts.push(nodes[ni++]!);
+      if (nodes[ni]) {
+        parts.push(nodes[ni++]!);
+      }
     }
     return new QueryCondition(parts, undefined, loc) as unknown as JessNode;
   }
@@ -839,7 +842,9 @@ export class CssParser {
       (c): c is CSTLeaf => c._tag === 'leaf' && (c as CSTLeaf).value !== ','
     );
     const preludeItems: Node[] = [];
-    if (nameLeaf) preludeItems.push(new Any(nameLeaf.value, { role: 'ident' }, loc) as unknown as Node);
+    if (nameLeaf) {
+      preludeItems.push(new Any(nameLeaf.value, { role: 'ident' }, loc) as unknown as Node);
+    }
     preludeItems.push(...nodeChildren(preludeChildren));
     const prelude = new Sequence(preludeItems, undefined, loc);
     return new AtRule(

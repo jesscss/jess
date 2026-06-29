@@ -1293,7 +1293,7 @@ export function qualifiedRule(this: P, T: TokenMap): ProductionRule {
     // 1. Extends that should bubble up (from nested rulesets or this ruleset that didn't match)
     // 2. Nothing (if all extends were processed)
     // Restore this ruleset's extendNodes (from selector parsing) to process them
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     const bubblingExtends = (ctx as { extendNodes?: Extend[] }).extendNodes; // Extends that should bubble up
     ctx.extendNodes = thisExtendNodes;
     // Restore parent's extendNodes after processing this ruleset's extends
@@ -1351,7 +1351,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
         const location: LocationInfo | undefined = node.location.length ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
@@ -1377,7 +1377,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
         const location: LocationInfo | undefined = node.location.length ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments

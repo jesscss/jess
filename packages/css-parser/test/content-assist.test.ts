@@ -8,4 +8,3 @@ describe('Chevrotain syntactic content assist', () => {
     expect(Array.isArray(out)).toBe(true);
   });
 });
-
