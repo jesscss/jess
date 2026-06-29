@@ -15,10 +15,9 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import type { IToken } from '@chevrotain/types';
+import type { IToken } from 'chevrotain';
 import { cssLexer } from '../src/cssTokens.js';
-import { CssRecursiveParser } from '../src/cssRecursiveParser.js';
-import { type TokenMap } from '../src/cssActionsParser.js';
+import { CssRecursiveParser, type TokenMap } from '../src/cssRecursiveParser.js';
 
 const thisFile = fileURLToPath(import.meta.url);
 const thisDir = path.dirname(thisFile);
@@ -113,6 +112,7 @@ if (lexResult.errors.length > 0) {
   console.warn(`Lexer errors: ${lexResult.errors.length}`);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const parser = new CssRecursiveParser(T as TokenMap);
 
 function parseCurrent(tokens: any[]): number {

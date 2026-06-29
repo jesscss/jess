@@ -9,16 +9,20 @@
  */
 import { describe, test, expect } from 'vitest';
 import { parseCssFn } from '../src/grammar.js';
-import { serializeTypes } from '@jesscss/core';
+import { N, isNode, serializeTypes } from '@jesscss/core';
 
-const prelude = (css: string) => {
+// Deliberately `any`: callers walk the prelude structurally (.value[0], etc.).
+const prelude = (css: string): any => {
   const r = parseCssFn(css);
   expect(r.errors).toHaveLength(0);
-
-  return (r.tree as any).rules[0].prelude;
+  const first = r.tree.rules[0];
+  if (!isNode(first, N.AtRule)) {
+    throw new Error('Expected first rule to be an at-rule');
+  }
+  return first.prelude;
 };
 const render = (css: string) => {
-  return (parseCssFn(css).tree as any).toString();
+  return parseCssFn(css).tree.toString();
 };
 
 describe('parseCssFn at-rule query preludes', () => {

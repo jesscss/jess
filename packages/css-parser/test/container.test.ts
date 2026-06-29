@@ -31,7 +31,19 @@ function getPreludeQueryNode(atRule: unknown): SerializedTestNode {
     expect(Array.isArray(prelude.value)).toBe(true);
     return prelude.value?.[0] ?? prelude;
   }
-  return Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+  return Array.isArray(prelude?.value) ? prelude.value[0]! : prelude;
+}
+
+// `SerializedTestNode.value` is typed as an array, but several serialized
+// shapes nest a single node there. Read it as a single node for those cases.
+function nodeValue(node: SerializedTestNode | undefined): SerializedTestNode {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return node!.value as unknown as SerializedTestNode;
+}
+
+// Read the array form of `value`, asserting presence under the test type.
+function arrayValue(node: SerializedTestNode | undefined): SerializedTestNode[] {
+  return node!.value!;
 }
 
 describe('@container at-rule parsing and serialization', () => {
@@ -100,9 +112,9 @@ describe('@container at-rule parsing and serialization', () => {
     const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
-    expect(queryNode.value.length).toBe(2);
-    expect(queryNode.value[0].value).toBe('not');
-    expect(queryNode.value[1].type).toBe('Paren');
+    expect(arrayValue(queryNode).length).toBe(2);
+    expect(arrayValue(queryNode)[0]!.value).toBe('not');
+    expect(arrayValue(queryNode)[1]!.type).toBe('Paren');
     const out = serializeTypes(tree);
     expect(out).toContain('AtRule');
     expect(out).toContain('@container');
@@ -203,8 +215,8 @@ describe('@container at-rule parsing and serialization', () => {
     const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     expect(queryNode.type).toBe('Paren');
-    expect(queryNode.value.type).toBe('QueryCondition');
-    expect(queryNode.value.value.length).toBe(3);
+    expect(nodeValue(queryNode).type).toBe('QueryCondition');
+    expect(arrayValue(nodeValue(queryNode)).length).toBe(3);
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
   });
@@ -219,8 +231,8 @@ describe('@media at-rule - QueryCondition parsing', () => {
     const out = serializeTypes(tree);
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
-      expect(queryNode.value.type).toBe('QueryCondition');
-      expect(queryNode.value.value.length).toBe(3);
+      expect(nodeValue(queryNode).type).toBe('QueryCondition');
+      expect(arrayValue(nodeValue(queryNode)).length).toBe(3);
     }
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
@@ -286,20 +298,20 @@ describe('@container - container query type functions', () => {
     const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
-    expect(queryNode.value[0].type).toBe('Call');
-    expect(queryNode.value[0].name).toBe('scroll-state');
-    const argList = queryNode.value[0].args;
-    expect(argList.type).toBe('List');
-    expect(argList.value.length).toBe(1);
-    const firstArg = argList.value[0];
-    expect(firstArg.type).toBe('QueryCondition');
-    expect(firstArg.value.length).toBe(3); // Paren, Any('and'), Paren
-    expect(firstArg.value[0].type).toBe('Paren');
-    expect(firstArg.value[0].value.type).toBe('Declaration');
-    expect(firstArg.value[1].type).toBe('Keyword');
-    expect(firstArg.value[1].value).toBe('and');
-    expect(firstArg.value[2].type).toBe('Paren');
-    expect(firstArg.value[2].value.type).toBe('Declaration');
+    expect(arrayValue(queryNode)[0]!.type).toBe('Call');
+    expect(arrayValue(queryNode)[0]!.name).toBe('scroll-state');
+    const argList = arrayValue(queryNode)[0]!.args;
+    expect(argList!.type).toBe('List');
+    expect(arrayValue(argList).length).toBe(1);
+    const firstArg = arrayValue(argList)[0];
+    expect(firstArg!.type).toBe('QueryCondition');
+    expect(arrayValue(firstArg).length).toBe(3); // Paren, Any('and'), Paren
+    expect(arrayValue(firstArg)[0]!.type).toBe('Paren');
+    expect(nodeValue(arrayValue(firstArg)[0]).type).toBe('Declaration');
+    expect(arrayValue(firstArg)[1]!.type).toBe('Keyword');
+    expect(arrayValue(firstArg)[1]!.value).toBe('and');
+    expect(arrayValue(firstArg)[2]!.type).toBe('Paren');
+    expect(nodeValue(arrayValue(firstArg)[2]).type).toBe('Declaration');
     expect(out).toContainString(`name: 'scroll-state'`);
     expect(out).toContainString(`
                   (Paren
@@ -321,12 +333,12 @@ describe('@container - container query type functions', () => {
     const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
-    expect(queryNode.value.length).toBe(2);
-    expect(queryNode.value[0].type).toBe('Keyword');
-    expect(queryNode.value[0].value).toBe('not');
-    expect(queryNode.value[1].type).toBe('QueryCondition');
-    expect(queryNode.value[1].value[0].type).toBe('Call');
-    expect(queryNode.value[1].value[0].name).toBe('scroll-state');
+    expect(arrayValue(queryNode).length).toBe(2);
+    expect(arrayValue(queryNode)[0]!.type).toBe('Keyword');
+    expect(arrayValue(queryNode)[0]!.value).toBe('not');
+    expect(arrayValue(queryNode)[1]!.type).toBe('QueryCondition');
+    expect(arrayValue(arrayValue(queryNode)[1])[0]!.type).toBe('Call');
+    expect(arrayValue(arrayValue(queryNode)[1])[0]!.name).toBe('scroll-state');
     expect(out).toContainString(`
           (QueryCondition
             value:
@@ -360,7 +372,7 @@ describe('@container - container query type functions', () => {
     const atRule = tree.rules[0];
     const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('List');
-    expect(queryNode.value.length).toBe(4); // 4 comma-separated queries
+    expect(arrayValue(queryNode).length).toBe(4); // 4 comma-separated queries
   });
 
   // Examples from container.less

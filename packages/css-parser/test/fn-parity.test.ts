@@ -55,7 +55,7 @@ describe('functional CSS grammar — regression', () => {
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('expected ruleset');
       }
-      const str = ruleset.selector.toString({ trivia: result.trivia });
+      const str = ruleset.selector!.toString({ trivia: result.trivia });
       expect(str).toBeTruthy();
     }
   });

@@ -46,7 +46,7 @@ describe.skipIf(!bootstrapPath)('parseCssFn — bootstrap4.css baseline', () => 
     // Structural sanity: Bootstrap is ~1078 top-level rules; guard against a
     // grammar change silently dropping large chunks. Loose bound, not brittle.
 
-    const rules = (r.tree as any).rules?.length ?? 0;
+    const rules = r.tree.rules.length;
     expect(rules).toBeGreaterThan(1000);
   });
 
