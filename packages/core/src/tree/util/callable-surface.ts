@@ -25,6 +25,11 @@ export function getRootSourceRules(rules: Rules): Rules {
 function createShallowCallableRulesSurface(sourceRules: Rules): Rules {
   const output = createDerivedRulesSurface(sourceRules);
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
+  // Thin surface: one frame model for all node re-use. A direct shared child
+  // (e.g. a nested ruleset in the body) re-points its scope-frame lexical parent
+  // to this surface, so it resolves up the call's scope (lexical definition +
+  // live param slots) rather than its static canonical parent. See §4 / §6.2.
+  output.options.thinSurface = true;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
     // Share the canonical body children (the AST is an immutable template). The

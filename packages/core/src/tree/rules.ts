@@ -651,13 +651,16 @@ export type RulesOptions = {
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
   /**
-   * Marks an `import`-type inline placement surface: its shared canonical
-   * children resolve free vars up the DYNAMIC import-site scope chain (the
-   * surface's frame parent), not their static imported-tree parent. Set by the
-   * import placement; consumed by the scope-frame parent-walk fix in
-   * `_evalPreparedRules`. See LIVE_BINDING_ARCHITECTURE.md §4.
+   * Marks a THIN SURFACE: a Rules that re-uses a shared set of canonical
+   * children (a mixin/ruleset body call, a style import, a loop body) over a
+   * per-placement scope frame. Its direct shared children resolve free vars up
+   * the DYNAMIC placement chain — by re-pointing their scope frame's lexical
+   * parent to this surface (whose own frame holds the placement's lexical parent
+   * + any per-placement live slots) — instead of their static canonical parent.
+   * The one frame model for all node re-use (§4 / §6.2). Consumed by the
+   * parent-walk fix in `_evalPreparedRules`. See LIVE_BINDING_ARCHITECTURE.md.
    */
-  inlinePlacement?: boolean;
+  thinSurface?: boolean;
 };
 
 export interface Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
@@ -5907,14 +5910,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // site. See LIVE_BINDING_ARCHITECTURE.md §4.
     if (
       rules === this
-      && enclosingScope?.options.inlinePlacement === true
+      && enclosingScope?.options.thinSurface === true
       && rules !== enclosingScope
     ) {
-      // This is a direct child of an `import` inline placement: its static
-      // parent is the imported tree, but it must resolve free vars up the
-      // import-site scope. Re-point its frame's lexical parent to the placement
-      // surface (whose own frame parent is the import site). Only level-1
-      // children hit this — deeper nodes have a correct in-tree static parent.
+      // This is a direct child of a THIN SURFACE (mixin body, style import, loop
+      // body): its static parent is the canonical source tree, but it must
+      // resolve free vars up the placement scope. Re-point its frame's lexical
+      // parent to the surface (whose frame holds the placement's lexical parent
+      // + live slots). Only level-1 children hit this — deeper nodes have a
+      // correct in-tree static parent. One frame model for all node re-use.
       rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);
