@@ -1,5 +1,39 @@
 import { Parser } from '../src/index.js';
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
+
+// Tests walk the parsed AST structurally; these views cover the fields they read.
+interface SelView {
+  type?: string;
+  value: Node[];
+  valueOf(): unknown;
+  toString(opts?: unknown): string;
+}
+interface RuleView {
+  type: string;
+  selector: SelView;
+  target: SelView;
+  flag: number;
+  rules: RuleView[];
+  name: unknown;
+  value: unknown;
+  prelude: unknown;
+  options: { assign: string };
+  location: number[];
+}
+function asRuleset(n: Node | string | undefined): RuleView {
+  if (!isNode(n, N.Ruleset)) {
+    throw new Error('Expected a ruleset');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as RuleView;
+}
+function asRules(n: Node | string | undefined): RuleView {
+  if (!isNode(n, N.Rules)) {
+    throw new Error('Expected a Rules node');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as RuleView;
+}
 
 // Import the actual placeholder from core
 import { INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
@@ -187,9 +221,9 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     const mixins = tree.rules.filter((node: any) => node.type === 'Mixin');
     expect(mixins).toHaveLength(3);
-    expect(mixins[0].options?.hasDefault).toBe(true);
-    expect(Boolean(mixins[1].options?.hasDefault)).toBe(false);
-    expect(mixins[2].options?.hasDefault).toBe(true);
+    expect(mixins[0]!.options?.hasDefault).toBe(true);
+    expect(Boolean(mixins[1]!.options?.hasDefault)).toBe(false);
+    expect(mixins[2]!.options?.hasDefault).toBe(true);
   });
 
   test('mixin call', () => {
@@ -1102,39 +1136,39 @@ describe('extend cases', () => {
   test('single selector with extend - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expectExtend(ruleset.rules[0], '.x', 1);
-    expect(ruleset.rules[1].type).toBe('Declaration');
+    expect(ruleset.rules[1]!.type).toBe('Declaration');
   });
 
   test('multiple selectors with same target - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 1);
-    expect(ruleset.rules[1].type).toBe('Declaration');
+    expect(ruleset.rules[1]!.type).toBe('Declaration');
   });
 
   test('multiple selectors with different targets - root-level extends', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x), .b:extend(.y) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const wrapper = tree.rules[0];
+    const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.x', 1, '.a');
     expectExtend(wrapper.rules[1], '.y', 1, '.b');
-    expect(wrapper.rules[2].selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(wrapper.rules[2]!.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
   });
 
   test('mixed selectors - some with extends, some without - root-level extends', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b { color: blue; }');
     expect(errors.length).toBe(0);
-    const wrapper = tree.rules[0];
+    const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.x', 1, '.a');
-    expect(wrapper.rules[1].selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(wrapper.rules[1]!.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
   });
 
   test('ampersand extend - single extend', () => {
@@ -1149,7 +1183,7 @@ describe('extend cases', () => {
       console.error('Parse errors:', errors.map(e => e.message));
     }
     if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
@@ -1162,7 +1196,7 @@ describe('extend cases', () => {
       console.error('Parse errors:', errors.map(e => e.message));
     }
     if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
@@ -1175,11 +1209,11 @@ describe('extend cases', () => {
       console.error('Parse errors:', errors.map(e => e.message));
     }
     if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expectExtend(ruleset.rules[0], '.x', 0);
   });
@@ -1221,11 +1255,11 @@ describe('extend cases', () => {
       console.error('Parse errors:', errors.map(e => e.message));
     }
     if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map(e => e.message || e));
+      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
     }
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expectExtend(ruleset.rules[0], '.x', 0);
   });
@@ -1233,7 +1267,7 @@ describe('extend cases', () => {
   test('multiple selectors with same target and all flag - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x all), .b:extend(.x all) { color: blue; }');
     expect(errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 0);
   });
@@ -1241,7 +1275,7 @@ describe('extend cases', () => {
   test('three selectors with same target - extend as first rule', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x), .c:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b', '.c']);
     expectExtend(ruleset.rules[0], '.x', 1);
   });
@@ -1251,7 +1285,7 @@ describe('extend cases', () => {
 
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 0);
   });
@@ -1260,10 +1294,10 @@ describe('extend cases', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
-    expect(ruleset.rules[0].target.value.map((node: any) => node.valueOf())).toEqual(['.x', '.y']);
-    expect(ruleset.rules[0].flag).toBe(1);
+    expect(ruleset.rules[0]!.target.value.map((node: any) => node.valueOf())).toEqual(['.x', '.y']);
+    expect(ruleset.rules[0]!.flag).toBe(1);
   });
 
   test('extend attached to selector - check selector value', () => {
@@ -1280,7 +1314,8 @@ describe('extend cases', () => {
     expect(errors).toHaveLength(0);
 
     // Find the extend node and check its selector
-    const ruleset = tree.rules[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ruleset: any = tree.rules[0];
     expect(ruleset?.type).toBe('Ruleset');
     if (ruleset && ruleset.type === 'Ruleset') {
       const rules = ruleset.rules;
@@ -1344,7 +1379,7 @@ describe('extend cases', () => {
     const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
-    const ruleset = tree.rules[0];
+    const ruleset = asRuleset(tree.rules[0]);
     expectExtend(ruleset.rules[0], '.x', 1);
     expectExtend(ruleset.rules[1], '.y', 0);
   });
@@ -1371,10 +1406,10 @@ describe('extend cases', () => {
     expect(errors.length).toBe(0);
     expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
-    const wrapper = tree.rules[0];
+    const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.ext5', 0, '.ext7');
-    expect(wrapper.rules[1].selector.value.map((node: any) => node.valueOf())).toEqual([
+    expect(wrapper.rules[1]!.selector.value.map((node: any) => node.valueOf())).toEqual([
       '.should-not-exist-in-output',
       '.ext7'
     ]);
