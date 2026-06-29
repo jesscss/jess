@@ -609,11 +609,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
   }
 
-  private materializeImportPlacementState(state: ImportPlacementState): Rules {
+  private materializeImportPlacementState(
+    state: ImportPlacementState,
+    importSite: Rules
+  ): Rules {
     const placement = this.deriveRulesSurface(state.source, state.children, {
       shareChildren: true,
       preserveSourceNode: true
     });
+    // `import` inlines into the importing scope. Because the placement SHARES
+    // the canonical imported children (they keep their imported-tree parent),
+    // the only way those children resolve free vars (e.g. a parent-scope
+    // variable) is through this surface's scope frame. So the surface's lexical
+    // parent is the IMPORT SITE — its frame chain reaches the importing scope —
+    // while `sourceNode` still points at the canonical imported tree for the
+    // surface's own declarations. See LIVE_BINDING_ARCHITECTURE.md §4.
+    placement.parent = importSite;
     importPlacementStates.set(placement, state);
     return placement;
   }
@@ -1120,7 +1131,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
           rules = this.materializeImportPlacementState(
-            this.createFirstUseImportPlacementState(rules)
+            this.createFirstUseImportPlacementState(rules),
+            this.getImportAnchorRules(context)
           );
         }
 

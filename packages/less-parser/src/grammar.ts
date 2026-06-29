@@ -326,7 +326,7 @@ const ALIASES: Record<string, string> = {
 };
 
 export type LessFnParseResult = {
-  tree: Node;
+  tree: Rules;
   errors: Array<{ message: string; offset?: number }>;
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
@@ -380,7 +380,7 @@ export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResu
     ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
     : (fn as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
 
-  const tree: Node = r.ok && r.value instanceof Node ? r.value : (nil() as unknown as Node);
+  const tree = (r.ok && r.value instanceof Node ? r.value : nil()) as unknown as Rules;
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
   // Same model as parseCssFn: expect()/recover() ParseErrors, a hard top-level

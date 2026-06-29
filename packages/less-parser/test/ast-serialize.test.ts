@@ -10,11 +10,7 @@ function extractInterpolatedNodes(serialized: string): string[] {
   return matches || [];
 }
 
-const parser = {
-  parse(text: string) {
-    return new Parser().parse(text);
-  }
-};
+const parser = new Parser();
 
 describe('serializeTypes coverage', () => {
   test('paren list value parses', () => {
@@ -90,8 +86,7 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (CustomDeclaration
-        name:
-          (Any [role=property] '--custom')
+        name: '--custom'
         value:
           (Sequence
             value:

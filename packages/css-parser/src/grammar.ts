@@ -16,7 +16,7 @@ import {
   not, scanTo, balanced, parser, trivia, rules, expect
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, type TriviaMap, nil } from '@jesscss/core';
+import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
 import { CssParser, buildLazyTriviaMap } from './builders.js';
 
 // ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ export const {
 // ---------------------------------------------------------------------------
 
 export type CssParseResult = {
-  tree: Node;
+  tree: Rules;
   errors: Array<{ message: string; offset?: number }>;
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
@@ -357,7 +357,7 @@ export function parseCssFn(input: string): CssParseResult {
     : sheet.parse(input, 0, ctx);
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const tree: Node = r.ok && r.value instanceof Node ? r.value : (nil() as unknown as Node);
+  const tree = (r.ok && r.value instanceof Node ? r.value : nil()) as unknown as Rules;
 
   // Three diagnostic sources, all position-tagged: a required token expect()
   // missed, a hard top-level failure, and input the grammar stopped short of.

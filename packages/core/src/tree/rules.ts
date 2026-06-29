@@ -5862,17 +5862,44 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    // The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
+    // A derived eval surface's lexical parent is where it is being PLACED, not
+    // its static canonical parent — see _evalPreparedRules.
+    const enclosingScope = isNode(context.rulesContext, N.Rules)
+      ? context.rulesContext
+      : undefined;
     this._setupContextForRules(context, this);
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable(rulesAfterPrep)) {
       return (rulesAfterPrep as Promise<Rules>).then(rules =>
-        this._evalPreparedRules(rules, context)
+        this._evalPreparedRules(rules, context, enclosingScope)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context);
+    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope);
   }
 
-  private _evalPreparedRules(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _evalPreparedRules(
+    rules: Rules,
+    context: Context,
+    enclosingScope?: Rules
+  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    // Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
+    // static canonical `this.parent` as a frame's lexical parent. But a shared
+    // canonical child placed in a surface (style import / mixin body / loop)
+    // must resolve free vars up the DYNAMIC placement chain — where it is being
+    // evaluated — not its canonical parent. Re-point the frame's lexical parent
+    // to the enclosing eval scope. This is the frame-based replacement for the
+    // old `adopt` reparenting; no node is reparented and no sub-tree is cloned.
+    //
+    // Only for `rules === this` (a canonically-evaluated node): for a canonical
+    // non-placement node the enclosing scope already equals the static parent,
+    // so this is a no-op; for a placed shared child it is the fix. A DERIVED
+    // surface (`rules !== this`, e.g. a mixin output) keeps its own wired parent
+    // (its lexical definition scope), which must not be overwritten by the call
+    // site. See LIVE_BINDING_ARCHITECTURE.md §4.
+    if (enclosingScope && rules === this && rules !== enclosingScope) {
+      rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
+    }
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
     // (may differ from context.root set in getTree, or be a prepared wrapper).

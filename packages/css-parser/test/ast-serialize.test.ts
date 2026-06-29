@@ -78,7 +78,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const selector = ruleset.selector;
+    const selector = ruleset.selector!;
     if (!isNode(selector, N.ComplexSelector)) {
       throw new Error('Expected parsed selector to be complex');
     }
@@ -190,7 +190,7 @@ describe('serializeTypes coverage', () => {
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const selector = ruleset.selector;
+    const selector = ruleset.selector!;
 
     expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
     expect(serializeTypes(selector)).toContainString(`
@@ -222,7 +222,7 @@ describe('serializeTypes coverage', () => {
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
-      expect(ruleset.selector.toString({ trivia })).toBe(expected);
+      expect(ruleset.selector!.toString({ trivia })).toBe(expected);
     }
   });
 
@@ -243,7 +243,7 @@ describe('serializeTypes coverage', () => {
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
-      const selector = ruleset.selector;
+      const selector = ruleset.selector!;
       expect(selector.toString({ trivia })).toBe(expected);
       expect(serializeTypes(selector)).toContainString(shape);
     }
@@ -318,7 +318,7 @@ describe('serializeTypes coverage', () => {
     expect(triviaText(trivia.lookup(firstArg!.location[3], 'after'))).toBe(' /*{comment}*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstArg!.location[3] && offset < secondArg!.location[0])
+        .filter(([offset]) => offset > firstArg!.location[3]! && offset < secondArg!.location[0]!)
         .map(([, t]) => triviaText(t))
     ).toEqual([' /*{comment}*/']);
   });
@@ -448,8 +448,8 @@ describe('serializeTypes coverage', () => {
       throw new Error('Expected first parsed rule to be an at-rule');
     }
     const { name, prelude } = atRule;
-    if (!prelude) {
-      throw new Error('Expected at-rule prelude');
+    if (!prelude || typeof prelude === 'string') {
+      throw new Error('Expected at-rule prelude node');
     }
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
