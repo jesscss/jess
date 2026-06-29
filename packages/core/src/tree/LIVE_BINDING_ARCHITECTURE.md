@@ -59,6 +59,21 @@ These are non-negotiable. A change that violates one is wrong by definition.
    and the re-eval gate (`needsReeval = frozen && !F_STATIC`, dies when
    node-retained eval results / the `evaluated` flag are removed). So `frozen`
    is the LAST domino, not the first.
+
+   **`evaluated` and `frozen` are clone-era relics and should both be DELETED.**
+   A persistent `evaluated` flag assumes each node is evaluated exactly once —
+   true only when the whole AST is deep-cloned per placement. In the thin model
+   a canonical node is an immutable template evaluated MANY times under different
+   bindings; "evaluated" is a property of a placement/output, never of the
+   shared canonical node. `frozen` is just the band-aid that exempts templates
+   from that flag. VERIFIED (2026-06): replacing the re-eval gate with
+   `needsReeval = !F_STATIC` (always re-evaluate non-static nodes) costs only +1
+   on the full suite — i.e. always-re-eval is sound; the `evaluated` skip is not
+   load-bearing for correctness. Scale: `evaluated` is read at ~130 sites across
+   the eval/render/lookup core (the deep "eval never mutates a canonical node in
+   place; output is always a distinct placement-local node" invariant); `frozen`
+   is only ~16. This is the §2.7 endgame — large, multi-step, sequenced
+   `evaluated` → `frozen`.
 8. **A copy is a rare, proven exception.** Small structural copies (e.g. a
    selector copy to make extend easier) are permitted ONLY with strong evidence
    that a shallow surface / frame mapping is not workable, or that the copy is

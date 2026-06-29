@@ -202,10 +202,20 @@ function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
   // TODO(§4/§6.2): make this a true thin surface like mixin/import — SHARE the
   // canonical body children (so the surface's `sourceNode` link drives the
   // scope-frame parent-walk), with the loop counter/value/key as the only
-  // per-iteration live slots. Blocked because `deriveIterationChild`
-  // (comment→nil, ampersand→derive) and body-declaration registration are
-  // currently done per-iteration on owned copies; those placement transforms
-  // must move to context/render time first.
+  // per-iteration live slots. Two real blockers (verified 2026-06):
+  //  1) The loop renders via a SEPARATE path that does not route body children
+  //     through the normal Rules eval (`_evalPreparedRules`), so the unified
+  //     `sourceNode` walk-re-point never fires for them. Loops instead rely on
+  //     the bespoke `attachIterationFallbackFrame` below, which stamps a
+  //     per-iteration fallback on each child's frame — and on a SHARED child it
+  //     goes stale (the first iteration's frame sticks). Route loop-body eval
+  //     through the normal eval path so the walk applies, then delete the
+  //     bespoke fallback.
+  //  2) Shared (non-copied) body children retain their first eval result. The
+  //     fix is to stop pinning template output on the node (`evaluated`/`frozen`
+  //     are clone-era relics): a probe of `needsReeval = !F_STATIC` (always
+  //     re-eval non-static) cost only +1 on the suite, so always-re-eval is the
+  //     sound replacement. See LIVE_BINDING_ARCHITECTURE.md §2.7.
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
     sourceRules.rules.map(deriveIterationChild)
