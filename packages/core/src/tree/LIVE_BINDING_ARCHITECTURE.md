@@ -98,6 +98,24 @@ adopt) and exists only for genuine "new node, same shape" needs — not placemen
 
 ## 4. Scope frames & closures
 
+**Fix the parent WALK, never clone around it.** A shared canonical child keeps
+its static (canonical) `parent`. When it is *placed* in a surface (style import,
+mixin body, loop) and evaluated, it must resolve free variables up the DYNAMIC
+placement chain — where it is being evaluated — not its canonical parent. The
+correct fix is to re-point the child's scope-frame *lexical parent* to the
+enclosing placement surface at eval time (`Rules._evalPreparedRules`), NOT to
+reparent the node and NOT to deep-clone the sub-tree.
+
+Implemented so far: an `import`-type inline placement sets
+`options.inlinePlacement` and takes the import SITE as its lexical parent
+(`sourceNode` still points at the canonical imported tree). A direct child of an
+`inlinePlacement` surface re-points its frame parent to that surface, so it
+resolves up the import-site chain. Derived surfaces (mixin output, etc.) keep
+their own wired (lexical-definition) frame parent and are left untouched. The
+same walk fix should generalize to the other placements (one frame model, §6.2)
+instead of any per-subsystem reparent/copy.
+
+
 - Each surface owns a `ScopeFrame`: live param slots (`BindingCell`, `live:true`)
   + declaration cells over the shared children, `parent` = enclosing frame.
 - A read resolves the current `BindingCell` for a name (walking frames) and
