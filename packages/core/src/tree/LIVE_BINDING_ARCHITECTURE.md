@@ -88,10 +88,24 @@ Behavior:
 
 This **subsumes**, and these should collapse into it (see DRY_AUDIT.md):
 - `createShallowCallableRulesSurface` + `createOwned/UnlockedCallableRulesSurface`
-- `createDerivedIterationRulesSurface` / `createIterationEvalSurface`
+  — ✅ now share children and set `options.thinSurface`.
+- the import placement surface (`materializeImportPlacementState`) — ✅ shares
+  children, takes the import site as lexical parent, sets `options.thinSurface`.
+- `createDerivedIterationRulesSurface` / `createIterationEvalSurface` — ⏳ STILL
+  COPIES per iteration (`deriveIterationChild`). Blocked: comment→nil /
+  ampersand→derive transforms and per-iteration body-declaration registration run
+  on owned copies. Move those to context/render time, then share + `thinSurface`.
 - ruleset `createNilSelectorDirectOutputRules`
-- the import placement surface (`deriveRulesSurface` + the deleted copy path)
 - the per-class `clone()` overrides used for placement
+
+**The unified mechanism (implemented for mixin + import):** a thin surface sets
+`options.thinSurface = true`. In `Rules._evalPreparedRules`, a direct child of a
+`thinSurface` re-points its scope-frame *lexical parent* to that surface — whose
+own frame holds the placement's lexical parent + per-placement live slots (mixin
+params, import `with`/`set`, loop counter). The shared children thus resolve free
+vars up the placement scope with NO reparent and NO clone. This is the single
+parent-walk fix; every node-re-use site marks `thinSurface` rather than inventing
+its own copy/reparent path.
 
 `clone()` itself is **shallow-only** (shared children, copied options, no
 adopt) and exists only for genuine "new node, same shape" needs — not placement.
