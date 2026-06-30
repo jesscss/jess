@@ -3148,7 +3148,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
       const entryRules = entry;
-      const childFrame = entryRules._scopeFrame ?? (entryRules.evaluated ? entryRules.getScopeFrame() : undefined);
+      const childFrame = entryRules._scopeFrame ?? entryRules.getScopeFrame();
       let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
         entryRules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
@@ -5787,9 +5787,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    */
   private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
-    if (rules.evaluated) {
-      return { rules, rulesToHoist: false };
-    }
     this._assignRootDocumentOrder(rules, context);
     const maybeHoist = this._evaluateSourceOrder(rules, context);
     if (isThenable(maybeHoist)) {
