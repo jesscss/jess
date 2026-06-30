@@ -560,13 +560,27 @@ export class LessGrammar extends CssParser {
         rawText = '@' + (innerVal as any).key;
       }
       if (rawText !== undefined) {
+        // `@@name` → dynamic variable lookup; key is a variable Reference.
         if (rawText.startsWith('@@')) {
           return new Reference(rawText.slice(2), { type: 'variable' as const }, loc) as unknown as JessNode;
         }
+        // `$@name` / `@$name` → property lookup with a dynamic (variable) name:
+        // Quoted(Interpolated(@name)). The `$`/`@` markers are never kept.
+        if (rawText.startsWith('$@') || rawText.startsWith('@$')) {
+          const varRef = new Reference(rawText.slice(2), { role: 'ident' as const }, loc) as unknown as Node;
+          const interp = new Interpolated(
+            { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] as any },
+            { role: 'ident' as const }, loc
+          ) as unknown as string;
+          return new Quoted(interp, {}, loc) as unknown as JessNode;
+        }
+        // `@name` → variable lookup; key is the bare name (a string).
         if (rawText.startsWith('@')) {
           return rawText.slice(1);
         }
-        return new Quoted(rawText, {}, loc) as unknown as JessNode;
+        // `$name` (property reference) or bare `name` (index) → Quoted(name); the `$`
+        // property marker is dropped.
+        return new Quoted(rawText.replace(/^\$/, ''), {}, loc) as unknown as JessNode;
       }
       // Other node (e.g. an interpolated key) → its .key or the node itself.
       return (innerVal as any)?.key ?? innerVal;
