@@ -419,20 +419,20 @@ test('rest parameter in mixin', () => {
           value:
             [
               (Rest
-                node: 'args'
+                value: 'args'
               )
             ]
         )
       rules:
         [
           (Declaration
-                name:
-                  (Any [role=property] 'color')
-                value:
-                  (Color
-                    node: 'red'
-                  )
-            )
+            name:
+              (Any [role=property] 'color')
+            value:
+              (Color
+                node: 'red'
+              )
+          )
         ]
   `);
 });
