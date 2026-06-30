@@ -11,7 +11,7 @@ import {
   not, scanTo, balanced, parser, trivia, noTrivia, rules, expect, sepBy
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, Rules, type TriviaMap, nil } from '@jesscss/core';
+import { Node, Rules, type TriviaMap, type MathMode, nil } from '@jesscss/core';
 import { LessGrammar } from './builders.js';
 import { buildLazyTriviaMap } from '@jesscss/css-parser';
 
@@ -380,8 +380,9 @@ function firstUnparsedOffset(input: string, from: number): number | null {
   return null;
 }
 
-export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResult {
+export function parseLessFn(input: string, rule = 'stylesheet', mathMode: MathMode = 'parens-division'): LessFnParseResult {
   host.setSource(input);
+  host.mathMode = mathMode;
   host.resetWarnings();
   const ruleName = ALIASES[rule] ?? rule;
   const fn = (cssRules as Record<string, unknown>)[ruleName];
@@ -428,13 +429,17 @@ export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResu
 
 /** Functional Less parser — call .parse(text) to get a Jess AST. */
 export class LessParser {
-  // Config accepted for API compatibility; mathMode and similar are TODO.
-  constructor(_config?: Record<string, unknown>) {}
+  private readonly _mathMode: MathMode;
 
-  parse(text: string, rule = 'stylesheet'): LessFnParseResult {
+  constructor(config?: { mathMode?: MathMode } & Record<string, unknown>) {
+    this._mathMode = config?.mathMode ?? 'parens-division';
+  }
+
+  // Arrow field so `const parse = parser.parse` (used in tests) keeps `this`.
+  parse = (text: string, rule = 'stylesheet'): LessFnParseResult => {
     if (text.includes('`')) {
       throw new Error('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.');
     }
-    return parseLessFn(text, rule);
-  }
+    return parseLessFn(text, rule, this._mathMode);
+  };
 }

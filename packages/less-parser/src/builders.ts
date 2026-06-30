@@ -458,6 +458,24 @@ export class LessGrammar extends CssParser {
         return decl;
       }
     }
+    // A top-level `/`-list that math mode WOULD divide (e.g. `math:always`) promotes to
+    // a division Operation. Default `parens-division` keeps a top-level slash a list.
+    const dvList = (decl as unknown as { value?: unknown }).value;
+    if (dvList && (dvList as any).type === 'List' && (dvList as any).options?.sep === '/' && this.mathMode === 'always') {
+      const items = (dvList as any).value as JessNode[];
+      if (items.length >= 2 && items.every(it => this._isDivisionLike(it))) {
+        let op: JessNode = items[0]!;
+        for (let i = 1; i < items.length; i++) {
+          op = new Operation([op, '/', items[i]] as any, undefined, loc) as unknown as JessNode;
+        }
+        const f = op as unknown as { operator: any; left: any; right: any };
+        (decl as unknown as { value: unknown }).value =
+          shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)
+            ? new Expression(op as any, { parens: true } as any, loc)
+            : op;
+        return decl;
+      }
+    }
     // Mixed string+Reference array values (e.g. IE filter) → Interpolated
     const dv = (decl as unknown as { value?: unknown }).value;
     if (Array.isArray(dv)) {
