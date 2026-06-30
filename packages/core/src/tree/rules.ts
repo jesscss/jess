@@ -912,8 +912,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this.derive(value) as this;
   }
 
-  derive(value: Node[] = [...this.rules]): Rules {
-    const sourceLocation = this.location.length === 6 ? this.location : undefined;
+  /**
+   * Construct an EMPTY same-type surface (so the constructor parents nothing).
+   * Subclasses with extra child fields (Ruleset's selector/guard) override this
+   * to carry those fields WITHOUT adopting/reparenting the shared canonical
+   * nodes — the surface only links back via `sourceNode`.
+   */
+  protected _deriveShell(sourceLocation: LocationInfo | undefined): Rules {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const Ctor = this.constructor as new (
       value: Node[],
@@ -921,16 +926,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       location?: LocationInfo,
       treeContext?: TreeContext
     ) => Rules;
-    // Thin surface: construct EMPTY (so the constructor parents nothing) and
-    // SHARE the children — push without adopting, so a shared canonical child's
-    // parent is never overwritten. `sourceNode` is the surface's only link back
-    // to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
-    const derived = new Ctor(
+    return new Ctor(
       [],
       this.options ? { ...this.options } : undefined,
       sourceLocation,
       this.sourceRoot?._treeContext
     );
+  }
+
+  derive(value: Node[] = [...this.rules]): Rules {
+    const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    // Thin surface: construct EMPTY (so the constructor parents nothing) and
+    // SHARE the children — push without adopting, so a shared canonical child's
+    // parent is never overwritten. `sourceNode` is the surface's only link back
+    // to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
+    const derived = this._deriveShell(sourceLocation);
     derived.sourceNode = this.sourceNode ?? this;
     for (let i = 0; i < value.length; i++) {
       derived.rules.push(value[i]!);
@@ -5255,26 +5265,54 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  private _evaluateSourceOrder(rules: Rules, context: Context): MaybePromise<boolean> {
+  private _evaluateSourceOrder(rules: Rules, context: Context): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
     let rulesToHoist = false;
     const pendingImports: Array<[number, Node]> = [];
+    // §2.7: never mutate the canonical node. Source children are read from
+    // `rules`; evaluated results are written to `output`, which stays `rules`
+    // until the FIRST child whose result differs — then a fresh derive surface
+    // (shared children array copied, sourceNode -> canonical) takes the writes.
+    let output = rules;
+    // A node carrying a `sourceNode` that points elsewhere is already a per-eval
+    // surface (e.g. the registration-prepared root) — its array slots are not
+    // shared canonical state, so writing them in place is safe and needs no
+    // second derive. Only a CANONICAL node (no foreign sourceNode) must be
+    // copied-on-write before any child result is written into it.
+    const rulesIsCanonical = rules.sourceNode === undefined || rules.sourceNode === rules;
+    const writableOutput = (): Rules => {
+      if (output === rules && rulesIsCanonical) {
+        output = rules.derive() as Rules;
+        // The output resolves scope identically to the canonical (share its
+        // prepared scope frame), and becomes the current rules context so later
+        // siblings + registration during this same eval stay consistent.
+        output.scopeFrame = rules._scopeFrame;
+        if (context.rulesContext === rules) {
+          context.rulesContext = output;
+        }
+      }
+      return output;
+    };
 
     const applyResult = (idx: number, rule: Node, result: Node | undefined): void => {
       if (result === undefined) {
         return;
       }
       if (result !== rule) {
-        rules.rules[idx] = result;
+        const out = writableOutput();
+        out.rules[idx] = result;
         if (isNode(result, N.Rules)) {
           result.index = idx;
-          rules.adopt(result);
-          rules.registerNode(result, {
+          out.adopt(result);
+          out.registerNode(result, {
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
+          if (result.hoistToRoot) {
+            rulesToHoist = true;
+          }
           return;
         }
-        rules.adopt(result);
+        out.adopt(result);
       }
       if (result.hoistToRoot) {
         rulesToHoist = true;
@@ -5355,7 +5393,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     };
 
     const evaluateImports = evaluateLane(isStyleImportRegistrationNode, true);
-    const evaluateBody = (): MaybePromise<boolean> => {
+    const evaluateBody = (): MaybePromise<{ output: Rules; rulesToHoist: boolean }> => {
       const importDrain = drainPendingImports(false);
       const afterImports = () => {
         const calls = evaluateLane(rule => isNode(rule, N.Call), false);
@@ -5367,9 +5405,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             return true;
           }, false);
           if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => rulesToHoist);
+            return (normal as Promise<void>).then(() => ({ output, rulesToHoist }));
           }
-          return rulesToHoist;
+          return { output, rulesToHoist };
         };
         if (isThenable(calls)) {
           return (calls as Promise<void>).then(afterCalls);
@@ -5788,13 +5826,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
-    const maybeHoist = this._evaluateSourceOrder(rules, context);
-    if (isThenable(maybeHoist)) {
-      return (maybeHoist as Promise<boolean>).then(rulesToHoist =>
-        this._finishSourceOrderEvaluation(rules, rulesToHoist)
+    const evaluated = this._evaluateSourceOrder(rules, context);
+    if (isThenable(evaluated)) {
+      return (evaluated as Promise<{ output: Rules; rulesToHoist: boolean }>).then(({ output, rulesToHoist }) =>
+        this._finishSourceOrderEvaluation(output, rulesToHoist)
       );
     }
-    return this._finishSourceOrderEvaluation(rules, maybeHoist as boolean);
+    const { output, rulesToHoist } = evaluated as { output: Rules; rulesToHoist: boolean };
+    return this._finishSourceOrderEvaluation(output, rulesToHoist);
   }
 
   private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {

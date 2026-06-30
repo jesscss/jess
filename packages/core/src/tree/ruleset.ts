@@ -551,6 +551,27 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
   }
 
+  /**
+   * §2.7 copy-on-write surface for Ruleset. Construct an EMPTY Ruleset (no
+   * selector node passed, so the constructor adopts nothing), then SHARE the
+   * canonical selector/guard by direct assignment — never re-adopt, so the
+   * shared nodes keep their canonical parent. Children + sourceNode are wired by
+   * the base `derive`.
+   */
+  protected override _deriveShell(sourceLocation: LocationInfo | undefined): Rules {
+    const shell = new Ruleset(
+      { selector: '', rules: [] },
+      this.options ? { ...this.options } : undefined,
+      sourceLocation,
+      this.sourceRoot?._treeContext
+    );
+    shell.selector = this.selector;
+    shell.guard = this.guard;
+    shell.selectorBeforeExtend = this.selectorBeforeExtend;
+    shell._passedRulesWrapper = this._passedRulesWrapper;
+    return shell;
+  }
+
   private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {
     if (value instanceof Nil) {
       return value;

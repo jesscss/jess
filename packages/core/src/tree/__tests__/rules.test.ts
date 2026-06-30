@@ -211,7 +211,7 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
   });
 
-  it('renders registration-prepared rules without deriving another root surface', async () => {
+  it('renders registration-prepared rules without mutating the canonical body', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
@@ -219,19 +219,12 @@ describe('Rules', () => {
     const prepared = await source.prepareRegistration(context);
     context.root = prepared;
     context.rulesContext = prepared;
-
-    const originalDerive = prepared.derive;
-    let deriveCalls = 0;
-    prepared.derive = function countDeriveCalls(
-      this: typeof prepared,
-      ...args: Parameters<typeof originalDerive>
-    ): ReturnType<typeof originalDerive> {
-      deriveCalls++;
-      return originalDerive.apply(this, args);
-    };
+    // §2.7: eval/render derives distinct output for the changed decl; the
+    // canonical body slot must be left untouched (never mutated in place).
+    const canonicalDecl = prepared.rules[1];
 
     expect(await Promise.resolve(prepared.render(context))).toBe('color: red;\n');
-    expect(deriveCalls).toBe(0);
+    expect(prepared.rules[1]).toBe(canonicalDecl);
   });
 
   it('resolves static rules without deriving another root surface', () => {
@@ -252,26 +245,19 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
   });
 
-  it('resolves registration-prepared rules without deriving another root surface', async () => {
+  it('resolves registration-prepared rules without mutating the canonical body', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
     ]);
     const prepared = await source.prepareRegistration(context);
-    const originalDerive = prepared.derive;
-    let deriveCalls = 0;
-    prepared.derive = function countDeriveCalls(
-      this: typeof prepared,
-      ...args: Parameters<typeof originalDerive>
-    ): ReturnType<typeof originalDerive> {
-      deriveCalls++;
-      return originalDerive.apply(this, args);
-    };
+    const canonicalDecl = prepared.rules[1];
 
     const resolved = await prepared.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red;');
-    expect(deriveCalls).toBe(0);
+    // §2.7: distinct output; canonical body slot untouched.
+    expect(prepared.rules[1]).toBe(canonicalDecl);
   });
 
   it('drops empty derived scope frames while preserving fallback frames', () => {
@@ -518,7 +504,7 @@ describe('Rules', () => {
     await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
   });
 
-  it('resolves unprepared rules without deriving a wrapper tree', async () => {
+  it('resolves unprepared rules without cloning a wrapper tree', async () => {
     const originalClone = Node.prototype.clone;
     let clonedRules = 0;
     Node.prototype.clone = function cloneForCounting(
@@ -536,20 +522,14 @@ describe('Rules', () => {
         vardecl({ name: any('tone'), value: any('red') }),
         decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
-      const originalDerive = root.derive;
-      let deriveCalls = 0;
-      root.derive = function countDeriveCalls(
-        this: typeof root,
-        ...args: Parameters<typeof originalDerive>
-      ): ReturnType<typeof originalDerive> {
-        deriveCalls++;
-        return originalDerive.apply(this, args);
-      };
+      const canonicalDecl = root.rules[1];
 
       const resolved = await root.resolve(context);
 
       expect(resolved.toTrimmedString()).toContain('color: red;');
-      expect(deriveCalls).toBe(0);
+      // §2.7: distinct output comes from a shared-child derive, NOT a deep clone,
+      // and the canonical body slot is left untouched.
+      expect(root.rules[1]).toBe(canonicalDecl);
       expect(clonedRules).toBe(0);
     } finally {
       Node.prototype.clone = originalClone;
