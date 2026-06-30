@@ -539,6 +539,10 @@ export class LessGrammar extends CssParser {
       { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
       { type: 'mixin-ruleset', role: 'name' } as any, loc
     ) as unknown as JessNode;
+    // Less lookup-key semantics: `[@name]` is a static variable lookup whose key is
+    // the bare name 'name' (a string); `[@@name]` is a *dynamic* lookup whose key is a
+    // variable Reference to `name`; `[ident]` is an index (Quoted). Exactly one `@` is
+    // the variable marker and is never kept — the parser must not over- or under-strip.
     const squareParenKey = (item: JessNode): JessNode | string | number => {
       const innerNode = (item as any).node as JessNode | undefined;
       const innerVal = innerNode ?? (item as any).value;
@@ -547,19 +551,24 @@ export class LessGrammar extends CssParser {
       if (isEmpty) {
         return -1;
       }
-      // @variable accessor → string key (strip @)
-      if (typeof innerVal === 'string' && innerVal.trim().startsWith('@')) {
-        return innerVal.trim().slice(1);
-      }
-      // @variable accessor in a Reference node (from SquareParen grammar rule)
-      if (typeof innerVal === 'object' && innerVal.type === 'Reference') {
-        return innerVal as unknown as JessNode;
-      }
-      // Plain identifier → Quoted node
+      // Recover the authored key text: a raw string, or the source of a parsed `@foo`
+      // (the grammar turns a single `@var` key into Reference(key:'var')).
+      let rawText: string | undefined;
       if (typeof innerVal === 'string') {
-        return new Quoted(innerVal.trim(), {}, loc) as unknown as JessNode;
+        rawText = innerVal.trim();
+      } else if (typeof innerVal === 'object' && innerVal.type === 'Reference' && typeof (innerVal as any).key === 'string') {
+        rawText = '@' + (innerVal as any).key;
       }
-      // @variable Reference → extract its .key string; other nodes → .key or node
+      if (rawText !== undefined) {
+        if (rawText.startsWith('@@')) {
+          return new Reference(rawText.slice(2), { type: 'variable' as const }, loc) as unknown as JessNode;
+        }
+        if (rawText.startsWith('@')) {
+          return rawText.slice(1);
+        }
+        return new Quoted(rawText, {}, loc) as unknown as JessNode;
+      }
+      // Other node (e.g. an interpolated key) → its .key or the node itself.
       return (innerVal as any)?.key ?? innerVal;
     };
     while (i < comps.length) {
