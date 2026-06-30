@@ -319,7 +319,7 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
         (InterpolatedSelector
-          node:
+          value:
             (Interpolated [role=ident]
               source: '.${INTERPOLATION_PLACEHOLDER}-button'
               replacements:
