@@ -180,7 +180,7 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('GuardCondition', c, r, s));
   const Guard = node('Guard',
     parser({ trivia: rw }, sequence(regex(/when/), optional(regex(/not/)), literal('('),
-      many(choice(g.GuardCondition, g.Comparison, regex(/default\(\)/), regex(/and|or/))), literal(')'))),
+      many(choice(g.GuardCondition, g.Comparison, regex(/default\(\)/), regex(/and|or/), g.value)), literal(')'))),
     (c: any, r: any, s: any) => mk('Guard', c, r, s));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
