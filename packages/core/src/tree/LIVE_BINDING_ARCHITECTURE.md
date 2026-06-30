@@ -83,7 +83,18 @@ These are non-negotiable. A change that violates one is wrong by definition.
    1. **Construction parenting** — the base `Node` constructor parents children
       centrally via `_processNodes` → `adopt` (node-base.ts:637/679). The
       constructor/factory split (invariant 7) makes the raw `new Foo()` NOT
-      parent and the lowercase `foo()` factory parent one level.
+      parent and the lowercase `foo()` factory parent one level. IMPLEMENTED &
+      MEASURED (2026-06): the split itself is a 2-line change (constructor stores
+      `value` without `_processNodes`; `defineType` calls `_processNodes` after
+      construct). It is clean for the core (rules/ruleset 100% green, no hang) but
+      has a **+41 blast radius**: ~30-40 internal CONTAINER constructions
+      (`new Rules`/`List`/`Sequence`/`Reference`/`Declaration` in eval/render/
+      value-ops) and ~41 tests RELY on construction-time parenting — concentrated
+      in reference (+18) and declaration (+15), with diverse modes (missing
+      `.parent`; and EXTRA COPIES, because reference/declaration render
+      reconstructs when it can't find a parent). Each `new X(children)` site must
+      be classified: factory (build owned output → parent) vs raw (share). This
+      is the real invariant-7 sweep — a dedicated effort, reverted for now.
    2. **Eval-time adopt** — the gate ALSO fires at eval time
       (`_evaluateSourceOrder` does `rules.adopt(result)`), so the split alone is
       insufficient: eval-time adopt of a reused/shared leaf must not reparent it.
