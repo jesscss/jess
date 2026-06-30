@@ -16,7 +16,7 @@ describe('guard', () => {
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Condition');
     expect(out).toContainString('left:');
-    expect(out).toContainString('(Paren\n      node:');
+    expect(out).toContainString('(Paren\n      value:');
     expect(out).toContainString('(Reference\n            type: \'variable\'');
     expect(out).toContainString('key: \'a\'');
     expect(out).toContainString('right:');
@@ -72,7 +72,7 @@ describe('guardDefault', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       guard:
         (Paren
-          node:
+          value:
             (DefaultGuard 'default()')
         )
       `);
@@ -88,7 +88,7 @@ describe('guardDefault', () => {
             negate: true
           left:
             (Paren
-              node:
+              value:
                 (DefaultGuard 'default()')
             )
         )
