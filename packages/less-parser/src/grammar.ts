@@ -230,21 +230,26 @@ const cssRules = rules((g: any) => {
   const InterpolatedSelector = node('InterpolatedSelector',
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
     (c: any, r: any, s: any) => mk('InterpolatedSelector', c, r, s));
-  const ExtendStatement = node('ExtendStatement',
-    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), regex(/::?/), literal('extend'), g.pseudoSelectorParens, optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
   // `sel when (…)` is a guarded ruleset: `when` followed by `(` is the guard
   // keyword, NOT another selector — stop the selector run before it (in both the
   // compound run and the complex run, since `& when` has no mixin-path fallback).
   const whenAhead = regex(/when(?![-\w])[ \t\n\r\f]*\(/i);
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.LessAmpersand, g.InterpolatedSelector, basicSel);
+  // `:extend(` lookahead — keeps the generic PseudoSelector from claiming extend
+  // (extend goes through ExtendPseudo) and lets the compound run stop before it.
+  const extendAhead = regex(/::?extend[ \t\n\r\f]*\(/);
+  const simpleSelector = choice(g.AttributeSelector, sequence(not(extendAhead), g.PseudoSelector), g.LessAmpersand, g.InterpolatedSelector, basicSel);
   const CompoundSelector = node('CompoundSelector',
-    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), g.simpleSelector)))),
+    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), not(extendAhead), g.simpleSelector)))),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
+  // A complex selector, optionally terminated by a single `:extend(...)` pseudo.
+  // Mirrors Chevrotain's `complexSelector`, which consumes extend (OPTION3) AFTER
+  // the whole compound/combinator run — so extend is the LAST thing in the
+  // selector, and `.a:extend(.b).c` leaves `.c` unconsumed → parse error
+  // (extend-must-be-last). The compound run also stops at `:extend(` (extendAhead).
   const LessComplexSelector = node('LessComplexSelector',
-    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(whenAhead), g.CompoundSelector)))),
+    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(whenAhead), not(extendAhead), g.CompoundSelector)), optional(g.ExtendPseudo))),
     (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s));
   const LessSelectorList = node('LessSelectorList',
     parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))),
@@ -263,6 +268,43 @@ const cssRules = rules((g: any) => {
   const PseudoSelector = node('PseudoSelector',
     parser({ trivia: rw }, sequence(pseudoColon, ident, optional(g.pseudoSelectorParens))),
     (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
+
+  // ── Extend grammar (faithful port of selectors.ts `extend`/`ampersandExtend`)
+  // Chevrotain models extend as: `:extend(` selectorList[inExtend] `)` where each
+  // complexSelector inside consumes an optional trailing `all` flag (OPTION2 on
+  // T.All / T.AllFlag). The statement form `&:extend(...)` ends with `;`. Here
+  // each piece is real grammar (comma list + per-target flag) rather than
+  // re-parsing the source text.
+  //
+  // A per-target `all` / `!all` flag (Chevrotain's T.All / T.AllFlag); both
+  // collapse to ExtendFlag.All in the builder.
+  const extendFlag = regex(/!?all(?![-\w])/);
+  // Lookahead used to stop the target's compound/complex run before the flag, so
+  // `all` is consumed as the flag — not swallowed as a trailing ident selector.
+  const extendFlagAhead = regex(/!?all(?![-\w])[ \t\n\r\f]*[,)]/);
+  // Extend-local compound/complex selectors: identical to the normal ones but they
+  // halt before a trailing flag (so `.x all` parses as target `.x` + flag `all`).
+  const extendCompound = node('CompoundSelector',
+    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), not(extendAhead), not(extendFlagAhead), g.simpleSelector)))),
+    (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
+  const extendComplex = node('LessComplexSelector',
+    parser({ trivia: rw }, sequence(optional(combinator), g.extendCompound, many(sequence(optional(combinator), not(whenAhead), not(extendFlagAhead), g.extendCompound)))),
+    (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s));
+  // A single extend target: a complex selector + its optional flag.
+  const ExtendTarget = node('ExtendTarget',
+    parser({ trivia: rw }, sequence(g.extendComplex, optional(extendFlag))),
+    (c: any, r: any, s: any) => mk('ExtendTarget', c, r, s));
+  // The comma-separated target list inside `extend( … )` (selectorList[inExtend]).
+  const extendBody = sepBy(g.ExtendTarget, literal(','));
+  // `:extend(` body `)` — the in-selector pseudo form (selectors.ts `extend`).
+  const ExtendPseudo = node('ExtendPseudo',
+    parser({ trivia: rw }, sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')'), ')'))),
+    (c: any, r: any, s: any) => mk('ExtendPseudo', c, r, s));
+  // `&:extend(...)` (or bare `:extend(...)`) statement, terminated by `;`
+  // (selectors.ts `ampersandExtend`).
+  const ExtendStatement = node('ExtendStatement',
+    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), g.ExtendPseudo, optional(literal(';')))),
+    (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
@@ -354,7 +396,7 @@ const cssRules = rules((g: any) => {
   return {
     Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
-    LessAmpersand, InterpolatedSelector, ExtendStatement, simpleSelector,
+    LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,

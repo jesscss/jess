@@ -116,6 +116,8 @@ export class LessGrammar extends CssParser {
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
+      case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
+      case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
       case 'ExtendStatement':     return this._buildExtendStatement(children, raw, loc);
       default:                    return super.buildNode(type, span, children, _state, raw) as unknown as JessNode;
     }
@@ -450,37 +452,9 @@ export class LessGrammar extends CssParser {
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
     state: unknown, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
   ): JessNode {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    if (ls.some(l => l.value === 'extend')) {
-      const text = this._source.slice(loc[0], loc[3]);
-      const m = /extend\(\s*(.+?)\s*\)/.exec(text);
-      const rawTargetText = m ? m[1]!.trim() : '';
-      // Split comma-separated targets to detect per-target all flags.
-      const rawParts = this._splitTopLevel(rawTargetText, ',');
-      const parts = rawParts.map((part) => {
-        const trimmed = part.trim();
-        const hasPartAll = /\ball\b/.test(trimmed) || /!all/.test(trimmed);
-        const flag = hasPartAll ? ExtendFlag.All : ExtendFlag.Exact;
-        const targetText = trimmed.replace(/\s+!?all\s*$/, '').trim();
-        return { targetText, flag };
-      });
-      // All parts share the same flag → single Extend with SelectorList or BasicSelector target.
-      const firstFlag = parts[0]!.flag;
-      const allSameFlag = parts.every(p => p.flag === firstFlag);
-      if (allSameFlag) {
-        const targetNodes = parts.map(p => new BasicSelector(p.targetText, undefined, loc));
-        const target = targetNodes.length === 1
-          ? targetNodes[0]! as unknown as Selector
-          : new SelectorList(targetNodes as any, undefined, loc) as unknown as Selector;
-        return new Extend({ target, flag: firstFlag }, {}, loc) as unknown as JessNode;
-      }
-      // Mixed flags → individual Extend per target, returned as a List.
-      const extendNodes: JessNode[] = parts.map(({ targetText, flag }) => {
-        const target = new BasicSelector(targetText, undefined, loc) as unknown as Selector;
-        return new Extend({ target, flag }, {}, loc) as unknown as JessNode;
-      });
-      return new List(extendNodes as any, {}, loc) as unknown as JessNode;
-    }
+    // `:extend(...)` is parsed by the dedicated ExtendPseudo grammar rule, never
+    // here — generic PseudoSelector is guarded against it (extendAhead). So this
+    // builder only ever sees real CSS pseudo-classes/elements.
     const pseudo = super.buildNode(type, span, children, state, raw) as JessNode;
     const pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
     if (Array.isArray(pseudoArg)) {
@@ -677,27 +651,65 @@ export class LessGrammar extends CssParser {
     return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
   }
 
-  private _buildExtendStatement(
-    children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+  /**
+   * A single extend target inside `extend( … )`: a complex selector plus its
+   * optional `all` / `!all` flag (selectors.ts `complexSelector`'s OPTION2 flag).
+   * Produced as an `Extend` carrier the surrounding pseudo/statement groups.
+   */
+  private _buildExtendTarget(
+    _children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
   ): JessNode {
-    const text = this._source.slice(loc[0], loc[3]);
-    const hasAll = /\ball\b/.test(text) || /!all/.test(text);
-    const flag = hasAll ? ExtendFlag.All : ExtendFlag.Exact;
-    const m = /extend\(\s*(.+?)\s*\)/.exec(text);
-    const rawTargetText = m ? m[1]!.trim() : '';
-    const targetText = rawTargetText.replace(/\s+!?all\s*$/, '').trim();
-    let target: Selector;
-    if (!hasAll) {
-      const argNodes = nodeChildren(children);
-      // Skip Ampersand nodes -- they're the '&' source, not the target
-      const targetNode = argNodes.find(n => n.type !== 'Ampersand');
-      target = targetNode
-        ? targetNode as unknown as Selector
-        : new BasicSelector(targetText, undefined, loc) as unknown as Selector;
-    } else {
-      target = new BasicSelector(targetText, undefined, loc) as unknown as Selector;
-    }
+    // Components: the target selector (string or selector node) + an optional
+    // trailing `all` / `!all` flag leaf. The complexSelector builder collapses a
+    // lone `.x` to a bare string, so accept either form here.
+    const comps = spannedComponents(raw);
+    const isFlag = (c: unknown): c is string => typeof c === 'string' && /^!?all$/.test(c);
+    const hasFlag = comps.some(c => isFlag(c.comp));
+    const flag = hasFlag ? ExtendFlag.All : ExtendFlag.Exact;
+    const targetComp = comps.find(c => !isFlag(c.comp))?.comp;
+    const target = (typeof targetComp === 'string'
+      ? new BasicSelector(targetComp, undefined, loc) as unknown as Selector
+      : (targetComp ?? new BasicSelector('&', undefined, loc)) as unknown as Selector);
     return new Extend({ target, flag }, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `:extend( … )` pseudo form (selectors.ts `extend`): groups its ExtendTarget
+   * children. Targets sharing one flag collapse to a single Extend whose target is
+   * a SelectorList (or the lone selector); mixed flags stay as one Extend each,
+   * returned in a List. Mirrors mergeExtends' target-and-flag grouping.
+   */
+  private _buildExtendPseudo(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const targets = nodeChildren(children).filter(n => n.type === 'Extend') as unknown as Array<{
+      target: Selector; flag: number;
+    }>;
+    if (targets.length === 0) {
+      return new Extend({ target: new BasicSelector('&', undefined, loc), flag: ExtendFlag.Exact }, {}, loc) as unknown as JessNode;
+    }
+    const firstFlag = targets[0]!.flag;
+    const allSameFlag = targets.every(t => t.flag === firstFlag);
+    if (allSameFlag) {
+      const target = targets.length === 1
+        ? targets[0]!.target
+        : new SelectorList(targets.map(t => t.target) as any, undefined, loc) as unknown as Selector;
+      return new Extend({ target, flag: firstFlag }, {}, loc) as unknown as JessNode;
+    }
+    const extendNodes: JessNode[] = targets.map(t =>
+      new Extend({ target: t.target, flag: t.flag }, {}, loc) as unknown as JessNode
+    );
+    return new List(extendNodes as any, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `&:extend( … );` (or bare `:extend( … );`) statement form (selectors.ts
+   * `ampersandExtend`). The ExtendPseudo child already carries the grouped
+   * Extend(s); the leading `&` is just the statement marker.
+   */
+  private _buildExtendStatement(
+    children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+  ): JessNode {
+    const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List');
+    return (built ?? new Extend({ target: new BasicSelector('&', undefined, loc), flag: ExtendFlag.Exact }, {}, loc)) as unknown as JessNode;
   }
 
   protected override _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
@@ -1370,12 +1382,24 @@ export class LessGrammar extends CssParser {
       return { cleanedSelector, extractedExtends };
     }
 
-    // ComplexSelector: recurse into its CompoundSelector components
+    // ComplexSelector: recurse into its CompoundSelector components and pull out
+    // any trailing Extend / List<Extend> (the `:extend(...)` pseudo lives at the
+    // end of the complex selector — see grammar's LessComplexSelector).
     if (selector instanceof ComplexSelector) {
       const allExtends: JessNode[] = [];
       const newParts: any[] = [];
       for (const part of selector.value) {
-        if (part instanceof CompoundSelector) {
+        if (part instanceof Extend) {
+          allExtends.push(part as unknown as JessNode);
+        } else if (part instanceof List) {
+          for (const item of (part as any).value ?? []) {
+            if (item instanceof Extend) {
+              allExtends.push(item as unknown as JessNode);
+            } else {
+              newParts.push(item);
+            }
+          }
+        } else if (part instanceof CompoundSelector) {
           const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(part as unknown as JessNode, loc);
           allExtends.push(...ee);
           if (cs !== undefined) {
@@ -1389,7 +1413,11 @@ export class LessGrammar extends CssParser {
         return { cleanedSelector: selector, extractedExtends: [] };
       }
       const newComplex = newParts.length === 1
-        ? newParts[0] as JessNode
+        // Single leftover part → unwrap; wrap a bare string as BasicSelector so
+        // serializeTypes shows the selector type (mirrors the CompoundSelector branch).
+        ? (typeof newParts[0] === 'string'
+            ? new BasicSelector(newParts[0], undefined, loc) as unknown as JessNode
+            : newParts[0] as JessNode)
         : new ComplexSelector(newParts as any, undefined, loc) as unknown as JessNode;
       return { cleanedSelector: newComplex, extractedExtends: allExtends };
     }
