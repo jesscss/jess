@@ -833,7 +833,7 @@ async function buildCallWithContextPositionalArgs(
         }
       } else {
         for (const item of arr) {
-          let processedItem: any = (isNode(item) && !item.evaluated) ? item.eval(context) : item;
+          let processedItem: any = isNode(item) ? item.eval(context) : item;
           if (isThenable(processedItem)) {
             processedItem = await processedItem;
           }
@@ -859,7 +859,7 @@ async function buildCallWithContextPositionalArgs(
           positionalArgs.push(createThunk(v, def, context));
         }
       } else {
-        let processedValue: any = (isNode(v) && !v.evaluated) ? v.eval(context) : v;
+        let processedValue: any = isNode(v) ? v.eval(context) : v;
 
         // Handle async evaluation without truncating remaining parameters.
         if (isThenable(processedValue)) {
@@ -919,7 +919,7 @@ function createThunk(val: any, paramDef: ParamDefinition, context?: Context): ()
   }
   return async (): Promise<any> => {
     let result;
-    if (context && isNode(val) && !val.evaluated) {
+    if (context && isNode(val)) {
       result = await val.eval(context);
     } else if (typeof val === 'function') {
       // If val is a function (lazy parameter), call it

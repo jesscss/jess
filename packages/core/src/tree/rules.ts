@@ -6028,7 +6028,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated || this.hasFlag(F_STATIC)) {
+    if (this.hasFlag(F_STATIC)) {
       return this;
     }
     if (this.registrationPrepared) {
