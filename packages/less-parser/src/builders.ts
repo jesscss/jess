@@ -32,6 +32,7 @@ import {
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
   Mixin, Expression, Operation,
+  shouldOperateWithMathFrames, type MathMode,
   StyleImport, type StyleImportOptions,
   JsImport,
   Nil,
@@ -67,6 +68,9 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
 // ---------------------------------------------------------------------------
 
 export class LessGrammar extends CssParser {
+  /** Math mode governing when arithmetic operates / when `/` divides. Less default. */
+  mathMode: MathMode = 'parens-division';
+
   // -- buildNode -------------------------------------------------------------
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/naming-convention */
 
@@ -441,9 +445,16 @@ export class LessGrammar extends CssParser {
     // Expression (the Jess `$( … )` form). Port of expressionSum/expressionProduct.
     const dvRaw = (decl as unknown as { value?: unknown }).value;
     if (Array.isArray(dvRaw)) {
-      const folded = this._foldOperations(dvRaw, loc);
+      const folded = this._foldOperations(dvRaw, loc, []);
       if (folded) {
-        (decl as unknown as { value: unknown }).value = new Expression(folded as any, { parens: true } as any, loc);
+        const f = folded as unknown as { type?: string; operator?: any; left?: any; right?: any };
+        // wrapOuterExpressionIfNeeded: only wrap a top-level Operation that math mode
+        // would actually perform (the Jess `$( … )` form).
+        const wrapped = f.type === 'Operation'
+          && shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)
+          ? new Expression(folded as any, { parens: true } as any, loc) as unknown as JessNode
+          : folded;
+        (decl as unknown as { value: unknown }).value = wrapped;
         return decl;
       }
     }
@@ -484,12 +495,27 @@ export class LessGrammar extends CssParser {
    * (e.g. `margin: 10px 20px`) is left untouched. `/` is intentionally NOT folded
    * here — slash stays a slash-list. Port of expressionSum/expressionProduct.
    */
-  private _foldOperations(parts: ReadonlyArray<unknown>, loc: LocationInfo): JessNode | null {
+  /** Port of isDivisionLikeNode (values.ts): operands a `/` can divide. */
+  private _isDivisionLike(node: unknown): boolean {
+    if (!node || typeof node !== 'object') {
+      return false;
+    }
+    const t = (node as { type?: string }).type;
+    if (t && ['Color', 'Dimension', 'Num', 'Reference', 'Call', 'Operation', 'Negative', 'Expression'].includes(t)) {
+      return true;
+    }
+    if (t === 'Paren' || t === 'Expression') {
+      return this._isDivisionLike((node as { value?: unknown }).value);
+    }
+    return false;
+  }
+
+  private _foldOperations(parts: ReadonlyArray<unknown>, loc: LocationInfo, parenFrames: ReadonlyArray<boolean>): JessNode | null {
     const asOp = (p: unknown): string | null => {
       const v = typeof p === 'string'
         ? p.trim()
         : (p && typeof p === 'object' && (p as any).type === 'Any' ? String((p as any).value ?? '').trim() : '');
-      return v && /^[-+*%]$/.test(v) ? v : null;
+      return v && /^[-+*/%]$/.test(v) ? v : null;
     };
     const isOperand = (p: unknown): boolean =>
       !!p && typeof p === 'object' && 'type' in (p as object) && !asOp(p);
@@ -501,22 +527,56 @@ export class LessGrammar extends CssParser {
         return null;
       }
     }
-    const fold = (test: RegExp, seq: ReadonlyArray<unknown>): unknown[] => {
+    // slashDivisionEnabled (values.ts): `/` divides only in `always` mode or in parens.
+    const slashEnabled = this.mathMode === 'always' || (parenFrames.at(-1) ?? false);
+    const makeOp = (l: unknown, op: string, r: unknown): JessNode =>
+      new Operation([l, op, r] as any, undefined, loc) as unknown as JessNode;
+    // Product level (`*`, `/`, `%`): `/` divides only when enabled + both operands
+    // division-like, else accumulates into a slash-List (expressionProduct). `+`/`-`
+    // are deferred to the sum level (lower precedence).
+    const product = (seq: ReadonlyArray<unknown>): unknown[] => {
       const out: unknown[] = [seq[0]];
       for (let i = 1; i < seq.length; i += 2) {
         const op = asOp(seq[i])!;
         const right = seq[i + 1];
-        if (test.test(op)) {
-          const left = out.pop() as JessNode;
-          out.push(new Operation([left, op, right] as any, undefined, loc) as unknown as JessNode);
-        } else {
+        if (op === '+' || op === '-') {
           out.push(seq[i], right);
+          continue;
+        }
+        const left = out.pop();
+        if (op === '/' && !(slashEnabled && this._isDivisionLike(left) && this._isDivisionLike(right))) {
+          out.push(
+            left && (left as any).type === 'List' && (left as any).options?.sep === '/'
+              ? new List([...(left as any).value, right] as any, { sep: '/' } as any, loc) as unknown as JessNode
+              : new List([left, right] as any, { sep: '/' } as any, loc) as unknown as JessNode
+          );
+        } else {
+          out.push(makeOp(left, op, right));
         }
       }
       return out;
     };
-    const summed = fold(/^[-+]$/, fold(/^[*%]$/, parts));
-    return summed.length === 1 ? (summed[0] as JessNode) : null;
+    // Sum level (`+`, `-`): left-associative (expressionSum).
+    const sum = (seq: ReadonlyArray<unknown>): unknown[] => {
+      const out: unknown[] = [seq[0]];
+      for (let i = 1; i < seq.length; i += 2) {
+        out.push(makeOp(out.pop(), asOp(seq[i])!, seq[i + 1]));
+      }
+      return out;
+    };
+    const folded = sum(product(parts));
+    return folded.length === 1 ? (folded[0] as JessNode) : null;
+  }
+
+  protected override _buildParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    // Inside parens Less enables math (and `/` division) — fold an arithmetic content
+    // chain into Operation nodes; otherwise fall back to the generic paren assembly.
+    const inner = this._betweenParens(spannedComponents(rawChildren));
+    const folded = this._foldOperations(inner.map(i => i.comp), loc, [true]);
+    if (folded) {
+      return new Paren(folded as unknown as Node, undefined, loc);
+    }
+    return super._buildParen(rawChildren, loc);
   }
 
   private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
