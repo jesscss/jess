@@ -78,10 +78,21 @@ These are non-negotiable. A change that violates one is wrong by definition.
    `frozen` remains: its re-eval gate is gone, but its **adopt-gate** (node-base
    `adopt`: `if (!node.frozen) setParent`) and **inherit parent-gate**
    (`inherit`) are LOAD-BEARING — removing the adopt-gate hangs the suite
-   (shared/reused nodes get reparented into a cycle). They retire only with the
-   constructor/factory split (invariant 7): a separate, large effort where the
-   raw `new Foo()` constructor stops parenting. So `frozen` is the LAST domino,
-   gated on that split — NOT part of the `evaluated`/distinct-output core.
+   (shared/reused nodes get reparented into a cycle). `frozen` deletion needs
+   TWO coupled fixes (verified 2026-06):
+   1. **Construction parenting** — the base `Node` constructor parents children
+      centrally via `_processNodes` → `adopt` (node-base.ts:637/679). The
+      constructor/factory split (invariant 7) makes the raw `new Foo()` NOT
+      parent and the lowercase `foo()` factory parent one level.
+   2. **Eval-time adopt** — the gate ALSO fires at eval time
+      (`_evaluateSourceOrder` does `rules.adopt(result)`), so the split alone is
+      insufficient: eval-time adopt of a reused/shared leaf must not reparent it.
+      A naive structural proxy `if (node.parent === undefined)` is +5 (it fails
+      genuine node *moves*, where a non-frozen owned node is re-adopted) — so
+      `frozen` carries real "this node is shared" information with no cheap
+      structural replacement.
+   `frozen` is the LAST domino, gated on both — a separate effort, NOT part of
+   the `evaluated`/distinct-output core (which is complete).
 8. **A copy is a rare, proven exception.** Small structural copies (e.g. a
    selector copy to make extend easier) are permitted ONLY with strong evidence
    that a shallow surface / frame mapping is not workable, or that the copy is
