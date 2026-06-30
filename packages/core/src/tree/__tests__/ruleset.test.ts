@@ -327,7 +327,6 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -365,7 +364,6 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -410,7 +408,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(leaf.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -486,7 +483,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(variable.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -525,7 +521,6 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(bodyAtRule.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -636,7 +631,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(body.rules[0]?.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -733,7 +727,6 @@ describe('Rule', () => {
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -784,7 +777,6 @@ describe('Rule', () => {
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -828,7 +820,6 @@ describe('Rule', () => {
     expect(sourceBodyRenderCalls).toBe(0);
     expect(nestedBody.parent).toBe(node);
     expect(nestedBody.rules[0]?.parent).toBe(nestedBody);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -863,7 +854,6 @@ describe('Rule', () => {
 
     expect(sourceBodyRenderCalls).toBe(0);
     expect(dynamicBody.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -892,9 +882,6 @@ describe('Rule', () => {
       expect(prepareCalls).toBe(0);
       expect(guard.parent).toBe(node);
       expect(body.parent).toBe(node);
-      expect(guard.evaluated).toBe(false);
-      expect(body.evaluated).toBe(false);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -935,10 +922,7 @@ describe('Rule', () => {
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
     expect(guard.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(guard.evaluated).toBe(false);
-    expect(body.evaluated).toBe(false);
     expect(node.guard).toBe(guard);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -984,7 +968,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(child.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -1024,7 +1007,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(child.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -1190,7 +1172,6 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

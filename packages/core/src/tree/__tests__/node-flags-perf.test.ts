@@ -71,13 +71,10 @@ function evalStaticWithRegistrationPrep(node: Node, context: Context): any {
       if (prepared !== node) {
         preparedNode.inherit(node);
       }
-      if (!preparedNode.evaluated) {
-        return preparedNode['evalNode'](context);
-      }
-      return preparedNode;
+      // §2.7: nodes always re-evaluate (no `evaluated` gate).
+      return preparedNode['evalNode'](context);
     },
     (evald: Node) => {
-      evald.evaluated = true;
       if (preparedNode !== evald) {
         evald.inherit(preparedNode);
       }
@@ -128,7 +125,6 @@ describe('Node Flags Performance', () => {
     expect(result).toBe(node);
     expect(node.registrationCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
-    expect(node.evaluated).toBe(true);
   });
 
   it('benchmark: optimized vs registration-prep evalStatic for static declarations', () => {

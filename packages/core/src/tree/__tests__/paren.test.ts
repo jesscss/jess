@@ -133,7 +133,6 @@ describe('Paren', () => {
 
     expect(rendered).toBe('(foo)');
     expect(parenResolveCalls).toBe(0);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
@@ -157,7 +156,6 @@ describe('Paren', () => {
     expect(await parenNode.render(context, buffer)).toBe('(foo)');
     expect(buffer.parts).toEqual(['(foo)']);
     expect(parenResolveCalls).toBe(0);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
@@ -335,7 +333,6 @@ describe('Paren', () => {
 
       expect(await Promise.resolve(parenNode.render(context))).toBe('true');
       expect(boolStringCalls).toBe(0);
-      expect(parenNode.evaluated).toBe(false);
     } finally {
       Bool.prototype.toTrimmedString = originalToTrimmedString;
     }
@@ -359,7 +356,6 @@ describe('Paren', () => {
       expect(await parenNode.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
       expect(boolStringCalls).toBe(0);
-      expect(parenNode.evaluated).toBe(false);
     } finally {
       Bool.prototype.toTrimmedString = originalToTrimmedString;
     }
@@ -402,7 +398,6 @@ describe('Paren', () => {
     const resolved = await parenNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('(foo)');
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -421,7 +416,6 @@ describe('Paren', () => {
 
     expect(first.value).toBe(true);
     expect(second.value).toBe(true);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 

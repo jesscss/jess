@@ -109,7 +109,6 @@ describe('Block', () => {
 
     expect(rendered).toBe('{foo}');
     expect(resolveCalls).toBe(0);
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
   });
 
@@ -137,7 +136,6 @@ describe('Block', () => {
     expect(await blockNode.render(context, buffer)).toBe('{foo}');
     expect(buffer.parts).toEqual(['{foo}']);
     expect(resolveCalls).toBe(0);
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
   });
 
@@ -182,7 +180,6 @@ describe('Block', () => {
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('{foo}');
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

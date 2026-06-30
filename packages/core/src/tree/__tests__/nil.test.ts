@@ -28,7 +28,6 @@ describe('Nil', () => {
     const node = nil();
 
     expect(node.render(context)).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -47,7 +46,6 @@ describe('Nil', () => {
 
     expect(resolved).toBeInstanceOf((nil()).constructor);
     expect(Reflect.get(resolved, 'value')).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

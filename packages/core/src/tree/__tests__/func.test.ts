@@ -66,7 +66,6 @@ describe('Func', () => {
         return: 42;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(ctx.printState.writer).toBeUndefined();
   });

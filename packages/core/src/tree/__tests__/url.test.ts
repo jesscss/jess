@@ -66,7 +66,6 @@ describe('url', () => {
 
     expect(rendered).toBe('url("image.png")');
     expect(urlResolveCalls).toBe(0);
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
   });
 
@@ -91,7 +90,6 @@ describe('url', () => {
     expect(await urlNode.render(context, buffer)).toBe('url("image.png")');
     expect(buffer.parts).toEqual(['url("image.png")']);
     expect(urlResolveCalls).toBe(0);
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
   });
 
@@ -169,7 +167,6 @@ describe('url', () => {
     const resolved = await urlNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

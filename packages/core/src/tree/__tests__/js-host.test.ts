@@ -17,7 +17,6 @@ describe('JS host wrapper nodes', () => {
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -28,7 +27,6 @@ describe('JS host wrapper nodes', () => {
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -39,7 +37,6 @@ describe('JS host wrapper nodes', () => {
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 });

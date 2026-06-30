@@ -585,7 +585,6 @@ describe('renderNodeToBuffer', () => {
     };
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -639,7 +638,6 @@ describe('renderNodeToBuffer', () => {
       if ('expected' in item) {
         expect(rendered, item.surface).toBe(item.expected);
       }
-      expect(item.node.evaluated, item.surface).toBe(false);
       expect(item.node.registrationPrepared, item.surface).toBe(false);
     }
   });

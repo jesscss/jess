@@ -228,7 +228,6 @@ describe('reference', () => {
       const rendered = refNode.render(context);
 
       expect(rendered).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -255,7 +254,6 @@ describe('reference', () => {
       expect(refNode.render(context, buffer)).toBe('red');
       expect(buffer.segments).toEqual(['red']);
       expect(resolveCalls).toBe(0);
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -273,7 +271,6 @@ describe('reference', () => {
       };
 
       expect(refNode.render(context)).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -833,7 +830,6 @@ describe('reference', () => {
       expect(evalNodeCalls).toBe(0);
       expect(sourceValue.frozen).toBe(false);
       expect(sourceValue.parent).toBe(sourceParent);
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
       expect(context.referenceStack).toBe(0);
     });
@@ -919,7 +915,6 @@ describe('reference', () => {
       const resolved = await refNode.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -2414,7 +2409,6 @@ describe('reference', () => {
         const resolvedAgain = resolved.resolve(context);
 
         expect(resolvedAgain).toBe(resolved);
-        expect(resolved.evaluated).toBe(false);
         expect(resolved.registrationPrepared).toBe(false);
         expect(context.referenceStack).toBe(0);
       } finally {

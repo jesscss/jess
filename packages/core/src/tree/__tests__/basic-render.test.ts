@@ -144,7 +144,6 @@ describe('Basic Ruleset Rendering', () => {
     `);
     expect(deriveSpy).not.toHaveBeenCalled();
     expect(evalSpy).not.toHaveBeenCalled();
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(node.rules[0]!.parent).toBe(node);
   });
@@ -190,7 +189,6 @@ describe('Basic Ruleset Rendering', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

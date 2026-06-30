@@ -186,7 +186,6 @@ describe('Rules', () => {
 
     expect(evaluated.toTrimmedString()).toBe('color: red;');
     expect(node.registrationPrepared).toBe(true);
-    expect(node.evaluated).toBe(true);
   });
 
   it('renders already evaluated rules without deriving another root surface', async () => {
@@ -251,7 +250,6 @@ describe('Rules', () => {
 
     expect(node.resolve(context)).toBe(node);
     expect(deriveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
   });
 
   it('resolves registration-prepared rules without deriving another root surface', async () => {
@@ -345,7 +343,6 @@ describe('Rules', () => {
     expect(rendered).toBe('color: red;\n');
     expect(buffer.parts).toEqual(['color: red;\n']);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -371,7 +368,6 @@ describe('Rules', () => {
     };
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -393,7 +389,6 @@ describe('Rules', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
     expect(deriveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(sourceVar.parent).toBe(node);
     expect(sourceDecl.parent).toBe(node);
@@ -431,9 +426,7 @@ describe('Rules', () => {
     } as unknown) as typeof originalRender;
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
-    expect(child.evaluated).toBe(false);
   });
 
   it('writes root-owned charset and imports into render buffers', async () => {
@@ -463,7 +456,6 @@ describe('Rules', () => {
     expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(buffer.segments).toEqual([rendered]);
     expect(resolveCalls).toBe(0);
-    expect(root.evaluated).toBe(false);
     expect(root.registrationPrepared).toBe(false);
   });
 
@@ -505,7 +497,6 @@ describe('Rules', () => {
     };
 
     await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
-    expect(root.evaluated).toBe(false);
     expect(root.registrationPrepared).toBe(false);
   });
 
@@ -560,7 +551,6 @@ describe('Rules', () => {
       expect(resolved.toTrimmedString()).toContain('color: red;');
       expect(deriveCalls).toBe(0);
       expect(clonedRules).toBe(0);
-      expect(root.evaluated).toBe(true);
     } finally {
       Node.prototype.clone = originalClone;
     }

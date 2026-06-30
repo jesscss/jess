@@ -44,7 +44,6 @@ describe('JsImport', () => {
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -62,7 +61,6 @@ describe('JsImport', () => {
     expect(node.render(context, buffer)).toBe('@-use "foo.js" as foo;');
     expect(buffer.segments).toEqual(['@-use "foo.js" as foo;']);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -74,7 +72,6 @@ describe('JsImport', () => {
     };
 
     expect(node.render(context)).toBe('@-use "foo.js" as foo;');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 });

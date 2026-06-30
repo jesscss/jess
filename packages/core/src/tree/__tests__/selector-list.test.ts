@@ -238,7 +238,6 @@ describe('Selector list', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo],\n.bar');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

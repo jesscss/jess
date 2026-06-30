@@ -47,7 +47,6 @@ describe('Comment', () => {
     const node = comment('/* keep me */');
 
     expect(node.render(context)).toBe('/* keep me */');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -223,7 +222,6 @@ describe('Comment', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('/* keep me */');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

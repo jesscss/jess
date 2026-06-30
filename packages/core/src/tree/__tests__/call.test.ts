@@ -495,7 +495,6 @@ describe('Call', () => {
     });
 
     expect(rule.render(context)).toBe('rgb(100, 100, 100)');
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -518,7 +517,6 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -651,7 +649,6 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(argResolveCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -676,7 +673,6 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
     expect(nameEvaluations).toBe(1);
     expect(renderedNamePublicStringCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -698,7 +694,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
     expect(renderedArgPublicStringCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -720,7 +715,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('func((a, b))');
     expect(renderedInnerPublicStringCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -781,7 +775,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
     expect(renderedContentPublicStringCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -871,7 +864,6 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('calc(20px)');
     expect(nameEvaluations).toBe(1);
     expect(context.calcFrames).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -898,7 +890,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('blue');
     expect(nameEvaluations).toBe(1);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -985,7 +976,6 @@ describe('Call', () => {
 
       expect(rendered).toContain('color: red');
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       evalStateCalls.restore();
@@ -1014,7 +1004,6 @@ describe('Call', () => {
 
       expect(rendered).toContain('color: blue');
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       evalStateCalls.restore();
@@ -1044,7 +1033,6 @@ describe('Call', () => {
 
       expect(rendered).toContain('color: green');
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       evalStateCalls.restore();
@@ -1073,7 +1061,6 @@ describe('Call', () => {
 
       expect(rendered).toContain('color: purple');
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       evalStateCalls.restore();
@@ -1105,7 +1092,6 @@ describe('Call', () => {
 
       expect(rendered).toContain('color: orange');
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       evalStateCalls.restore();
@@ -1146,7 +1132,6 @@ describe('Call', () => {
       expect(derivedCalls.count).toBe(0);
       expect(clonedCalls).toBe(0);
       expect(evalStateCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       Call.prototype.clone = originalClone;
@@ -1205,7 +1190,6 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('rgb(10, 20, 30)');
     expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
     expect(arg.parent).toBe(rule.args);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1221,7 +1205,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
     expect(arg.parent).toBe(rule.args);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1237,7 +1220,6 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('wrap(): body-output');
     expect(buffer.parts).toEqual(['wrap(): body-output']);
     expect(content.parent).toBe(rule);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1254,7 +1236,6 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
     expect(content.parent).toBe(rule);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1305,7 +1286,6 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('ok');
     expect(buffer.parts).toEqual(['ok']);
     expect(resolveCalls).toBe(0);
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1326,7 +1306,6 @@ describe('Call', () => {
     };
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
   });
 
@@ -1427,7 +1406,6 @@ describe('Call', () => {
       expect((await rule.resolve(context)).toTrimmedString()).toBe('ok');
       expect(buffer.parts).toEqual(['ok']);
       expect(CountingSequence.constructedCopies).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(originalValue.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
     } finally {
@@ -1456,8 +1434,6 @@ describe('Call', () => {
       expect(derivedCalls.count).toBe(0);
       expect(args.parent).toBe(rule);
       expect(name.parent).toBe(rule);
-      expect(name.evaluated).toBe(false);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       derivedCalls.restore();
@@ -1507,8 +1483,6 @@ describe('Call', () => {
     expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
     expect(args.parent).toBe(rule);
     expect(name.parent).toBe(rule);
-    expect(name.evaluated).toBe(false);
-    expect(rule.evaluated).toBe(false);
   });
 
   it('renders important optional CSS fallback syntax without deriving output', async () => {
@@ -1529,7 +1503,6 @@ describe('Call', () => {
       await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red) !important');
       expect(nameEvaluations).toBe(1);
       expect(derivedCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       derivedCalls.restore();
@@ -1788,7 +1761,6 @@ describe('Call', () => {
 
     expect(isNode(resolved, N.Call)).toBe(true);
     expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
-    expect(rule.evaluated).toBe(false);
     expect(rule.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -1866,7 +1838,6 @@ describe('Call', () => {
       expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
       expect(clonedLists).toBe(0);
       expect(args.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       List.prototype.clone = originalClone;
@@ -2088,8 +2059,6 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toContain('color: blue');
       expect(clonedReferences).toBe(0);
       expect(name.parent).toBe(rule);
-      expect(name.evaluated).toBe(false);
-      expect(rule.evaluated).toBe(false);
     } finally {
       Reference.prototype.clone = originalClone;
     }
@@ -2120,8 +2089,6 @@ describe('Call', () => {
       expect(isNode(resolved, N.Rules)).toBe(true);
       expect(resolved.toTrimmedString()).toContain('color: blue');
       expect(name.parent).toBe(rule);
-      expect(name.evaluated).toBe(false);
-      expect(rule.evaluated).toBe(false);
     } finally {
       evalStateCalls.restore();
     }
@@ -2462,7 +2429,6 @@ describe('Call', () => {
       expect(originalArgs.value).toEqual([originalValue]);
       expect(originalValue.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
     }
   });
 
@@ -2562,7 +2528,6 @@ describe('Call', () => {
         expect(originalArgs.value).toEqual([originalValue]);
         expect(originalValue.parent).toBe(originalArgs);
         expect(originalArgs.parent).toBe(rule);
-        expect(rule.evaluated).toBe(false);
       }
     } finally {
       CountingCall.countConstructions = false;
@@ -2600,7 +2565,6 @@ describe('Call', () => {
     expect(rawArgsDuringCall?.value).toHaveLength(2);
     expect(originalArgs.value).toHaveLength(1);
     expect(originalArgs.parent).toBe(rule);
-    expect(rule.evaluated).toBe(false);
   });
 
   it('evaluates metadata JS function params from the owned arg surface', async () => {
@@ -2632,7 +2596,6 @@ describe('Call', () => {
     expect(result.toTrimmedString()).toBe('ok');
     expect(receivedArg).toBeDefined();
     expect(receivedArg).not.toBe(originalValue);
-    expect(originalValue.evaluated).toBe(false);
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
   });
@@ -2668,7 +2631,6 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toBe('ok');
       expect(scalarClones).toBe(0);
       expect(originalArgs.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
     } finally {
       Any.prototype.clone = originalClone;
     }
@@ -2940,7 +2902,6 @@ describe('Call', () => {
       expect(derivedCalls.count).toBe(0);
       expect(buffer.parts).toEqual(['missing-fn(red): raw content']);
       expect(content.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.cloneForPlacement = originalCopy;
@@ -2982,7 +2943,6 @@ describe('Call', () => {
       expect(derivedCalls.count).toBe(0);
       expect(sequenceCopies).toBe(0);
       expect(content.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
     } finally {
       Sequence.prototype.cloneForPlacement = originalCopy;
       derivedCalls.restore();
@@ -3033,7 +2993,6 @@ describe('Call', () => {
       expect(calls).toBe(2);
       expect(buffer.parts).toEqual(['bad(red): raw content']);
       expect(content.parent).toBe(rule);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.cloneForPlacement = originalCopy;
@@ -3111,7 +3070,6 @@ describe('Call', () => {
       expect(calls).toBe(1);
       expect(nameEvaluations).toBe(1);
       expect(derivedCalls.count).toBe(0);
-      expect(rule.evaluated).toBe(false);
     } finally {
       derivedCalls.restore();
     }
@@ -3206,8 +3164,6 @@ describe('Call', () => {
       expect(calls).toBe(3);
       expect(args.parent).toBe(rule);
       expect(name.parent).toBe(rule);
-      expect(name.evaluated).toBe(false);
-      expect(rule.evaluated).toBe(false);
     } finally {
       derivedCalls.restore();
     }

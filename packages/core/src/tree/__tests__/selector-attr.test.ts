@@ -59,7 +59,6 @@ describe('Attribute Selector', () => {
     const rendered = attrNode.render(context);
 
     expect(rendered).toBe('[data=foo]');
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
   });
 
@@ -94,7 +93,6 @@ describe('Attribute Selector', () => {
     expect(rendered).toBe('[data=foo]');
     expect(buffer.segments).toEqual(['[data=foo]']);
     expect(resolveCalls).toBe(0);
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
   });
 
@@ -117,7 +115,6 @@ describe('Attribute Selector', () => {
     const resolved = await attrNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('[data=foo]');
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

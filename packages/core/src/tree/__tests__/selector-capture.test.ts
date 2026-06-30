@@ -39,7 +39,6 @@ describe('SelectorCapture', () => {
     const rendered = captureNode.render(context);
 
     expect(rendered).toBe('.foo');
-    expect(captureNode.evaluated).toBe(false);
     expect(captureNode.registrationPrepared).toBe(false);
   });
 
@@ -68,7 +67,6 @@ describe('SelectorCapture', () => {
     expect(await captureNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
-    expect(captureNode.evaluated).toBe(false);
     expect(captureNode.registrationPrepared).toBe(false);
   });
 
@@ -86,7 +84,6 @@ describe('SelectorCapture', () => {
     const resolved = await captureNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(captureNode.evaluated).toBe(false);
     expect(captureNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

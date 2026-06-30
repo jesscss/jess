@@ -145,7 +145,6 @@ describe('PseudoSelector', () => {
     const rendered = pseudoNode.render(context);
 
     expect(rendered).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
@@ -177,7 +176,6 @@ describe('PseudoSelector', () => {
     expect(rendered).toBe(':is(.foo, .bar)');
     expect(buffer.segments).toEqual([':is(.foo, .bar)']);
     expect(resolveCalls).toBe(0);
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
@@ -197,7 +195,6 @@ describe('PseudoSelector', () => {
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

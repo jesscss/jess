@@ -120,7 +120,6 @@ describe('Operation', () => {
     const rendered = operationNode.render(context);
 
     expect(rendered).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -148,7 +147,6 @@ describe('Operation', () => {
     expect(await operationNode.render(context, buffer)).toBe('30');
     expect(buffer.parts).toEqual(['30']);
     expect(operationResolveCalls).toBe(0);
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -171,7 +169,6 @@ describe('Operation', () => {
     };
 
     expect(operationNode.render(context)).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -266,7 +263,6 @@ describe('Operation', () => {
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

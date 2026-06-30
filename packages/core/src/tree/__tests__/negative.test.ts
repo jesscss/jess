@@ -104,7 +104,6 @@ describe('Negative', () => {
 
     expect(rendered).toBe('-20');
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
@@ -129,7 +128,6 @@ describe('Negative', () => {
     expect(await negativeNode.render(context, buffer)).toBe('-20');
     expect(buffer.parts).toEqual(['-20']);
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
@@ -158,7 +156,6 @@ describe('Negative', () => {
 
       expect(negativeNode.render(context)).toBe('-20');
       expect(operate).not.toHaveBeenCalled();
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       operate.mockRestore();
@@ -186,7 +183,6 @@ describe('Negative', () => {
       const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
 
       expect(negativeNode.render(context)).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       Any.prototype.render = originalRender;
@@ -254,7 +250,6 @@ describe('Negative', () => {
     const resolved = await negativeNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('-20');
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -278,7 +273,6 @@ describe('Negative', () => {
 
       expect(resolved).toBeInstanceOf(Any);
       expect(resolved.toTrimmedString()).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     } finally {

@@ -68,7 +68,6 @@ describe('Selector render contract', () => {
     };
 
     expect(selector.render(context)).toBe('.foo');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
   });
 
@@ -109,7 +108,6 @@ describe('Selector render contract', () => {
     };
 
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
   });
 

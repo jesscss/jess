@@ -51,7 +51,6 @@ describe('Expression', () => {
 
     expect(rendered).toBe('foo');
     expect(resolveCalls).toBe(0);
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
@@ -87,7 +86,6 @@ describe('Expression', () => {
     expect(buffer.parts).toEqual(['foo']);
     expect(expressionResolveCalls).toBe(0);
     expect(childResolveCalls).toBe(0);
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
@@ -110,7 +108,6 @@ describe('Expression', () => {
     const renderedNode = expr(expressionChild);
 
     expect(renderedNode.render(context)).toBe('one, foo');
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
@@ -145,7 +142,6 @@ describe('Expression', () => {
     const resolved = await nodeToResolve.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('foo');
-    expect(nodeToResolve.evaluated).toBe(false);
     expect(nodeToResolve.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

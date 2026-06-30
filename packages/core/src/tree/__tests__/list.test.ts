@@ -155,7 +155,6 @@ describe('List', () => {
 
     expect(rendered).toBe('1 2 3, four');
     expect(resolveCalls).toBe(0);
-    expect(listNode.evaluated).toBe(false);
     expect(listNode.registrationPrepared).toBe(false);
   });
 
@@ -186,7 +185,6 @@ describe('List', () => {
     expect(await listNode.render(context, buffer)).toBe('1 2 3, four');
     expect(buffer.parts).toEqual(['1 2 3, four']);
     expect(resolveCalls).toBe(0);
-    expect(listNode.evaluated).toBe(false);
     expect(listNode.registrationPrepared).toBe(false);
   });
 
@@ -317,7 +315,6 @@ describe('List', () => {
     const resolved = await listNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('1 2 3, four');
-    expect(listNode.evaluated).toBe(false);
     expect(listNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

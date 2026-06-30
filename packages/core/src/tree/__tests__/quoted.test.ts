@@ -82,7 +82,6 @@ describe('quoted', () => {
 
     expect(rendered).toBe('"hello"');
     expect(quotedResolveCalls).toBe(0);
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
   });
 
@@ -107,7 +106,6 @@ describe('quoted', () => {
     expect(await quotedNode.render(context, buffer)).toBe('"hello"');
     expect(buffer.parts).toEqual(['"hello"']);
     expect(quotedResolveCalls).toBe(0);
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
   });
 
@@ -174,7 +172,6 @@ describe('quoted', () => {
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('"hello"');
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

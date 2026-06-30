@@ -137,7 +137,6 @@ describe('Condition', () => {
 
       expect(node.render(context)).toBe('false');
       expect(conditionResolveCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
@@ -264,7 +263,6 @@ describe('Condition', () => {
       expect(await node.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
       expect(conditionResolveCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
@@ -278,7 +276,6 @@ describe('Condition', () => {
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('false');
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -296,7 +293,6 @@ describe('Condition', () => {
       expect(first).toBeInstanceOf(Bool);
       expect(first.value).toBe(true);
       expect(second.value).toBe(true);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 

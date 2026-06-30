@@ -249,7 +249,6 @@ describe('Declaration', () => {
     };
 
     expect(node.render(context)).toBe('color: red');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -431,7 +430,6 @@ describe('Declaration', () => {
 
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(sourceValue.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -569,7 +567,6 @@ describe('Declaration', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('--color:red');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();

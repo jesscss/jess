@@ -507,7 +507,6 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -733,7 +732,6 @@ describe('AtRule', () => {
     try {
       expect(node.render(context)).toBe('@namespace svg;');
       expect(evalCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
     }
@@ -810,8 +808,6 @@ describe('AtRule', () => {
       const resolved = await Promise.resolve(node.resolve(context));
       expect(resolved.toTrimmedString()).toBe('@namespace svg;');
       expect(prelude.parent).toBe(node);
-      expect(prelude.evaluated).toBe(false);
-      expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
       name.toString = originalNameToString;
@@ -859,11 +855,8 @@ describe('AtRule', () => {
     `);
     expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourcePrelude.evaluated).toBe(false);
     expect(sourceRules.parent).toBeUndefined();
-    expect(sourceRules.evaluated).toBe(false);
     expect(node.getRenderRules()).toBe(sourceRules.rules);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -889,7 +882,6 @@ describe('AtRule', () => {
       }
     `);
     expect(sourceRules.parent).toBeUndefined();
-    expect(sourceRules.evaluated).toBe(false);
   });
 
   it('renders plain static body rules without an owned body eval target', async () => {
@@ -930,7 +922,6 @@ describe('AtRule', () => {
     }
     expect(rulesEvalCalls).toBe(0);
     expect(sourceRules.parent).toBeUndefined();
-    expect(sourceRules.evaluated).toBe(false);
   });
 
   it('renders static invisible var body rules without an owned body eval target', async () => {
@@ -984,9 +975,7 @@ describe('AtRule', () => {
     expect(rulesEvalCalls).toBe(0);
     expect(varEvalCalls).toBe(0);
     expect(sourceRules.parent).toBeUndefined();
-    expect(sourceRules.evaluated).toBe(false);
     expect(variable.parent).toBe(node);
-    expect(variable.evaluated).toBe(false);
   });
 
   it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
@@ -1028,7 +1017,6 @@ describe('AtRule', () => {
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
     expect(sourceRules.parent).toBeUndefined();
-    expect(sourceRules.evaluated).toBe(false);
   });
 
   it('keeps direct body-render visibility off the source at-rule', async () => {
@@ -1043,7 +1031,6 @@ describe('AtRule', () => {
     expect(await Promise.resolve(node.render(context))).toBe('');
     expect(node.visible).toBe(true);
     expect(node.rules[0]?.parent).toBe(node);
-    expect(node.rules[0]?.evaluated).toBe(false);
   });
 
   it('keeps public body-resolve visibility on the owned result', async () => {
@@ -1106,7 +1093,6 @@ describe('AtRule', () => {
     `);
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
-    expect(node.evaluated).toBe(false);
     expect(node.getRenderRules()).toBe(node.rules);
   });
 
@@ -1362,8 +1348,6 @@ describe('AtRule', () => {
     expect(preludeEvalCalls).toBe(1);
     expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourcePrelude.evaluated).toBe(false);
-    expect(node.evaluated).toBe(false);
   });
 
   it('returns owned evaluated at-rule body output without mutating source value.rules', async () => {
@@ -1482,7 +1466,6 @@ describe('AtRule', () => {
     if (resolved instanceof AtRule) {
       expect(resolved.prelude).not.toBe(sourcePrelude);
     }
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -1511,7 +1494,6 @@ describe('AtRule', () => {
       this: Rules,
       ...args: Parameters<typeof evaluatedRules.eval>
     ): ReturnType<typeof evaluatedRules.eval> {
-      evaluatedRules.evaluated = true;
       return evaluatedRules;
     };
     const node = atrule({
@@ -1597,7 +1579,6 @@ describe('AtRule', () => {
     expect(sourcePrelude?.parent).toBe(node);
     expect(node.rules).toBe(sourceRules.rules);
     expect(sourceRules.parent).toBeUndefined();
-    expect(node.evaluated).toBe(false);
     expect(node.visible).toBe(true);
   });
 
@@ -1723,7 +1704,6 @@ describe('AtRule', () => {
 
       expect(resolved).toBe(node);
       expect(evalCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     } finally {
       AtRuleStatement.prototype.eval = originalEval;

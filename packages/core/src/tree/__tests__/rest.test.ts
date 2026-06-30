@@ -73,9 +73,7 @@ describe('Rest', () => {
 
     expect(named.render(context)).toBe('...$$items');
     expect(nodeNamed.render(context)).toBe('...$items');
-    expect(named.evaluated).toBe(false);
     expect(named.registrationPrepared).toBe(false);
-    expect(nodeNamed.evaluated).toBe(false);
     expect(nodeNamed.registrationPrepared).toBe(false);
   });
 
@@ -112,7 +110,6 @@ describe('Rest', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

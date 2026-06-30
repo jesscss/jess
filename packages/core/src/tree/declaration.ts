@@ -1684,7 +1684,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       throw new TypeError('String-backed declaration values must be hydrated before evaluation');
     }
     if (this.hasFlag(F_STATIC)) {
-      this.evaluated = true;
       return {
         source: this,
         value: this.value instanceof Node ? this.value : this.materializeValueForSemantics(this.value),

@@ -63,7 +63,6 @@ describe('InterpolatedSelector', () => {
     const rendered = selectorNode.render(context);
 
     expect(rendered).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -96,7 +95,6 @@ describe('InterpolatedSelector', () => {
     expect(await selectorNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -120,7 +118,6 @@ describe('InterpolatedSelector', () => {
     };
 
     expect(selectorNode.render(context)).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -142,7 +139,6 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

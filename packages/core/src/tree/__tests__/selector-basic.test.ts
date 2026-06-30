@@ -62,7 +62,6 @@ describe('BasicSelector', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

@@ -165,7 +165,6 @@ describe('Let', () => {
       expect(rule.render(context, buffer)).toBe('$tone');
       expect(buffer.segments).toEqual(['$tone']);
       expect(resolveCalls).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     });
 
@@ -180,7 +179,6 @@ describe('Let', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('$tone');
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });

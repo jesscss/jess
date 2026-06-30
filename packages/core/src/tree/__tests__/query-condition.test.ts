@@ -303,7 +303,6 @@ describe('QueryCondition', () => {
     const rendered = queryNode.render(context);
 
     expect(rendered).toBe('screen and print');
-    expect(queryNode.evaluated).toBe(false);
     expect(queryNode.registrationPrepared).toBe(false);
   });
 
@@ -321,7 +320,6 @@ describe('QueryCondition', () => {
 
     expect(await queryNode.render(context, buffer)).toBe('screen and print');
     expect(buffer.parts).toEqual(['screen and print']);
-    expect(queryNode.evaluated).toBe(false);
     expect(queryNode.registrationPrepared).toBe(false);
   });
 
@@ -371,7 +369,6 @@ describe('QueryCondition', () => {
       const queryNode = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
 
       expect(queryNode.render(context)).toBe('screen and print');
-      expect(queryNode.evaluated).toBe(false);
       expect(queryNode.registrationPrepared).toBe(false);
     } finally {
       Sequence.prototype.render = sequenceRender;
@@ -459,7 +456,6 @@ describe('QueryCondition', () => {
     const resolved = await queryNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('screen and print');
-    expect(queryNode.evaluated).toBe(false);
     expect(queryNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

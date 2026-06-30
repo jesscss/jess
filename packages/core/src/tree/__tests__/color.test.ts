@@ -345,9 +345,7 @@ describe('Color Node', () => {
 
       expect(rgbColor.render(new Context())).toBe('rgb(255, 0, 0)');
       expect(hexColor.render(new Context())).toBe('#ff0000');
-      expect(rgbColor.evaluated).toBe(false);
       expect(rgbColor.registrationPrepared).toBe(false);
-      expect(hexColor.evaluated).toBe(false);
       expect(hexColor.registrationPrepared).toBe(false);
     });
 
@@ -380,7 +378,6 @@ describe('Color Node', () => {
       const resolved = await color.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('rgb(255, 0, 0)');
-      expect(color.evaluated).toBe(false);
       expect(color.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });

@@ -144,7 +144,6 @@ describe('Selector', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('.foo > #bar');
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });

@@ -169,7 +169,6 @@ describe('Sequence', () => {
 
     expect(rendered).toBe('10 20 30');
     expect(resolveCalls).toBe(0);
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
@@ -317,7 +316,6 @@ describe('Sequence', () => {
     expect(await sequenceNode.render(context, buffer)).toBe('10 20 30');
     expect(buffer.parts).toEqual(['10 20 30']);
     expect(resolveCalls).toBe(0);
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
@@ -355,7 +353,6 @@ describe('Sequence', () => {
     const resolved = await sequenceNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('10 20 30');
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -790,7 +787,6 @@ describe('Sequence', () => {
     const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
-    rule.evaluated = true;
 
     expect(rule.toTrimmedString({
       trivia
@@ -808,7 +804,6 @@ describe('Sequence', () => {
     const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
-    rule.evaluated = true;
 
     expect(rule.toTrimmedString({
       emittedTrivia: new Set([whitespace]),

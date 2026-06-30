@@ -108,7 +108,6 @@ describe('Interpolated', () => {
     const rendered = interpolatedNode.render(context);
 
     expect(rendered).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
@@ -139,7 +138,6 @@ describe('Interpolated', () => {
     expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
     expect(buffer.parts).toEqual(['hello-world']);
     expect(resolveCalls).toBe(0);
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
@@ -161,7 +159,6 @@ describe('Interpolated', () => {
     };
 
     expect(interpolatedNode.render(context)).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
@@ -191,7 +188,6 @@ describe('Interpolated', () => {
       });
 
       expect(await interpolatedNode.render(context)).toBe('hello-world');
-      expect(interpolatedNode.evaluated).toBe(false);
       expect(interpolatedNode.registrationPrepared).toBe(false);
     } finally {
       Object.defineProperty(Interpolated.prototype, 'createGeneric', descriptor);
@@ -214,7 +210,6 @@ describe('Interpolated', () => {
     const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -246,7 +241,6 @@ describe('Interpolated', () => {
       const resolved = await interpolatedNode.resolve(context);
 
       expect(resolved.valueOf()).toBe('hello-world');
-      expect(interpolatedNode.evaluated).toBe(false);
       expect(interpolatedNode.registrationPrepared).toBe(false);
     } finally {
       Object.defineProperty(Interpolated.prototype, 'toTrimmedString', descriptor);

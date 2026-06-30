@@ -601,7 +601,6 @@ export class Call extends Node<CallValue, CallOptions> {
   private evalState(context: Context): Promise<Node> {
     const state = this.createEvalState();
     return this.evalFromState(context, state).then((node) => {
-      node.evaluated = true;
       if (node !== this) {
         node.inherit(this);
       }
@@ -650,7 +649,6 @@ export class Call extends Node<CallValue, CallOptions> {
       if (!(evald instanceof Node)) {
         throw new TypeError('Expected sync node result.');
       }
-      evald.evaluated = true;
       if (node !== evald) {
         evald.inherit(node);
       }

@@ -126,7 +126,6 @@ describe('Mixin', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -6383,7 +6382,6 @@ describe('Mixin', () => {
       const css = await renderNodeToString(root, context);
 
       expect(css).toContain('color: red;');
-      expect(guard.evaluated).toBe(false);
       expect(guard.registrationPrepared).toBe(false);
       expect(guard.frozen).toBe(false);
     });

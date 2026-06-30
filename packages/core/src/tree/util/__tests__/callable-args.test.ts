@@ -52,7 +52,6 @@ describe('callable arg evaluation helper', () => {
     });
 
     expect(evaluated[0]?.valueOf()).toBe('literal');
-    expect(evaluated[0]?.evaluated).toBe(true);
     expect(evaluated[1]?.valueOf()).toBe(true);
     expect(evaluated[2]?.type).toBe('List');
     if (evaluated[2]?.type !== 'List') {

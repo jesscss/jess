@@ -458,7 +458,6 @@ export abstract class Node<
   registrationPrepared = false;
 
   /** Runtime tracking: has eval been run on this node? */
-  evaluated = false;
 
   /**
    * Optional scanner-first direct-field spans, packed by this node's static
@@ -1260,14 +1259,12 @@ export abstract class Node<
     const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((evald) => {
-        evald.evaluated = true;
         if (node !== evald) {
           evald.inherit(node);
         }
         return evald;
       });
     }
-    evaluated.evaluated = true;
     if (node !== evaluated) {
       evaluated.inherit(node);
     }
@@ -1279,7 +1276,6 @@ export abstract class Node<
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((resolved) => {
         const evald = mustBeNode(resolved);
-        evald.evaluated = true;
         if (node !== evald) {
           evald.inherit(node);
         }
@@ -1287,7 +1283,6 @@ export abstract class Node<
       });
     }
     const evald = mustBeNode(evaluated);
-    evald.evaluated = true;
     if (node !== evald) {
       evald.inherit(node);
     }

@@ -60,7 +60,6 @@ export class Operation extends Node<OperationValue> {
 
   private createCalcFallback(left: Node, right: Node): Call {
     const operationNode = this.withOperands(left, right);
-    operationNode.evaluated = true;
     return (new Call(
       { name: 'calc', args: list([operationNode]) },
       undefined,

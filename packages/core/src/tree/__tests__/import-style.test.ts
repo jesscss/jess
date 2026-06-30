@@ -3641,7 +3641,6 @@ describe('Style import', () => {
           context: localContext
         });
         expect(found).toBeUndefined();
-        expect(namespaceBody.evaluated).toBe(false);
         expect(broadFastHits.length).toBeGreaterThan(0);
         expect(broadFastHits.every(hit => hit === 'namespace')).toBe(true);
       } finally {
@@ -3917,7 +3916,6 @@ describe('Style import', () => {
 
       expect(isNode(resolved, N.Rules)).toBe(true);
       expect((resolved as Rules).rules.length).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -3958,7 +3956,6 @@ describe('Style import', () => {
       `);
       expect(buffer.segments).toEqual([rendered]);
       expect(resolveCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
@@ -3987,7 +3984,6 @@ describe('Style import', () => {
           color: red;
         }
       `);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
   });

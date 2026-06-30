@@ -139,7 +139,6 @@ describe('Ampersand', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo-bar');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -385,7 +384,6 @@ describe('Ampersand', () => {
       }
       expect(resolved.getResolvedSelector()?.toTrimmedString()).toBe('.foo');
       expect(clonedAmpersands).toBe(0);
-      expect(node.evaluated).toBe(false);
     } finally {
       Ampersand.prototype.clone = originalClone;
     }
