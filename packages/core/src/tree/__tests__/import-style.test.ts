@@ -1053,7 +1053,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const imported = evald.at(0) as Rules;
-      const css = await renderNodeToString(node, context, { context });
+      // Render the eval OUTPUT, not the source node. Under copy-on-write eval
+      // never mutates the source; re-evaluating it would correctly dedup the
+      // (already-cached) module. Production renders the eval output in one pass.
+      const css = await renderNodeToString(evald, context, { context });
 
       expect(imported).toBe(importedRules);
       expect(css).toContain('.box');
@@ -1112,7 +1115,8 @@ describe('Style import', () => {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
         const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-        const css = await renderNodeToString(node, context, { context });
+        // Render the eval output (copy-on-write: re-evaluating the source dedups).
+        const css = await renderNodeToString(evald, context, { context });
 
         expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
@@ -1439,7 +1443,8 @@ describe('Style import', () => {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
         const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-        const css = await renderNodeToString(node, context, { context });
+        // Render the eval output (copy-on-write: re-evaluating the source dedups).
+        const css = await renderNodeToString(evald, context, { context });
 
         expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
@@ -1529,7 +1534,8 @@ describe('Style import', () => {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
         const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-        const css = await renderNodeToString(node, context, { context });
+        // Render the eval output (copy-on-write: re-evaluating the source dedups).
+        const css = await renderNodeToString(evald, context, { context });
 
         expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
@@ -1637,7 +1643,8 @@ describe('Style import', () => {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
         const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
-        const css = await renderNodeToString(node, context, { context });
+        // Render the eval output (copy-on-write: re-evaluating the source dedups).
+        const css = await renderNodeToString(evald, context, { context });
 
         expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
@@ -2355,7 +2362,9 @@ describe('Style import', () => {
       }
       expect(wrappedImport.rules).toHaveLength(1);
       expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
-      const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
+      // Render the eval output (copy-on-write: source is never mutated; a second
+      // eval would dedup the cached import).
+      const css = await renderNodeToString(evald, inlineContext, { context: inlineContext });
       expect(css).toContain('@media (min-width: 600px)');
       expect(css).toContain('#css { color: yellow; }');
 
@@ -2437,7 +2446,8 @@ describe('Style import', () => {
       }
       expect((mediaRulesArr[0] as any).name.toTrimmedString()).toBe('@media');
 
-      const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
+      // Render the eval output (copy-on-write: re-evaluating the source dedups).
+      const css = await renderNodeToString(evald, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
       expect(css).toContain('@supports (display: grid)');
       expect(css).toContain('@media screen and (min-width: 600px)');
@@ -2478,7 +2488,9 @@ describe('Style import', () => {
         throw new Error('Expected wrapped import child to be AtRule');
       }
       expect(Array.isArray((wrappedImport.rules[0] as any).rules)).toBe(true);
-      const css = await renderNodeToString(node, context, { context });
+      // Render the eval output (copy-on-write: re-evaluating the source would
+      // dedup the cached import).
+      const css = await renderNodeToString(evald, context, { context });
       expect(css).toContain('@media screen and (min-width: 600px)');
       expect(css).toContain('.imported');
     });
