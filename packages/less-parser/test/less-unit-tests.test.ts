@@ -28,7 +28,7 @@ describe('Less full-suite (minus invalid files)', () => {
             // Log details to debug regressions in a Vitest-compatible way
             // Only log for the two files currently regressing to reduce noise
             console.error('Parse errors for', file, errors.map(e => e.message));
-            const err = errors[0] as any;
+            const err: any = errors[0];
             const line = err?.token?.startLine ?? 0;
             if (line) {
               console.error('Near line', line, '... ', contents.split('\n')[line - 1]);

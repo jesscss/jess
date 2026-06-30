@@ -1,14 +1,22 @@
 import { describe, test, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
 
 const parser = new Parser();
+
+// The tests read only `.prelude` off the first (at-)rule; narrow then expose it.
+function asAtRule(n: Node | string | undefined): { prelude: any } {
+  if (!isNode(n, N.AtRule)) {
+    throw new Error('Expected first rule to be an at-rule');
+  }
+  return n;
+}
 
 describe('@container and @media query roles and QueryCondition parsing', () => {
   test('@container simple query parses as QueryCondition in Paren', () => {
     const { tree, errors } = parser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.rules[0] as any;
+    const atRule = asAtRule(tree.rules[0]);
     const prelude = atRule.prelude;
     const queryNode = prelude?.type === 'Sequence'
       ? prelude.value[0]
@@ -26,7 +34,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
   test('@media simple query parses as QueryCondition in Paren', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.rules[0] as any;
+    const atRule = asAtRule(tree.rules[0]);
     const prelude = atRule.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     if (queryNode) {
@@ -74,7 +82,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
   test('multiple conditions create outer QueryCondition', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) and (height > 300px) { .card {} }');
     expect(errors.length).toBe(0);
-    const atRule = tree.rules[0] as any;
+    const atRule = asAtRule(tree.rules[0]);
     const prelude = atRule.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     // With multiple conditions, there should be an outer QueryCondition

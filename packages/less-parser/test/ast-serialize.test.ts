@@ -1313,8 +1313,8 @@ describe('extend cases', () => {
 `);
     expect(errors).toHaveLength(0);
 
-    // Find the extend node and check its selector
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Find the extend node and check its selector. Loosely typed: this test
+    // walks `rules.rules` (a dead branch the parser never populates) structurally.
     const ruleset: any = tree.rules[0];
     expect(ruleset?.type).toBe('Ruleset');
     if (ruleset && ruleset.type === 'Ruleset') {

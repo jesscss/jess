@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Chevrotain parser self-analysis harness: token-map / rule-factory casts are inherent framework integration. */
 import { describe, expect, it } from 'vitest';
 import {
   CssRecursiveParser,
