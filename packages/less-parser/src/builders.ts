@@ -642,7 +642,14 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasParen = ls.some(l => l.value === '(');
     if (!hasParen) {
-      return new Ampersand(undefined, {}, loc) as unknown as JessNode;
+      // Glued-suffix (`&-bar`, `&1`) or prefix (`.foo-&`) template: the first leaf
+      // is the whole ampersand-token image. Mirror the reference's
+      // getAmpersandTemplateValue (selectors.ts): bare `&` → undefined; a `&`-led
+      // image keeps everything after the `&` (`&-bar` → '-bar'); a non-`&`-led image
+      // that still contains `&` keeps the full image (`.foo-&` → '.foo-&').
+      const image = ls[0]?.value ?? '&';
+      const appendValue = this._ampersandTemplateValue(image);
+      return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
     }
     const content = ls.find(l => l.value !== '&' && l.value !== '(' && l.value !== ')')?.value ?? '';
     const trimmed = content.trim();
@@ -650,6 +657,20 @@ export class LessGrammar extends CssParser {
       ? ''
       : trimmed.replace(/^(['"])([\s\S]*)\1$/, '$2');
     return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
+  }
+
+  /** Port of selectors.ts getAmpersandTemplateValue (reference parser). */
+  private _ampersandTemplateValue(image: string): string | undefined {
+    if (image === '&') {
+      return undefined;
+    }
+    if (image.startsWith('&')) {
+      return image.slice(1) || undefined;
+    }
+    if (image.includes('&')) {
+      return image;
+    }
+    return undefined;
   }
 
   /**

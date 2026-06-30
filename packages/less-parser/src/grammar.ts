@@ -242,10 +242,15 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('Guard', c, r, s));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
-  // `&` optionally glued to an alphanumeric suffix (`&1`, `&-bar`) — Less appends
-  // it to the parent selector. The `&(…)` form keeps its paren scan.
+  // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
+  // appends/prepends it to the parent selector. Mirrors the reference Ampersand
+  // token pattern `(?:[.#]({{ident}}-)?&|&){{nmchar}}*` (lessTokens.ts), so a
+  // prefix template parses as ONE Ampersand node (image `.foo-&`), not a
+  // CompoundSelector of `['.foo-', &]`. The `&(…)` form keeps its paren scan; the
+  // paren only follows a bare `&` in practice (prefix forms have no `(`).
+  const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node('LessAmpersand',
-    parser({ trivia: rw }, sequence(regex(/&[_a-zA-Z0-9-]*/), optional(sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'))))),
+    parser({ trivia: rw }, sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'))))),
     (c: any, r: any, s: any) => mk('LessAmpersand', c, r, s));
   const InterpolatedSelector = node('InterpolatedSelector',
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
@@ -320,10 +325,15 @@ const cssRules = rules((g: any) => {
   const ExtendPseudo = node('ExtendPseudo',
     parser({ trivia: rw }, sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')'), ')'))),
     (c: any, r: any, s: any) => mk('ExtendPseudo', c, r, s));
-  // `&:extend(...)` (or bare `:extend(...)`) statement, terminated by `;`
-  // (selectors.ts `ampersandExtend`).
+  // `&:extend(...)` statement, terminated by `;` (selectors.ts `ampersandExtend`).
+  // The leading `&` is REQUIRED: the reference's `ampersandExtend` does an
+  // unconditional `$.CONSUME(T.Ampersand)`, so a bare `:extend(...)` is NOT a valid
+  // standalone statement. Making `&` mandatory keeps `.a:extend(.b).c { … }` from
+  // mis-splitting into `.a` (mixin call) + bare `:extend(.b)` + `.c { … }`; instead
+  // the leftover `:extend(` after the `.a` mixin call is unconsumed input → one
+  // parse error (faithful: extend must be the last thing in its selector).
   const ExtendStatement = node('ExtendStatement',
-    parser({ trivia: rw }, sequence(optional(g.LessAmpersand), g.ExtendPseudo, optional(literal(';')))),
+    parser({ trivia: rw }, sequence(g.LessAmpersand, g.ExtendPseudo, optional(literal(';')))),
     (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
