@@ -302,9 +302,6 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       if (isNode(replacement, N.Selector)) {
         const copied = replacement.cloneForPlacement();
         if (!isNode(copied, N.Selector)) {
@@ -319,9 +316,6 @@ export class Interpolated<
     for (let i = 0; i < replacements.length; i++) {
       const replacement = replacements[i]!;
       const nextPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       const part = shouldWrapSelectorInIs(replacement)
         ? serializeGeneratedIsWrapper(replacement)
         : stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();
