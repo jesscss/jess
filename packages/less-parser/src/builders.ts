@@ -109,6 +109,7 @@ export class LessGrammar extends CssParser {
       case 'Guard':               return this._buildGuard(children, loc);
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
+      case 'VarCall':             return this._buildVarCall(children, raw, loc);
       case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
       case 'MixinArgs':           return this._buildMixinArgs(children, loc);
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
@@ -931,6 +932,43 @@ export class LessGrammar extends CssParser {
       { name: ref as any, args: callArgs as any },
       { markImportant } as any, loc
     ) as unknown as JessNode;
+  }
+
+  /**
+   * `@name(...)` (no `:`) → a detached-ruleset variable CALL. Faithful port of
+   * `varDeclarationOrCall`'s LParen branch (selectors.ts): build a `Reference`
+   * over the var name (`type: 'variable', role: 'name'`), wrap in a `Call` with
+   * the (optional) args, and wrap THAT in an `Expression` (a top-level variable
+   * call is an expression, not a parenthesized one). `!important` sets
+   * `markImportant` on the Call, mirroring the production.
+   */
+  private _buildVarCall(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const markImportant = ls.some(l => l.value === '!');
+    // First leaf is the `@name` token (the MixinArgs parens live in the sub-node).
+    const nameLeaf = ls.find(l => l.value.startsWith('@'));
+    const rawName = nameLeaf?.value ?? '';
+    const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
+    const nameNode = new Any(name, { role: 'ident' }, loc);
+    const nameRef = new Reference(
+      { key: nameNode } as unknown as ReferenceValue,
+      { type: 'variable', role: 'name' } as any,
+      loc
+    );
+    const nodes = nodeChildren(children);
+    const argsList = nodes.find(n => n.type === 'List');
+    const hasArgs = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
+    const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
+    const call = new Call(
+      { name: nameRef as any, args: callArgs as any },
+      (markImportant ? { markImportant: true } : undefined) as any,
+      loc
+    );
+    return new Expression(call as unknown as Node, undefined, loc) as unknown as JessNode;
   }
 
   private _buildMixinArgs(children: ReadonlyArray<Child>, loc: LocationInfo) {

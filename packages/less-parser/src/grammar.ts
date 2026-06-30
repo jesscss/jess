@@ -95,7 +95,7 @@ const cssRules = rules((g: any) => {
   // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
+      g.VarDeclaration, g.VarCall, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
       sequence(g.Call, optional(literal(';'))), literal(';')
     ))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
@@ -130,6 +130,26 @@ const cssRules = rules((g: any) => {
   const Reference = node('Reference',
     noTrivia(sequence(lessVar, many(choice(refIndex, refCall)))),
     (c: any, r: any, s: any) => mk('Reference', c, r, s));
+
+  // ── Detached-ruleset variable call ─────────────────────────────────────────
+  // `@name(...)` (no `:`) is a variable CALL of a detached ruleset, not a var
+  // decl or an at-rule. Faithful port of `varDeclarationOrCall`'s LParen branch
+  // (selectors.ts) + the `isVariableLike` disambiguation (root.ts): a KNOWN
+  // at-rule name (@media, @supports, …) followed by NON-empty parens stays an
+  // at-rule — `@media() ` (empty parens) is a deprecated var call, and any other
+  // `@var(...)` is a var call regardless of parens content. The builder emits the
+  // production's `Expression(Call{ name: Reference[role=name], args })` shape.
+  // A var name that is NOT a known at-rule name (negative lookahead asserts the
+  // known name is not the COMPLETE ident before the call parens).
+  const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9-￿][-_a-zA-Z0-9-￿]*/);
+  const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
+  const VarCall = node('VarCall',
+    parser({ trivia: rw }, choice(
+      sequence(nonKnownAtVar, g.MixinArgs, optional(important), optional(literal(';'))),
+      // Known at-rule name with EMPTY parens only.
+      sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
+    )),
+    (c: any, r: any, s: any) => mk('VarCall', c, r, s));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
   // Structured mixin args: the COMBINATORS split on the separators (sepBy), each
@@ -318,7 +338,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    g.VarDeclaration, g.VarCall, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
@@ -394,7 +414,7 @@ const cssRules = rules((g: any) => {
   )));
 
   return {
-    Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
+    Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,

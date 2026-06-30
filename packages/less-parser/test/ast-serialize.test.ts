@@ -754,14 +754,14 @@ test('parse known at-rule as variable call', () => {
   expect(tree.toString()).toContain('$media()');
   expect(serializeTypes(tree)).toContainString(`
       (Expression
-        node:
+        value:
           (Call
             name:
               (Reference [role=name]
                 key:
                   (Any [role=ident] 'media')
-            )
-        )
+              )
+          )
       )
     `);
 });
