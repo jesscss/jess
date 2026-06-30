@@ -31,7 +31,7 @@ import {
   For, type ForPattern,
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
-  Mixin, Expression,
+  Mixin, Expression, Operation,
   StyleImport, type StyleImportOptions,
   JsImport,
   Nil,
@@ -436,6 +436,17 @@ export class LessGrammar extends CssParser {
       const nameStr = d.name;
       (decl as unknown as { name: unknown }).name = new Any(nameStr, { role: 'property' }, loc);
     }
+    // Arithmetic: a `<value> <op> <value>` sequence folds into Operation nodes
+    // (precedence-climbed), then the outer math gets an explicit parenthesized
+    // Expression (the Jess `$( … )` form). Port of expressionSum/expressionProduct.
+    const dvRaw = (decl as unknown as { value?: unknown }).value;
+    if (Array.isArray(dvRaw)) {
+      const folded = this._foldOperations(dvRaw, loc);
+      if (folded) {
+        (decl as unknown as { value: unknown }).value = new Expression(folded as any, { parens: true } as any, loc);
+        return decl;
+      }
+    }
     // Mixed string+Reference array values (e.g. IE filter) → Interpolated
     const dv = (decl as unknown as { value?: unknown }).value;
     if (Array.isArray(dv)) {
@@ -464,6 +475,48 @@ export class LessGrammar extends CssParser {
       }
     }
     return decl;
+  }
+
+  /**
+   * Fold a flat `operand op operand …` value sequence into precedence-climbed
+   * Operation nodes (`*`/`%` bind tighter than `+`/`-`, left-associative). Returns
+   * null when the sequence is not a clean arithmetic chain, so a plain value list
+   * (e.g. `margin: 10px 20px`) is left untouched. `/` is intentionally NOT folded
+   * here — slash stays a slash-list. Port of expressionSum/expressionProduct.
+   */
+  private _foldOperations(parts: ReadonlyArray<unknown>, loc: LocationInfo): JessNode | null {
+    const asOp = (p: unknown): string | null => {
+      const v = typeof p === 'string'
+        ? p.trim()
+        : (p && typeof p === 'object' && (p as any).type === 'Any' ? String((p as any).value ?? '').trim() : '');
+      return v && /^[-+*%]$/.test(v) ? v : null;
+    };
+    const isOperand = (p: unknown): boolean =>
+      !!p && typeof p === 'object' && 'type' in (p as object) && !asOp(p);
+    if (parts.length < 3 || parts.length % 2 === 0) {
+      return null;
+    }
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0 ? !isOperand(parts[i]) : !asOp(parts[i])) {
+        return null;
+      }
+    }
+    const fold = (test: RegExp, seq: ReadonlyArray<unknown>): unknown[] => {
+      const out: unknown[] = [seq[0]];
+      for (let i = 1; i < seq.length; i += 2) {
+        const op = asOp(seq[i])!;
+        const right = seq[i + 1];
+        if (test.test(op)) {
+          const left = out.pop() as JessNode;
+          out.push(new Operation([left, op, right] as any, undefined, loc) as unknown as JessNode);
+        } else {
+          out.push(seq[i], right);
+        }
+      }
+      return out;
+    };
+    const summed = fold(/^[-+]$/, fold(/^[*%]$/, parts));
+    return summed.length === 1 ? (summed[0] as JessNode) : null;
   }
 
   private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {

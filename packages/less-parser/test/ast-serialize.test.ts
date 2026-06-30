@@ -453,19 +453,19 @@ test('operation', () => {
   expect(serializeTypes(tree, { showOptions: true })).toContainString('parens: true');
   expect(serializeTypes(tree)).toContainString(`
       (Expression
-        node:
+        value:
           (Operation
             left:
-            (Dimension
-              number: 10
-              unit: 'px'
-            )
+              (Dimension
+                number: 10
+                unit: 'px'
+              )
             right:
-            (Dimension
-              number: 5
-              unit: 'px'
-            )
-        )
+              (Dimension
+                number: 5
+                unit: 'px'
+              )
+          )
       )
     `);
 });
