@@ -172,15 +172,53 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
 
   // ── Guards / comparisons ───────────────────────────────────────────────────
+  // Faithful port of the Chevrotain guard productions (src/productions/guards.ts):
+  //   guard → 'when' guardOr
+  //   guardOr  → guardAnd ( ('or' | ',') guardAnd )*        (left-assoc, 'or')
+  //   guardAnd → guardTerm ( 'and' guardTerm )*             (left-assoc, 'and')
+  //   guardTerm → [not] ( guardInParens | comparison/value )
+  //   guardInParens → guardDefault | '(' guardOr ')'        (wrapped in Paren)
+  //   guardDefault  → 'default()'  →  DefaultGuard
+  // Precedence: 'or' loops over 'and'; parens nest a fresh guardOr. `not` negates a
+  // single term, producing a Condition(negate:true). Comparisons are a left operand
+  // followed by an optional `<op> right`.
+  const compareOp = regex(/>=|<=|=>|=<|=~|[<>=]/);
+  // A single comparison operand (mirrors expressionSum's value role here).
+  const guardOperand = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node('Comparison',
-    parser({ trivia: rw }, sequence(g.Reference, regex(/>=|<=|=~|[<>=]/), choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))),
+    parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))),
     (c: any, r: any, s: any) => mk('Comparison', c, r, s));
-  const GuardCondition = node('GuardCondition',
-    parser({ trivia: rw }, sequence(literal('('), g.Comparison, literal(')'))),
-    (c: any, r: any, s: any) => mk('GuardCondition', c, r, s));
+  const GuardDefault = node('GuardDefault',
+    parser({ trivia: rw }, regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/)),
+    (c: any, r: any, s: any) => mk('GuardDefault', c, r, s));
+  // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
+  const GuardInParens = node('GuardInParens',
+    parser({ trivia: rw }, choice(
+      g.GuardDefault,
+      sequence(literal('('), g.GuardOr, literal(')'))
+    )),
+    (c: any, r: any, s: any) => mk('GuardInParens', c, r, s));
+  // A single guard term: optional `not`, then either a parenthesized guard or a
+  // bare comparison (`left <op> right`) / value.
+  const GuardTerm = node('GuardTerm',
+    parser({ trivia: rw }, sequence(
+      optional(regex(/not(?![-\w])/)),
+      choice(
+        g.GuardInParens,
+        sequence(guardOperand, optional(sequence(compareOp, guardOperand)))
+      )
+    )),
+    (c: any, r: any, s: any) => mk('GuardTerm', c, r, s));
+  // 'and' chain of terms (left-associative).
+  const GuardAnd = node('GuardAnd',
+    parser({ trivia: rw }, sequence(g.GuardTerm, many(sequence(regex(/and(?![-\w])/), g.GuardTerm)))),
+    (c: any, r: any, s: any) => mk('GuardAnd', c, r, s));
+  // 'or' / ',' chain of and-expressions (left-associative).
+  const GuardOr = node('GuardOr',
+    parser({ trivia: rw }, sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd)))),
+    (c: any, r: any, s: any) => mk('GuardOr', c, r, s));
   const Guard = node('Guard',
-    parser({ trivia: rw }, sequence(regex(/when/), optional(regex(/not/)), literal('('),
-      many(choice(g.GuardCondition, g.Comparison, regex(/default\(\)/), regex(/and|or/), g.value)), literal(')'))),
+    parser({ trivia: rw }, sequence(regex(/when(?![-\w])/), g.GuardOr)),
     (c: any, r: any, s: any) => mk('Guard', c, r, s));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
@@ -315,7 +353,7 @@ const cssRules = rules((g: any) => {
 
   return {
     Stylesheet, VarDeclaration, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
-    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardCondition, Guard,
+    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
@@ -333,7 +371,7 @@ const ALIASES: Record<string, string> = {
   declarationList: 'declarationList', selector: 'LessSelectorList',
   complexSelector: 'LessComplexSelector', selectorList: 'LessSelectorList',
   atRule: 'AtRuleBlock', value: 'valueList', valueList: 'valueList',
-  comparison: 'Comparison', guard: 'Guard', guardOr: 'Guard', guardAnd: 'Guard',
+  comparison: 'Comparison', guard: 'Guard', guardOr: 'GuardOr', guardAnd: 'GuardAnd',
   qualifiedRule: 'MixinOrQualifiedRule', mixinOrQualifiedRule: 'MixinOrQualifiedRule',
   mixinArgs: 'MixinArgs', anonymousMixinDefinition: 'AnonymousMixinDefinition'
 };

@@ -100,8 +100,12 @@ export class LessGrammar extends CssParser {
         this._warnAtRulePreludeVars(span);
         return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
       case 'NamedColor':          return this._buildNamedColor(children, loc);
-      case 'GuardCondition':      return new Paren(nodeChildren(children)[0] ?? new Any('', {}, loc), {}, loc) as unknown as JessNode;
       case 'Comparison':          return this._buildComparison(children, loc);
+      case 'GuardDefault':        return new DefaultGuard('default()', {}, loc) as unknown as JessNode;
+      case 'GuardInParens':       return this._buildGuardInParens(children, loc);
+      case 'GuardTerm':           return this._buildGuardTerm(children, loc);
+      case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
+      case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
@@ -320,15 +324,32 @@ export class LessGrammar extends CssParser {
     return new Color({ node: name }, {}, loc) as unknown as JessNode;
   }
 
+  private _normalizeCompareOp(op: string): ConditionOperator {
+    switch (op) {
+      case '=>':
+      case '>=':
+        return '>=';
+      case '=<':
+      case '<=':
+        return '<=';
+      case '>':
+        return '>';
+      case '<':
+        return '<';
+      default:
+        return '=';
+    }
+  }
+
   private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const left = nodes[0] ?? new Any('', {}, loc);
-    const op = ls.find(l => />=|<=|=~|[<>=]/.test(l.value));
+    const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
     const right = nodes[1] ?? new Any('', {}, loc);
     if (op) {
       return new Condition(
-        [left, op.value as ConditionOperator, right],
+        [left, this._normalizeCompareOp(op.value), right],
         {},
         loc
       ) as unknown as JessNode;
@@ -336,30 +357,75 @@ export class LessGrammar extends CssParser {
     return new Condition([left], {}, loc) as unknown as JessNode;
   }
 
-  private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const nodes = nodeChildren(children);
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const hasNot = ls.some(l => l.value === 'not');
-    if (ls.some(l => l.value === 'default()')) {
-      const paren = new Paren(
-        new DefaultGuard('default()', {}, loc) as any,
-        {}, loc
+  /** Coerce a default() call/reference into a DefaultGuard, mirroring isDefaultGuardCall. */
+  private _maybeDefaultGuard(node: Node, loc: LocationInfo): Node {
+    const n = node as any;
+    if (n?.type === 'Call') {
+      const name = n.name;
+      const nameStr = String(
+        typeof name === 'object' && name !== null && 'valueOf' in name ? name.valueOf() : name ?? ''
       );
-      return (hasNot
-        ? new Condition([paren as any], { negate: true }, loc)
-        : paren) as unknown as JessNode;
+      if (nameStr === 'default' || nameStr === '??') {
+        return new DefaultGuard('default()', {}, loc) as unknown as Node;
+      }
     }
-    const andOrIdx = ls.findIndex(l => l.value === 'and' || l.value === 'or');
-    if (andOrIdx >= 0 && nodes.length >= 2) {
-      const op = ls[andOrIdx]!.value as ConditionOperator;
-      const left = nodes[0]!;
-      const right = nodes[1]!;
-      return new Condition([left, op, right], { negate: hasNot }, loc) as unknown as JessNode;
+    return node;
+  }
+
+  /** guardInParens: `(` guardOr `)` → Paren, or a bare default() → Paren(DefaultGuard). */
+  private _buildGuardInParens(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    let inner = nodeChildren(children)[0] ?? new Any('', {}, loc);
+    inner = this._maybeDefaultGuard(inner, loc) as Node;
+    // `(default())` nests guardInParens(GuardDefault) inside another guardInParens;
+    // collapse the redundant Paren-around-Paren(DefaultGuard) to a single Paren.
+    const innerAny = inner as any;
+    if (innerAny?.type === 'Paren' && (innerAny.value as any)?.type === 'DefaultGuard') {
+      return inner as unknown as JessNode;
     }
-    if (nodes.length === 1) {
-      return new Condition([nodes[0]!], { negate: hasNot }, loc) as unknown as JessNode;
+    return new Paren(inner as any, {}, loc) as unknown as JessNode;
+  }
+
+  /** A single guard term: optional `not`, then a paren-guard or a comparison/value. */
+  private _buildGuardTerm(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const hasNot = ls.some(l => l.value === 'not');
+    let term: Node;
+    if (nodes.length >= 1 && (nodes[0] as any).type === 'Paren') {
+      // guardInParens branch (already a Paren node)
+      term = nodes[0]!;
+    } else {
+      const left = this._maybeDefaultGuard(nodes[0] ?? new Any('', {}, loc), loc);
+      const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
+      if (op && nodes[1]) {
+        const right = this._maybeDefaultGuard(nodes[1], loc);
+        term = new Condition([left, this._normalizeCompareOp(op.value), right], {}, loc) as unknown as Node;
+      } else {
+        term = left;
+      }
     }
-    return new Condition([new Any('', {}, loc)], { negate: hasNot }, loc) as unknown as JessNode;
+    if (hasNot) {
+      return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
+    }
+    return term as unknown as JessNode;
+  }
+
+  /** Fold a left-associative chain of terms joined by `and` / `or`. */
+  private _buildGuardJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator) {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return new Any('', {}, loc) as unknown as JessNode;
+    }
+    let left = nodes[0]!;
+    for (let i = 1; i < nodes.length; i++) {
+      left = new Condition([left, op, nodes[i]!], {}, loc) as unknown as Node;
+    }
+    return left as unknown as JessNode;
+  }
+
+  /** guard: `when` guardOr — returns the single guardOr child. */
+  private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    return (nodeChildren(children)[0] ?? new Any('', {}, loc)) as unknown as JessNode;
   }
 
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
