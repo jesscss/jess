@@ -70,6 +70,12 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.parent;
+  // Copy-on-write eval surfaces link a nested ruleset directly to its parent
+  // Ruleset (the intermediate body-Rules wrapper is not interposed). Canonical
+  // trees go ruleset -> body Rules -> parent Ruleset. Accept both.
+  if (isRulesetValue(parentRules)) {
+    return parentRules;
+  }
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
