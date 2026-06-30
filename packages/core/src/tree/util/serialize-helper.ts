@@ -234,7 +234,7 @@ export function flattenVisibleRulesForRender(
     forceLeadingLeaves: boolean = false
   ) => {
     for (const child of current.rules) {
-      const isEvaluatedDefinitionNode = current.evaluated && isNode(child, N.Mixin | N.VarDeclaration);
+      const isEvaluatedDefinitionNode = isNode(child, N.Mixin | N.VarDeclaration);
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
       }

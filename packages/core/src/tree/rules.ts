@@ -3839,7 +3839,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       options.referenceMode = true;
     }
     const emitNode = (n: Node): MaybePromise<void> => {
-      const isEvaluatedDefinitionNode = (this.evaluated || mode === 'render') && isNode(n, N.Mixin | N.VarDeclaration);
+      const isEvaluatedDefinitionNode = mode !== 'syntax' && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
         && !hasPrintableTriviaAt(n, 'before', options)
