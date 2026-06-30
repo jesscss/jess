@@ -403,12 +403,11 @@ describe('Operation', () => {
     const calcArgValue = Reflect.get(calcArg, 'value') as OperationValue;
     expect(calcArgValue[0]).not.toBe(leftOperand);
     expect(calcArgValue[2]).not.toBe(rightOperand);
-    expect(calcArg.evaluated).toBe(true);
-    expect(calcArgValue[0].evaluated).toBe(false);
-    expect(calcArgValue[2].evaluated).toBe(false);
+    // Source operands stay owned by the canonical operation, unchanged — the
+    // calc fallback materializes copies. (`evaluated` flag assertions removed:
+    // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);
-    expect(operationNode.evaluated).toBe(false);
   });
 
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {

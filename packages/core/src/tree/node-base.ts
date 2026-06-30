@@ -1259,9 +1259,11 @@ export abstract class Node<
      * template, not a retained result. The remaining fork storage no longer
      * tracks an "active render key" on the node itself.
      */
-    // Frozen non-static nodes are reusable placement templates; their eval
-    // result is context-dependent and must not be retained across placements.
-    const needsReeval = node.frozen && !node.hasFlag(F_STATIC);
+    // §2.7 step 1: every non-static node is a reusable placement template — its
+    // eval result is context-dependent and must not be retained across
+    // placements. This is the anchor toward distinct-output eval and deleting
+    // `evaluated`/`frozen`. (`frozen` no longer gates re-eval here.)
+    const needsReeval = !node.hasFlag(F_STATIC);
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
       return Node._evalStaticSync(node, context, needsReeval);
