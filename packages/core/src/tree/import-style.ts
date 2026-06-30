@@ -661,7 +661,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return;
     }
 
-    if (withValues.type === 'set' || this.options.type === 'compose') {
+    // Only a `set` (replacement) config may not be applied more than once.
+    // `with` is additive and re-applying it (e.g. a re-eval of the same import)
+    // is allowed.
+    if (withValues.type === 'set') {
       throw new Error('Cannot configure a stylesheet more than once.');
     }
   }

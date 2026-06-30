@@ -1159,9 +1159,12 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const css = await renderNodeToString(node, context, { context });
+      const css = await renderNodeToString(evald, context, { context });
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
+      // Variable-only config must not introduce an extra plain-Rules wrapper
+      // surface; the imported rulesets stay as direct children (a Ruleset also
+      // carries the N.Rules bit, so exclude it) and the var binds on the frame.
+      expect(composedRules.rules.some(child => isNode(child, N.Rules) && !isNode(child, N.Ruleset))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
@@ -1915,7 +1918,7 @@ describe('Style import', () => {
       }).rejects.toThrow('Cannot configure a stylesheet more than once');
     });
 
-    it('throws if compose "with" is used after the module is already cached', async () => {
+    it('applies compose "with" additively after the module is already cached', async () => {
       const libraryPath = resolve(process.cwd(), 'library-compose-with-cache.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'var', value: any('value') })
@@ -1946,9 +1949,14 @@ describe('Style import', () => {
         })
       ]);
 
-      await expect(async () => {
-        await node2.eval(context);
-      }).rejects.toThrow('Cannot configure a stylesheet more than once');
+      // `with` is additive (only `set` may not be applied more than once), so
+      // this is allowed even though node1 already imported the module.
+      const evald = await node2.eval(context);
+      const composed = evald.at(0) as Rules;
+      const injectedVar = getVarWithContext(context, composed, 'var');
+      expect(injectedVar).toBeDefined();
+      const value = await (injectedVar!.value as Node).eval(context);
+      expect(value.toTrimmedString()).toBe('second');
     });
   });
 
