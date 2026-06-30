@@ -1793,23 +1793,9 @@ describe('Call', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('resolves already evaluated calls without re-entering eval', () => {
-    class EvaluatedCall extends Call {
-      override evalNode(): never {
-        throw new Error('evaluated calls should not resolve through evalNode');
-      }
-    }
-    const rule = new EvaluatedCall({
-      name: 'rgb',
-      args: list([any('red')])
-    });
-    rule.evaluated = true;
-
-    const resolved = rule.resolve(context);
-
-    expect(resolved).toBe(rule);
-    expect(context.printState.writer).toBeUndefined();
-  });
+  // (Removed "resolves already evaluated calls without re-entering eval": it
+  // tested the deleted `evaluated`-skip mechanism — §2.7 makes resolve re-enter
+  // eval idempotently. `evaluated` is no longer a node flag.)
 
   it('keeps source CSS call child containers canonical after resolve(context)', async () => {
     const root = rules([

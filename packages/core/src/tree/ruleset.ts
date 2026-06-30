@@ -2289,9 +2289,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {
-    if (this.evaluated) {
-      return this;
-    }
     let pushedFrames = false;
     let pushedRulesetFrameCount = 0;
     let pushedFrameCount = 0;

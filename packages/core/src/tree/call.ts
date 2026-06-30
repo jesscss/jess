@@ -1721,9 +1721,6 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated) {
-      return this;
-    }
     if (
       typeof this.name === 'string'
       && !this.contentNode
