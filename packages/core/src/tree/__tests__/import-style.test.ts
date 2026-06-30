@@ -745,9 +745,11 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const css = await renderNodeToString(node, context, { context });
+      const css = await renderNodeToString(evald, context, { context });
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
+      // No extra plain-Rules wrapper surface (a Ruleset carries the N.Rules bit,
+      // so exclude it — the imported rulesets legitimately stay as children).
+      expect(composedRules.rules.some(child => isNode(child, N.Rules) && !isNode(child, N.Ruleset))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
 
       // Test 1: Verify injected variables are accessible
@@ -791,9 +793,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const css = await renderNodeToString(node, context, { context });
+      const css = await renderNodeToString(evald, context, { context });
 
-      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
+      // No extra plain-Rules wrapper surface (exclude Ruleset — see above).
+      expect(composedRules.rules.some(child => isNode(child, N.Rules) && !isNode(child, N.Ruleset))).toBe(false);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
