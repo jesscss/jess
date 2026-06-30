@@ -649,7 +649,10 @@ describe('Rule', () => {
     expect(composed.toTrimmedString()).toBe('.parent > .scope .item + .next');
   });
 
-  it('renders already evaluated rulesets without re-entering eval', async () => {
+  it('renders an already-evaluated ruleset idempotently (re-eval is allowed)', async () => {
+    // §2.7: render may re-enter eval (a canonical node is always a re-evaluable
+    // template — `evaluated` no longer short-circuits render). The contract is
+    // that re-evaluating is IDEMPOTENT: the rendered output is unchanged.
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
       rules: [
@@ -657,22 +660,12 @@ describe('Rule', () => {
       ]
     });
     const evald = await node.eval(context);
-    const originalEval = evald.eval;
-    let evalCalls = 0;
-    evald.eval = function countEvalCalls(
-      this: typeof evald,
-      ...args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      evalCalls++;
-      return originalEval.apply(this, args);
-    };
 
     await expect(Promise.resolve(evald.render(context))).resolves.toBeString(`
       foo {
         color: red;
       }
     `);
-    expect(evalCalls).toBe(0);
   });
 
   it('renders registration-prepared rulesets without deriving another prep surface', async () => {

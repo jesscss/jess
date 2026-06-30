@@ -1174,7 +1174,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private canRenderSourceDirectly(context: Context): boolean {
-    if (this.evaluated || this.registrationPrepared || this.guard) {
+    if (this.registrationPrepared || this.guard) {
       return false;
     }
     const { selector } = this;
@@ -1315,9 +1315,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return renderNilSelectorBodyDirectly();
     }
     const evalForRender = (): MaybePromise<Node> => {
-      if (this.evaluated) {
-        return this;
-      }
       if (this.canRenderSourceDirectly(context)) {
         return this;
       }
@@ -1338,9 +1335,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated) {
-      return this;
-    }
     if (this.registrationPrepared) {
       return this.eval(context);
     }

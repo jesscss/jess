@@ -4040,7 +4040,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
-    if (this.evaluated || canRenderStaticRulesDirectly(this)) {
+    if (canRenderStaticRulesDirectly(this)) {
       return createRulesRenderState(this, this, sourceWasRoot);
     }
     if (this.registrationPrepared) {
