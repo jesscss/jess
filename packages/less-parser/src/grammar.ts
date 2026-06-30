@@ -11,7 +11,7 @@ import {
   not, scanTo, balanced, parser, trivia, noTrivia, rules, expect, sepBy
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
+import { Node, Rules, type TriviaMap, nil } from '@jesscss/core';
 import { LessGrammar } from './builders.js';
 import { buildLazyTriviaMap } from '@jesscss/css-parser';
 
@@ -292,15 +292,12 @@ const cssRules = rules((g: any) => {
   // function call — parse it straight into a `For` node. The callback is a literal
   // detached ruleset / anonymous mixin; a bare `each(list)` with no block callback
   // falls through to a normal Call.
-  const eachCallback = node('AnonymousMixinDefinition',
-    parser({ trivia: rw }, choice(
-      sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}')),
-      sequence(literal('{'), g.declarationList, literal('}'))
-    )),
-    (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
   const EachFor = node('For',
     parser({ trivia: rw }, sequence(
-      regex(/each(?![-\w])/i), literal('('), g.valueSequence, literal(','), eachCallback, literal(')'), optional(literal(';'))
+      regex(/each(?![-\w])/i), literal('('), g.valueSequence, literal(','),
+      optional(sequence(literal('.'), g.MixinArgs)),
+      literal('{'), g.declarationList, literal('}'),
+      literal(')'), optional(literal(';'))
     )),
     (c: any, r: any, s: any) => mk('For', c, r, s));
 
@@ -396,7 +393,16 @@ export function parseLessFn(input: string, rule = 'stylesheet'): LessFnParseResu
     ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
     : (fn as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
 
-  const tree = (r.ok && r.value instanceof Node ? r.value : nil()) as unknown as Rules;
+  // A single-node rule yields that node; a `many(...)` entry rule (e.g. an
+  // `declarationList` fragment) yields an array — wrap it in a Rules so callers
+  // get a `.rules` body rather than a bare Nil.
+  const tree = (
+    r.ok && r.value instanceof Node
+      ? r.value
+      : r.ok && Array.isArray(r.value)
+        ? new Rules(r.value as Node[], undefined, undefined)
+        : nil()
+  ) as unknown as Rules;
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
   // Same model as parseCssFn: expect()/recover() ParseErrors, a hard top-level

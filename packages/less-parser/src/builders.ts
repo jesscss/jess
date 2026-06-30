@@ -843,22 +843,34 @@ export class LessGrammar extends CssParser {
   private _buildEachFor(children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const items = spannedComponents(raw);
     const commaIdx = items.findIndex(i => i.comp === ',');
-    const nodesOf = (slice: Spanned[]) =>
-      slice.map(i => i.comp).filter((c): c is JessNode => typeof c !== 'string');
-    const iterableNodes = commaIdx >= 0 ? nodesOf(items.slice(0, commaIdx)) : [];
-    const callback = commaIdx >= 0 ? nodesOf(items.slice(commaIdx + 1))[0] : undefined;
+    const braceIdx = items.findIndex((i, idx) => idx > commaIdx && i.comp === '{');
+    const between = (lo: number, hi: number): JessNode[] =>
+      items.slice(lo, hi).map(i => i.comp).filter((c): c is JessNode => typeof c !== 'string');
+    const iterableNodes = commaIdx >= 0 ? between(0, commaIdx) : [];
+    const paramsList = braceIdx > commaIdx ? between(commaIdx + 1, braceIdx).find(n => n.type === 'List') : undefined;
+    const ruleNodes = braceIdx >= 0 ? between(braceIdx + 1, items.length) : [];
     const iterable: JessNode = iterableNodes.length === 1
       ? iterableNodes[0]!
       : (new List(iterableNodes as any, undefined, loc) as unknown as JessNode);
-    const rules = (callback as unknown as { rules?: Node[] } | undefined)?.rules ?? [];
     return new For(
-      { pattern: this._eachPattern(loc), iterable: { kind: 'node', value: iterable as unknown as Node }, rules },
+      { pattern: this._eachPattern(paramsList, loc), iterable: { kind: 'node', value: iterable as unknown as Node }, rules: ruleNodes as unknown as Node[] },
       undefined,
       loc
     );
   }
 
-  private _eachPattern(loc: LocationInfo): ForPattern {
+  private _eachPattern(paramsList: JessNode | undefined, loc: LocationInfo): ForPattern {
+    // Explicit `.(@v; @i)` callback params parse straight into VarDeclaration nodes
+    // (name 'v'/'i'); reuse them as the loop's binding pattern.
+    const params = ((paramsList as unknown as { value?: JessNode[] } | undefined)?.value ?? [])
+      .filter((p): p is JessNode => p?.type === 'VarDeclaration');
+    if (params.length === 1) {
+      return { kind: 'single', value: params[0] as any };
+    }
+    if (params.length >= 2) {
+      return { kind: 'tuple', values: [params[0], ...params.slice(1)] as any };
+    }
+    // A param-less block callback iterates with the Less default triple.
     const paramVar = (name: string) => new VarDeclaration(
       { name: new Any(name, { role: 'property' }, loc), value: new Any('', { role: 'any' }, loc) } as any,
       { paramVar: true } as any,
