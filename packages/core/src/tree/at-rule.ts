@@ -840,9 +840,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   private _evalForAtRuleRender(context: Context): MaybePromise<Node | AtRuleBodyEvalRecord> {
-    if (this.evaluated) {
-      return this;
-    }
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
@@ -1791,9 +1788,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated) {
-      return this;
-    }
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
