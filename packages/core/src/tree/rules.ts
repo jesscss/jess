@@ -5289,6 +5289,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (context.rulesContext === rules) {
           context.rulesContext = output;
         }
+        // The derive creates a NEW root identity. Anything keyed on root identity
+        // (`isOutermost` -> processExtends, extend-root stack) must follow the
+        // output, exactly like rulesContext — otherwise the root's post-eval
+        // passes silently skip because `rules === context.root` no longer holds.
+        if (context.root === rules) {
+          context.root = output;
+        }
       }
       return output;
     };
