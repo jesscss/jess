@@ -95,7 +95,7 @@ const cssRules = rules((g: any) => {
   // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule,
+      g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
       sequence(g.Call, optional(literal(';'))), literal(';')
     ))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
@@ -238,7 +238,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    g.VarDeclaration, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
@@ -288,6 +288,22 @@ const cssRules = rules((g: any) => {
   const Quoted = node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => mk('Quoted', c, r, s));
   const anyValue = choice(ident, anyValueTok);
 
+  // `each(<iterable>, { … })` (or `.(@p) { … }`) is a $for control form, not a
+  // function call — parse it straight into a `For` node. The callback is a literal
+  // detached ruleset / anonymous mixin; a bare `each(list)` with no block callback
+  // falls through to a normal Call.
+  const eachCallback = node('AnonymousMixinDefinition',
+    parser({ trivia: rw }, choice(
+      sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}')),
+      sequence(literal('{'), g.declarationList, literal('}'))
+    )),
+    (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
+  const EachFor = node('For',
+    parser({ trivia: rw }, sequence(
+      regex(/each(?![-\w])/i), literal('('), g.valueSequence, literal(','), eachCallback, literal(')'), optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => mk('For', c, r, s));
+
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] }));
   const AtRuleBlock = node('AtRuleBlock',
@@ -307,7 +323,7 @@ const cssRules = rules((g: any) => {
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, squareParenBody, Call, Paren, SquareParen, Quoted, anyValue, AtRuleBlock, AtRuleStatement, atRuleBody
+    parenBody, squareParenBody, Call, Paren, SquareParen, Quoted, anyValue, EachFor, AtRuleBlock, AtRuleStatement, atRuleBody
   };
 });
 

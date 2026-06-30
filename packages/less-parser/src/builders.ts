@@ -28,6 +28,7 @@ import {
   NESTABLE_AT_RULES,
   Reference, type ReferenceValue,
   Ampersand, List, DefaultGuard, Extend, ExtendFlag, Call,
+  For, type ForPattern,
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
   Mixin, Expression,
@@ -103,6 +104,7 @@ export class LessGrammar extends CssParser {
       case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
       case 'MixinArgs':           return this._buildMixinArgs(children, loc);
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
+      case 'For':                 return this._buildEachFor(children, raw, loc) as unknown as JessNode;
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
@@ -830,6 +832,39 @@ export class LessGrammar extends CssParser {
       { deferSelectorMaterialization: true } as any,
       loc
     );
+  }
+
+  /**
+   * `each(<iterable>, { … })` → a `For` control node (the $for shape), not a Call.
+   * The value(s) before the comma are the iterable; the callback block's body becomes
+   * the loop rules. A literal block callback carries no captured params here, so the
+   * pattern defaults to the Less `[value, key, index]` triple.
+   */
+  private _buildEachFor(children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(raw);
+    const commaIdx = items.findIndex(i => i.comp === ',');
+    const nodesOf = (slice: Spanned[]) =>
+      slice.map(i => i.comp).filter((c): c is JessNode => typeof c !== 'string');
+    const iterableNodes = commaIdx >= 0 ? nodesOf(items.slice(0, commaIdx)) : [];
+    const callback = commaIdx >= 0 ? nodesOf(items.slice(commaIdx + 1))[0] : undefined;
+    const iterable: JessNode = iterableNodes.length === 1
+      ? iterableNodes[0]!
+      : (new List(iterableNodes as any, undefined, loc) as unknown as JessNode);
+    const rules = (callback as unknown as { rules?: Node[] } | undefined)?.rules ?? [];
+    return new For(
+      { pattern: this._eachPattern(loc), iterable: { kind: 'node', value: iterable as unknown as Node }, rules },
+      undefined,
+      loc
+    );
+  }
+
+  private _eachPattern(loc: LocationInfo): ForPattern {
+    const paramVar = (name: string) => new VarDeclaration(
+      { name: new Any(name, { role: 'property' }, loc), value: new Any('', { role: 'any' }, loc) } as any,
+      { paramVar: true } as any,
+      loc
+    );
+    return { kind: 'tuple', values: [paramVar('value'), paramVar('key'), paramVar('index')] };
   }
 
   private _buildMixinOrQualified(children: ReadonlyArray<Child>, loc: LocationInfo) {
