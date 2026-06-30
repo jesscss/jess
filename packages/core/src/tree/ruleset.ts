@@ -1325,9 +1325,19 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       if (node instanceof Ruleset) {
         return renderEvaluatedRuleset(node);
       }
-      return isRenderBuffer(bufferOrOptions)
+      const rendered = isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
+      // A Nil-selector ruleset renders its body directly. The body Rules is
+      // rendered as a nested fragment (sourceWasRoot=false → trailing newline
+      // trimmed), so re-apply the nil-body newline finish — matching the
+      // canRenderNilSelectorBodyDirectly() fast path above.
+      if (this.selector instanceof Nil) {
+        return isThenable(rendered)
+          ? rendered.then(finishNilSelectorBodyRender)
+          : finishNilSelectorBodyRender(rendered);
+      }
+      return rendered;
     };
     if (
       this.selector instanceof Nil
