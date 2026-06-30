@@ -899,9 +899,12 @@ export class LessGrammar extends CssParser {
     loc: LocationInfo
   ): JessNode {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    // `!important` (the `!`/`important` leaves) must end the name path and set
+    // markImportant — never leak into the Reference key.
+    const markImportant = ls.some(l => l.value === '!');
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === ';') {
+      if (l.value === '(' || l.value === ';' || l.value === '!') {
         break;
       }
       nameParts.push(l.value);
@@ -923,9 +926,10 @@ export class LessGrammar extends CssParser {
       { type: 'mixin-ruleset', role: 'name' } as any,
       loc
     );
+    const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
     return new Call(
-      { name: ref as any, args: hasArgs ? argsList as any : undefined },
-      {}, loc
+      { name: ref as any, args: callArgs as any },
+      { markImportant } as any, loc
     ) as unknown as JessNode;
   }
 
@@ -954,23 +958,56 @@ export class LessGrammar extends CssParser {
         groups[groups.length - 1]!.push(t);
       }
     }
-    // Reject mixing `,` and `;` to SEPARATE ARGS: in semicolon mode, a group with
-    // two or more NAMED args (commas separating named args) is the illegal mix.
-    // Commas inside one arg's value (`@a: 1, 2, 3`) are fine — one named chunk.
-    const isNamed = (c: string) => /^@[\w-]+\s*:/.test(c);
-    if (semicolonMode && groups.some(g => g.filter(isNamed).length >= 2)) {
-      this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc[0]);
-    }
     if (groups.every(g => g.length === 0)) {
       return new List([] as any, {} as any, loc);
     }
-    // semicolon mode → each `;`-group is one arg (its commas are a value list);
-    // comma mode → each chunk is its own arg.
-    const sep = semicolonMode ? ';' : ',';
-    const items = (semicolonMode ? groups.map(g => g.join(', ')) : groups[0]!)
-      .map(p => p.trim()).filter(Boolean)
-      .map(p => this._mixinParamPart(p, loc));
-    return new List(items as any, { sep } as any, loc);
+    if (!semicolonMode) {
+      // comma mode → each chunk is its own arg.
+      const items = groups[0]!.map(p => p.trim()).filter(Boolean)
+        .map(p => this._mixinParamPart(p, loc));
+      return new List(items as any, { sep: ',' } as any, loc);
+    }
+    // Semicolon mode → each `;`-group is ONE arg. Its comma-chunks are NOT separate
+    // args: they are a value-list belonging to that one arg. Mirrors the reference
+    // `mixinArgList` collapse (guards.ts): a leading named param (`@x: v`) folds its
+    // trailing comma-chunks into a value List; a group of bare values becomes a List.
+    // The only illegal `,`-in-`;` mix is two or more PARAM chunks in one group —
+    // a bare `@name` or a named `@name: v`. (Reference `hasDeclarations`: a group
+    // with 2+ VarDeclarations raises "Cannot mix ; and , as delimiter types".)
+    // A trailing bare value (`@a: d, e` → the `e`) is not a param, so it is fine.
+    const isParam = (c: string) => /^@[\w-]+\s*(?::|$)/.test(c);
+    const items: JessNode[] = [];
+    for (const group of groups) {
+      const chunks = group.map(c => c.trim()).filter(Boolean);
+      if (chunks.length === 0) {
+        continue;
+      }
+      if (chunks.filter(isParam).length >= 2) {
+        this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc[0]);
+      }
+      if (chunks.length === 1) {
+        items.push(this._mixinParamPart(chunks[0]!, loc));
+        continue;
+      }
+      const head = this._mixinParamPart(chunks[0]!, loc);
+      const tail = chunks.slice(1).map(c => this._mixinParamPart(c, loc));
+      if (head.type === 'VarDeclaration') {
+        // Named param: fold its trailing comma-chunks into the param's value List.
+        const decl = head as unknown as VarDeclaration;
+        const headVal = decl.value as unknown as JessNode | undefined;
+        const valueNodes = headVal && headVal.type !== 'Nil' ? [headVal, ...tail] : tail;
+        const valueList = new List(valueNodes as any, undefined as any, loc);
+        items.push(new VarDeclaration(
+          { name: decl.name as any, value: valueList as any } as any,
+          decl.options as VarDeclarationOptions,
+          loc
+        ) as unknown as JessNode);
+      } else {
+        // Unnamed value-list arg.
+        items.push(new List([head, ...tail] as any, undefined as any, loc) as unknown as JessNode);
+      }
+    }
+    return new List(items as any, { sep: ';' } as any, loc);
   }
 
   private _mixinParamPart(part: string, loc: LocationInfo): JessNode {
@@ -1030,6 +1067,64 @@ export class LessGrammar extends CssParser {
     return new Any(part, { role: 'ident' }, loc) as unknown as JessNode;
   }
 
+  /**
+   * Mixin-CALL argument conversion (reference `convertArgsForCall`, root.ts).
+   * `_buildMixinArgs` builds bare `@name` args as definition-style VarDeclarations
+   * (Nil value) — correct for a DEFINITION param, but in a CALL a bare `@name` is a
+   * variable being PASSED, i.e. a `Reference{type:variable}`. Named args (`@a: 1`)
+   * and value args stay as-is; a `Rest('name')` becomes `Rest(Reference{variable})`.
+   * Returns a NEW List (the def/call split must not mutate a shared node).
+   */
+  private _convertArgsForCall(argsList: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
+    if (!argsList || argsList.type !== 'List') {
+      return argsList;
+    }
+    const list = argsList as unknown as List<Node>;
+    const value = (list as unknown as { value?: JessNode[] }).value;
+    if (!value || value.length === 0) {
+      return argsList;
+    }
+    let changed = false;
+    const converted = value.map((node): JessNode => {
+      if (node.type === 'VarDeclaration') {
+        const decl = node as unknown as { name: JessNode; value?: JessNode };
+        const val = decl.value;
+        if (!val || val.type === 'Nil') {
+          // Bare `@name` → a variable reference being passed to the call.
+          const key = (decl.name as unknown as { valueOf(): string }).valueOf();
+          changed = true;
+          return new Reference(
+            { key } as unknown as ReferenceValue,
+            { type: 'variable' } as any,
+            loc
+          ) as unknown as JessNode;
+        }
+        return node;
+      }
+      if (node.type === 'Rest') {
+        const restVal = (node as unknown as { value: unknown }).value;
+        if (typeof restVal === 'string') {
+          changed = true;
+          return new Rest(
+            new Reference({ key: restVal } as unknown as ReferenceValue, { type: 'variable' } as any, loc) as any,
+            {} as any,
+            loc
+          ) as unknown as JessNode;
+        }
+        return node;
+      }
+      return node;
+    });
+    if (!changed) {
+      return argsList;
+    }
+    return new List(
+      converted as any,
+      list.options as any,
+      loc
+    ) as unknown as JessNode;
+  }
+
   private _splitTopLevel(text: string, sep: string): string[] {
     const out: string[] = [];
     let depth = 0, quote = '', start = 0;
@@ -1057,13 +1152,20 @@ export class LessGrammar extends CssParser {
   }
 
   private _buildAnonMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // `.(@p) { … }` → a nameless Mixin (reference `anonymousMixinDefinition`,
+    // selectors.ts: `new Mixin({ params, rules })`), NOT a `.`-selector Ruleset.
+    // The MixinArgs sub-node is the param List; everything else is the body.
     const nodes = nodeChildren(children);
-    const rules = nodes.filter(n => n.type !== 'List');
-    return new Ruleset(
-      { selector: '.', rules },
-      { deferSelectorMaterialization: true } as any,
+    const argsList = nodes.find(n => n.type === 'List');
+    const rules = nodes.filter(n => n !== argsList);
+    const params = (argsList as unknown as { value?: unknown[] })?.value?.length
+      ? argsList as unknown as List<Node>
+      : undefined;
+    return new Mixin(
+      { params, rules } as any,
+      undefined,
       loc
-    );
+    ) as unknown as JessNode;
   }
 
   /**
@@ -1115,9 +1217,13 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
     const hasBlock = ls.some(l => l.value === '{');
+    // `!important` on a mixin call: the `!`/`important` leaves are direct children
+    // (MixinArgs's own parens live in the sub-node, not in `ls`). The `!` ends the
+    // name path and flips markImportant — it must NOT leak into the Reference key.
+    const markImportant = ls.some(l => l.value === '!');
     const nameParts: string[] = [];
     for (const l of ls) {
-      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')') {
+      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')' || l.value === '!') {
         break;
       }
       nameParts.push(l.value);
@@ -1182,9 +1288,10 @@ export class LessGrammar extends CssParser {
         this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
       }
     }
+    const callArgs = hasArgs2 ? this._convertArgsForCall(argsList, loc) : undefined;
     return new Call(
-      { name: ref as any, args: hasArgs2 ? argsList as any : undefined },
-      { markImportant: false } as any, loc
+      { name: ref as any, args: callArgs as any },
+      { markImportant } as any, loc
     ) as unknown as JessNode;
   }
 
