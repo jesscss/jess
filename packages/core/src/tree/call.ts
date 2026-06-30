@@ -556,6 +556,14 @@ export class Call extends Node<CallValue, CallOptions> {
   readonly args: CallValue['args'];
   readonly contentNode: CallValue['contentNode'];
 
+  /**
+   * Set on a Call that is the RESULT of eval (resolved output), so render emits
+   * it as a plain CSS call instead of re-entering dynamic name resolution. This
+   * is the narrow §2.7 replacement for the deleted general `evaluated` flag — it
+   * is purely a call-render concern, not a re-eval gate.
+   */
+  _evaluatedCallOutput = false;
+
   override _requiredSemi = true;
 
   private createEvalState(): CallEvalState {
@@ -1694,7 +1702,7 @@ export class Call extends Node<CallValue, CallOptions> {
               : new OutputWriter(false, bufferOrOptions.kind === 'flat' ? bufferOrOptions.parts : undefined)
           })
         : prepareBufferPrintState(context, options);
-      if (this.evaluated) {
+      if (this._evaluatedCallOutput) {
         const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
         return sharesWriter
           ? rendered
@@ -1711,7 +1719,7 @@ export class Call extends Node<CallValue, CallOptions> {
         : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    if (this.evaluated) {
+    if (this._evaluatedCallOutput) {
       return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     if (typeof this.name === 'string') {
@@ -1769,7 +1777,13 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
     const state = this.createEvalState();
-    return this.evalFromState(context, state);
+    const result = await this.evalFromState(context, state);
+    // Mark a Call result as resolved output (render emits it as a plain CSS
+    // call). Replaces the general `evaluated` flag for the call-render path.
+    if (isNode(result, N.Call)) {
+      result._evaluatedCallOutput = true;
+    }
+    return result;
   }
 
   private async evalFromState(context: Context, state: CallEvalState): Promise<Node> {

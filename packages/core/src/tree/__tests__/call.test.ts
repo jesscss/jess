@@ -1649,7 +1649,7 @@ describe('Call', () => {
       name: any('rgb'),
       args: list([num(10), num(20)])
     });
-    rule.evaluated = true;
+    rule._evaluatedCallOutput = true;
 
     expect(rule.render(context, { writer })).toBe('rgb(10, 20)');
     expect(writer.toString()).toBe('rgb(10, 20)');
