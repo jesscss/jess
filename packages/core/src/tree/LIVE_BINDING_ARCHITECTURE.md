@@ -104,6 +104,19 @@ These are non-negotiable. A change that violates one is wrong by definition.
       structural replacement.
    `frozen` is the LAST domino, gated on both — a separate effort, NOT part of
    the `evaluated`/distinct-output core (which is complete).
+
+   **Target end-state for BOTH gates (owner, 2026-06): never reparent.** Once the
+   constructor/factory split lands, `adopt` and `inherit` collapse to the same
+   invariant — *only set a parent when the node has none*:
+   - `adopt(node)`: `if (node.parent === undefined) setParent(node, this)`.
+   - `inherit(node)`: `setParent(this, this.parent ?? node.parent)` (keep an
+     existing parent — what the current `frozen` branch already does — and never
+     overwrite it; `inherit` must NOT reparent either).
+   Then `frozen` is read nowhere and is deleted. The earlier +5 from a bare
+   `parent === undefined` adopt-gate was WITHOUT the constructor split, so genuine
+   "node move" call sites were still relying on construction-time reparenting;
+   with the split those sites move to factories/explicit parenting and the
+   never-reparent invariant holds for both gates.
 8. **A copy is a rare, proven exception.** Small structural copies (e.g. a
    selector copy to make extend easier) are permitted ONLY with strong evidence
    that a shallow surface / frame mapping is not workable, or that the copy is
