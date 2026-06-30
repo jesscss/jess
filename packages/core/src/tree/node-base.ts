@@ -1250,28 +1250,14 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
-      return node;
-    }
-
-    /**
-     * Canonical nodes are always eligible for re-evaluation — they're the
-     * template, not a retained result. The remaining fork storage no longer
-     * tracks an "active render key" on the node itself.
-     */
-    // §2.7 step 1: every non-static node is a reusable placement template — its
-    // eval result is context-dependent and must not be retained across
-    // placements. This is the anchor toward distinct-output eval and deleting
-    // `evaluated`/`frozen`. (`frozen` no longer gates re-eval here.)
-    const needsReeval = !node.hasFlag(F_STATIC);
-
+    // §2.7: a node is a reusable template that re-evaluates per placement — no
+    // retained `evaluated` result on the canonical node. This removes the
+    // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
     if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context, needsReeval);
+      return Node._evalStaticSync(node, context);
     }
 
-    const evaluated = node.evaluated && !needsReeval
-      ? node
-      : node.evalNode(context);
+    const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((evald) => {
         evald.evaluated = true;
@@ -1288,24 +1274,19 @@ export abstract class Node<
     return evaluated;
   }
 
-  private static _evalStaticSync(node: Node, context: Context, needsReeval = false): MaybePromise<Node> {
-    let evald: Node;
-    if (!node.evaluated || needsReeval) {
-      const evaluated = node.evalNode(context);
-      if (isThenable(evaluated)) {
-        return (evaluated as Promise<Node>).then((resolved) => {
-          const evald = mustBeNode(resolved);
-          evald.evaluated = true;
-          if (node !== evald) {
-            evald.inherit(node);
-          }
-          return evald;
-        });
-      }
-      evald = mustBeNode(evaluated);
-    } else {
-      evald = node;
+  private static _evalStaticSync(node: Node, context: Context): MaybePromise<Node> {
+    const evaluated = node.evalNode(context);
+    if (isThenable(evaluated)) {
+      return (evaluated as Promise<Node>).then((resolved) => {
+        const evald = mustBeNode(resolved);
+        evald.evaluated = true;
+        if (node !== evald) {
+          evald.inherit(node);
+        }
+        return evald;
+      });
     }
+    const evald = mustBeNode(evaluated);
     evald.evaluated = true;
     if (node !== evald) {
       evald.inherit(node);
