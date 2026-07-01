@@ -597,11 +597,21 @@ export abstract class Node<
     if (!node.frozen) {
       setParent(node, this);
     }
-    this.addFlag(F_HAS_NODE_CHILD);
     const sourceRoot = sourceRootOf(this);
     if (sourceRoot && !node._sourceRoot) {
       node._sourceRoot = sourceRoot;
     }
+    this.propagateFlagsFrom(node);
+  }
+
+  /**
+   * OR a single direct child's propagated flags upward onto this node. This is
+   * the FLAG concern only — NO reparenting. Separate from `adopt` (which also
+   * sets `.parent`, canonical-only) so derived/eval nodes can recompute their
+   * flags by crawling shared children without reparenting them.
+   */
+  propagateFlagsFrom(node: Node) {
+    this.addFlag(F_HAS_NODE_CHILD);
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
@@ -614,6 +624,41 @@ export abstract class Node<
     if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
       this.addFlag(F_AMPERSAND);
     }
+  }
+
+  /**
+   * Crawl this node's DIRECT child nodes (via `childKeys`, one level) and OR
+   * their propagated flags upward — no reparenting. Called after derivation
+   * (see `inherit`) so a shared/mapped-child copy carries the same F_MAY_ASYNC /
+   * F_NON_STATIC / F_STATIC as its source. Parenting stays canonical-only.
+   */
+  propagateChildFlags(): this {
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (childKeys === null) {
+      return this;
+    }
+    const crawl = (v: unknown): void => {
+      if (v instanceof Node) {
+        this.propagateFlagsFrom(v);
+      } else if (isArray(v)) {
+        for (let i = 0; i < v.length; i++) {
+          crawl(v[i]);
+        }
+      } else if (isPlainObject(v)) {
+        for (const k in v) {
+          crawl((v as Record<string, unknown>)[k]);
+        }
+      }
+    };
+    if (childKeys === undefined) {
+      crawl((this as unknown as { value: unknown }).value);
+    } else {
+      const fields = this as unknown as Record<string, unknown>;
+      for (let i = 0; i < childKeys.length; i++) {
+        crawl(fields[childKeys[i]!]);
+      }
+    }
+    return this;
   }
 
   /**
@@ -1091,6 +1136,9 @@ export abstract class Node<
       this._location
     );
     newNode.inherit(this);
+    // A clone shares/maps this node's children, so it must carry the same
+    // child-derived flags (F_MAY_ASYNC / F_NON_STATIC / …). Crawl, no reparent.
+    newNode.propagateChildFlags();
 
     return newNode;
   }

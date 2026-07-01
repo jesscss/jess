@@ -20,5 +20,11 @@ export class JsArray extends Node<readonly any[]> {
   override resolve(_context: Context): this {
     return this;
   }
+
+  // JS-interop value, not CSS output: renders empty. (childKeys=['value'] is for
+  // parenting/clone of Node children, not for emitting them as syntax.)
+  override toTrimmedString(): string {
+    return '';
+  }
 }
 export const jsarray = defineType(JsArray, 'JsArray', 'jsarray');

@@ -20,5 +20,11 @@ export class JsObject extends Node<Record<string, any>> {
   override resolve(_context: Context): this {
     return this;
   }
+
+  // JS-interop value, not CSS output: renders empty. (childKeys=['value'] is for
+  // parenting/clone of Node children, not for emitting them as syntax.)
+  override toTrimmedString(): string {
+    return '';
+  }
 }
 export const jsobj = defineType(JsObject, 'JsObject', 'jsobj');
