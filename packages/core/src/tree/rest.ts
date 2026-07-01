@@ -13,7 +13,7 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRend
 export class Rest extends Node<Node | string | undefined> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node | string | undefined;
+  readonly value: Node | string | undefined;
 
   constructor(
     value?: Node | string,
@@ -22,6 +22,8 @@ export class Rest extends Node<Node | string | undefined> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
   }
 

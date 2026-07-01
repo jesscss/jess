@@ -515,40 +515,40 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       throw new TypeError('Ruleset requires rules to be a Node array.');
     }
     super(rulesValue, options, location, treeContext);
+    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     if (typeof value.selector === 'string') {
       // The parser is the authority on selector syntax; the runtime stores
       // whatever string it produced (materializing to nodes lazily when needed).
-      const selectorText = value.selector.trim();
-      this.selector = selectorText;
+      this.selector = value.selector.trim();
       this.guard = 'guard' in value ? value.guard : undefined;
       this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
     } else {
       this.selector = value.selector;
       this.guard = value.guard;
       this.selectorBeforeExtend = value.selectorBeforeExtend;
-      // Adopt selector and guard so their .parent points to this Ruleset node,
-      // matching the old childKeys-based _processNodes behavior.
-      if (value.selector instanceof Node) {
-        this.adopt(value.selector);
-      }
-      if (value.guard instanceof Node) {
-        this.adopt(value.guard);
-      }
     }
-    // When a Rules wrapper was passed, adopt it so body.parent === this, and
-    // restore children's parent to the wrapper. super(rulesValue) set child.parent=this,
-    // but the wrapper is the canonical intermediate ancestor in the parent chain.
     if (value.rules instanceof Rules) {
       this._passedRulesWrapper = value.rules;
-      this.adopt(value.rules);
-      const wrapperRules = value.rules.rules;
+    }
+  }
+
+  override parentChildren(): this {
+    // Base parents selector/guard/rules/selectorBeforeExtend via childKeys.
+    super.parentChildren();
+    // A passed Rules wrapper is the canonical intermediate ancestor: adopt it,
+    // then restore the body children's parent to the wrapper (super parented
+    // them to `this`).
+    if (this._passedRulesWrapper instanceof Rules) {
+      this.adopt(this._passedRulesWrapper);
+      const wrapperRules = this._passedRulesWrapper.rules;
       for (let i = 0; i < wrapperRules.length; i++) {
         const child = wrapperRules[i]!;
         if (child instanceof Node) {
-          child.parent = value.rules;
+          child.parent = this._passedRulesWrapper;
         }
       }
     }
+    return this;
   }
 
   /**

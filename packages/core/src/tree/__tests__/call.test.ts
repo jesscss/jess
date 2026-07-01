@@ -104,8 +104,10 @@ class SyncOverrideAny extends Any<string> {
 }
 
 class CustomSyntaxNode extends Node<string> {
+  readonly value: string;
   constructor(value: string) {
     super(value);
+    this.value = value;
   }
 
   override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {

@@ -654,9 +654,9 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       throw new TypeError('AtRule requires rules to be a Node array. Use AtRuleStatement for semicolon at-rules.');
     }
     super(rulesValue, options, location, treeContext);
-    // The parser decides what's a valid at-rule name; the runtime stores it.
-    this.name = this._processNodes(value.name);
-    this.prelude = this._processNodes(value.prelude);
+    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
+    this.name = value.name;
+    this.prelude = value.prelude;
   }
 
   private materializeHeaderForSemantics(): { name: AtRuleValue['name']; prelude: AtRuleValue['prelude'] } {

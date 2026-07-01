@@ -49,7 +49,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null;
 
-  declare readonly value: string;
+  readonly value: string;
 
   readonly role: Role | undefined;
 
@@ -60,6 +60,8 @@ export class Any<
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Each node owns its field values (invariant 7): the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);

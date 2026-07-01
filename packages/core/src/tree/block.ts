@@ -25,7 +25,7 @@ export interface Block extends Node<Node, BlockOptions> {
 export class Block extends Node<Node, BlockOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node;
+  readonly value: Node;
 
   private withValue(value: Node): Block {
     const location = this._location && this._location.length === 6
@@ -46,6 +46,8 @@ export class Block extends Node<Node, BlockOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
   }
 

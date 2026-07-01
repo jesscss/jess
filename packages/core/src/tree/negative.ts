@@ -16,7 +16,7 @@ const NEGATIVE_ONE = new Dimension({ number: -1 });
 export class Negative extends Node<Node> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node;
+  readonly value: Node;
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
@@ -27,6 +27,8 @@ export class Negative extends Node<Node> {
 
   constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);

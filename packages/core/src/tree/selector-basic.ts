@@ -15,7 +15,7 @@ export interface BasicSelector extends SimpleSelector<string> {
 export class BasicSelector extends SimpleSelector<string> {
   static override childKeys = null;
 
-  declare readonly value: string;
+  override readonly value: string;
 
   constructor(
     value: string,
@@ -24,6 +24,8 @@ export class BasicSelector extends SimpleSelector<string> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }

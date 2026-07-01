@@ -1,5 +1,5 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
+import { F_VISIBLE, Node, type NodeLocation, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
@@ -57,7 +57,13 @@ export function attachSelectorBitLibrary<T extends Selector>(
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   static override childKeys: readonly string[] | null = ['value'];
 
-  declare readonly value: IfAny<T, NodeValue, T>;
+  readonly value: IfAny<T, NodeValue, T>;
+
+  constructor(value: IfAny<T, NodeValue, T>, options?: O, location?: NodeLocation) {
+    super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
+  }
 
   isSelector = true;
 

@@ -45,8 +45,9 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     super();
     this._location = location;
     this._options = options;
-    this.name = this._processNodes(value.name);
-    this.prelude = this._processNodes(value.prelude);
+    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
+    this.name = value.name;
+    this.prelude = value.prelude;
     this._treeContext = treeContext;
   }
 

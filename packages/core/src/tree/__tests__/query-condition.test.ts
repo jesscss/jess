@@ -56,9 +56,10 @@ class CountingWriter extends OutputWriter {
 }
 
 class ReturnOnlyNode extends Node<string> {
-  declare value: string;
+  readonly value: string;
   constructor(value: string) {
     super(value);
+    this.value = value;
     this.addFlag(F_NON_STATIC);
   }
 
@@ -94,9 +95,10 @@ class WritingNode extends ReturnOnlyNode {
 }
 
 class AsyncWritingStaticNode extends Node<string> {
-  declare value: string;
+  readonly value: string;
   constructor(value: string) {
     super(value);
+    this.value = value;
     this.addFlag(F_MAY_ASYNC);
   }
 

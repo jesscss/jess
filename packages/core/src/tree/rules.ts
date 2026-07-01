@@ -3694,7 +3694,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._location = location;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     this._options = mergedOptions as unknown as typeof this._options;
-    this.rules = this._processNodes(value ?? []);
+    // Invariant 7: store, don't adopt. `parentChildren()` (called by the factory)
+    // parents the rules one level.
+    this.rules = value ?? [];
     this._sourceRoot = this;
     this._treeContext = treeContext;
   }

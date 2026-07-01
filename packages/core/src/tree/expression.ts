@@ -23,7 +23,7 @@ export interface Expression extends Node<Node> {
 export class Expression extends Node<Node> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node;
+  readonly value: Node;
 
   constructor(
     value: Node,
@@ -32,6 +32,8 @@ export class Expression extends Node<Node> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.addFlag(F_NON_STATIC);
   }

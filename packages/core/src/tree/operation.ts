@@ -83,6 +83,22 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  // Operation's value is a positional `[left, op, right]` tuple, so the base's
+  // childKeys object-rebuild doesn't fit — own the clone (invariant 7).
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const left = cloneFn ? cloneFn(this.left) : this.left;
+    const right = cloneFn ? cloneFn(this.right) : this.right;
+    const node = new Operation(
+      [left, this.operator, right],
+      this._options ? { ...this._options } : undefined,
+      this._location,
+      this._treeContext
+    );
+    node.inherit(this);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return node as this;
+  }
+
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;

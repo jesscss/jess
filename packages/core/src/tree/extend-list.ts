@@ -21,13 +21,15 @@ export interface ExtendList extends Node<Extend[], NodeOptions> {
 export class ExtendList extends Node<Extend[], NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Extend[];
+  readonly value: Extend[];
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.removeFlag(F_VISIBLE);
   }

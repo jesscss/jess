@@ -70,7 +70,6 @@ export type PlacementCloneOptions = {
    */
   reuseLeaves?: boolean;
 };
-export const DEFAULT_DATA = 'value';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
@@ -231,7 +230,9 @@ export const defineType = <
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args): InstanceType<T> => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return Reflect.construct(Clazz, args) as InstanceType<T>;
+    const node = Reflect.construct(Clazz, args) as InstanceType<T>;
+    // Invariant 7: the factory parents one level; the raw constructor did not.
+    return args.length > 0 ? (node.parentChildren() as InstanceType<T>) : node;
   };
 };
 
@@ -552,21 +553,6 @@ export abstract class Node<
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
-  // /**
-  //  * This is the internal `data` of the node.
-  //  */
-  // get value(): Data {
-  //   return this._value;
-  // }
-
-  // set value(val: Data) {
-  //   this._value = this._processNodes(val);
-  //   // Invalidate memoized valueOf() on selector-like nodes after mutation.
-  //   if ('_valueOf' in this) {
-  //     (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
-  //   }
-  // }
-
   /**
    * Add a flag to the node's state
    * Handles STATIC/NON_STATIC exclusivity automatically
@@ -674,12 +660,44 @@ export abstract class Node<
         configurable: false
       }
     });
-    if (arguments.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      (this as unknown as { value: unknown }).value = this._processNodes(value);
-    }
+    // Invariant 7: the base stores NOTHING and adopts NOTHING. Each concrete
+    // node owns its own field values (its constructor assigns them); the
+    // lowercase factory then calls `parentChildren()` to parent one level.
+    // `new Foo()` shares its children by default.
+    void value;
     this._location = location;
     this._options = options;
+  }
+
+  /**
+   * Explicit, one-level parenting opt-in (invariant 7). Called by the canonical
+   * factory after construction; NEVER by the raw `new Foo()` (which shares) nor
+   * by eval-time construction. Drives parenting off `childKeys` so every
+   * child-bearing node is handled by this ONE primitive:
+   *   - `null`      → migrated leaf, no child fields: no-op.
+   *   - `undefined` → legacy: children live in `value`.
+   *   - `[...]`     → parent each listed direct child field, one level.
+   */
+  parentChildren(): this {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (childKeys === null) {
+      return this;
+    }
+    if (childKeys === undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const value = (this as unknown as { value: unknown }).value;
+      if (value !== undefined) {
+        this._processNodes(value);
+      }
+      return this;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const fields = this as unknown as Record<string, unknown>;
+    for (let i = 0; i < childKeys.length; i++) {
+      this._processNodes(fields[childKeys[i]!]);
+    }
+    return this;
   }
 
   /**
@@ -1027,17 +1045,38 @@ export abstract class Node<
    * substitute a single node); `cloneFn` must not recurse into a deep copy.
    */
   clone(cloneFn?: (n: Node) => Node): this {
-    if (!hasNodeValue(this)) {
-      throw new TypeError(`${this.type} must implement clone() for direct fields`);
-    }
-    let cloned = this.cloneValue(this.value);
-
-    if (cloneFn) {
-      if (cloned instanceof Node) {
-        cloned = cloneFn(cloned);
-      } else {
-        this._mapChildNodes(cloned, cloneFn);
+    const applyMap = (v: unknown): unknown => {
+      if (!cloneFn) {
+        return v;
       }
+      if (v instanceof Node) {
+        return cloneFn(v);
+      }
+      this._mapChildNodes(v, cloneFn);
+      return v;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    // Multi-field nodes (childKeys other than a lone `value`) rebuild the
+    // value-object their constructor expects from the direct child fields; the
+    // base no longer mirrors those fields into `value`.
+    const isMultiField = childKeys != null
+      && !(childKeys.length === 1 && childKeys[0] === 'value');
+    let cloned: unknown;
+    if (isMultiField) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const fields = this as unknown as Record<string, unknown>;
+      const obj: Record<string, unknown> = {};
+      for (let i = 0; i < childKeys.length; i++) {
+        const k = childKeys[i]!;
+        obj[k] = applyMap(this.cloneValue(fields[k]));
+      }
+      cloned = obj;
+    } else {
+      if (!hasNodeValue(this)) {
+        throw new TypeError(`${this.type} must implement clone() for direct fields`);
+      }
+      cloned = applyMap(this.cloneValue(this.value));
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

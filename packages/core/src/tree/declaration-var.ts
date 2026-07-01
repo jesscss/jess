@@ -141,5 +141,5 @@ export const vardecl = (
     ...value,
     name: nameNode
   };
-  return new VarDeclaration(declarationValue, options, location, treeContext);
+  return new VarDeclaration(declarationValue, options, location, treeContext).parentChildren();
 };

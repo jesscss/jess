@@ -18,7 +18,7 @@ export interface Comment extends Node<string, CommentOptions> {
 export class Comment extends Node<string, CommentOptions> {
   static override childKeys = null;
 
-  declare readonly value: string;
+  readonly value: string;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -26,6 +26,8 @@ export class Comment extends Node<string, CommentOptions> {
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.lineComment = options?.lineComment === true || value.startsWith('//');
     this.addFlag(F_STATIC);

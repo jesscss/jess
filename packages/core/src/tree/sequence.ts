@@ -105,11 +105,13 @@ function sequenceRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOption
 export class Sequence extends Node<Node[], SequenceOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node[];
+  readonly value: Node[];
   readonly preserveWhitespace: boolean | undefined;
 
   constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this.preserveWhitespace = options?.preserveWhitespace;
   }
 
@@ -586,5 +588,5 @@ export const spaced = (
   value: Node[],
   options?: SequenceOptions
 ) => {
-  return new Sequence(value, options);
+  return new Sequence(value, options).parentChildren();
 };

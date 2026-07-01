@@ -31,6 +31,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
     options.writer.add(this.value);
   }

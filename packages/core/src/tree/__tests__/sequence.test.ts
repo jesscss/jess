@@ -29,6 +29,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectText extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }
@@ -649,7 +655,10 @@ describe('Sequence', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    const left = new CountingSequence([leftChild]);
+    // Invariant 7: raw `new` shares children; parent canonically via the
+    // explicit primitive (as the `seq` factory does) so `operate` has real
+    // source parentage to preserve.
+    const left = new CountingSequence([leftChild]).parentChildren();
     const right = seq([rightChild]);
 
     CountingSequence.countConstructions = true;

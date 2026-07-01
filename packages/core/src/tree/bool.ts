@@ -13,7 +13,7 @@ export interface Bool extends Node<boolean> {
 export class Bool extends Node<boolean> {
   static override childKeys = null;
 
-  declare readonly value: boolean;
+  readonly value: boolean;
 
   constructor(
     value: boolean,
@@ -22,6 +22,8 @@ export class Bool extends Node<boolean> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }

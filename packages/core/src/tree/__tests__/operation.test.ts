@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -284,8 +284,8 @@ describe('Operation', () => {
       '+',
       any('two')
     ]);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const [leftOperand, , rightOperand] = Reflect.get(operationNode, 'value') as OperationValue;
+    const leftOperand = operationNode.left;
+    const rightOperand = operationNode.right;
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.render(context)).toBe('one, foo, two');
@@ -319,8 +319,8 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const [leftOperand, , rightOperand] = Reflect.get(resolvedOperation, 'value') as OperationValue;
+    const leftOperand = resolvedOperation.left;
+    const rightOperand = resolvedOperation.right;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
@@ -352,10 +352,8 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const resolvedValue = Reflect.get(resolved, 'value') as OperationValue;
-    expect(resolvedValue[0]).not.toBe(leftOperand);
-    expect(resolvedValue[0]?.toTrimmedString()).toBe('2em');
+    expect(resolved.left).not.toBe(leftOperand);
+    expect(resolved.left?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
     expect(evald.parent).toBeUndefined();
@@ -395,10 +393,8 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const calcArgValue = Reflect.get(calcArg, 'value') as OperationValue;
-    expect(calcArgValue[0]).not.toBe(leftOperand);
-    expect(calcArgValue[2]).not.toBe(rightOperand);
+    expect(calcArg.left).not.toBe(leftOperand);
+    expect(calcArg.right).not.toBe(rightOperand);
     // Source operands stay owned by the canonical operation, unchanged — the
     // calc fallback materializes copies. (`evaluated` flag assertions removed:
     // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)

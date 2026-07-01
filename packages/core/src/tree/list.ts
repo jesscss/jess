@@ -256,11 +256,13 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: T[];
+  readonly value: T[];
   readonly sep: ListOptions['sep'];
 
   constructor(value: T[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this.value = value;
     this.sep = options?.sep;
   }

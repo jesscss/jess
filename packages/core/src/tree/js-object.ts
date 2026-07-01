@@ -1,12 +1,18 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, defineType, type LocationInfo, type NodeOptions } from './node.js';
 
 /**
  * A plain JS object.
  */
 export class JsObject extends Node<Record<string, any>> {
   static override childKeys = null;
-  declare readonly value: Record<string, any>;
+  readonly value: Record<string, any>;
+
+  constructor(value: Record<string, any>, options?: NodeOptions, location?: LocationInfo) {
+    super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
+  }
 
   override resolve(_context: Context): this {
     return this;

@@ -27,7 +27,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectRule extends Node<string> {
-  declare value: string;
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }

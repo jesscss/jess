@@ -56,7 +56,7 @@ function writeParenValue(value: Node, options: FinalPrintOptions): void {
 export class Paren extends Node<Node | undefined, ParenOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node | undefined;
+  readonly value: Node | undefined;
 
   private getDelimiters(): [open: string, close: string] {
     return this._options?.delimiter === 'square' ? ['[', ']'] : ['(', ')'];
@@ -109,6 +109,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);

@@ -556,9 +556,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     super();
     this._location = location;
     this._options = options;
-    this.name = this._processNodes(value.name);
-    this.value = this._processNodes(value.value);
-    this.important = this._processNodes(value.important);
+    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
+    this.name = value.name;
+    this.value = value.value;
+    this.important = value.important;
     this._treeContext = treeContext;
   }
 
@@ -1846,4 +1847,4 @@ export const decl = (
   value: DeclarationValue,
   options?: DeclarationOptions,
   location?: LocationInfo
-) => new Declaration(value, options, location);
+) => new Declaration(value, options, location).parentChildren();
