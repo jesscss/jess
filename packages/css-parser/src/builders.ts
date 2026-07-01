@@ -25,6 +25,7 @@ import {
   makeTrivia,
   nil,
   Rules, Ruleset,
+  Comment,
   type Selector,
   BasicSelector, CompoundSelector, type CompoundSelectorComponent,
   ComplexSelector, type ComplexSelectorValue,
@@ -324,8 +325,124 @@ export class CssParser {
    * are opaque and parsed by a separate non-erroring rule, so they never reach here.
    */
 
+  /**
+   * Lift STANDALONE comments out of the trivia gaps between body children into
+   * `Comment` nodes, in source order. Ports the historical Chevrotain behavior
+   * (`getRulesWithComments` → `addStandaloneRuleComments` → `isStandaloneRuleComment`):
+   * a comment is standalone when it is NOT on the same source line as the node that
+   * FOLLOWS it. Inline comments (e.g. `color: /* *​/blue`, same line as the value)
+   * stay in trivia. Both block comments (`/* … *​/`) and line comments (`// …`,
+   * used by Less) are recognized.
+   *
+   * @param orderedRuleNodes body child nodes, in source order (their `.location`
+   *   gives start/end offsets)
+   * @param bodyStart offset in `this._source` where the body content begins (after
+   *   the opening `{`, or the stylesheet start)
+   * @param bodyEnd offset where the body content ends (before the closing `}`)
+   */
+  protected _liftStandaloneComments(
+    orderedRuleNodes: JessNode[],
+    bodyStart: number,
+    bodyEnd: number,
+    loc: LocationInfo
+  ): JessNode[] {
+    const src = this._source;
+    const out: JessNode[] = [];
+    let gapStart = bodyStart;
+    for (const rule of orderedRuleNodes) {
+      const nextStart = rule.location[0];
+      if (typeof nextStart === 'number' && nextStart >= gapStart) {
+        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, loc));
+        const nextEnd = rule.location[3];
+        gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
+      }
+      out.push(rule);
+    }
+    // Trailing gap (after the last node): no following node → always standalone.
+    out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, loc));
+    return out;
+  }
+
+  /**
+   * Scan `src[gapStart, gapEnd)` for block/line comments and emit a `Comment` for
+   * each STANDALONE one. `followingStart` is the start offset of the node that
+   * follows this gap (undefined for the trailing gap); a comment is inline (kept
+   * as trivia) when it ends on the same source line the following node starts on.
+   */
+  private _scanStandaloneComments(
+    src: string,
+    gapStart: number,
+    gapEnd: number,
+    followingStart: number | undefined,
+    loc: LocationInfo
+  ): JessNode[] {
+    const comments: JessNode[] = [];
+    let i = gapStart;
+    while (i < gapEnd) {
+      const c = src.charCodeAt(i);
+      // Block comment: /* … */
+      if (c === 47 /* / */ && src.charCodeAt(i + 1) === 42 /* * */) {
+        let j = i + 2;
+        while (j + 1 < gapEnd && !(src.charCodeAt(j) === 42 && src.charCodeAt(j + 1) === 47)) {
+          j++;
+        }
+        const end = Math.min(j + 2, gapEnd);
+        this._maybeEmitComment(src, i, end, followingStart, comments, loc);
+        i = end;
+        continue;
+      }
+      // Line comment: // … (to end of line)
+      if (c === 47 /* / */ && src.charCodeAt(i + 1) === 47 /* / */) {
+        let j = i + 2;
+        while (j < gapEnd && src.charCodeAt(j) !== 10 && src.charCodeAt(j) !== 13) {
+          j++;
+        }
+        this._maybeEmitComment(src, i, j, followingStart, comments, loc);
+        i = j;
+        continue;
+      }
+      i++;
+    }
+    return comments;
+  }
+
+  /**
+   * Emit a `Comment` for `src[start, end)` unless it is inline — i.e. it ends on
+   * the same source line the following node starts on (reproduces
+   * `isStandaloneRuleComment`: `next?.location?.[1] === token.endLine` → not
+   * standalone). Node locations in this parser carry offsets but zeroed lines, so
+   * lines are derived from `src` here.
+   */
+  private _maybeEmitComment(
+    src: string,
+    start: number,
+    end: number,
+    followingStart: number | undefined,
+    out: JessNode[],
+    loc: LocationInfo
+  ) {
+    if (followingStart !== undefined && this._lineOf(src, end - 1) === this._lineOf(src, followingStart)) {
+      return;
+    }
+    out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
+  }
+
+  /** 1-based line number of `offset` within `src` (counts preceding newlines). */
+  private _lineOf(src: string, offset: number): number {
+    let line = 1;
+    const bound = Math.min(offset, src.length);
+    for (let i = 0; i < bound; i++) {
+      if (src.charCodeAt(i) === 10 /* \n */) {
+        line++;
+      }
+    }
+    return line;
+  }
+
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    return new Rules(nodeChildren(children), undefined, loc);
+    const nodes = nodeChildren(children);
+    const lifted = this._liftStandaloneComments(nodes, loc[0], loc[3], loc);
+    return new Rules(lifted, undefined, loc);
   }
 
   protected _buildRuleset(
@@ -335,7 +452,12 @@ export class CssParser {
   ) {
     const sel = spannedComponents(rawChildren)[0];
     const selector = (sel?.comp ?? '') as string | Selector;
-    const rules = nodeChildren(children.slice(1));
+    const rawRules = nodeChildren(children.slice(1));
+    const braceIdx = this._source.indexOf('{', sel ? sel.span.end : loc[0]);
+    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
+    const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
+    const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
+    const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
     const node = new Ruleset({ selector, rules }, undefined, loc);
     if (sel) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
