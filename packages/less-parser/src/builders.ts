@@ -56,6 +56,12 @@ type Child = JessNode | CSTLeaf | CSTError;
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Mirrors grammar.ts's `knownAtVar` regex (isVariableLike in the reference): a
+// known at-rule name (incl. vendor-prefixed document/keyframes/viewport) used
+// as a variable call (`@media()`) is only legal with empty parens, and is
+// itself a deprecated form.
+const KNOWN_AT_RULE_VAR_NAME_RE = /^(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)$/i;
+
 function spanToLocation(span: Span): LocationInfo {
   return [span.start, 0, 0, span.end, 0, 0];
 }
@@ -1017,6 +1023,11 @@ export class LessGrammar extends CssParser {
     const nodes = nodeChildren(children);
     const argsList = nodes.find(n => n.type === 'List');
     const hasArgs = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
+    // `@media()` etc — a known at-rule name used as a variable call, allowed only
+    // with empty parens (port of isVariableLike's 'at-rule-variable' warning).
+    if (!hasArgs && KNOWN_AT_RULE_VAR_NAME_RE.test(name)) {
+      this._warn('Using known at-rule names as variables is deprecated', 'at-rule-variable');
+    }
     const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
     const call = new Call(
       { name: nameRef as any, args: callArgs as any },
