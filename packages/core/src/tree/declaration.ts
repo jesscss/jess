@@ -1552,6 +1552,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+_:'
             ]
           }, undefined, this.sourceRoot?._treeContext);
+          // Positional bound for the prior-value lookup: eval-time nodes don't
+          // parent (invariant 7), so carry the referring decl's index directly.
+          ref.index = this.index;
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
             excludedDeclarations[1] = node;
@@ -1597,6 +1600,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && !sameConcreteLocation(n.location, this.location);
               }
             }, undefined, this.sourceRoot?._treeContext);
+            // The merge ref reads the PRIOR value of this property. Its lookup
+            // start comes from `getLookupStartIndex(ref)`, which walks the parent
+            // chain — but eval-time nodes don't parent (invariant 7), so carry the
+            // referring declaration's source index directly for the positional bound.
+            ref.index = this.index;
             state.bindOutput = (node: Declaration) => {
               outputNode = node;
               excludedDeclarations[1] = node;
