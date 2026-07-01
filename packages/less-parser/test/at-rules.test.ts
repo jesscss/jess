@@ -30,6 +30,12 @@ describe('importAtRule', () => {
     const { errors } = parse('@import (reference) "file.less";', 'stylesheet');
     expect(errors.length).toBe(0);
   });
+
+  it('keeps a CSS @import media-query tail (not just the path)', () => {
+    const { errors, tree } = parse('@import "test.css" screen, print;', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toBe('@import "test.css" screen, print;\n');
+  });
 });
 
 describe('innerAtRule', () => {

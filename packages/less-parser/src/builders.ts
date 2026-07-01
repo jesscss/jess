@@ -1712,6 +1712,11 @@ export class LessGrammar extends CssParser {
       if (pathNode) {
         preludeItems.push(pathNode as unknown as JessNode);
       }
+      // A plain (non-Less) import can carry a trailing media-query tail, same as
+      // the StyleImport `postlude` option below — don't drop it here.
+      if (mediaNode) {
+        preludeItems.push(mediaNode as unknown as JessNode);
+      }
       const prelude = new Sequence(preludeItems as any, undefined, loc);
       return new AtRuleStatement({ name: nameAny, prelude }, undefined, loc) as unknown as JessNode;
     }
