@@ -34,6 +34,7 @@ import {
   Declaration, CustomDeclaration,
   Any, Dimension, Num, Color, ColorFormat,
   Sequence, List,
+  Operation,
   Call, Paren, Url,
   Quoted,
   QueryCondition, Keyword,
@@ -721,6 +722,99 @@ export class CssParser {
     return out;
   }
 
+  /**
+   * Operands a `/` can divide (isDivisionLikeNode, values.ts). A Paren/Expression
+   * defers to its inner value. Anything else keeps `/` as a slash-list separator.
+   */
+  protected _isDivisionLike(node: unknown): boolean {
+    if (!node || typeof node !== 'object') {
+      return false;
+    }
+    const t = (node as { type?: string }).type;
+    if (t && ['Color', 'Dimension', 'Num', 'Reference', 'Call', 'Operation', 'Negative', 'Expression'].includes(t)) {
+      return true;
+    }
+    if (t === 'Paren' || t === 'Expression') {
+      return this._isDivisionLike((node as { value?: unknown }).value);
+    }
+    return false;
+  }
+
+  /**
+   * Fold a flat `operand op operand …` sequence into precedence-climbed Operation
+   * nodes (`* / %` bind tighter than `+ -`, left-associative; port of
+   * expressionSum/expressionProduct + mathSum/mathProduct). Returns null when the
+   * sequence is not a clean arithmetic chain, so a plain value list is left
+   * untouched. `slashEnabled` decides whether `/` divides (Operation) or stays a
+   * slash-List: `always`/in-parens for Less, and always inside `calc(…)`, where
+   * math is unconditionally on for both languages.
+   */
+  protected _foldOperations(
+    parts: ReadonlyArray<unknown>,
+    loc: LocationInfo,
+    opts: { slashEnabled: boolean }
+  ): JessNode | null {
+    const asOp = (p: unknown): string | null => {
+      const v = typeof p === 'string'
+        ? p.trim()
+        : (p && typeof p === 'object' && (p as { type?: string }).type === 'Any'
+            ? String((p as { value?: unknown }).value ?? '').trim()
+            : '');
+      return v && /^[-+*/%]$/.test(v) ? v : null;
+    };
+    const isOperand = (p: unknown): boolean =>
+      !!p && typeof p === 'object' && 'type' in (p as object) && !asOp(p);
+    if (parts.length < 3 || parts.length % 2 === 0) {
+      return null;
+    }
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0 ? !isOperand(parts[i]) : !asOp(parts[i])) {
+        return null;
+      }
+    }
+    const { slashEnabled } = opts;
+    const makeOp = (l: unknown, op: string, r: unknown): JessNode =>
+      new Operation(
+        [l, op, r] as unknown as ConstructorParameters<typeof Operation>[0],
+        undefined, loc
+      ) as unknown as JessNode;
+    // Product level (`* / %`): `/` divides only when enabled and both operands are
+    // division-like, else it accumulates into a slash-List. `+`/`-` defer to sum.
+    const product = (seq: ReadonlyArray<unknown>): unknown[] => {
+      const out: unknown[] = [seq[0]];
+      for (let i = 1; i < seq.length; i += 2) {
+        const op = asOp(seq[i])!;
+        const right = seq[i + 1];
+        if (op === '+' || op === '-') {
+          out.push(seq[i], right);
+          continue;
+        }
+        const left = out.pop();
+        if (op === '/' && !(slashEnabled && this._isDivisionLike(left) && this._isDivisionLike(right))) {
+          const leftList = left as { type?: string; value?: unknown[]; options?: { sep?: string } };
+          out.push(
+            leftList && leftList.type === 'List' && leftList.options?.sep === '/'
+              ? new List([...leftList.value!, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
+              : new List([left, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
+          );
+        } else {
+          out.push(makeOp(left, op, right));
+        }
+      }
+      return out;
+    };
+    // Sum level (`+ -`): left-associative.
+    const sum = (seq: ReadonlyArray<unknown>): unknown[] => {
+      const out: unknown[] = [seq[0]];
+      for (let i = 1; i < seq.length; i += 2) {
+        out.push(makeOp(out.pop(), asOp(seq[i])!, seq[i + 1]));
+      }
+      return out;
+    };
+    const folded = sum(product(parts));
+    return folded.length === 1 ? (folded[0] as JessNode) : null;
+  }
+
   protected _buildCustomDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const propName = ls[0]?.value ?? '';
@@ -761,12 +855,28 @@ export class CssParser {
     if (!items.some(it => it.comp === '(')) {
       return name;
     }
-    const args = this._assembleArgs(this._betweenParens(items), loc);
+    const inner = this._betweenParens(items);
+    // `calc(…)` is a math context: fold its body into an Operation chain (`/`
+    // always divides here). The reference wraps the mathSum in a single-item List.
+    if (name.toLowerCase() === 'calc') {
+      const folded = this._foldOperations(inner.map(i => i.comp), loc, { slashEnabled: true });
+      if (folded) {
+        return new Call({ name, args: new List([folded as unknown as Node], undefined, loc) }, undefined, loc);
+      }
+    }
+    const args = this._assembleArgs(inner, loc);
     return new Call({ name, args: args as unknown as List<Node> }, undefined, loc);
   }
 
   protected _buildParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const inner = this._betweenParens(spannedComponents(rawChildren));
+    // A value-position paren only occurs in a math context (calc / nested groups);
+    // fold an arithmetic chain into Operation nodes so `calc((a + b) * c)` builds a
+    // real Paren(Operation) operand rather than a flat token list.
+    const folded = this._foldOperations(inner.map(i => i.comp), loc, { slashEnabled: true });
+    if (folded) {
+      return new Paren(folded as unknown as Node, undefined, loc);
+    }
     const { value } = this._assembleValue(inner, loc);
     return new Paren(value as unknown as Node, undefined, loc);
   }

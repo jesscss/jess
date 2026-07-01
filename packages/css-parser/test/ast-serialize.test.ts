@@ -489,6 +489,79 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('calc folds its body into Operation nodes', () => {
+    const { tree } = cssParser.parse('a{ b: calc((100% + 10vw) * 14px); c: calc(100px / 4); d: min(1px, 2px) }');
+    const out = serializeTypes(tree);
+    // calc(...) → Call whose single List arg is a precedence-climbed Operation;
+    // the inner `(100% + 10vw)` is a Paren(Operation), and `/` divides in calc.
+    expect(out).toContainString(`
+      (Call
+        name: 'calc'
+        args:
+          (List
+            value:
+              [
+                (Operation
+                  left:
+                    (Paren
+                      value:
+                        (Operation
+                          left:
+                            (Dimension
+                              number: 100
+                              unit: '%'
+                            )
+                          right:
+                            (Dimension
+                              number: 10
+                              unit: 'vw'
+                            )
+                        )
+                    )
+                  right:
+                    (Dimension
+                      number: 14
+                      unit: 'px'
+                    )
+                )
+              ]
+          )
+      )
+    `);
+    // calc(100px / 4): slash divides (both operands division-like).
+    expect(out).toContainString(`
+      (Operation
+        left:
+          (Dimension
+            number: 100
+            unit: 'px'
+          )
+        right:
+          (Num 4)
+      )
+    `);
+    // min(...) is NOT a math context — its args stay a flat value list.
+    expect(out).toContainString(`
+      (Call
+        name: 'min'
+        args:
+          (List
+            value:
+              [
+                (Dimension
+                  number: 1
+                  unit: 'px'
+                )
+                (Dimension
+                  number: 2
+                  unit: 'px'
+                )
+              ]
+          )
+      )
+    `);
+  });
+
   test('at-rule name uses AtKeyword', () => {
     const { tree } = cssParser.parse('@media screen { a{b:c} }');
     const out = serializeTypes(tree);
