@@ -845,13 +845,17 @@ export class CssParser {
   protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
-    const preludeText = ls.slice(1)
-      .find(l => l.value !== '{' && l.value !== '}')
-      ?.value.trim();
+    // The prelude is the single scanTo leaf between the at-keyword and `{`.
+    const preludeLeaf = ls[1] && ls[1].value !== '{' && ls[1].value !== '}' ? ls[1] : undefined;
+    const preludeText = preludeLeaf?.value.trim();
+    // Give the prelude its own span (not the whole at-rule's loc) so before/after
+    // trivia lookups anchor to the prelude edges. Trailing trivia is already
+    // excluded from the leaf by the atPrelude sentinel.
+    const preludeLoc = preludeLeaf?.span ? spanToLocation(preludeLeaf.span) : loc;
     const preludeNode = preludeText
       ? new List(
-        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, loc)),
-        undefined, loc
+        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, preludeLoc)),
+        undefined, preludeLoc
       )
       : undefined;
     return new AtRule(

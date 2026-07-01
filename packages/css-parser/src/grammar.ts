@@ -262,7 +262,14 @@ export const {
    * prelude is scanned up to the `{`/`;`, skipping balanced ()/[] and strings.
    * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
    */
-  const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), {
+  // Stop the scan at the START of any trailing trivia run before the `{`/`;`,
+  // not at the delimiter itself — otherwise a trailing comment (`… hover /* x */
+  // {`) is swallowed into the prelude leaf instead of staying trivia. The
+  // enclosing parser({ trivia: rw }) then consumes that run for real and logs
+  // it, so `prelude.valueOf()` is the bare prelude and the comment is recoverable
+  // via the trivia map (matches the reference's token-based prelude).
+  const atTailTrivia = many(choice(ws, comment));
+  const atPrelude = optional(scanTo(sequence(atTailTrivia, choice(literal('{'), literal(';'))), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
   }));
   // Known block at-rules (besides the @media/@container/@supports queries) get a
