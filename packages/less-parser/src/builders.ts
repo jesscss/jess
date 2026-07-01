@@ -156,9 +156,15 @@ export class LessGrammar extends CssParser {
       );
     }
     let end = items.length;
+    let bangIdx = -1;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') {
+      if (c === '!') {
+        end = i;
+        bangIdx = i;
+        break;
+      }
+      if (c === 'important' || c === ';') {
         end = i;
         break;
       }
@@ -218,10 +224,20 @@ export class LessGrammar extends CssParser {
     const value = typeof rawValue === 'string' && rawValue
       ? new Any(rawValue, { role: 'ident' }, loc)
       : rawValue;
-    const hasImportant = items.some(i => i.comp === '!');
+    // `important` is the verbatim source text (`!important`, `! important`, …),
+    // not a boolean — the declaration stores the string it will re-emit.
+    let important: string | undefined;
+    if (bangIdx >= 0) {
+      const bang = items[bangIdx]!;
+      const kw = items[bangIdx + 1];
+      const impEnd = kw && typeof kw.comp === 'string' && kw.comp.toLowerCase() === 'important'
+        ? kw.span.end
+        : bang.span.end;
+      important = this._source.slice(bang.span.start, impEnd);
+    }
     const nameNode = name ? new Any(name, { role: 'ident' }, loc) : undefined;
     return new VarDeclaration(
-      { name: (nameNode ?? name) as any, value, important: hasImportant || undefined } as any,
+      { name: (nameNode ?? name) as any, value, important } as any,
       {} as VarDeclarationOptions,
       loc
     );

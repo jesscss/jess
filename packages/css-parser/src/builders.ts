@@ -603,18 +603,34 @@ export class CssParser {
     const name = (typeof nameItem?.comp === 'string' ? nameItem.comp : '') || '';
     const colonIdx = items.findIndex(i => i.comp === ':');
     let end = items.length;
+    let bangIdx = -1;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') {
+      if (c === '!') {
+        end = i;
+        bangIdx = i;
+        break;
+      }
+      if (c === 'important' || c === ';') {
         end = i;
         break;
       }
     }
     const valueItems = items.slice(colonIdx + 1, end);
     const { value, span: valueSpan } = this._assembleValue(valueItems, loc);
-    const hasImportant = items.some(i => i.comp === '!');
+    // `important` is the verbatim source text (`!important`, `! important`, …),
+    // not a boolean — the declaration stores the string it will re-emit.
+    let important: string | undefined;
+    if (bangIdx >= 0) {
+      const bang = items[bangIdx]!;
+      const kw = items[bangIdx + 1];
+      const impEnd = kw && typeof kw.comp === 'string' && kw.comp.toLowerCase() === 'important'
+        ? kw.span.end
+        : bang.span.end;
+      important = this._source.slice(bang.span.start, impEnd);
+    }
     const node = new Declaration(
-      { name, value, important: hasImportant || undefined },
+      { name, value, important },
       undefined, loc
     );
     const jn = node as unknown as JessNode;
