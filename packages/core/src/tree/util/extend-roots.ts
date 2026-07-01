@@ -43,6 +43,36 @@ function selectorOrUndefined(value: string | Selector | Nil | undefined): Select
   return value;
 }
 
+/**
+ * Collapse single-item wrapper selectors to their atomic inner selector — the
+ * same normalization `SelectorList.eval` performs. Under copy-on-write the
+ * canonical ruleset selector is NOT eval-collapsed (it stays e.g. a single-item
+ * `SelectorList`), but the extend matcher reads it via the extend node's parent
+ * chain and needs the collapsed form (a bare `SelectorList[.b]` won't match a
+ * `.b` target, and it dedups away the inner matchable item). Read-only: shares.
+ */
+function collapseWrappedSelector(sel: Selector): Selector {
+  let current: Selector = sel;
+  for (;;) {
+    if (current.hasFlag(F_AMPERSAND)) {
+      return current;
+    }
+    const value: unknown = (current as { value?: unknown }).value;
+    if (
+      (isNode(current, N.SelectorList) || isNode(current, N.ComplexSelector) || isNode(current, N.CompoundSelector))
+      && Array.isArray(value)
+      && value.length === 1
+      && typeof value[0] !== 'string'
+      && !isNode(value[0], N.Combinator)
+      && isSelectorValue(value[0])
+    ) {
+      current = value[0];
+      continue;
+    }
+    return current;
+  }
+}
+
 function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
   return typeof item === 'string' ? new ComplexSelector([item]) : item;
 }
@@ -134,7 +164,8 @@ function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Arr
  * (supports extend chaining).
  */
 function getLocalSelector(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(ruleset.selector);
+  const sel = selectorOrUndefined(ruleset.selector);
+  return sel ? collapseWrappedSelector(sel) : sel;
 }
 
 function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
@@ -149,7 +180,8 @@ function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
  * additions through parent chains.
  */
 function getLocalSelectorPreExtend(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.selector);
+  const sel = selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.selector);
+  return sel ? collapseWrappedSelector(sel) : sel;
 }
 
 /**
