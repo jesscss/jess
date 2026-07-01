@@ -8,7 +8,18 @@ primitive, one frame model, one variable-resolution walk.** Every variant below
 must either fold into a parametrized primitive or prove (on object count /
 behavior) why it must stay. Collapse to the SMALLEST / most performant form.
 
-Status legend: 🔴 duplicate to collapse · 🟡 needs review · 🟢 canonical (keep) · ✅ done
+**STRICTER STANCE (owner directive):** the copy/clone family is NOT "variants to
+tidy" — §5 forbids `clone(deep)`, `*WithReusableLeaves`, deep `cloneForPlacement`,
+per-subsystem copy helpers, and `reuseLeaf`/`frozen`. These exist ONLY because
+eval still produces per-placement output by copy+mutate (clone-era) and because
+`new Foo()` still ADOPTS (reparents) its parts, so a shared template can't be
+handed to a constructor without a defensive copy. The end state is DELETION, not
+consolidation: share the immutable template, carry placement state in the frame.
+Proven concretely: `Declaration.derive` / `deriveWithParts` were copying UNCHANGED
+parts for nothing — switched to sharing them, 0 regressions. Full deletion of the
+copy family is gated on the constructor/factory split (invariant 7) + `frozen`.
+
+Status legend: 🔴 duplicate to collapse · 🟡 needs review · 🟢 canonical (keep) · ✅ done · ⛔ §5-forbidden (delete, gated on ctor-split)
 
 ---
 

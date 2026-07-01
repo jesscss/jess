@@ -695,10 +695,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private derive(): this {
+    // Share the parts (immutable templates); the derived node differs only in
+    // identity/options/metadata, never in its part values.
     return this.withParts({
-      name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.value),
-      important: this.copyImportantForDerived(this.important)
+      name: this.name,
+      value: this.value,
+      important: this.important
     });
   }
 
@@ -709,16 +711,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   deriveWithParts(parts: Partial<DeclarationValue>): this {
+    // Share unchanged parts (immutable templates); only substitute what changed.
+    // No defensive copy of name/value/important the caller didn't touch.
     const node = this.withParts({
-      name: parts.name === undefined
-        ? this.copyNameForDerived(this.name)
-        : parts.name,
-      value: parts.value === undefined
-        ? this.copyValueForDerived(this.value)
-        : parts.value,
-      important: parts.important === undefined
-        ? this.copyImportantForDerived(this.important)
-        : parts.important
+      name: parts.name === undefined ? this.name : parts.name,
+      value: parts.value === undefined ? this.value : parts.value,
+      important: parts.important === undefined ? this.important : parts.important
     });
     node.registrationPrepared = this.registrationPrepared;
     return node;
