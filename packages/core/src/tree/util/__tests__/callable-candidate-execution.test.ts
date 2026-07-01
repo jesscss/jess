@@ -6,8 +6,7 @@ import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
 import type { Node } from '../../node.js';
 import {
   createCallableOuterRules,
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface
+  createCallableRulesSurface
 } from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableLiveSlots } from '../callable-live-slots.js';
@@ -42,8 +41,7 @@ describe('callable candidate execution helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo: bindingInfo,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();
@@ -90,8 +88,7 @@ describe('callable candidate execution helper', () => {
       candidate,
       callSiteRules,
       leakyRules: true,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();

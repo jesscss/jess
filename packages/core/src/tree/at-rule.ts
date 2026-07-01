@@ -293,7 +293,7 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
     const grandparent = parent.parent;
     // Lift through at-rule wrappers to the enclosing Rules scope, but stop before
     // Mixin nodes: a Mixin's scope frame does not carry param live-slots — those
-    // live in the shallow eval surface created by createShallowCallableRulesSurface,
+    // live in the shallow eval surface created by createCallableRulesSurface,
     // which IS the current cursor when we reach this point.
     if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules) && !isNode(grandparent, N.Mixin)) {
       cursor = grandparent;

@@ -1,0 +1,64 @@
+# Surface / Copy / Frame Primitive Audit (DRY consolidation)
+
+Tracking doc for collapsing the sprawl of near-duplicate "create a surface",
+"copy a node", "derive", "materialize", and scope-frame helpers in core eval.
+
+Goal (per `LIVE_BINDING_ARCHITECTURE.md` §3, §5, §6.2): **one thin-surface
+primitive, one frame model, one variable-resolution walk.** Every variant below
+must either fold into a parametrized primitive or prove (on object count /
+behavior) why it must stay. Collapse to the SMALLEST / most performant form.
+
+Status legend: 🔴 duplicate to collapse · 🟡 needs review · 🟢 canonical (keep) · ✅ done
+
+---
+
+## A. Callable rules surfaces (`util/callable-surface.ts`) — ✅ DONE
+- ✅ Collapsed `createUnlockedCallableRulesSurface` + `createOwnedCallableRulesSurface`
+  (byte-identical) into the single primitive `createCallableRulesSurface`
+  (renamed from `createShallowCallableRulesSurface`).
+- ✅ Collapsed the interface param pair `createOwnedRules`/`createUnlockedRules`
+  → single `createCallableRules` across `callable-candidate-loop.ts`,
+  `callable-candidate-state.ts`, `callable-special-case.ts`, `callable-eval.ts`
+  (+ 4 test files). Removed a dead `canUseUnlockedRules` F_STATIC ternary and a
+  now-unused `F_STATIC` import. The Owned/Unlocked axis is gone.
+- 🟡 `createDerivedRulesSurface` (+ `createCallableOuterRules`,
+  `createMixinOutputRulesWrapper`, `createEmptyCallableOutputSurface`) — one base
+  + 3 thin option wrappers; likely fine but re-check against `Rules.derive`.
+
+## B. Rules.derive / deriveRulesSurface (`rules.ts`, `import-style.ts`)
+- 🟡 `Rules.derive` / `Rules._deriveShell` (canonical copy-on-write surface).
+- 🟡 `deriveRulesSurface` (import-style) — overlaps `derive` + the callable
+  surfaces; check whether it folds into `derive` + options.
+- 🟡 `createConfiguredImportedSurface` / `createConfiguredResultSurface` (with/set
+  configs) — build surfaces + attach frame bindings; candidate to express via the
+  primitive + `attachConfiguredVarBindings`.
+
+## C. Node copy / clone (`util/cloning.ts` + scattered)
+- 🟡 `copyWithReusableLeaves` / `copyOwnedWithReusableLeaves` /
+  `copyWithReusableLeavesPreservingComments` — three near-identical leaf-reuse
+  copies differing only in comment handling / always-clone. Fold to one with opts.
+- 🔴 per-part derive copies: `copyValueForDerived`, `copyValueNodeForDerived`,
+  `copyNameForDerived`, `copyImportantForDerived` — used by `deriveWithParts`;
+  check for a single `copyPartForDerived`.
+- 🟡 `cloneForPlacement`, `cloneValue`, `cloneBoundValue`, `clone` — review.
+- 🟡 selector copies: `copySelectorForExtend`, `copySelectorForExtendRecord`,
+  `copySelectorForPlacement`, `copyComplexComponentForPlacement` — extend/placement
+  selector copies; check overlap.
+
+## D. Scope frames (`scope-frame.ts`)
+- 🟢 `lookupScopeFrameVariable` — THE single live-frame-aware walk. All variable
+  resolution must go through it (no bespoke `f = f.parent` elsewhere). VERIFY no
+  other module hand-walks frame `.parent`.
+- 🟡 `buildScopeFrame` / `copyScopeFrameLiveBindingSlots` / `attachConfiguredVarBindings`
+  — frame construction; keep but ensure single entry.
+
+## E. Materialize (`ruleset.ts` etc.)
+- 🟡 `materialize*` (7): `materializeValueState`, `materializeValueForSemantics`,
+  `materializeRegistrationState`, `materializeRawSelectorForSemantics`,
+  `materializeRawSelectorBranch`, `materializeImportPlacementState`,
+  `materializeHeaderForSemantics` — review for shared shape.
+
+---
+
+## Progress log
+- (in progress) A: collapsing the Owned/Unlocked callable-surface duplicates.

@@ -4,8 +4,7 @@ import { any, call, decl, el, mixin, ref, rules, ruleset, vardecl } from '../../
 import type { Node } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
 import {
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface,
+  createCallableRulesSurface,
   getRootSourceRules
 } from '../callable-surface.js';
 import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
@@ -44,8 +43,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -95,8 +93,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -127,8 +124,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -157,8 +153,7 @@ describe('callable special-case helper', () => {
       candidateParams: candidate.params,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       candidateGuard: candidate.guard as Node | undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 

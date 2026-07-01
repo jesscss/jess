@@ -124,7 +124,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     }
     this.removeFlag(F_VISIBLE);
     // When a Rules wrapper was passed, record it as sourceNode so that
-    // createShallowCallableRulesSurface propagates it to the eval surface.
+    // createCallableRulesSurface propagates it to the eval surface.
     // This lets _storePreparedRegistrationNode recognize children as
     // "reused source children" (node.parent === sourceRulesOf(surface))
     // and skip re-adopting them, preserving the wrapper as their parent.

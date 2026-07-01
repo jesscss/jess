@@ -22,7 +22,12 @@ export function getRootSourceRules(rules: Rules): Rules {
   return current;
 }
 
-function createShallowCallableRulesSurface(sourceRules: Rules): Rules {
+/**
+ * The single callable rules-surface primitive. (Formerly split into identical
+ * `createUnlocked…`/`createOwned…` variants — the Owned/Unlocked distinction did
+ * not exist in the implementation and has been collapsed.)
+ */
+export function createCallableRulesSurface(sourceRules: Rules): Rules {
   const output = createDerivedRulesSurface(sourceRules);
   // `sourceNode` pointing at a DIFFERENT canonical body IS the thin-surface
   // identity: a shared child evaluated under this surface re-points its
@@ -38,14 +43,6 @@ function createShallowCallableRulesSurface(sourceRules: Rules): Rules {
     output.rules.push(source[i]!);
   }
   return output;
-}
-
-export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-  return createShallowCallableRulesSurface(sourceRules);
-}
-
-export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-  return createShallowCallableRulesSurface(sourceRules);
 }
 
 type DerivedRulesSurfaceOptions = {

@@ -8,8 +8,7 @@ import {
 import type { CallableParamMatch } from '../callable-param-match.js';
 import {
   createCallableOuterRules,
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface
+  createCallableRulesSurface
 } from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableOutputState } from '../callable-output.js';
@@ -45,8 +44,7 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules
     });
@@ -97,8 +95,7 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules
     });
@@ -133,8 +130,7 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
       createOuterRules: createCallableOuterRules
     });

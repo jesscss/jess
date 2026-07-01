@@ -8,10 +8,9 @@ import { createCallableDefaultState } from './callable-default-guard.js';
 import { createCallableOutputState, finalizeCallableEvalOutput } from './callable-output.js';
 import {
   createCallableOuterRules,
+  createCallableRulesSurface,
   createEmptyCallableOutputSurface,
   createMixinOutputRulesWrapper,
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface,
   getRootSourceRules,
   isIndexedRuleChild,
   resolveCallableSingleOutputSourceRules
@@ -33,7 +32,7 @@ export async function evaluateCallableCollection({
   // Use the dynamic eval context (rulesContext) for arg evaluation: it's the
   // eval surface where the call lives, which has the live param slots wired in.
   // caller.rulesParent walks the static AST parent chain and misses eval surfaces
-  // created by createShallowCallableRulesSurface (push-without-adopt).
+  // created by createCallableRulesSurface (push-without-adopt).
   const argEvalRulesContext = context.rulesContext ?? caller?.rulesParent ?? caller?.sourceRulesParent;
   const nodeArgs = await evaluateCallableArgs({
     context,
@@ -74,8 +73,7 @@ export async function evaluateCallableCollection({
     },
     specialCaseCallSiteRules: caller?.rulesParent ?? caller?.sourceRulesParent ?? context.rulesContext,
     ordinaryCallSiteRules,
-    createOwnedRules: createOwnedCallableRulesSurface,
-    createUnlockedRules: createUnlockedCallableRulesSurface,
+    createCallableRules: createCallableRulesSurface,
     getRootSourceRules,
     createOuterRules: createCallableOuterRules
   });

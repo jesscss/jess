@@ -3,7 +3,7 @@ import { any, atrule, decl, Declaration, list, mixin, rules, vardecl } from '../
 import { serializeTypes } from '../serialize-types.js';
 import { F_STATIC } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
-import { createOwnedCallableRulesSurface, createUnlockedCallableRulesSurface } from '../callable-surface.js';
+import { createCallableRulesSurface } from '../callable-surface.js';
 import { matchCallableParams } from '../callable-param-match.js';
 import { prepareCallableCandidateState } from '../callable-candidate-state.js';
 
@@ -34,8 +34,7 @@ describe('callable candidate state helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -64,8 +63,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules,
       leakyRules: false,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -90,8 +88,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules,
       leakyRules: false,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -123,8 +120,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules,
       leakyRules: false,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -153,10 +149,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules: undefined,
       leakyRules: false,
-      createOwnedRules: () => {
-        throw new Error('childless static candidates should not need owned rules');
-      },
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
