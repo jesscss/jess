@@ -416,6 +416,8 @@ function createRawSelectorNode(
     }
     const list = new SelectorList(branches, undefined, location, treeContext);
     list.generated = true;
+    // Canonical materialization parents its branches (invariant 7).
+    list.parentChildren();
     return markStaticSelector(list);
   }
   const relativeParts = splitRawRelativeSelector(value);
@@ -430,6 +432,7 @@ function createRawSelectorNode(
   if (compoundParts && compoundParts.length > 1) {
     const compound = new CompoundSelector(compoundParts, undefined, location, treeContext);
     compound.generated = true;
+    compound.parentChildren();
     return markStaticSelector(compound);
   }
   return undefined;
@@ -455,6 +458,7 @@ function createRawComplexSelectorSurface(
   }
   const complex = new ComplexSelector(components, undefined, location, treeContext);
   complex.generated = true;
+  complex.parentChildren();
   return markStaticSelector(complex);
 }
 
