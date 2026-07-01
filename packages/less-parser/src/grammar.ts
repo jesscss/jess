@@ -368,6 +368,15 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(choice(interpKey, ident), optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
+  // Opportunistic structuring for a `{ … }` custom-property value: try it as a
+  // real declaration body (so nested `@var`/calls evaluate normally, same as the
+  // `[…]` case already does via customValue's valueList), tolerant of anything
+  // that isn't CSS-shaped. No `expect()` on the closing `}` — a non-declaration
+  // body (arbitrary tokens) simply fails this alt with no error recorded, and
+  // `choice` falls through to the raw-text cpValue capture below.
+  const customCurlyBlock = node('Block',
+    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))),
+    (c: any, r: any, s: any) => mk('Block', c, r, s));
   // Predictive custom-property value region — NO scanTo, NO skip. Content runs
   // interleaved with recursively-balanced ()/[]/{} groups, each closed by expect().
   // So an unmatched, stray, or CROSS-TYPE bracket (`({[ })`) surfaces a syntax error
@@ -382,7 +391,7 @@ const cssRules = rules((g: any) => {
   const cpValue = noTrivia(many(choice(cpOuterContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr)));
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
-      choice(g.customValue, g.cpValue),
+      choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';')))),
     (c: any, r: any, s: any) => mk('CustomDeclaration', c, r, s));
   const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
@@ -521,7 +530,7 @@ const cssRules = rules((g: any) => {
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
-    Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
+    Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
     parenBody, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
     QueryFeature, QueryInParens, QueryCondition, QueryAtRuleBlock, ImportAtRuleStatement,

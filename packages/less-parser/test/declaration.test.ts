@@ -56,6 +56,19 @@ describe('declaration', () => {
     expect(name.type).toBe('Interpolated');
   });
 
+  it('opportunistically structures a curly-brace custom-property value as a declaration body', async () => {
+    const { errors, tree } = parse('@a: red; a { --foo: { color: @a; } }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('--foo:{color: red}');
+  });
+
+  it('tolerantly falls back to opaque text for a non-CSS-shaped curly custom-property value', () => {
+    const { errors, tree } = parse('a { --foo: { 1, 2, 3 }; }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(String(tree)).toContain('{ 1, 2, 3 }');
+  });
+
   it('should parse each() with an interpolated custom-property declaration in its body', () => {
     const { errors } = parse(`:root {
       each(@vars, {

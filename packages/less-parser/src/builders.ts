@@ -41,7 +41,8 @@ import {
   AtRuleStatement,
   AtRule,
   QueryCondition,
-  INTERPOLATION_PLACEHOLDER
+  INTERPOLATION_PLACEHOLDER,
+  Block
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ export class LessGrammar extends CssParser {
       case 'CustomDeclaration':
         this._warnCustomPropVars(span);
         return this._buildLessCustomDecl(children, loc);
+      case 'Block':               return this._buildLessCustomBlock(children, loc);
       case 'AtRuleBlock':
         this._warnAtRulePreludeVars(span);
         return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
@@ -893,6 +895,18 @@ export class LessGrammar extends CssParser {
     }
     const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
     return new CustomDeclaration({ name: name as any, value: new Any(valueText, {}, loc) as any }, undefined, loc);
+  }
+
+  /**
+   * `--foo: { color: @a; }` — a curly-brace custom-property value whose body
+   * opportunistically structured as a declaration list (customCurlyBlock in the
+   * grammar), so nested `@var`/calls evaluate normally instead of staying opaque
+   * text. Wrapped in a Block(type: 'curly') so `{`/`}` re-render around it.
+   */
+  private _buildLessCustomBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const bodyNodes = nodeChildren(children);
+    const seq = new Sequence(bodyNodes as any, undefined, loc);
+    return new Block(seq as any, { type: 'curly' }, loc) as unknown as JessNode;
   }
 
   private _warnDeprecatedValue(span: Span) {
