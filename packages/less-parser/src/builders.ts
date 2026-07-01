@@ -193,20 +193,7 @@ export class LessGrammar extends CssParser {
       const accMatch = /^\s*\[([^\]]+)\]/.exec(afterVal);
       if (accMatch) {
         const accText = accMatch[1]!.trim();
-        let accessorKey: JessNode | string;
-        if (accText.startsWith('$@')) {
-          const varRef = new Reference(accText.slice(2), { role: 'ident' }, loc) as unknown as Node;
-          const interp = new Interpolated(
-            { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] },
-            { role: 'ident' },
-            loc
-          ) as unknown as string;
-          accessorKey = new Quoted(interp, {}, loc) as unknown as JessNode;
-        } else if (accText.startsWith('@')) {
-          accessorKey = accText.slice(1);
-        } else {
-          accessorKey = new Quoted(accText, {}, loc) as unknown as JessNode;
-        }
+        const accessorKey = this._decodeAccessorKey(accText, loc);
         if (grammarPartialAccessor) {
           // Fix in-place: replace the wrong key on the existing Reference wrapper
           rawValue = new Reference(
@@ -767,9 +754,100 @@ export class LessGrammar extends CssParser {
     return (built ?? new Extend({ target: new BasicSelector('&', undefined, loc), flag: ExtendFlag.Exact }, {}, loc)) as unknown as JessNode;
   }
 
+  /**
+   * Decode a single `[key]` accessor into its Less lookup-key AST — the ONE shared
+   * decoder for every accessor-chain builder path (var-decl value, declaration value,
+   * at-rule prelude, namespace ref). Accepts either a raw authored key STRING (the
+   * text inside the brackets, e.g. `@@foo`, `$@x`, `bar`, ``), or a SquareParen `Paren`
+   * node whose inner content the grammar already parsed (a raw string or a `@var`
+   * Reference). Returns the key exactly as the reference lookupOrCall production would:
+   *
+   *   `[]`        → -1        (index, empty)
+   *   `[@@name]`  → Reference{type:variable,key:name}   (dynamic variable lookup)
+   *   `[$@name]` / `[@$name]` → Quoted(Interpolated(@name))  (dynamic property lookup)
+   *   `[@name]`   → 'name'    (static variable lookup; bare string key)
+   *   `[$name]`   → Quoted('name')   (property lookup; `$` marker dropped)
+   *   `[name]`    → Quoted('name')   (index)
+   *
+   * Exactly one `@`/`$` marker is the lookup marker and is never kept.
+   */
+  private _decodeAccessorKey(
+    rawTextOrNode: JessNode | string,
+    loc: LocationInfo
+  ): JessNode | string | number {
+    // Recover the authored key text: a bare string, a SquareParen node's inner
+    // content (string or parsed `@foo` Reference), or an already-extracted string.
+    let rawText: string | undefined;
+    let innerVal: unknown;
+    if (typeof rawTextOrNode === 'string') {
+      rawText = rawTextOrNode.trim();
+    } else {
+      innerVal = (rawTextOrNode as any).node ?? (rawTextOrNode as any).value;
+      // Empty `[]` — no inner content, or an empty `Any` placeholder → index key -1.
+      if (!innerVal
+        || (typeof innerVal === 'object' && (innerVal as any).type === 'Any'
+          && !String((innerVal as any).value ?? '').trim())) {
+        return -1;
+      }
+      if (typeof innerVal === 'string') {
+        rawText = innerVal.trim();
+      } else if (typeof innerVal === 'object'
+        && (innerVal as any).type === 'Reference' && typeof (innerVal as any).key === 'string') {
+        rawText = '@' + (innerVal as any).key;
+      }
+    }
+    if (rawText === undefined || rawText === '') {
+      // Empty `[]` (bare string) → index key -1. A non-string/non-@var node (e.g. an
+      // interpolated key) falls back to its `.key` or the node itself.
+      if (rawText === '') {
+        return -1;
+      }
+      return (innerVal as any)?.key ?? (innerVal as JessNode);
+    }
+    // `@@name` → dynamic variable lookup; key is a variable Reference.
+    if (rawText.startsWith('@@')) {
+      return new Reference(rawText.slice(2), { type: 'variable' as const }, loc) as unknown as JessNode;
+    }
+    // `$@name` / `@$name` → property lookup with a dynamic (variable) name:
+    // Quoted(Interpolated(@name)). The `$`/`@` markers are never kept.
+    if (rawText.startsWith('$@') || rawText.startsWith('@$')) {
+      const varRef = new Reference(rawText.slice(2), { role: 'ident' as const }, loc) as unknown as Node;
+      const interp = new Interpolated(
+        { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] as any },
+        { role: 'ident' as const }, loc
+      ) as unknown as string;
+      return new Quoted(interp, {}, loc) as unknown as JessNode;
+    }
+    // `@name` → variable lookup; key is the bare name (a string).
+    if (rawText.startsWith('@')) {
+      return rawText.slice(1);
+    }
+    // `$name` (property reference) or bare `name` (index) → Quoted(name); the `$`
+    // property marker is dropped.
+    return new Quoted(rawText.replace(/^\$/, ''), {}, loc) as unknown as JessNode;
+  }
+
   protected override _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
     const result = super._assembleSegment(seg, loc);
-    if (!Array.isArray(result) || result.length < 2) {
+    const isNsNameEarly = (c: unknown): c is string =>
+      typeof c === 'string' && /^[#.]-?[_a-zA-Z]/.test(c.trim());
+    if (!Array.isArray(result)) {
+      // A lone `#ns.mixin` / `.mixin` string in declaration-value position is a
+      // mixin-ruleset name Reference — not a raw string. Faithful to the reference
+      // `mixinReference`→`mixinName` (asReference:true). (The var-decl namespace path
+      // does this too via _tryParseNamespaceRef.)
+      if (isNsNameEarly(result)) {
+        const segs = (result as string).trim().match(/[#.][^#.]*/g) ?? [(result as string).trim()];
+        const nameKey: string | string[] = segs.length === 1 ? segs[0]! : segs;
+        const rawKey = segs.length > 1 ? segs.join('') : undefined;
+        return new Reference(
+          { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+          { type: 'mixin-ruleset', role: 'name' } as any, loc
+        ) as unknown as Component;
+      }
+      return result as Component;
+    }
+    if (result.length < 2) {
       return result as Component;
     }
     const comps = result as Component[];
@@ -793,9 +871,6 @@ export class LessGrammar extends CssParser {
       pathSegs.push(...splitNsToken((comps[i] as string).trim()));
       i++;
     }
-    if (i >= comps.length || (!isSquareParen(comps[i]) && !isRoundParen(comps[i]))) {
-      return comps as unknown as Component;
-    }
     const rawPathText = pathSegs.join('');
     const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
     const rawKey = pathSegs.length > 1 ? rawPathText : undefined;
@@ -803,56 +878,19 @@ export class LessGrammar extends CssParser {
       { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
       { type: 'mixin-ruleset', role: 'name' } as any, loc
     ) as unknown as JessNode;
-    // Less lookup-key semantics: `[@name]` is a static variable lookup whose key is
-    // the bare name 'name' (a string); `[@@name]` is a *dynamic* lookup whose key is a
-    // variable Reference to `name`; `[ident]` is an index (Quoted). Exactly one `@` is
-    // the variable marker and is never kept — the parser must not over- or under-strip.
-    const squareParenKey = (item: JessNode): JessNode | string | number => {
-      const innerNode = (item as any).node as JessNode | undefined;
-      const innerVal = innerNode ?? (item as any).value;
-      const isEmpty = !innerVal
-        || (typeof innerVal === 'object' && innerVal.type === 'Any' && !String((innerVal as any).value ?? '').trim());
-      if (isEmpty) {
-        return -1;
-      }
-      // Recover the authored key text: a raw string, or the source of a parsed `@foo`
-      // (the grammar turns a single `@var` key into Reference(key:'var')).
-      let rawText: string | undefined;
-      if (typeof innerVal === 'string') {
-        rawText = innerVal.trim();
-      } else if (typeof innerVal === 'object' && innerVal.type === 'Reference' && typeof (innerVal as any).key === 'string') {
-        rawText = '@' + (innerVal as any).key;
-      }
-      if (rawText !== undefined) {
-        // `@@name` → dynamic variable lookup; key is a variable Reference.
-        if (rawText.startsWith('@@')) {
-          return new Reference(rawText.slice(2), { type: 'variable' as const }, loc) as unknown as JessNode;
-        }
-        // `$@name` / `@$name` → property lookup with a dynamic (variable) name:
-        // Quoted(Interpolated(@name)). The `$`/`@` markers are never kept.
-        if (rawText.startsWith('$@') || rawText.startsWith('@$')) {
-          const varRef = new Reference(rawText.slice(2), { role: 'ident' as const }, loc) as unknown as Node;
-          const interp = new Interpolated(
-            { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] as any },
-            { role: 'ident' as const }, loc
-          ) as unknown as string;
-          return new Quoted(interp, {}, loc) as unknown as JessNode;
-        }
-        // `@name` → variable lookup; key is the bare name (a string).
-        if (rawText.startsWith('@')) {
-          return rawText.slice(1);
-        }
-        // `$name` (property reference) or bare `name` (index) → Quoted(name); the `$`
-        // property marker is dropped.
-        return new Quoted(rawText.replace(/^\$/, ''), {}, loc) as unknown as JessNode;
-      }
-      // Other node (e.g. an interpolated key) → its .key or the node itself.
-      return (innerVal as any)?.key ?? innerVal;
-    };
+    // A bare `#ns.mixin` / `.mixin` / `#ns > .a` run in declaration-value position,
+    // with NO following `[`/`(`, is still a mixin-ruleset name Reference — not a raw
+    // string/array. Faithful to the reference `mixinReference`→`mixinName`
+    // (asReference:true) `flushPendingAsRef` shape. (The var-decl path does this too.)
+    if (i >= comps.length || (!isSquareParen(comps[i]) && !isRoundParen(comps[i]))) {
+      // Only rewrite when the namespace run is the WHOLE value; a trailing non-paren
+      // component means this wasn't a lone namespace target (leave it as-is).
+      return (i === comps.length ? base : comps as unknown) as Component;
+    }
     while (i < comps.length) {
       const item = comps[i];
       if (isSquareParen(item)) {
-        const innerKey = squareParenKey(item as JessNode);
+        const innerKey = this._decodeAccessorKey(item as JessNode, loc);
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
           { type: 'variable' as const }, loc
@@ -2202,12 +2240,12 @@ export class LessGrammar extends CssParser {
       if (base === null) {
         return new Reference(
           { key: k } as unknown as ReferenceValue,
-          { role: 'name' } as any, loc
+          { type: 'mixin-ruleset', role: 'name' } as any, loc
         ) as unknown as JessNode;
       }
       return new Reference(
         { target: base as any, key: k } as unknown as ReferenceValue,
-        { role: 'name' } as any, loc
+        { type: 'mixin-ruleset', role: 'name' } as any, loc
       ) as unknown as JessNode;
     };
 
@@ -2247,32 +2285,7 @@ export class LessGrammar extends CssParser {
         if (base === null) {
           break;
         }
-        const sqInnerRaw = (c as any).node ?? (c as any).value;
-        const sqIsEmpty = !sqInnerRaw
-          || (typeof sqInnerRaw === 'object' && sqInnerRaw.type === 'Any' && !String((sqInnerRaw as any).value ?? '').trim());
-        let innerKey: JessNode | string | number;
-        if (sqIsEmpty) {
-          innerKey = -1;
-        } else if (typeof sqInnerRaw === 'string') {
-          const t = sqInnerRaw.trim();
-          if (t.startsWith('@')) {
-            innerKey = t.slice(1);
-          } else if (t.startsWith('$@')) {
-            const varRef = new Reference(t.slice(2), { role: 'ident' as const }, loc) as unknown as Node;
-            const interp = new Interpolated(
-              { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] as any },
-              { role: 'ident' as const }, loc
-            ) as unknown as string;
-            innerKey = new Quoted(interp, {}, loc) as unknown as JessNode;
-          } else {
-            innerKey = new Quoted(t, {}, loc) as unknown as JessNode;
-          }
-        } else if (typeof sqInnerRaw === 'object' && sqInnerRaw.type === 'Reference') {
-          // `[@var]` accessor: production (lookupOrCall) yields a string key, not a node.
-          innerKey = (sqInnerRaw as any).key ?? (sqInnerRaw as unknown as JessNode);
-        } else {
-          innerKey = (sqInnerRaw as any)?.key ?? (sqInnerRaw as unknown as JessNode);
-        }
+        const innerKey = this._decodeAccessorKey(c as JessNode, loc);
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
           { type: 'variable' as const }, loc
