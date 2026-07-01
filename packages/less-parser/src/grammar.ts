@@ -353,8 +353,13 @@ const cssRules = rules((g: any) => {
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
   )));
+  // Property name may itself be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
+  // Chevrotain lexes the name as a single Ident/InterpolatedIdent token whose image
+  // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
+  // through getInterpolatedNode. We mirror that: try the interpolated-ident regex
+  // first (it requires at least one `@{…}`), else a plain ident.
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(ident, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(choice(interpKey, ident), optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
   // Predictive custom-property value region — NO scanTo, NO skip. Content runs
@@ -379,18 +384,41 @@ const cssRules = rules((g: any) => {
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
   const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
   const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
-  const value = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  // Interpolated value token (`@{colorVar}`, `pre-@{x}`). Chevrotain lexes this as
+  // InterpolatedIdent and `processValueToken` runs it through getInterpolatedOrString
+  // → Interpolated (role=ident). Ordered before Reference: `@{` cannot match lessVar,
+  // and anyValueTok excludes `{`, so this is the only rule that accepts it.
+  const InterpValue = node('InterpValue',
+    parser({ trivia: rw }, interpKey),
+    (c: any, r: any, s: any) => mk('InterpValue', c, r, s));
+  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   const EscapedValue = node('EscapedValue',
     parser({ trivia: rw }, sequence(literal('~'), choice(g.Paren, g.Quoted))),
     (c: any, r: any, s: any) => mk('EscapedValue', c, r, s));
   const NamedColor = node('NamedColor', regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9])/i), (c: any, r: any, s: any) => mk('NamedColor', c, r, s));
   // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
-  const Dimension = node('Dimension', sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)), (c: any, r: any, s: any) => mk('Dimension', c, r, s));
+  // number + unit must be contiguous \u2014 the surrounding valueSequence runs with
+  // trivia enabled, so without noTrivia() a space (`1 %`, `10 px`) would still be
+  // glued into a Dimension. Chevrotain lexes those as Num + a separate token.
+  const Dimension = node('Dimension', noTrivia(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/))), (c: any, r: any, s: any) => mk('Dimension', c, r, s));
   // bare number; the not()-lookahead folded into the regex -> one match, one leaf.
   const Num = node('Num', regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/), (c: any, r: any, s: any) => mk('Num', c, r, s));
   const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
   const Url = node('Url', parser({ trivia: rw }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
   const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
+  // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
+  // bare `%` operand (e.g. `calc(1 %)`) is a syntax error (Chevrotain: mathProduct
+  // has no `%` alt, so the trailing `%` fails the closing `)`). We model calc as a
+  // Call whose body excludes a standalone `%` token, so `1 %` leaves the `%`
+  // unconsumed and the `)` fails → one parse error. A percentage glued to a number
+  // (`100%`) is a Dimension and unaffected.
+  const calcAnyTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!%]+/);
+  const calcAnyValue = choice(ident, calcAnyTok);
+  const calcValue = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
+  const calcSequence = parser({ trivia: rw }, oneOrMore(calcValue));
+  const calcList = parser({ trivia: rw }, sequence(calcSequence, many(sequence(literal(','), calcSequence))));
+  const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'), ')')));
+  const CalcCall = node('Call', parser({ trivia: rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
   const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
@@ -429,8 +457,8 @@ const cssRules = rules((g: any) => {
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
-    valueList, valueSequence, value, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, squareParenBody, Call, Paren, SquareParen, Quoted, anyValue, EachFor, AtRuleBlock, AtRuleStatement, atRuleBody
+    valueList, valueSequence, value, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
+    parenBody, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor, AtRuleBlock, AtRuleStatement, atRuleBody
   };
 });
 

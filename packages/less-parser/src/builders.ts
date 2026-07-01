@@ -13,7 +13,7 @@ import {
   CssParser, CSS_COLOR_NAMES,
   spannedComponents, type Spanned, type Component
 } from '@jesscss/css-parser';
-import { getInterpolatedOrString } from './utils.js';
+import { getInterpolatedOrString, getInterpolatedNode, createInterpolatedReference } from './utils.js';
 
 import {
   type Node,
@@ -116,6 +116,7 @@ export class LessGrammar extends CssParser {
       case 'For':                 return this._buildEachFor(children, raw, loc) as unknown as JessNode;
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
+      case 'InterpValue':         return this._buildInterpValue(raw, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
       case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
       case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
@@ -476,10 +477,15 @@ export class LessGrammar extends CssParser {
     const assign = merge === '+_' ? '+_:' : merge === '+' ? '+,:' : ':';
     const d = decl as unknown as { _options?: Record<string, unknown>; options?: Record<string, unknown>; name?: unknown };
     d._options = { ...(d._options ?? {}), assign };
-    // Wrap plain string name in Any node with role='property'
+    // Wrap the string name. An interpolated property name (`@{prop}`, `pre-@{x}`)
+    // becomes an Interpolated (port of `declaration`'s getInterpolatedNode branch);
+    // a plain name becomes Any(role='property').
     if (typeof d.name === 'string' && d.name) {
       const nameStr = d.name;
-      (decl as unknown as { name: unknown }).name = new Any(nameStr, { role: 'property' }, loc);
+      (decl as unknown as { name: unknown }).name =
+        (nameStr.includes('@{') || nameStr.includes('${'))
+          ? getInterpolatedNode(nameStr, loc)
+          : new Any(nameStr, { role: 'property' }, loc);
     }
     // Arithmetic: a `<value> <op> <value>` sequence folds into Operation nodes
     // (precedence-climbed), then the outer math gets an explicit parenthesized
@@ -517,34 +523,58 @@ export class LessGrammar extends CssParser {
         return decl;
       }
     }
-    // Mixed string+Reference array values (e.g. IE filter) → Interpolated
+    // Legacy IE `filter: progid:…(…)` values. Chevrotain lexes the whole run as one
+    // `LegacyMSFilter` token and `processLegacyMSFilterToken` collapses it to a single
+    // Interpolated (role=any): the raw source with every `@var` replaced by a
+    // placeholder (colorstr assignments keep the surrounding quotes) and the `@var`
+    // references as replacements. We have no such token — the value parsed into a
+    // Sequence/List/Paren tree — but for a `progid:` filter run we reconstruct the
+    // identical node from the raw value source.
     const dv = (decl as unknown as { value?: unknown }).value;
-    if (Array.isArray(dv)) {
-      const parts = dv as unknown[];
-      const hasRef = parts.some(p => !!p && typeof p === 'object' && 'type' in (p as object));
-      const hasStr = parts.some(p => typeof p === 'string');
-      if (hasRef && hasStr) {
-        const src = this._source.slice(loc[0], loc[3]);
-        const colonPos = src.indexOf(':');
-        const rawVal = colonPos >= 0 ? src.slice(colonPos + 1).trim().replace(/;$/, '').trim() : src;
-        const replacements: JessNode[] = [];
-        let source = rawVal;
-        for (const part of parts) {
-          if (part && typeof part === 'object' && 'type' in (part as object)) {
-            const varKey = (part as any).key ?? '';
-            const placeholder = '@{' + String(varKey) + '}';
-            source = source.replace(new RegExp('@-?' + String(varKey).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])'), INTERPOLATION_PLACEHOLDER);
-            replacements.push(part as JessNode);
-          }
-        }
-        (decl as unknown as { value: unknown }).value = new Interpolated(
-          { source, replacements: replacements as any },
-          { role: 'ident' },
-          loc
-        );
+    const dvIsArray = Array.isArray(dv);
+    const dvHasNode = dvIsArray && (dv as unknown[]).some(p => !!p && typeof p === 'object' && 'type' in (p as object));
+    if (dvIsArray && dvHasNode) {
+      const src = this._source.slice(loc[0], loc[3]);
+      const colonPos = src.indexOf(':');
+      const rawVal = colonPos >= 0 ? src.slice(colonPos + 1).trim().replace(/;\s*$/, '').trim() : src;
+      if (/^progid:/i.test(rawVal)) {
+        const legacy = this._buildLegacyMSFilter(rawVal, loc);
+        (decl as unknown as { value: unknown }).value = legacy;
       }
     }
     return decl;
+  }
+
+  /**
+   * Port of `processLegacyMSFilterToken` (lessRecursiveParser.ts): a `progid:…`
+   * filter value string → Interpolated(role=any) with `@var` runs templated out,
+   * or a plain Any when the run has no variables.
+   */
+  private _buildLegacyMSFilter(source: string, loc: LocationInfo): JessNode {
+    source = source.replace(/\s*=\s*/g, '=');
+    const varRe = /@([_a-zA-Z\xA0-￿][-_a-zA-Z0-9\xA0-￿]*)/g;
+    const matches = [...source.matchAll(varRe)];
+    if (matches.length === 0) {
+      return new Any(source, { role: 'any' }, loc) as unknown as JessNode;
+    }
+    const templatedSource = source.replace(
+      varRe,
+      (_full, _name, offset: number, fullSource: string) => {
+        const prefix = fullSource.slice(0, offset);
+        const key = prefix.match(/([A-Za-z]+)=$/)?.[1];
+        if (key && /colorstr$/i.test(key)) {
+          return `"${INTERPOLATION_PLACEHOLDER}"`;
+        }
+        return INTERPOLATION_PLACEHOLDER;
+      }
+    );
+    const replacements = matches.map(match =>
+      createInterpolatedReference('@', match[1]!, loc) as unknown as JessNode);
+    return new Interpolated(
+      { source: templatedSource, replacements: replacements as any },
+      { role: 'any' },
+      loc
+    ) as unknown as JessNode;
   }
 
   /**
@@ -850,6 +880,19 @@ export class LessGrammar extends CssParser {
     const n = inner as unknown as { _options?: Record<string, unknown> };
     n._options = { ...(n._options ?? {}), escaped: true };
     return inner;
+  }
+
+  // `@{colorVar}` / `pre-@{x}` in value position. Port of `processValueToken`'s
+  // InterpolatedIdent branch: getInterpolatedOrString → Interpolated (role=ident),
+  // or a plain Any(role=ident) when the run resolves to a bare string.
+  private _buildInterpValue(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const image = items.map(i => (typeof i.comp === 'string' ? i.comp : '')).join('');
+    const result = getInterpolatedOrString(image, loc);
+    if (typeof result === 'string') {
+      return new Any(result, { role: 'ident' }, loc) as unknown as JessNode;
+    }
+    return result as unknown as JessNode;
   }
 
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -1293,7 +1336,14 @@ export class LessGrammar extends CssParser {
     // argsList presence (from MixinArgs sub-node) signals explicit parens
     const hasExplicitParens = argsList !== undefined;
     if (hasBlock) {
-      const ruleNodes = nodes.filter(n => n !== argsList && n !== guard);
+      const rawRuleNodes = nodes.filter(n => n !== argsList && n !== guard);
+      // Lift standalone comments in the body (the Mixin/qualified-rule body is built
+      // inline here, bypassing _buildRuleset's own comment lift).
+      const braceIdx = this._source.indexOf('{', loc[0]);
+      const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
+      const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
+      const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
+      const ruleNodes = this._liftStandaloneComments(rawRuleNodes as any, bodyStart, bodyEnd, loc);
       if (hasExplicitParens) {
         // Has explicit parens -- it's a Mixin definition
         const nameNode = new Any(name, { role: 'name' }, loc) as unknown as Any<'name'>;
