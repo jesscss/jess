@@ -34,12 +34,14 @@ Status legend: 🔴 duplicate to collapse · 🟡 needs review · 🟢 canonical
   primitive + `attachConfiguredVarBindings`.
 
 ## C. Node copy / clone (`util/cloning.ts` + scattered)
-- 🟡 `copyWithReusableLeaves` / `copyOwnedWithReusableLeaves` /
-  `copyWithReusableLeavesPreservingComments` — three near-identical leaf-reuse
-  copies differing only in comment handling / always-clone. Fold to one with opts.
-- 🔴 per-part derive copies: `copyValueForDerived`, `copyValueNodeForDerived`,
-  `copyNameForDerived`, `copyImportantForDerived` — used by `deriveWithParts`;
-  check for a single `copyPartForDerived`.
+- ✅ `copyWithReusableLeaves` / `copyOwnedWithReusableLeaves` /
+  `copyWithReusableLeavesPreservingComments` — folded into one `copyForPlacement`
+  core with `{ owned, preserveComments }` flags; the 3 exported names are now thin
+  wrappers (zero call-site churn, deduped the Comment/ampersand/reuse/clone logic).
+- 🟢 per-part derive copies (`copyNameForDerived`/`copyValueForDerived`/
+  `copyValueNodeForDerived`/`copyImportantForDerived`, declaration.ts) — reviewed:
+  genuinely field-specific (string vs array vs boolean vs Node); the shared core
+  IS `copyValueNodeForDerived`. Keep.
 - 🟡 `cloneForPlacement`, `cloneValue`, `cloneBoundValue`, `clone` — review.
 - 🟡 selector copies: `copySelectorForExtend`, `copySelectorForExtendRecord`,
   `copySelectorForPlacement`, `copyComplexComponentForPlacement` — extend/placement

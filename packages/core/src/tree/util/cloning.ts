@@ -29,8 +29,17 @@ function deriveAmpersand(node: Node): Node | undefined {
   return undefined;
 }
 
-export function copyWithReusableLeaves(node: Node): Node {
-  if (node.type === 'Comment') {
+/**
+ * The single placement-copy primitive. Variants differ only in two flags:
+ * - `owned`: skip the source-free leaf reuse (always copy the container).
+ * - `preserveComments`: keep comment nodes (no Comment→Nil) and don't strip
+ *   comments from the placement clone.
+ */
+function copyForPlacement(
+  node: Node,
+  options: { owned?: boolean; preserveComments?: boolean } = {}
+): Node {
+  if (!options.preserveComments && node.type === 'Comment') {
     const nilNode = node.nil?.();
     if (nilNode) {
       return nilNode.inherit(node);
@@ -41,37 +50,22 @@ export function copyWithReusableLeaves(node: Node): Node {
     derivedAmpersand.frozen = true;
     return derivedAmpersand;
   }
-  if (canReuseLeaf(node)) {
+  if (!options.owned && canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
-  return node.cloneForPlacement();
+  return node.cloneForPlacement(options.preserveComments ? { stripComments: false } : undefined);
+}
+
+export function copyWithReusableLeaves(node: Node): Node {
+  return copyForPlacement(node);
 }
 
 export function copyWithReusableLeavesPreservingComments(node: Node): Node {
-  const derivedAmpersand = deriveAmpersand(node);
-  if (derivedAmpersand) {
-    derivedAmpersand.frozen = true;
-    return derivedAmpersand;
-  }
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
-  }
-  return node.cloneForPlacement({ stripComments: false });
+  return copyForPlacement(node, { preserveComments: true });
 }
 
 export function copyOwnedWithReusableLeaves(node: Node): Node {
-  if (node.type === 'Comment') {
-    const nilNode = node.nil?.();
-    if (nilNode) {
-      return nilNode.inherit(node);
-    }
-  }
-  const derivedAmpersand = deriveAmpersand(node);
-  if (derivedAmpersand) {
-    derivedAmpersand.frozen = true;
-    return derivedAmpersand;
-  }
-  return node.cloneForPlacement();
+  return copyForPlacement(node, { owned: true });
 }
 
 /**
