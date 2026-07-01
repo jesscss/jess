@@ -95,7 +95,7 @@ const cssRules = rules((g: any) => {
   // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.VarCall, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
+      g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
       sequence(g.Call, optional(literal(';'))), literal(';')
     ))),
     (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
@@ -348,7 +348,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.VarCall, g.AtRuleBlock, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
@@ -441,14 +441,73 @@ const cssRules = rules((g: any) => {
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] }));
+
+  // ── Structured, committed query block (@media / @container / @supports) ──────
+  // The flat `atPrelude` above walks past ANY bracket content to the first
+  // top-level `{`/`;`, so a stray/unbalanced bracket (`@media (extra: bracket))`)
+  // is silently swallowed — 0 errors. This structured prelude mirrors the CSS
+  // query grammar (grammar.ts QueryCondition/QueryInParens/QueryFeature): each
+  // `(…)` is a real balanced group, so a top-level stray `)` is NOT consumed by
+  // the prelude, and the committed `expect('{')` then fails ON that `)` → 1 error.
+  // Because the query keyword IS consumed, this rule does not fall through to the
+  // swallowing generic AtRuleBlock. Well-formed Less-specific preludes that this
+  // structured shape can't parse (bare `@var`, `#ns.x[@k]`, `~"…"`, `@media
+  // screen`) fail the prelude BEFORE the commit point, so the sequence backtracks
+  // cleanly and the generic AtRuleBlock (→ `_buildAtRulePrelude`) handles them.
+  // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
+  const mfComparison = regex(/<=|>=|[<>=]/);
+  const QueryFeature = node('QueryFeature',
+    parser({ trivia: rw }, sequence(ident, optional(choice(
+      sequence(literal(':'), g.valueList),
+      sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
+    )))),
+    (c: any, r: any, s: any) => mk('QueryFeature', c, r, s));
+  const QueryInParens = node('QueryInParens',
+    parser({ trivia: rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))),
+    (c: any, r: any, s: any) => mk('QueryInParens', c, r, s));
+  const QueryCondition = node('QueryCondition',
+    parser({ trivia: rw }, choice(
+      sequence(regex(/not(?![-\w])/i), g.QueryInParens),
+      sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
+    )),
+    (c: any, r: any, s: any) => mk('QueryCondition', c, r, s));
+  // Optional leading container name — an ident that is NOT a query keyword.
+  const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
+  const queryPrelude = parser({ trivia: rw }, sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
+  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const QueryAtRuleBlock = node('QueryAtRuleBlock',
+    parser({ trivia: rw }, sequence(queryAtKeyword, queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}'))),
+    (c: any, r: any, s: any) => mk('QueryAtRuleBlock', c, r, s));
+
   const AtRuleBlock = node('AtRuleBlock',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))),
     (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
+
+  // ── Structured, committed import statement (@import / @-import / @-export) ────
+  // The flat `atPrelude` also swallows a bare ident before the path, so
+  // `@import malformed "x.less";` is accepted with 0 errors. This rule requires,
+  // right after the keyword and an optional `(options)` paren, a quoted string or
+  // `url(...)` as the path — committed via `expect`. For `@import malformed "…"`,
+  // the token after the keyword is the bare ident `malformed` (neither `(` nor
+  // Quoted/Url), so the committed `expect(choice(Quoted, Url))` fails → 1 error.
+  // Ordered before the generic AtRuleStatement; the existing
+  // `_buildImportAtRuleFromPrelude` builder reconstructs the AST from source.
+  const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
+  const importOptionsParen = sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] }), literal(')'));
+  const importMedia = scanTo(literal(';'), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] });
+  const ImportAtRuleStatement = node('AtRuleStatement',
+    parser({ trivia: rw }, sequence(
+      importKeyword, optional(importOptionsParen),
+      expect(choice(g.Url, g.Quoted), 'import path'),
+      optional(importMedia), expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.AtRuleBlock, g.AtRuleStatement, g.VarDeclaration, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.VarDeclaration, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
   )));
 
   return {
@@ -458,7 +517,9 @@ const cssRules = rules((g: any) => {
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor, AtRuleBlock, AtRuleStatement, atRuleBody
+    parenBody, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
+    QueryFeature, QueryInParens, QueryCondition, QueryAtRuleBlock, ImportAtRuleStatement,
+    AtRuleBlock, AtRuleStatement, atRuleBody
   };
 });
 

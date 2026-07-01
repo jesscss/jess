@@ -99,6 +99,9 @@ export class LessGrammar extends CssParser {
       case 'AtRuleBlock':
         this._warnAtRulePreludeVars(span);
         return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
+      case 'QueryAtRuleBlock':
+        this._warnAtRulePreludeVars(span);
+        return this._buildLessQueryAtRuleBlock(children, raw, loc);
       case 'NamedColor':          return this._buildNamedColor(children, loc);
       case 'Comparison':          return this._buildComparison(children, loc);
       case 'GuardDefault':        return new DefaultGuard('default()', {}, loc) as unknown as JessNode;
@@ -1789,15 +1792,50 @@ export class LessGrammar extends CssParser {
     if (USE_NAMES.includes(name)) {
       return this._buildUseAtRuleFromPrelude(children, loc, name);
     }
+    const rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    return this._buildAtRuleFromParts(name, rawPreludeText, nodeChildren(children), loc);
+  }
+
+  /**
+   * Shared AtRule assembly used by both the flat `AtRuleBlock` builder and the
+   * structured, committed `QueryAtRuleBlock` builder. `preludeText` is the raw
+   * prelude source (already `{`/`}` stripped); routing it through
+   * `_buildAtRulePrelude` keeps the emitted AST identical regardless of which
+   * grammar rule matched.
+   */
+  private _buildAtRuleFromParts(
+    name: string,
+    preludeText: string | undefined,
+    ruleNodes: JessNode[],
+    loc: LocationInfo
+  ): JessNode {
     const isNestable = (NESTABLE_AT_RULES as readonly string[]).includes(name);
     const nestableOpts = isNestable ? { nestable: true } : undefined;
     const nameNode = new Any(name, { role: 'atkeyword' }, loc);
-    const rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
-    const prelude = rawPreludeText ? this._buildAtRulePrelude(rawPreludeText, loc) : undefined;
+    const prelude = preludeText ? this._buildAtRulePrelude(preludeText, loc) : undefined;
     return new AtRule(
-      { name: nameNode as any, prelude: prelude as any, rules: nodeChildren(children) },
+      { name: nameNode as any, prelude: prelude as any, rules: ruleNodes },
       nestableOpts, loc
-    );
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * Builder for the structured, committed `@media`/`@container`/`@supports`
+   * query block. The grammar rule parses the prelude with real query structure
+   * (so a stray/unbalanced bracket is rejected instead of swallowed) and commits
+   * on `expect('{')`, but the AST is reconstructed from the prelude source text
+   * via the shared `_buildAtRuleFromParts` path — so well-formed queries emit the
+   * exact same AtRule the flat `AtRuleBlock` builder would.
+   */
+  private _buildLessQueryAtRuleBlock(children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const comps = spannedComponents(raw);
+    const keywordEnd = comps[0]?.span.end ?? loc[0];
+    const braceComp = comps.find(c => c.comp === '{');
+    const braceStart = braceComp?.span.start ?? loc[3];
+    const preludeText = this._source.slice(keywordEnd, braceStart).trim();
+    return this._buildAtRuleFromParts(name, preludeText || undefined, nodeChildren(children), loc);
   }
 
   private _buildAtRulePrelude(text: string, loc: LocationInfo): JessNode {
