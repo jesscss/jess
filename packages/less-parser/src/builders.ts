@@ -877,15 +877,22 @@ export class LessGrammar extends CssParser {
 
   private _buildLessCustomDecl(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const propName = ls[0]?.value ?? '';
+    const propNameText = ls[0]?.value ?? '';
+    // `--@{key}: …` (port of the reference's InterpolatedCustomProperty branch):
+    // an interpolated name becomes an Interpolated node, same as a regular
+    // declaration's `getInterpolatedNode` branch.
+    const name = (propNameText.includes('@') || propNameText.includes('$'))
+      ? getInterpolatedNode(propNameText, loc)
+      : propNameText;
     const valueNodes = nodeChildren(children);
     if (valueNodes.length > 0) {
       const value = valueNodes.length === 1 && valueNodes[0]!.type === 'Sequence'
         ? valueNodes[0]!
         : new Sequence(valueNodes as any, undefined, loc);
-      return new CustomDeclaration({ name: propName, value: value as any }, undefined, loc);
+      return new CustomDeclaration({ name: name as any, value: value as any }, undefined, loc);
     }
-    return this._buildCustomDeclaration(children, loc);
+    const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
+    return new CustomDeclaration({ name: name as any, value: new Any(valueText, {}, loc) as any }, undefined, loc);
   }
 
   private _warnDeprecatedValue(span: Span) {

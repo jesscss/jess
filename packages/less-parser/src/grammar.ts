@@ -71,6 +71,12 @@ const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\
 const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
 const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
+// Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`). Port of the
+// reference's InterpolatedCustomProperty token: `--` + optional ident run, then
+// one-or-more `@{...}` interpolations interleaved with further ident runs. Tried
+// before the plain `customProp` regex, which stops at `@` (not an ident char) and
+// would otherwise match only `--`, failing the declaration outright.
+const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
@@ -375,7 +381,7 @@ const cssRules = rules((g: any) => {
   const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}'), '}'));
   const cpValue = noTrivia(many(choice(cpOuterContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr)));
   const CustomDeclaration = node('CustomDeclaration',
-    parser({ trivia: rw }, sequence(customProp, literal(':'),
+    parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
       choice(g.customValue, g.cpValue),
       optional(literal(';')))),
     (c: any, r: any, s: any) => mk('CustomDeclaration', c, r, s));

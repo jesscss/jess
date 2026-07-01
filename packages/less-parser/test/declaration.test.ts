@@ -49,6 +49,22 @@ describe('declaration', () => {
     expect(value.value?.[0]?.type).toBe('Call');
   });
 
+  it('should parse custom property declaration with an interpolated name', () => {
+    const { errors, tree } = parse('--@{key}: @value', 'declaration');
+    expect(errors.length).toBe(0);
+    const name: any = asDeclaration(tree).name;
+    expect(name.type).toBe('Interpolated');
+  });
+
+  it('should parse each() with an interpolated custom-property declaration in its body', () => {
+    const { errors } = parse(`:root {
+      each(@vars, {
+        --@{key}: @value;
+      });
+    }`, 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
     const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'stylesheet');
     expect(errors.length).toBe(0);
