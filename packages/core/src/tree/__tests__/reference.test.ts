@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
@@ -1354,8 +1354,8 @@ describe('reference', () => {
 
     it('keeps direct index target semantics per container kind', async () => {
       const targetList = list([any('red'), any('blue')]);
-      const targetArray = new JsArray([any('one'), any('two')]);
-      const targetObject = new JsObject({ tone: any('green') });
+      const targetArray = jsarray([any('one'), any('two')]);
+      const targetObject = jsobj({ tone: any('green') });
       const targetRules = rules([
         decl({ name: 'tone', value: any('orange') }),
         vardecl({ name: 'toneVar', value: any('purple') })
@@ -1543,8 +1543,8 @@ describe('reference', () => {
     });
 
     it('renders source-free direct index scalar hits without applying reference metadata', async () => {
-      const targetArray = new JsArray([any('one'), any('two')]);
-      const targetObject = new JsObject({ tone: any('green') });
+      const targetArray = jsarray([any('one'), any('two')]);
+      const targetObject = jsobj({ tone: any('green') });
       const node = rules([
         vardecl({ name: 'targetArray', value: targetArray }),
         vardecl({ name: 'targetObject', value: targetObject })
@@ -1589,8 +1589,8 @@ describe('reference', () => {
     it('renders source-free direct index container hits without applying reference metadata', async () => {
       const arrayList = list([any('alpha'), any('beta')]);
       const objectSequence = spaced([any('one'), any('two')]);
-      const targetArray = new JsArray([arrayList]);
-      const targetObject = new JsObject({
+      const targetArray = jsarray([arrayList]);
+      const targetObject = jsobj({
         tones: objectSequence
       });
       const node = rules([
@@ -1650,7 +1650,7 @@ describe('reference', () => {
     it('renders source-backed direct index container hits without container copies', async () => {
       const sourceList = list([any('alpha'), any('beta')]);
       sourceList._location = [10, 1, 11, 20, 1, 21];
-      const targetArray = new JsArray([sourceList]);
+      const targetArray = jsarray([sourceList]);
       const node = rules([
         vardecl({ name: 'targetArray', value: targetArray })
       ]);
@@ -1697,7 +1697,7 @@ describe('reference', () => {
     it('renders source-backed direct index object container hits without container copies', async () => {
       const sourceList = list([any('alpha'), any('beta')]);
       sourceList._location = [10, 1, 11, 20, 1, 21];
-      const targetObject = new JsObject({ tones: sourceList });
+      const targetObject = jsobj({ tones: sourceList });
       const node = rules([
         vardecl({ name: 'targetObject', value: targetObject })
       ]);
@@ -1742,7 +1742,7 @@ describe('reference', () => {
     });
 
     it('keeps public direct index container resolve from corrupting source parents', async () => {
-      const targetObject = new JsObject({
+      const targetObject = jsobj({
         tones: list([any('one'), any('two')])
       });
       const node = rules([
@@ -1771,7 +1771,7 @@ describe('reference', () => {
     it('keeps source-free public direct index container sources canonical', async () => {
       const sourceList = list([any('a'), any('b')]);
       sourceList.frozen = true;
-      const targetArray = new JsArray([sourceList]);
+      const targetArray = jsarray([sourceList]);
       const root = rules([
         vardecl({ name: 'items', value: targetArray })
       ]);

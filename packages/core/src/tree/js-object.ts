@@ -5,7 +5,10 @@ import { Node, defineType, type LocationInfo, type NodeOptions } from './node.js
  * A plain JS object.
  */
 export class JsObject extends Node<Record<string, any>> {
-  static override childKeys = null;
+  // Value is a record that may hold Node children; childKeys=['value'] lets the
+  // canonical factory parent them (one level) and clone traverse them. Raw
+  // `new JsObject` still shares (invariant 7) — e.g. eval-time cast().
+  static override childKeys = ['value'];
   readonly value: Record<string, any>;
 
   constructor(value: Record<string, any>, options?: NodeOptions, location?: LocationInfo) {
