@@ -262,6 +262,14 @@ export const F_EXTEND_TARGET = 0b10000000;
 /** Node value owns at least one child node. */
 export const F_HAS_NODE_CHILD = 0b100000000;
 
+/**
+ * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
+ * faithful copy (`clone()`) PRESERVES these from its source — same structure ⇒
+ * same flags — rather than recomputing them from children (that is eval-path
+ * derivation, not copying). Canonical construction bubbles them via `adopt`.
+ */
+export const F_CHILD_DERIVED = F_MAY_ASYNC | F_STATIC | F_NON_STATIC | F_AMPERSAND | F_HAS_NODE_CHILD;
+
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
 
@@ -624,41 +632,6 @@ export abstract class Node<
     if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
       this.addFlag(F_AMPERSAND);
     }
-  }
-
-  /**
-   * Crawl this node's DIRECT child nodes (via `childKeys`, one level) and OR
-   * their propagated flags upward — no reparenting. Called after derivation
-   * (see `inherit`) so a shared/mapped-child copy carries the same F_MAY_ASYNC /
-   * F_NON_STATIC / F_STATIC as its source. Parenting stays canonical-only.
-   */
-  propagateChildFlags(): this {
-    const childKeys = (this.constructor as typeof Node).childKeys;
-    if (childKeys === null) {
-      return this;
-    }
-    const crawl = (v: unknown): void => {
-      if (v instanceof Node) {
-        this.propagateFlagsFrom(v);
-      } else if (isArray(v)) {
-        for (let i = 0; i < v.length; i++) {
-          crawl(v[i]);
-        }
-      } else if (isPlainObject(v)) {
-        for (const k in v) {
-          crawl((v as Record<string, unknown>)[k]);
-        }
-      }
-    };
-    if (childKeys === undefined) {
-      crawl((this as unknown as { value: unknown }).value);
-    } else {
-      const fields = this as unknown as Record<string, unknown>;
-      for (let i = 0; i < childKeys.length; i++) {
-        crawl(fields[childKeys[i]!]);
-      }
-    }
-    return this;
   }
 
   /**
@@ -1136,9 +1109,10 @@ export abstract class Node<
       this._location
     );
     newNode.inherit(this);
-    // A clone shares/maps this node's children, so it must carry the same
-    // child-derived flags (F_MAY_ASYNC / F_NON_STATIC / …). Crawl, no reparent.
-    newNode.propagateChildFlags();
+    // Faithful copy: a clone shares/maps the SAME children as its source, so it
+    // PRESERVES the source's child-derived flags rather than recomputing them.
+    // clone() is an AST-copy primitive — it must not do eval-path derivation.
+    newNode.flags = (newNode.flags & ~F_CHILD_DERIVED) | (this.flags & F_CHILD_DERIVED);
 
     return newNode;
   }
