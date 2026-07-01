@@ -13,7 +13,9 @@ describe('Node mutation', () => {
     expect(sourced._treeContext).toBe(treeContext);
     expect(sourced._sourceRoot).toBeUndefined();
 
-    const root = new Rules([sourced], undefined, undefined, treeContext);
+    // Invariant 7: raw `new Rules` shares; `_sourceRoot` propagation to children
+    // happens on canonical parenting (as the `rules` factory does).
+    const root = new Rules([sourced], undefined, undefined, treeContext).parentChildren();
     expect(root._treeContext).toBe(treeContext);
     expect(root._sourceRoot).toBe(root);
     expect(sourced._treeContext).toBe(treeContext);

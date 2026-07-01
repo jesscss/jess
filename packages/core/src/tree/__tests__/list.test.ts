@@ -455,7 +455,9 @@ describe('List', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    const left = new CountingList([leftChild]);
+    // Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+    // (as the `list` factory does) so operate() has real source parentage.
+    const left = new CountingList([leftChild]).parentChildren();
     const right = list([rightChild]);
 
     CountingList.countConstructions = true;

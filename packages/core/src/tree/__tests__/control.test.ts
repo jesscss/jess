@@ -1056,10 +1056,12 @@ describe('Control Nodes', () => {
   it('adopts $while condition and rules as children', () => {
     const condition = bool(true);
     const decl1 = decl({ name: 'color', value: any('red') });
+    // Invariant 7: raw `new While` shares; canonical parenting is the explicit
+    // `parentChildren()` primitive (what the `while()` factory calls).
     const node = new While({
       condition,
       rules: [decl1]
-    });
+    }).parentChildren();
 
     expect(condition.parent).toBe(node);
     expect(decl1.parent).toBe(node);

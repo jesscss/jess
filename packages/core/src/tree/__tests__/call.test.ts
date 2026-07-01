@@ -2705,10 +2705,12 @@ describe('Call', () => {
     }
 
     const originalArgs = list([any('red')]);
+    // Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+    // (as the `call` factory does) so resolve() has real source parentage.
     const rule = new CountingCall({
       name: ref({ key: 'echo' }, { type: 'function' }),
       args: originalArgs
-    });
+    }).parentChildren();
 
     CountingCall.countConstructions = true;
     try {
