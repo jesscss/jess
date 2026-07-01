@@ -1387,5 +1387,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 defineType<StyleImportValue>(StyleImport, 'StyleImport', 'style');
 
 export const style = (...args: ConstructorParameters<typeof StyleImport>) => {
-  return new StyleImport(...args);
+  // Canonical factory parents one level (invariant 7); raw `new StyleImport` shares.
+  return new StyleImport(...args).parentChildren();
 };

@@ -39,12 +39,15 @@ function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration 
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  static override childKeys = ['name', 'attributeValue'] as const;
-
-  readonly name: AttributeSelectorValue['name'];
-  readonly op: string | undefined;
-  readonly attributeValue: Node | undefined;
-  readonly mod: string | undefined;
+  // Exception to the "separate field values" rule: the `{name, op, value, mod}`
+  // record is a normalization decomposition, so the whole object IS this node's
+  // canonical `value` (stored + typed by the Selector base, childKeys=['value']).
+  // The base walks it for parenting/clone; parts are exposed as getters so call
+  // sites keep reading `this.name` / `this.attributeValue`.
+  get name(): AttributeSelectorValue['name'] { return this.value.name; }
+  get op(): string | undefined { return this.value.op; }
+  get attributeValue(): Node | undefined { return this.value.value; }
+  get mod(): string | undefined { return this.value.mod; }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
     const value = this.attributeValue;
@@ -282,32 +285,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     location?: LocationInfo | 0,
     treeContext?: Context['treeContext']
   ) {
-    // `0` is a legacy no-op location sentinel; convert to undefined for base class
+    // `0` is a legacy no-op location sentinel; convert to undefined for base class.
+    // The Selector base stores `this.value = value`; we only add treeContext.
     super(value, options, location === 0 ? undefined : location);
-    this.name = value.name;
-    this.op = value.op;
-    this.attributeValue = value.value;
-    this.mod = value.mod;
     this._treeContext = treeContext;
-  }
-
-  // The value shape is `{name, op, value, mod}` (with scalar op/mod) and the
-  // stored field `attributeValue` is keyed `value`, so the base childKeys
-  // object-rebuild doesn't fit — own the clone (invariant 7).
-  override clone(cloneFn?: (n: Node) => Node): this {
-    const name = cloneFn && this.name instanceof Node ? cloneFn(this.name) : this.name;
-    const value = cloneFn && this.attributeValue instanceof Node
-      ? cloneFn(this.attributeValue)
-      : this.attributeValue;
-    const node = new AttributeSelector(
-      { name, op: this.op, value, mod: this.mod },
-      undefined,
-      this._location,
-      this._treeContext
-    );
-    node.inherit(this);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return node as this;
   }
 }
 
