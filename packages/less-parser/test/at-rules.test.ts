@@ -79,6 +79,24 @@ describe('mediaInParens', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('unwraps an escaped-string media query to its literal content on eval', async () => {
+    const { errors, tree } = parse('@media ~"screen" { a { color: red; } }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen {');
+    expect(String(evald)).not.toContain('~"screen"');
+  });
+
+  it('keeps an escaped-string media query atomic across embedded spaces/parens', async () => {
+    const { errors, tree } = parse(
+      '@media ~"screen and (min-width: 400px)" { a { color: red; } }',
+      'stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen and (min-width: 400px) {');
+  });
+
   it('should parse variable media query at top level', () => {
     const { errors, tree } = parse('@media @breakpoint, print { }', 'stylesheet');
     expect(errors.length).toBe(0);

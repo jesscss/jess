@@ -1817,7 +1817,16 @@ export class LessGrammar extends CssParser {
     const MEDIA_KEYWORDS = new Set(['and', 'or', 'not', 'only', 'all', 'print', 'screen', 'speech']);
     const COMPARISON_OPS = new Set(['>', '<', '>=', '<=', '=', '!=']);
 
+    // `~"screen"` / `~'screen'` — an escaped string standing in for the whole
+    // query (lessMediaQueryFromString in the reference). Mirrors
+    // `_buildEscapedValue`: a Quoted with `escaped: true` so eval unwraps it to
+    // the literal content instead of quoted CSS.
+    const escapedStrRe = /^~(['"])([\s\S]*)\1$/;
     const buildWord = (w: string): JessNode => {
+      const es = escapedStrRe.exec(w);
+      if (es) {
+        return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+      }
       const mv = singleVarRe.exec(w);
       if (mv) {
         return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
@@ -1868,6 +1877,21 @@ export class LessGrammar extends CssParser {
           }
           tokens.push(buildParen(t.slice(i + 1, j - 1)));
           i = j;
+        } else if (t[i] === '"' || t[i] === '\'' || (t[i] === '~' && (t[i + 1] === '"' || t[i + 1] === '\''))) {
+          // A quoted (optionally `~`-escaped) run is one token, even with spaces
+          // inside — matches the outer atPrelude scan, which already treats
+          // strings as atomic.
+          const start = i;
+          if (t[i] === '~') {
+            i++;
+          }
+          const quote = t[i]!;
+          i++;
+          while (i < t.length && t[i] !== quote) {
+            i++;
+          }
+          i = Math.min(i + 1, t.length);
+          tokens.push(buildWord(t.slice(start, i)));
         } else if (/\s/.test(t[i]!)) {
           i++;
         } else {
