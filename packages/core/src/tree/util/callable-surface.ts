@@ -11,7 +11,11 @@ export function isIndexedRuleChild(node: Node): boolean {
 export function getRootSourceRules(rules: Rules): Rules {
   let current = rules;
   const seen = new Set<Rules>();
-  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
+  // A canonical body can be any Rules SUBCLASS (Mixin/Ruleset), not only a plain
+  // Rules — since the Mixin.sourceNode wrapper was eliminated, a mixin surface's
+  // sourceNode IS the Mixin. `instanceof Rules` walks all three; the old bitmask
+  // `N.Rules` check stopped at a Mixin/Ruleset sourceNode.
+  while (current.sourceNode instanceof Rules) {
     const next = current.sourceNode;
     if (next === current || seen.has(next)) {
       break;
@@ -108,7 +112,7 @@ export function createEmptyCallableOutputSurface(sourceRules: Rules): Rules {
 
 export function resolveCallableSingleOutputSourceRules(output: Rules): Rules {
   return getRootSourceRules(
-    output.sourceNode && isNode(output.sourceNode, N.Rules)
+    output.sourceNode instanceof Rules
       ? output.sourceNode
       : output
   );

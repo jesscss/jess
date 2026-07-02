@@ -124,6 +124,30 @@ Design chosen on the "most performant is king" rule = fewest allocations:
   per-eval OR canonical-body-parented closure target) chains to the per-call params, so
   the detached ruleset's `@background` resolves regardless of which instance it captured.
 
+### 2026-07-02 (cont.) — the wrapper-removal ripple: `isNode(sourceNode, N.Rules)` misses Mixin
+**Root cause of the +3 regressions AND why the §4 re-point silently stopped firing for
+mixin surfaces after Step 2a.** `N.Mixin` (1<<20), `N.Rules` (1<<23) and `N.Ruleset`
+(1<<25) are DISTINCT nodeType bits — `isNode(mixinNode, N.Rules)` is FALSE. Before Step 2a
+a mixin's per-call surface had `sourceNode = value.rules` (a PLAIN Rules wrapper), so every
+`isNode(surface.sourceNode, N.Rules)` check passed. After eliminating the wrapper,
+`createCallableRulesSurface` sets `output.sourceNode = Mixin` (the canonical body IS the
+Mixin) — so those checks now return FALSE and the surface is no longer recognized as a thin
+surface over a canonical body. Concretely the §4 re-point condition
+`isNode(enclosingScope.sourceNode, N.Rules)` fails → `.table-hover` (and every mixin-body
+child) stops chaining to the per-call surface #1 → free vars/params invisible.
+
+**Fix (applied, UNVERIFIED — pending Bash/classifier recovery):** a canonical body can be
+any Rules SUBCLASS, so replace the bitmask check with `instanceof Rules` at the sourceNode
+sites on the callable path:
+- `rules.ts` §4 re-point condition (`enclosingScope?.sourceNode instanceof Rules`)
+- `rules.ts` `sourceRulesOf`
+- `callable-surface.ts` `getRootSourceRules` (the sourceNode walk) + `resolveCallableSingleOutputSourceRules`
+Other `isNode(sourceNode, N.Rules)` sites to audit if regressions persist: `import-style.ts:322,995`
+(import boundary — likely still plain Rules), `direct-rules-lookup.ts:150` (checks N.Ruleset, different intent).
+Test rewrites (mixin.test.ts:7731 body.parent; the two recursive-namespace scope-frame tests
+that manipulate the surface frame directly) are DEFERRED until this fix is verified, since the
+re-point fix may change which of their assertions fail.
+
 ### 2026-07-02 progress + REFINED root cause of the 4th test (instrumented)
 Landed on the worktree branch:
 - `d589bfc8c` — **frame merge** (`callable-scope-frame.ts`): the per-call surface

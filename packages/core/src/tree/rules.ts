@@ -535,7 +535,9 @@ function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
 }
 
 function sourceRulesOf(rules: Rules): Rules {
-  return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
+  // A canonical body may be any Rules subclass (Mixin/Ruleset) now that the
+  // Mixin.sourceNode wrapper is gone — `instanceof Rules` covers all three.
+  return rules.sourceNode instanceof Rules ? rules.sourceNode : rules;
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -5955,10 +5957,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       rules === this
       && rules !== enclosingScope
       // A THIN SURFACE is intrinsically a Rules whose `sourceNode` points at a
-      // DIFFERENT canonical Rules — it re-uses that shared canonical body over a
+      // DIFFERENT canonical body — it re-uses that shared canonical body over a
       // per-placement scope frame (a mixin/ruleset body call, a style import). A
-      // canonical node instead points at itself / nothing.
-      && isNode(enclosingScope?.sourceNode, N.Rules)
+      // canonical node instead points at itself / nothing. The canonical body can
+      // be any Rules SUBCLASS: a plain Rules (detached/import), a Mixin (mixin
+      // body — since the Mixin.sourceNode wrapper was eliminated the per-call
+      // surface's sourceNode IS the Mixin), or a Ruleset. `instanceof Rules`
+      // covers all three; a bitmask `N.Rules` check misses Mixin/Ruleset (distinct
+      // nodeType bits) and would silently stop re-pointing mixin-body surfaces.
+      && enclosingScope?.sourceNode instanceof Rules
       && enclosingScope.sourceNode !== enclosingScope
     ) {
       // A child evaluated under a thin surface resolves its free vars up the
@@ -5969,6 +5976,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
       // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
       rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
+    } else if (rules === this && rules._closureScope) {
+      // Detached-ruleset closure: a Rules passed as an arg / stored in a variable
+      // closes over the SURFACE where it was written (`_closureScope`, captured at
+      // arg-binding), which carries the enclosing per-call param slots — NOT its
+      // canonical `.parent`. When such a body is evaluated (eagerly at arg-bind or
+      // lazily on call), re-point its scope-frame lexical parent to that closure
+      // surface so free vars resolve up the placement scope. The enclosingScope
+      // (§4) branch above handles shared canonical bodies under a thin surface; a
+      // detached ruleset's placement is instead pinned by its captured closure.
+      rules.getScopeFrame().parent = rules._closureScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
