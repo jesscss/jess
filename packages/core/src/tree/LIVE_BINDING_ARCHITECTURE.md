@@ -7,6 +7,26 @@
 >
 > Status: **Invariants locked by owner (2026-06-29). §3 primitive shape pending
 > the DRY-audit collapse list.**
+>
+> ⚠️ **CURRENT WORK PINNED: [`SINGLE_FRAME_PLAN.md`](./SINGLE_FRAME_PLAN.md)** — the
+> scope/frame system is mid-migration to a **single frame-based lookup system**.
+> This document describes the TARGET (invariant 4: resolution over a surface uses
+> `sourceNode` + one frame chain). The CURRENT implementation still DIVERGES in
+> three audited ways; do not assume the model below is fully realized:
+> - **R1 — frame identity is unstable.** One scope ⇒ many `ScopeFrame` instances
+>   (canonical vs per-call); `.scopeFrame` is cleared/rebuilt at ~15 sites, so a
+>   `_evalPreparedRules` re-point is transient — the re-pointed frame is often NOT
+>   the one resolution walks. This is why correct-looking scope fixes silently fail.
+> - **R2 — mixin scope is two frames**, not one: param live-slots on the per-call
+>   surface (`createCallableRules`) vs body vardecls on a separate `Mixin.sourceNode`
+>   wrapper frame (mixin.ts). Nested rulesets reach the wrapper, not the params.
+> - **R3 — a second lookup system exists.** `direct-rules-lookup`
+>   (`findVariable/PropertyDeclarationOccurrence`) is used as a fallback when a
+>   frame is `!declarationsCovered`; its result drops the owner frame. Migration
+>   deletes this fallback.
+>
+> DO NOT patch closure/scope capture per-path — that is the fragmentation the
+> migration removes. Fix identity (R1) first; see the plan's step ordering.
 
 ## 1. Core principle
 

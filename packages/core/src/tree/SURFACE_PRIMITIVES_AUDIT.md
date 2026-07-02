@@ -8,6 +8,11 @@ primitive, one frame model, one variable-resolution walk.** Every variant below
 must either fold into a parametrized primitive or prove (on object count /
 behavior) why it must stay. Collapse to the SMALLEST / most performant form.
 
+> ⚠️ The **"one frame model, one variable-resolution walk"** portion is planned and
+> pinned in [`SINGLE_FRAME_PLAN.md`](./SINGLE_FRAME_PLAN.md) (audited root causes
+> R1 frame-identity / R2 mixin two-frame split / R3 direct-rules-lookup fallback,
+> with ordered steps). Do that migration there; this doc tracks the copy/surface family.
+
 **STRICTER STANCE (owner directive):** the copy/clone family is NOT "variants to
 tidy" — §5 forbids `clone(deep)`, `*WithReusableLeaves`, deep `cloneForPlacement`,
 per-subsystem copy helpers, and `reuseLeaf`/`frozen`. These exist ONLY because
