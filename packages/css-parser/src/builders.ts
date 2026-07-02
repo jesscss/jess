@@ -422,22 +422,27 @@ export class CssParser {
     out: JessNode[],
     loc: LocationInfo
   ) {
-    if (followingStart !== undefined && this._lineOf(src, end - 1) === this._lineOf(src, followingStart)) {
+    if (followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
       return;
     }
     out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
   }
 
-  /** 1-based line number of `offset` within `src` (counts preceding newlines). */
-  private _lineOf(src: string, offset: number): number {
-    let line = 1;
-    const bound = Math.min(offset, src.length);
-    for (let i = 0; i < bound; i++) {
+  /**
+   * Whether offsets `a` and `b` sit on the same source line — true iff no `\n`
+   * lies between them. Scans only the (small) span between the two offsets, NOT
+   * from the start of the source: the previous absolute-line-number form was
+   * O(offset) per call and O(n²) across a comment-dense file.
+   */
+  private _sameLine(src: string, a: number, b: number): boolean {
+    const lo = Math.min(a, b);
+    const hi = Math.min(Math.max(a, b), src.length);
+    for (let i = lo; i < hi; i++) {
       if (src.charCodeAt(i) === 10 /* \n */) {
-        line++;
+        return false;
       }
     }
-    return line;
+    return true;
   }
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
