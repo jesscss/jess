@@ -263,6 +263,31 @@ deferred loop subsystem). The Ruleset is now its own canonical body:
   body-parentage assertions moved from the wrapper to the node (`child.parent === node`,
   `node.rules === body.rules`). Final: suite 101, delta 0 (zero net regressions).
 
+### 2026-07-02 (Loop subsystem) — Stages 1 & 3 DONE; Stage 2 deferred with rationale
+The `$if`/`$for`/`$while` loop subsystem (`control.ts`) was the last holdout — it owned
+the remaining wrappers AND the last uncovered scopes (R3). Landed:
+- **Stage 1 (`2c2c6f23a`)** — eliminated `If`/`For`/`While` `_passedRulesWrapper` (+
+  `adoptRulesWrapper`), same as Ruleset/Mixin. Control nodes are their own body; children
+  parent via the factory. 2 wrapper-model tests rewritten. Suite 101, delta 0.
+- **Stage 3 (`cb8acbc01`)** — `createWhileStateSurface`/`createWhileIterationSurface` now
+  build `declarationsCovered=true` frames (symmetric with `$for`). **This eliminated the
+  LAST `!declarationsCovered` scope in production**: instrumenting the full suite, every
+  remaining uncovered frame is built by ONE test (`reference.test.ts:509`) that
+  deliberately exercises the fallback. So R3 is effectively closed — the
+  `direct-rules-lookup` fallback is never hit for an uncovered *real* scope anymore (it
+  still legitimately serves `hasTarget`/interpolated lookups, which is why the code stays).
+  Also FIXED a real state-sync lag bug — a stateful `$while` now emits the correct final
+  counter (tick 1,2,3 not 1,2,2).
+- **Stage 2 (thin iteration surfaces) — DEFERRED (`e0b8fabf3` documents it).** Re-probed
+  sharing (`[...sourceRules.rules]` + `sourceNode`): only +8 net, so the old blocker 2
+  (shared children retaining first eval result) is RESOLVED by the `evaluated` deletion.
+  The real blocker is #1: the loop runs a BESPOKE registration/eval path that ADOPTS body
+  children (unlike the mixin/ruleset copy-on-write thin surface), so on shared children it
+  mutates the canonical source across iterations — a real correctness regression guarded by
+  the "keeps canonical body children parented" tests. Fixing it = retrofitting loops onto
+  the copy-on-write eval path + deleting `attachIterationFallbackFrame`. The per-iteration
+  copy already reuses scalar leaves, so the perf win is marginal vs. that depth/risk.
+
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
 without stable frame identity, Steps 2-4 will thrash exactly like the naive attempt did
