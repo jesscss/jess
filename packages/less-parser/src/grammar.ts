@@ -263,10 +263,13 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('InterpolatedSelector', c, r, s));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
-  // `sel when (…)` is a guarded ruleset: `when` followed by `(` is the guard
-  // keyword, NOT another selector — stop the selector run before it (in both the
-  // compound run and the complex run, since `& when` has no mixin-path fallback).
-  const whenAhead = regex(/when(?![-\w])[ \t\n\r\f]*\(/i);
+  // `sel when …` is a guarded ruleset: the `when` KEYWORD is the guard boundary,
+  // never a selector token — stop the selector run before it (the reference gets
+  // this from its lexer's `When` token; scannerless, we assert the keyword). The
+  // guard body (`(…)`, `not (…)`, `default()`, `and`/`or` chains) is then parsed
+  // by the atomic Guard rule — so the boundary must be just `when`, NOT `when (`
+  // (which missed `when not (…)`, `when default()`, …).
+  const whenAhead = regex(/when(?![-\w])/i);
   // `:extend(` lookahead — keeps the generic PseudoSelector from claiming extend
   // (extend goes through ExtendPseudo) and lets the compound run stop before it.
   const extendAhead = regex(/::?extend[ \t\n\r\f]*\(/);

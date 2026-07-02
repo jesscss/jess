@@ -64,6 +64,31 @@ describe('guardInParens', () => {
   });
 });
 
+describe('css guards (guarded rulesets)', () => {
+  // The `when` KEYWORD is the guard boundary — the selector run must stop at it
+  // regardless of what follows (`(`, `not (`, `default()`, …). A too-narrow
+  // `when (` boundary previously let `& when not (…)` fall through to a parse
+  // error (real Bootstrap code, e.g. `& when not (@enable-rounded) {…}`).
+  it.each([
+    '.foo when (@x) { color: red; }',
+    '.foo when not (@x) { color: red; }',
+    '& when (@x) { color: red; }',
+    '& when not (@x) { color: red; }',
+    '& when (default()) { color: red; }',
+    '& when (@a) and (@b) { color: red; }',
+    '& when (@a), (@b) { color: red; }',
+    '.a { & when not (@x) { color: red; } }'
+  ])('parses %j without error', (src) => {
+    const { errors } = parse(src, 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('does not mistake a class named `.when` for a guard', () => {
+    const { errors } = parse('.when { color: red; }', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+});
+
 describe('guardDefault', () => {
   it('should parse default guard', () => {
     const { errors, tree } = parse('.mixin(@a) when (default()) { }', 'mixinOrQualifiedRule');
