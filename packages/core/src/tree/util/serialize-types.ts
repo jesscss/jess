@@ -189,7 +189,11 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const value = 'value' in n ? (n as unknown as { value: unknown }).value : undefined;
+  const value = 'value' in n
+    ? (n as unknown as { value: unknown }).value
+    // Nodes that own their data in named fields instead of `value` (e.g.
+    // Dimension/Num store number/unit) expose the display value via valueOf().
+    : n.valueOf();
   // If the main value is a primitive, include it inline
   if (
     value === null

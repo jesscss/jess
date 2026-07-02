@@ -30,6 +30,9 @@ export interface Nil extends Node<''> {
 export class Nil extends Node<''> {
   static override childKeys = null;
 
+  // Invariant 7: each node owns its value; Nil's is always the empty string.
+  readonly value: '' = '';
+
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
