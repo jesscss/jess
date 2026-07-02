@@ -308,7 +308,13 @@ export function buildScopeFrame(
   mixinCallableMissCoverageKnown = callableMissCoverageKnown,
   hasReferenceImports = false
 ): ScopeFrame {
-  const declarationBucketsByName = new Map<string, BindingEntry[]>();
+  // Step 1 (frame identity): the declaration index is immutable/canonical per
+  // Rules — `varsByName` IS that index. Share it by reference instead of copying
+  // it into a fresh per-frame Map (the registration sites in rules.ts/reference.ts
+  // mutate the shared index; a body decl is canonical, so this is correct and
+  // saves one Map allocation + full copy per frame build). Live-slot-only frames
+  // (varsByName undefined) still get their own empty map.
+  const declarationBucketsByName = varsByName ?? new Map<string, BindingEntry[]>();
   const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
@@ -316,7 +322,6 @@ export function buildScopeFrame(
       for (let i = 0; i < entries.length; i++) {
         ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
-      declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];
       if (currentEntry) {
         currentBindingsByName.set(name, currentEntry.cell);
