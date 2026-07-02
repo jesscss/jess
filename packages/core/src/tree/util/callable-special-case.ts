@@ -46,10 +46,10 @@ export async function evaluateCallableSpecialCaseCandidate({
       return { handled: true };
     }
 
-    // When the ruleset was constructed with a Rules wrapper, use it as sourceRules
-    // so children's parent pointers (which point to the wrapper) are preserved.
-    const passedWrapper = candidate._passedRulesWrapper;
-    const sourceRules = passedWrapper instanceof Rules ? passedWrapper : getRootSourceRules(candidate);
+    // The Ruleset IS its own canonical body now (the `_passedRulesWrapper`
+    // duplicate frame was eliminated); its children parent to the Ruleset, so
+    // the candidate itself is the source rules for the callable surface.
+    const sourceRules = getRootSourceRules(candidate);
     let rules = createCallableRules(sourceRules);
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
     let needsCallerPlacementDuringEval = false;

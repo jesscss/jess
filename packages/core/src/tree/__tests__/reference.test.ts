@@ -3160,6 +3160,8 @@ describe('reference', () => {
       };
 
       try {
+        // New model: nested scope Rules parented directly under root (the passed
+        // `rules:` wrapper is unwrapped + discarded, which would orphan childRules).
         const colorRef = ref({ key: 'color' }, { type: 'variable' });
         const childRules = rules([
           decl({
@@ -3169,10 +3171,7 @@ describe('reference', () => {
         ]);
         const root = rules([
           vardecl({ name: 'color', value: any('red') }),
-          ruleset({
-            selector: el('.scope'),
-            rules: childRules
-          })
+          childRules
         ]);
         context.root = root;
         context.rulesContext = childRules;
@@ -4071,6 +4070,9 @@ describe('reference', () => {
       };
 
       try {
+        // New model: the nested scope is a Rules parented directly under root (the
+        // old `ruleset({ rules: childRules })` unwrapped + discarded the wrapper, so
+        // `childRules` would be orphaned and `color` would miss the parent frame).
         const childRules = rules([
           decl({
             name: any('seen'),
@@ -4079,10 +4081,7 @@ describe('reference', () => {
         ]);
         const root = rules([
           vardecl({ name: 'color', value: any('red') }),
-          ruleset({
-            selector: el('.scope'),
-            rules: childRules
-          })
+          childRules
         ]);
         context.root = root;
         context.rulesContext = childRules;

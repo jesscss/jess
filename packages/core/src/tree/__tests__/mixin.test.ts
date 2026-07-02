@@ -491,26 +491,29 @@ describe('Mixin', () => {
     });
 
     it('keeps ruleset-as-mixin placement children owned while reusing reusable leaves', async () => {
+      // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so the
+      // callable source rules and the source children's parent are the Ruleset
+      // itself, not a separate `sourceBody` wrapper. The caller scope is likewise
+      // the `.test` ruleset directly (the passed wrapper is unwrapped + discarded).
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
-      const sourceBody = rules([sourceDecl]);
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: [sourceDecl]
       });
-      const callerRules = rules([]);
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        testRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = testRuleset;
 
       const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
-      callerRules.adopt(mixinCall);
+      testRuleset.adopt(mixinCall);
       const result = await mixinCall.eval(context);
 
       expect(result).toBeInstanceOf(RulesClass);
@@ -521,10 +524,10 @@ describe('Mixin', () => {
       expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceRuleset);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
-      expect(outputDecl?.parent).toBe(sourceBody);
-      expect(sourceDecl.parent).toBe(sourceBody);
+      expect(outputDecl?.parent).toBe(sourceRuleset);
+      expect(sourceDecl.parent).toBe(sourceRuleset);
       expect(sourceValue.parent).toBe(sourceDecl);
     });
 
@@ -932,7 +935,15 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so use
+        // the ruleset itself as the caller scope — it is parented to root and its
+        // children resolve `content` up the chain. (Formerly a separate `callerRules`
+        // wrapper was passed as `rules:` and used as the live caller handle; that
+        // wrapper is now unwrapped + discarded, so it would be orphaned.)
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -940,16 +951,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          testRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = testRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        testRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -983,7 +991,12 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // New model: use the ruleset directly as the caller scope (see the
+        // deep-clone test above) — the passed `rules:` wrapper is unwrapped + gone.
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -991,16 +1004,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          testRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = testRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        testRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -4679,23 +4689,25 @@ describe('Mixin', () => {
         params: list([any('color', { role: 'property' })]),
         rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
-      const childRules = rules([
-        ruleset({
-          selector: el('.ruleset-only-child'),
-          rules: [decl({ name: 'color', value: any('green') })]
-        })
-      ]);
+      // New model: the `.caller` Ruleset IS its own body (no `_passedRulesWrapper`),
+      // so query the ruleset directly — its frame climbs to root where the mixin is.
+      const callerRuleset = ruleset({
+        selector: el('.caller'),
+        rules: [
+          ruleset({
+            selector: el('.ruleset-only-child'),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]
+      });
       const root = rules([
         parentMixin,
-        ruleset({
-          selector: el('.caller'),
-          rules: childRules
-        })
+        callerRuleset
       ]);
       root.getScopeFrame();
-      childRules.getScopeFrame();
+      callerRuleset.getScopeFrame();
 
-      expect(childRules.findMixin('.parent-terminal-mixin', 'Mixin', {
+      expect(callerRuleset.findMixin('.parent-terminal-mixin', 'Mixin', {
         terminalMixinOnly: true
       })).toEqual([parentMixin]);
     });

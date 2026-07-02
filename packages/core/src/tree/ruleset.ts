@@ -490,8 +490,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
-  /** The original Rules wrapper passed at construction time, if any. Used by the nil-selector direct render path. */
-  _passedRulesWrapper: Rules | undefined;
   /** Legacy canonical composed selector slot still used by extend post-processing. */
   declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
@@ -531,28 +529,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.guard = value.guard;
       this.selectorBeforeExtend = value.selectorBeforeExtend;
     }
-    if (value.rules instanceof Rules) {
-      this._passedRulesWrapper = value.rules;
-    }
-  }
-
-  override parentChildren(): this {
-    // Base parents selector/guard/rules/selectorBeforeExtend via childKeys.
-    super.parentChildren();
-    // A passed Rules wrapper is the canonical intermediate ancestor: adopt it,
-    // then restore the body children's parent to the wrapper (super parented
-    // them to `this`).
-    if (this._passedRulesWrapper instanceof Rules) {
-      this.adopt(this._passedRulesWrapper);
-      const wrapperRules = this._passedRulesWrapper.rules;
-      for (let i = 0; i < wrapperRules.length; i++) {
-        const child = wrapperRules[i]!;
-        if (child instanceof Node) {
-          child.parent = this._passedRulesWrapper;
-        }
-      }
-    }
-    return this;
+    // R2 SINGLE-FRAME: the Ruleset IS its own canonical body. Body children are
+    // parented to the Ruleset by the `ruleset()` factory's parentChildren
+    // (childKeys includes 'rules'); the Ruleset's own scope frame is the single
+    // body-decl frame. (Formerly a factory-passed `rules([...])` wrapper was
+    // recorded as `_passedRulesWrapper` and the children re-parented to it — a
+    // DUPLICATE body frame the parser path never created, splitting placement
+    // scope from body decls. Eliminated, mirroring the Mixin.sourceNode removal.)
   }
 
   /**
@@ -572,7 +555,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     shell.selector = this.selector;
     shell.guard = this.guard;
     shell.selectorBeforeExtend = this.selectorBeforeExtend;
-    shell._passedRulesWrapper = this._passedRulesWrapper;
     return shell;
   }
 
@@ -1234,6 +1216,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private createNilSelectorOutputRules(): Rules {
+    // The passed `_passedRulesWrapper` is gone (the Ruleset IS its own body); the
+    // nil-selector output copies the body children (as the parser path always did —
+    // parser-built nil-selector rulesets never had a wrapper). Copying keeps the
+    // canonical source tree unmutated: rendering the output surface adopts its
+    // children, so sharing would reparent the source nodes mid-render.
     const copiedBody = new Array<Node>(this.rules.length);
     for (let i = 0; i < this.rules.length; i++) {
       const copied = copyWithReusableLeavesPreservingComments(this.rules[i]!);
@@ -1260,7 +1247,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   private evalNilSelectorForRender(context: Context): MaybePromise<Rules | Nil> {
     if (this.canRenderNilSelectorBodyDirectly()) {
-      return this._passedRulesWrapper ?? this.createNilSelectorOutputRules();
+      return this.createNilSelectorOutputRules();
     }
     const { guard } = this;
     if (!guard) {
@@ -1305,7 +1292,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return `${rendered}\n`;
     };
     const renderNilSelectorBodyDirectly = (): MaybePromise<string> => {
-      const output = this._passedRulesWrapper ?? this.createNilSelectorOutputRules();
+      const output = this.createNilSelectorOutputRules();
       const rendered = isRenderBuffer(bufferOrOptions)
         ? output.render(context, bufferOrOptions, options)
         : output.render(context, bufferOrOptions);

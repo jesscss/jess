@@ -363,7 +363,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(body.rules[0]!.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -406,8 +406,8 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(leaf.parent).toBe(body);
+    expect(body.rules[0]!.parent).toBe(node);
+    expect(leaf.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -481,8 +481,8 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(variable.parent).toBe(body);
+    expect(body.rules[0]!.parent).toBe(node);
+    expect(variable.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -629,8 +629,8 @@ describe('Rule', () => {
 
     expect(ownedBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(body.rules[0]?.parent).toBe(body);
+    expect(body.rules[0]!.parent).toBe(node);
+    expect(body.rules[0]?.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -689,19 +689,13 @@ describe('Rule', () => {
   });
 
   it('streams unguarded static nil-selector ruleset bodies directly from source', async () => {
+    // New model (no `_passedRulesWrapper`): the nil-selector body streams the
+    // Ruleset's OWN children, SHARED (not copied). `node.rules === body.rules`
+    // proves the Ruleset adopted the passed body's exact children array (no wrapper
+    // indirection, no per-render copy). The old wrapper-render-count spy is gone.
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
-    const originalRender = body.render;
-    let bodyRenderCalls = 0;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    body.render = function countBodyRender(
-      this: typeof body,
-      ...args: Parameters<typeof originalRender>
-    ): ReturnType<typeof originalRender> {
-      bodyRenderCalls++;
-      return originalRender.apply(this, args);
-    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -724,9 +718,9 @@ describe('Rule', () => {
       const buffer = createRenderBuffer('flat');
       await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
       expect(buffer.parts).toEqual(['color: red;\n']);
-      expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
-      expect(body.parent).toBe(node);
+      expect(node.rules).toBe(body.rules);
+      expect(body.rules[0]!.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -734,22 +728,13 @@ describe('Rule', () => {
   });
 
   it('streams static nil-selector comments and invisible vars directly from source', async () => {
+    // New model: `node.rules === body.rules` proves the shared (not copied) body.
     const body = rules([
       comment('/* keep */'),
       vardecl({ name: any('private'), value: any('red') }),
       decl({ name: 'color', value: any('red') }),
       new Nil()
     ]);
-    const originalRender = body.render;
-    let bodyRenderCalls = 0;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    body.render = function countBodyRender(
-      this: typeof body,
-      ...args: Parameters<typeof originalRender>
-    ): ReturnType<typeof originalRender> {
-      bodyRenderCalls++;
-      return originalRender.apply(this, args);
-    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -774,9 +759,9 @@ describe('Rule', () => {
         /* keep */
         color: red;
       `);
-      expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
-      expect(body.parent).toBe(node);
+      expect(node.rules).toBe(body.rules);
+      expect(body.rules[0]!.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -818,8 +803,7 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyRenderCalls).toBe(0);
-    expect(nestedBody.parent).toBe(node);
-    expect(nestedBody.rules[0]?.parent).toBe(nestedBody);
+    expect(nestedBody.rules[0]?.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -853,7 +837,7 @@ describe('Rule', () => {
     }
 
     expect(sourceBodyRenderCalls).toBe(0);
-    expect(dynamicBody.parent).toBe(node);
+    expect(node.rules).toBe(dynamicBody.rules);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -881,7 +865,9 @@ describe('Rule', () => {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
       expect(prepareCalls).toBe(0);
       expect(guard.parent).toBe(node);
-      expect(body.parent).toBe(node);
+      // Eval path may place source children into an output surface; the stable
+      // ownership invariant is that the node adopted the passed body's array.
+      expect(node.rules).toBe(body.rules);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -921,7 +907,7 @@ describe('Rule', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
     expect(guard.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(body.rules[0]!.parent).toBe(node);
     expect(node.guard).toBe(guard);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -966,8 +952,8 @@ describe('Rule', () => {
 
     expect(sourceBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(child.parent).toBe(body);
+    expect(body.rules[0]!.parent).toBe(node);
+    expect(child.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -1005,8 +991,8 @@ describe('Rule', () => {
 
     expect(sourceBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
-    expect(child.parent).toBe(body);
+    expect(body.rules[0]!.parent).toBe(node);
+    expect(child.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -1194,7 +1180,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(body.rules[0]!.parent).toBe(node);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((resolved as Ruleset).rules).not.toBe(body);
   });
