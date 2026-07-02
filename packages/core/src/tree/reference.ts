@@ -490,8 +490,12 @@ function getBindingHandleValue(handle: ScopeFrameVariableBindingHandle): Node {
   // ??=) because the shared canonical value is re-used across calls; eval is
   // synchronous from here to the invoking clone, which inherits this via inherit().
   if (isNode(value, N.Rules)) {
-    const t = getBindingHandleRulesContext(handle);
-    if (t) {
+    // The closure scope is the SURFACE that owns the binding (T) — the per-call
+    // eval surface carrying param live-slots — i.e. the owner frame's Rules, NOT
+    // the cell's canonical rulesContext (which is the definition Mixin/body).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const t = handle.ownerFrame.rulesNode as Rules | undefined;
+    if (t && isNode(t, N.Rules)) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (value as unknown as { _closureScope?: unknown })._closureScope = t;
     }
