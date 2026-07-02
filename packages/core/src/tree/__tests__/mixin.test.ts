@@ -2930,14 +2930,17 @@ describe('Mixin', () => {
             rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: childRules
-          })
-        ]);
+        // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])`
+        // passed as `rules:` is discarded — the parent Mixin owns the body
+        // directly, so the body scope frame is the Mixin's own, not the
+        // discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: any('#parent-namespace'),
+          rules: childRules
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame();
+        parentMixin.getScopeFrame();
 
         expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
@@ -3272,14 +3275,15 @@ describe('Mixin', () => {
           })
         ]);
         const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-covered-fallback'),
-            rules: childRules
-          })
-        ]);
+        // New model: the parent Mixin owns its (empty) body directly; the body
+        // scope frame is the Mixin's own, not the discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: any('#parent-with-covered-fallback'),
+          rules: childRules
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
         expect(root.findMixin([
           '#parent-with-covered-fallback',
@@ -7750,7 +7754,11 @@ describe('Mixin', () => {
       expect(prepared.name!.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
-      expect(body.parent).toBe(node);
+      // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])` wrapper
+      // passed as `rules:` is DISCARDED — the Mixin stores/owns its body CHILDREN
+      // directly (factory `parentChildren` over childKeys 'rules'), so the child is
+      // parented to the Mixin. The wrapper object itself is no longer in the tree.
+      expect(node.rules[0]!.parent).toBe(node);
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
