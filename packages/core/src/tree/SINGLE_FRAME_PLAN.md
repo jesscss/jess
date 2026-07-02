@@ -124,6 +124,25 @@ Design chosen on the "most performant is king" rule = fewest allocations:
   per-eval OR canonical-body-parented closure target) chains to the per-call params, so
   the detached ruleset's `@background` resolves regardless of which instance it captured.
 
+### 2026-07-02 (RESOLVED) — Step 2 landed, nested detached-closure test GREEN, suite delta −1
+Commits: `d589bfc8c` (frame merge) → `bda707fd0` (wrapper + WART removal) → `f35fdd575`
+(instanceof-Rules + closure re-point) → `8fc01a16b` (rewrite 3 old-model tests). Full
+suite **101 fails vs 102 baseline (delta −1, zero regressions)**. Two fixes were needed
+on top of the merge + wrapper removal:
+1. **`instanceof Rules`** at the callable-path sourceNode checks (§4 re-point,
+   `sourceRulesOf`, `getRootSourceRules`, `resolveCallableSingleOutputSourceRules`) — see
+   the ripple analysis below. Without it the §4 re-point silently stopped firing for
+   every mixin surface (its sourceNode is now a Mixin, not a plain Rules).
+2. **Detached-ruleset closure re-point.** A Rules passed as an arg is eagerly evaluated
+   at arg-binding (`callable-args.ts`); its free vars must resolve up the surface where it
+   was WRITTEN (the re-pointed placement scope carrying params), not its canonical
+   `.parent`. Capture `_closureScope = context.rulesContext` BEFORE `arg.eval` (was after —
+   too late for the eager body eval), and add a `_evalPreparedRules` branch: when
+   `rules === this && rules._closureScope`, re-point the frame parent to
+   `_closureScope.getScopeFrame()`. This is the general Phase-C detached-closure mechanism.
+The old two-instance symptom (a second canonical `.table-hover` built during the lazy
+lookup) is moot once the reader chains to the re-pointed closure surface.
+
 ### 2026-07-02 (cont.) — the wrapper-removal ripple: `isNode(sourceNode, N.Rules)` misses Mixin
 **Root cause of the +3 regressions AND why the §4 re-point silently stopped firing for
 mixin surfaces after Step 2a.** `N.Mixin` (1<<20), `N.Rules` (1<<23) and `N.Ruleset`
