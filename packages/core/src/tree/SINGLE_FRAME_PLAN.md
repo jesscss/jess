@@ -244,6 +244,25 @@ king" → don't add speculative eager work).
 **Step 4 — Fold `_passedRulesWrapper` (Ruleset/If/For/While) the same way** as the
 Mixin wrapper (Step 2a generalized). Task #11.
 
+### 2026-07-02 (Step 4) — Ruleset `_passedRulesWrapper` ELIMINATED (`aa2163763`)
+Done for **Ruleset** (the If/For/While copies in `control.ts` stay — they are the
+deferred loop subsystem). The Ruleset is now its own canonical body:
+- constructor no longer records a factory-passed `rules([...])` wrapper; body children
+  parent to the Ruleset via the `ruleset()` factory `parentChildren` (childKeys has
+  `'rules'`). `parentChildren` drops the wrapper adopt+reparent; `_deriveShell` drops the
+  copy; the field is gone.
+- nil-selector render/eval build output from the Ruleset's OWN body
+  (`createNilSelectorOutputRules`, which COPIES — matching the parser path, which never
+  had a wrapper; sharing was tried and reverted because rendering the output surface
+  adopts its children, which would reparent the canonical source mid-render).
+- `callable-special-case` uses `getRootSourceRules(candidate)` (the Ruleset) as the
+  callable source rules instead of the wrapper.
+- +19 regressions, ALL from tests that used the passed `rules([...])` wrapper as a LIVE
+  caller/body handle (an artificial setup the parser/factory never produces). Rewritten
+  to the new model: operate on the Ruleset directly, or parent a nested Rules under root;
+  body-parentage assertions moved from the wrapper to the node (`child.parent === node`,
+  `node.rules === body.rules`). Final: suite 101, delta 0 (zero net regressions).
+
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
 without stable frame identity, Steps 2-4 will thrash exactly like the naive attempt did
