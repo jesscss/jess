@@ -100,22 +100,55 @@ against the ~52 ms / ~7.4× baseline as each lands; re-profile before P3/P4/P5.
   byte-identical output — but parse time only **~52 → ~51 ms**. So the per-frame
   build/bookkeeping is cheap; halving it barely moved the needle.
 
-**Revised conclusion.** Two independent results (pooling regression, collapse
-no-op) prove the ~7.4× gap is NOT node()-frame overhead. Re-profile after
-collapse is essentially unchanged: **combinators 62% (compiled parse functions —
-matching, capture, the `not(whenAhead)`/`not(extendAhead)` lookaheads that run at
-every selector token), core node ctors 17%, builders 6.5%.** The cost is the
-actual scannerless-PEG parsing + full-CST construction, which is largely inherent.
+**Revised conclusion (superseded — see below).** Pooling + collapse both no-op'd,
+which *looked* like proof the gap is inherent combinator cost. That was the wrong
+generalization: those two experiments moved *array allocation* and *frame count*,
+neither of which is the cost. They never isolated the **per-terminal trivia
+push**, which turned out to be a big, cheap-to-remove chunk.
+
+### P7 — Elide dead per-node CST-trivia capture  ← VALIDATED 16% WIN
+Every `node()` frame threads `_ctx._cstTriviaLog` (a fresh `_tl` array) and every
+whitespace/comment terminal does `if (_ctx._cstTriviaLog !== undefined) push(...)`.
+That per-node trivia log is passed to the build as its **4th arg** — but **every
+jess build is arity-3** (`(c, r, s) => mk(type, c, r, s)`) and never reads it.
+Pure dead work, fired on every trivia token in a 152 KB file.
+
+- **Ablation (built less lib, bootstrap4.css): 52.6 → 44.7 ms = 16% faster,
+  AST structurally identical** (signature 8278038 == 8278038), public `trivia`
+  map unaffected (it is fed by the independent global `_triviaLog`, not the
+  per-node `_cstTriviaLog`).
+- **Fix (parseman codegen, in flight via sub-agent):** arity-gate the per-node
+  capture. When a build declares ≤3 params (can't read triviaLog), don't allocate
+  `_tl`, set `_ctx._cstTriviaLog = undefined` for that scope, pass a shared frozen
+  empty array. Automatic, no grammar change; CST-consuming grammars (arity-4 `mk`
+  stub) keep capturing. Same treatment for the arity-5 `state` clone. Parity across
+  interpreter / compiler / macro; conservative fallback (rest/destructure/unknown
+  → keep capture).
+- This finally answers "when do we NOT need a lean mode?" — leanness is automatic,
+  per-node, driven by what the build consumes.
+
+Post-P7 re-profile pending. Remaining real levers below.
 
 ### Remaining levers (harder, re-profile-driven)
 - **P6 — per-token parse work.** The selector run does two `not(...)` regex
   lookaheads (`whenAhead`, `extendAhead`) at *every* simple/compound iteration —
   thousands of redundant regex execs for CSS with no `when`/`extend`. Cheaper
   boundary checks (single combined lookahead, or a char-peek gate) could help.
-- **P3 — core `Node` constructor** (11% alone). Monomorphic shapes, defer setup.
-  Core territory.
-- Accept ~7× as the cost of a full-fidelity CST (spans + trivia) vs Less 4.x's
-  lean AST — the honest floor without a different parse strategy.
+- **P3 — core `Node` constructor** (13.3% self-time in the parse profile). ✅ DONE.
+  The base ctor ran `Object.defineProperties(this, {sourceNode, parent})` **per
+  instance** to keep those fields non-enumerable. Replaced with **private-field
+  backing + prototype getters** (`#sourceNode`/`#parent`): still invisible to
+  JSON / `Object.keys` / structural `toEqual` (private fields aren't reflectable),
+  but construction is **37.7× faster** and hot `.parent` reads cost **1.04×**
+  (getter fully inlined). Plain enumerable assignment was rejected — it would drag
+  `parent`/`sourceNode` into the many core tests that `toEqual`/snapshot nodes.
+  Full core suite: **identical failure set** (106 pre-existing, diff empty) — zero
+  regressions. `packages/core/src/tree/node-base.ts`.
+- **"We have a codegen — compile to hand-tuning."** The remaining parse cost
+  (combinators) is per-token function-call + regex-exec count. The genuine lever
+  is combinator fusion in the compiler (emit fewer, coarser matches like a
+  hand-written parser), NOT accepting the gap as inherent. P7 is the first proof
+  the compiled output was doing removable work.
 
 ### Kept regardless
 `collapse` is a good feature (byte-identical, −52% frames = less GC/work, cleaner
