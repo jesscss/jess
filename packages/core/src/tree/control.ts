@@ -187,22 +187,27 @@ function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): Fo
 
 function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
   // TODO(§4/§6.2): make this a true thin surface like mixin/import — SHARE the
-  // canonical body children (so the surface's `sourceNode` link drives the
-  // scope-frame parent-walk), with the loop counter/value/key as the only
-  // per-iteration live slots. Two real blockers (verified 2026-06):
-  //  1) The loop renders via a SEPARATE path that does not route body children
-  //     through the normal Rules eval (`_evalPreparedRules`), so the unified
-  //     `sourceNode` walk-re-point never fires for them. Loops instead rely on
-  //     the bespoke `attachIterationFallbackFrame` below, which stamps a
-  //     per-iteration fallback on each child's frame — and on a SHARED child it
-  //     goes stale (the first iteration's frame sticks). Route loop-body eval
-  //     through the normal eval path so the walk applies, then delete the
-  //     bespoke fallback.
-  //  2) Shared (non-copied) body children retain their first eval result. The
-  //     fix is to stop pinning template output on the node (`evaluated`/`frozen`
-  //     are clone-era relics): a probe of `needsReeval = !F_STATIC` (always
-  //     re-eval non-static) cost only +1 on the suite, so always-re-eval is the
-  //     sound replacement. See LIVE_BINDING_ARCHITECTURE.md §2.7.
+  // canonical body children with the loop counter/value/key as the only
+  // per-iteration live slots. Re-probed 2026-07-02 (share `[...sourceRules.rules]`
+  // + set `sourceNode`): only +8 net on the suite, so blocker 2 below (shared
+  // children retaining their first eval result) is RESOLVED by the `evaluated`
+  // deletion — output is correct. The remaining blocker is #1:
+  //  1) The loop runs a BESPOKE registration/eval path that ADOPTS its body
+  //     children into the per-iteration surface (unlike the mixin/ruleset thin
+  //     surface, whose `_evaluateSourceOrder` is copy-on-write and never reparents
+  //     shared children). On SHARED children that reparent mutates the CANONICAL
+  //     source across iterations — a real correctness bug (control.test.ts "keeps
+  //     canonical $for/$while body children parented to the source wrapper" guards
+  //     exactly this). Fixing it means routing loop-body eval/render through the
+  //     normal copy-on-write eval path (so the §4 sourceNode walk-re-point applies
+  //     and no child is adopted), then deleting the bespoke
+  //     `attachIterationFallbackFrame`. Deferred: the per-iteration copy already
+  //     reuses scalar leaves (copyWithReusableLeaves only shallow-copies
+  //     containers), so the perf win is marginal vs. the depth/risk of retrofitting
+  //     loops onto the thin-surface eval path.
+  //  2) [RESOLVED] Shared children retaining their first eval result — the
+  //     `evaluated` flag is deleted and non-static nodes always re-eval. See
+  //     LIVE_BINDING_ARCHITECTURE.md §2.7.
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
     sourceRules.rules.map(deriveIterationChild)
