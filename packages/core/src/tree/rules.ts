@@ -5960,11 +5960,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // canonical node instead points at itself / nothing.
       && isNode(enclosingScope?.sourceNode, N.Rules)
       && enclosingScope.sourceNode !== enclosingScope
-      // WART: the canonical `Mixin` constructor also sets `sourceNode` (= its
-      // body) — the scope wrapper smell. Exclude it here; drop this guard once
-      // the Mixin.sourceNode wrapper is eliminated (see
-      // parseman-wrapper-is-scope-identity, task: "Eliminate Mixin sourceNode").
-      && !isNode(enclosingScope, N.Mixin)
     ) {
       // A child evaluated under a thin surface resolves its free vars up the
       // PLACEMENT scope, not its static canonical parent. Re-point its

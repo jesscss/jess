@@ -123,22 +123,13 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
       this.adopt(value.guard);
     }
     this.removeFlag(F_VISIBLE);
-    // When a Rules wrapper was passed, record it as sourceNode so that
-    // createCallableRulesSurface propagates it to the eval surface.
-    // This lets _storePreparedRegistrationNode recognize children as
-    // "reused source children" (node.parent === sourceRulesOf(surface))
-    // and skip re-adopting them, preserving the wrapper as their parent.
-    if (value.rules instanceof Rules) {
-      this.sourceNode = value.rules;
-      this.adopt(value.rules);
-      const wrapperRules = value.rules.rules;
-      for (let i = 0; i < wrapperRules.length; i++) {
-        const child = wrapperRules[i]!;
-        if (child instanceof Node) {
-          child.parent = value.rules;
-        }
-      }
-    }
+    // R2 SINGLE-FRAME: the Mixin IS its own canonical body. Body children are
+    // parented to the Mixin by the `mixin()` factory's parentChildren (childKeys
+    // includes 'rules'); the Mixin's own scope frame is the single body-decl
+    // frame. (Formerly a factory-passed `rules([...])` wrapper was recorded as
+    // `sourceNode` and the children re-parented to it — a DUPLICATE body frame
+    // that the parser path never created, and that split params (per-call
+    // surface) from body decls. Eliminated.)
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.

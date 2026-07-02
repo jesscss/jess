@@ -124,6 +124,44 @@ Design chosen on the "most performant is king" rule = fewest allocations:
   per-eval OR canonical-body-parented closure target) chains to the per-call params, so
   the detached ruleset's `@background` resolves regardless of which instance it captured.
 
+### 2026-07-02 progress + REFINED root cause of the 4th test (instrumented)
+Landed on the worktree branch:
+- `d589bfc8c` — **frame merge** (`callable-scope-frame.ts`): the per-call surface
+  frame now carries BOTH body decls AND param live-slots in ONE frame
+  (`rules.getScopeFrame(lexicalScopeFrame)` builds the decl index from shared
+  children, then `setScopeFrameLiveBinding` overlays params). Behavior-neutral
+  (102→102). Verified via `WIRE-frame surface keys=[hover-background,background]`.
+- **(uncommitted, +3 old-semantics regressions)** — Step 2a wrapper removal
+  (`mixin.ts`: drop `sourceNode = value.rules` + child re-parent to wrapper) and
+  Step 2b WART-guard removal (`rules.ts` §4). The +3 are tests that assert the OLD
+  wrapper shape (e.g. `mixin.test.ts:7731` expects the discarded body wrapper node
+  `body.parent === node`); they must be REWRITTEN to the new model (wrapper gone;
+  body children parent to the Mixin), not treated as real regressions.
+
+**REFINED root cause (supersedes the Step-2 exit note above): the merge is NECESSARY
+but STILL not sufficient, and the failure is NOT on the callable-invocation path.**
+Instrumented facts for the 4th test:
+- The per-call surface frame #1 = `[hover-background, background]` is built correctly.
+- But the detached ruleset arg `{ background-color: @hover-background }` is **eagerly
+  evaluated at arg-binding** (`callable-args.ts:30` `await arg.eval(context)`), in the
+  `.table-hover` caller scope — BEFORE `.hover` is ever called (only ONE
+  `prepareCallableCandidateState` fires, for the outer mixin; content never reaches it).
+- That eager eval reads `@hover-background` → lazily evals its value `@background` →
+  resolves on the frame the reader chains to, which is a `.table-hover` instance whose
+  chain reaches the CANONICAL mixin body frame #2 `[hover-background]` (NO params), NOT
+  the re-pointed per-call surface #1. Hence `'background' is not defined`.
+- There are **two `.table-hover` node instances**: R#5 (eval'd via `_evalPreparedRules`,
+  §4-re-pointed to surface #1) and a second canonical-parented one used for the arg eval,
+  which was never re-pointed. The §4 re-point fixes R#5; the arg eval walks the other.
+So the remaining blocker is R1-flavored (two instances / the arg-eval reader chains to
+the un-re-pointed instance), inside the mixin-body nested-ruleset context. NEXT: pin the
+construction site of the second `.table-hover` instance (it is NOT `derive()` — no
+DERIVE/SET-FRAME fired — and NOT `writableOutput`), and make the arg eval (or the nested
+ruleset) resolve through the re-pointed surface #1. Candidate fixes explored but found
+INERT for this path (reverted): threading `_closureScope` into `prepareCallableCandidateState`
+`definitionFrame`; gating `reference.ts:500` closure-set on `!cell.live`. They target the
+callable-invocation path, which this test does not take.
+
 **Step 3 — Eliminate the direct-rules-lookup fallback (fixes R3, "one system").**
 - Make scope-frame declaration coverage complete so `!declarationsCovered` never
   arises for a real scope: every scope's frame indexes its declarations.
