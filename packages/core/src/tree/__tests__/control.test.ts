@@ -684,10 +684,13 @@ describe('Control Nodes', () => {
     const evald = await makeRoot().eval(new Context());
 
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
+    // i: 0→1→2→3 with condition i<3 emits tick 1,2,3. The third tick is now the
+    // correct `3` (was a stale `2` from a state-sync lag on the uncovered $while
+    // iteration frame — fixed by Stage 3's covered frame).
     expect(renderCss).toBeString(`
       tick: 1;
       tick: 2;
-      tick: 2;
+      tick: 3;
       item: a;
       item: b;
     `);

@@ -240,13 +240,20 @@ function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rul
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  stateRules.scopeFrame = buildScopeFrame(undefined, stateRules, parentFrame, new Map());
+  // Stage 3 / R3: build a COVERED frame (declarationsCovered=true) like the $for
+  // iteration surface. State + iteration frames are the ONLY remaining
+  // `declarationsCovered=false` scopes in the suite; an uncovered frame forces
+  // variable lookup down the `direct-rules-lookup` fallback (which drops the owner
+  // frame). The state surface carries live loop state (synced via syncWhileState)
+  // and body vardecls register during eval, so a covered empty index is correct —
+  // exactly as $for already does (createForIterationSurface passes `true`).
+  stateRules.scopeFrame = buildScopeFrame(undefined, stateRules, parentFrame, new Map(), undefined, true);
   return stateRules;
 }
 
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
   const iterationRules = createIterationEvalSurface(sourceRules);
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame(), undefined, undefined, true);
   return iterationRules;
 }
 
