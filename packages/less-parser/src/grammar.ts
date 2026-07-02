@@ -273,13 +273,20 @@ const cssRules = rules((g: any) => {
   // `:extend(` lookahead — keeps the generic PseudoSelector from claiming extend
   // (extend goes through ExtendPseudo) and lets the compound run stop before it.
   const extendAhead = regex(/::?extend[ \t\n\r\f]*\(/);
+  // The two selector-run boundaries (`when` guard keyword, `:extend(`) combined
+  // into ONE lookahead regex: `not(selectorBoundary)` ran two regex
+  // execs at every simple/compound iteration — ~8% of parse on a selector-dense
+  // file. `not(selectorBoundary)` is equivalent (not A ∧ not B = not(A∨B)) at one
+  // exec. Used only in the `many(...)` run stops; the standalone extendAhead gate
+  // before PseudoSelector is unchanged.
+  const selectorBoundary = regex(/when(?![-\w])|::?extend[ \t\n\r\f]*\(/i);
   const simpleSelector = choice(g.AttributeSelector, sequence(not(extendAhead), g.PseudoSelector), g.LessAmpersand, g.InterpolatedSelector, basicSel);
   // collapse: a single simple selector (76% of compounds — `.btn`, `a`, `:hover`)
   // IS that token; skip the build+frame and pass the child straight through. The
   // builder's single-child path already returned the bare component, so this is
   // byte-identical — a 2+-simple / whitespace-descendant run still builds.
   const CompoundSelector = node('CompoundSelector',
-    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), not(extendAhead), g.simpleSelector)))),
+    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(selectorBoundary), g.simpleSelector)))),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s), { collapse: true });
   // A complex selector, optionally terminated by a single `:extend(...)` pseudo.
   // Mirrors Chevrotain's `complexSelector`, which consumes extend (OPTION3) AFTER
@@ -288,7 +295,7 @@ const cssRules = rules((g: any) => {
   // (extend-must-be-last). The compound run also stops at `:extend(` (extendAhead).
   // collapse: single compound (no combinator, no extend) IS the compound.
   const LessComplexSelector = node('LessComplexSelector',
-    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(whenAhead), not(extendAhead), g.CompoundSelector)), optional(g.ExtendPseudo))),
+    parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(selectorBoundary), g.CompoundSelector)), optional(g.ExtendPseudo))),
     (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s), { collapse: true });
   // collapse: single complex selector (no comma) IS that selector.
   const LessSelectorList = node('LessSelectorList',
@@ -325,7 +332,7 @@ const cssRules = rules((g: any) => {
   // Extend-local compound/complex selectors: identical to the normal ones but they
   // halt before a trailing flag (so `.x all` parses as target `.x` + flag `all`).
   const extendCompound = node('CompoundSelector',
-    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(whenAhead), not(extendAhead), not(extendFlagAhead), g.simpleSelector)))),
+    parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(selectorBoundary), not(extendFlagAhead), g.simpleSelector)))),
     (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
   const extendComplex = node('LessComplexSelector',
     parser({ trivia: rw }, sequence(optional(combinator), g.extendCompound, many(sequence(optional(combinator), not(whenAhead), not(extendFlagAhead), g.extendCompound)))),
