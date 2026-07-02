@@ -215,6 +215,32 @@ callable-invocation path, which this test does not take.
   `findPropertyDeclarationOccurrence` fallback call in the variable resolver; suite
   delta = 0.
 
+### 2026-07-02 (Step 3) — MEASURED: the uncovered-fallback is now confined to `$while` loops
+Instrumented the `uncovered` returns across the FULL suite (`performVariableRulesLookup`
+→ `lookupScopeFrameVariable`). After Step 2 the `!declarationsCovered` fallback fires for
+ONLY a handful of distinct shapes, all traced to their construction site:
+- **`$while` loop surfaces** — `control.ts` `createWhileStateSurface` (L256) and
+  `createWhileIterationSurface` (L262) build `buildScopeFrame(undefined, …)` (empty index,
+  `declarationsCovered=false`) BY DESIGN: the state surface is a mutable live-binding overlay
+  synced per iteration (`syncWhileState`), not the body's decl index. This is the deferred
+  loop rework (loops still COPY per iteration; see control.ts TODO / live-binding-spec memory).
+- **`pendingDecls`** — a frame with a still-dynamic-named VarDeclaration returns `uncovered`
+  to signal "retry later." Legitimate mechanism, NOT fragmentation to remove.
+- A `reference.test.ts` artifact that builds an uncovered frame directly.
+
+**Conclusion: the main-path "two lookup systems" fragmentation (mixin / import / derive) was
+ALREADY resolved by Step 2 — those frames are all covered now.** The residual fallback is
+(a) the `$while` loop subsystem, which cannot be made covered without the loop rework
+(body-decl registration moved to context/render time — the state surface is intentionally an
+uncovered live overlay), and (b) the legitimate pending-decl retry. Fully deleting the
+`findVariableDeclarationOccurrence` fallback ALSO can't happen yet because it still serves the
+`hasTarget` (targeted `@ns[@x]`) and interpolated-variable paths, which the frame path does
+not cover. So Step 3's "one system" end-state is BLOCKED on the loop rework (Step 4+) and a
+targeted/interpolated frame-lookup path — deferred, not a quick win. A tried `resetDerivedState`
+"build covered derived frame" change was reverted: behavior-neutral (the derive path produced
+no uncovered-HIT frames) and it added an eager `getScopeFrame` per derive ("most performant is
+king" → don't add speculative eager work).
+
 **Step 4 — Fold `_passedRulesWrapper` (Ruleset/If/For/While) the same way** as the
 Mixin wrapper (Step 2a generalized). Task #11.
 
