@@ -52,19 +52,6 @@ function normalizeRulesBody(owner: string, rules: unknown): Node[] {
   return arr;
 }
 
-// When a Rules wrapper was passed, adopt it so wrapper.parent === owner and
-// restore children's parent to the wrapper (super() set them to owner).
-function adoptRulesWrapper(owner: Rules, wrapper: Rules): void {
-  owner.adopt(wrapper);
-  const wrapperRules = wrapper.rules;
-  for (let i = 0; i < wrapperRules.length; i++) {
-    const child = wrapperRules[i]!;
-    if (child instanceof Node) {
-      child.parent = wrapper;
-    }
-  }
-}
-
 function makeDirectiveRulesPublic(rules: Rules<any>) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
@@ -482,7 +469,6 @@ export class If extends Rules<IfValue> {
   readonly condition: Node;
   readonly else: IfValue['else'];
   declare readonly rules: Node[];
-  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -499,10 +485,10 @@ export class If extends Rules<IfValue> {
       makeDirectiveRulesPublic(this.else);
     }
     makeDirectiveRulesPublic(this);
-    if (value.rules instanceof Rules) {
-      this._passedRulesWrapper = value.rules;
-      adoptRulesWrapper(this, value.rules);
-    }
+    // R2 single-frame: the If IS its own body — body children parent to the If via
+    // the `if()` factory's parentChildren (childKeys includes 'rules'). No
+    // `_passedRulesWrapper` duplicate (the Ruleset/Mixin wrapper removal, applied
+    // to control nodes).
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
@@ -576,7 +562,7 @@ export class If extends Rules<IfValue> {
       conditionPasses = condition instanceof Bool && condition.value === true;
     }
     if (conditionPasses) {
-      return renderControlRules(this._passedRulesWrapper ?? createIterationEvalSurface(this), context, buffer, options);
+      return renderControlRules(createIterationEvalSurface(this), context, buffer, options);
     }
     return this.else
       ? renderControlRules(this.else, context, buffer, options)
@@ -612,7 +598,6 @@ export class For extends Rules<StructuredLoopValue> {
   readonly pattern: ForPattern;
   readonly iterable: ForIterable;
   declare readonly rules: Node[];
-  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -636,15 +621,13 @@ export class For extends Rules<StructuredLoopValue> {
       }
     }
     makeDirectiveRulesPublic(this);
-    if (value.rules instanceof Rules) {
-      this._passedRulesWrapper = value.rules;
-      adoptRulesWrapper(this, value.rules);
-      // Carry function bindings from the source wrapper so iteration surfaces
-      // can look them up during eval (createIterationEvalSurface reads this.functionsByName).
-      if (value.rules.functionsByName) {
-        for (const [name, fn] of value.rules.functionsByName) {
-          this.setFunctionBinding(name, fn);
-        }
+    // R2 single-frame: the For IS its own body (no `_passedRulesWrapper`); body
+    // children parent to the For via the `for()` factory parentChildren. Carry
+    // function bindings from a factory-passed rules wrapper so iteration surfaces
+    // can look them up during eval (createIterationEvalSurface reads this.functionsByName).
+    if (value.rules instanceof Rules && value.rules.functionsByName) {
+      for (const [name, fn] of value.rules.functionsByName) {
+        this.setFunctionBinding(name, fn);
       }
     }
   }
@@ -830,7 +813,6 @@ export class While extends Rules<WhileValue> {
 
   readonly condition: Node;
   declare readonly rules: Node[];
-  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
@@ -842,10 +824,8 @@ export class While extends Rules<WhileValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
     makeDirectiveRulesPublic(this);
-    if (value.rules instanceof Rules) {
-      this._passedRulesWrapper = value.rules;
-      adoptRulesWrapper(this, value.rules);
-    }
+    // R2 single-frame: the While IS its own body (no `_passedRulesWrapper`); body
+    // children parent to the While via the `while()` factory parentChildren.
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {

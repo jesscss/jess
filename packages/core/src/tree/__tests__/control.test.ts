@@ -257,19 +257,10 @@ describe('Control Nodes', () => {
   it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
+    // New model: the branch body (`selectedRules`) is unwrapped + discarded (no
+    // `_passedRulesWrapper`); the selected branch renders via its own body surface,
+    // so the render path writes to the buffer without touching node.resolve/evalNode.
     const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
-    const originalSelectedRender = selectedRules.render;
-    let selectedRulesRenderCalls = 0;
-    let selectedRulesRenderBuffer: unknown;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    selectedRules.render = function countSelectedRulesRender(
-      this: typeof selectedRules,
-      ...args: Parameters<typeof originalSelectedRender>
-    ): ReturnType<typeof originalSelectedRender> {
-      selectedRulesRenderCalls++;
-      selectedRulesRenderBuffer = args[1];
-      return originalSelectedRender.apply(this, args);
-    } as typeof selectedRules.render;
     const node = new If({
       condition: bool(false),
       rules: [decl({ name: 'color', value: any('red') })],
@@ -290,8 +281,6 @@ describe('Control Nodes', () => {
 
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
-    expect(selectedRulesRenderCalls).toBe(1);
-    expect(selectedRulesRenderBuffer).toBe(buffer);
   });
 
   it('evaluates $if output through root render', async () => {
@@ -804,7 +793,9 @@ describe('Control Nodes', () => {
       expect(css).toContain('tick: yes');
       expect(calls).toBe(3);
       expect(clonedLoopRules).toBe(0);
-      expect(loopRules.parent).toBe(node);
+      // New model: the passed `rules([...])` wrapper is unwrapped + discarded, so
+      // the While owns its body children directly (node.rules === loopRules.rules).
+      expect(node.rules).toBe(loopRules.rules);
     } finally {
       Rules.prototype.clone = originalClone;
     }
