@@ -482,7 +482,21 @@ function createScopeFrameVariableBindingHandle(
 }
 
 function getBindingHandleValue(handle: ScopeFrameVariableBindingHandle): Node {
-  return getBindingCellValue(handle.cell);
+  const value = getBindingCellValue(handle.cell);
+  // Detached-ruleset closure capture (variable case): a Rules stored in a
+  // variable closes over the surface where the variable was DEFINED (the binding's
+  // rulesContext T, which carries per-call param live-slots). Record it so the
+  // placement clone produced when it is invoked resolves free vars up T. Set (not
+  // ??=) because the shared canonical value is re-used across calls; eval is
+  // synchronous from here to the invoking clone, which inherits this via inherit().
+  if (isNode(value, N.Rules)) {
+    const t = getBindingHandleRulesContext(handle);
+    if (t) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (value as unknown as { _closureScope?: unknown })._closureScope = t;
+    }
+  }
+  return value;
 }
 
 function getBindingHandleRulesContext(handle: ScopeFrameVariableBindingHandle): Rules | undefined {

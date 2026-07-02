@@ -28,6 +28,14 @@ export async function evaluateCallableArgs({
           continue;
         }
         const evald = await arg.eval(context);
+        // Detached-ruleset closure capture: a Rules passed as an arg is a lexical
+        // closure over the surface where it is WRITTEN (the current caller scope T,
+        // which carries per-call param live-slots). Record T so a later `@content()`
+        // resolves free vars up it, not the canonical `sourceNode.parent`.
+        if (isNode(evald, N.Rules) && context.rulesContext) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          (evald as unknown as { _closureScope?: unknown })._closureScope = context.rulesContext;
+        }
         if (evald.type === 'Rest') {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const restValue = (evald as unknown as { value: Node | undefined }).value;

@@ -1411,6 +1411,14 @@ export abstract class Node<
      * Otherwise, it should be settable after cloning / copying.
      */
     this.index ??= node.index;
+    // A detached-ruleset closure scope (captured at arg-binding) must survive the
+    // placement clone/derive that produces the invoked surface. See
+    // parseman-wrapper-is-scope-identity.
+    const closureScope = (node as unknown as { _closureScope?: unknown })._closureScope;
+    if (closureScope !== undefined) {
+      const self = this as unknown as { _closureScope?: unknown };
+      self._closureScope ??= closureScope;
+    }
     return this;
   }
 

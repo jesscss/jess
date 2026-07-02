@@ -1832,9 +1832,14 @@ export class Call extends Node<CallValue, CallOptions> {
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
+        // A detached ruleset resolves free vars up the surface where it was
+        // WRITTEN. Prefer the closure scope captured at arg-binding (the per-call
+        // surface T, which carries param live-slots); fall back to the canonical
+        // lexical parent when there is no closure capture.
+        const closureScope = rulesNode._closureScope;
+        const sourceParent = closureScope ?? ('sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
           ? rulesNode.sourceNode.parent
-          : undefined;
+          : undefined);
         if (sourceParent) {
           rulesNode.parent = sourceParent;
         }

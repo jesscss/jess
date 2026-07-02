@@ -880,6 +880,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
+   * Closure environment for a detached ruleset: the per-call eval surface where
+   * this detached ruleset was WRITTEN (captured at arg-binding). A detached
+   * ruleset is a lexical closure — when later invoked (`@content()`), its free
+   * variables resolve up THIS surface (which carries per-call param live-slots),
+   * not its canonical `sourceNode.parent` (which lacks them). See
+   * parseman-wrapper-is-scope-identity.
+   */
+  _closureScope: Rules | undefined;
+  /**
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
    */
