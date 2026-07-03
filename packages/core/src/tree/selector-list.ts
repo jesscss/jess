@@ -8,7 +8,7 @@ import {
   type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
-import { attachSelectorBitLibrary, Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike, type SelectorValue } from './selector.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -382,3 +382,15 @@ export class SelectorList extends Selector<SelectorListItem[]> {
 }
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist');
+
+/**
+ * Normalize a {@link SelectorLike} to the canonical stored form. An array becomes a
+ * `SelectorList` (an array stands in for a list — no caller-built wrapper needed);
+ * a single node or string is returned as-is.
+ */
+export function normalizeSelectorLike(value: SelectorLike): SelectorValue {
+  if (Array.isArray(value)) {
+    return SelectorList.create(value);
+  }
+  return value;
+}

@@ -1,4 +1,5 @@
 import { el, compound, sel } from '../index.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -69,8 +70,8 @@ describe('BasicSelector', () => {
   test('keys', () => {
     let rule = el('.foo');
     rule.eval(context);
-    expect(rule.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(rule.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(rule).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(rule).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
   // it('should serialize a module', () => {
   //   let rule = el('foo')

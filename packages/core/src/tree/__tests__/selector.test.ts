@@ -1,6 +1,7 @@
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
+import { visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { isNode } from '../util/is-node.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -104,8 +105,8 @@ describe('Selector', () => {
 
       expect(selector.toTrimmedString()).toBe('h1,\nh2 > a > p,\nh3');
       expect(selector.valueOf()).toBe('h1,h2>a>p,h3');
-      expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['h1', 'h2', 'a', 'p', 'h3']))).toBe(true);
-      expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+      expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['h1', 'h2', 'a', 'p', 'h3']))).toBe(true);
+      expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
       expect(await selector.resolve(context)).toBe(selector);
     });
 

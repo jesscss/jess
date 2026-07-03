@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
@@ -266,8 +267,8 @@ describe('PseudoSelector', () => {
     expect(resolved).not.toBe(pseudoNode);
     expect(resolved.generated).toBe(true);
     expect(resolved.render(context)).toBe('.foo .bar');
-    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector)');
   });
@@ -315,9 +316,9 @@ describe('PseudoSelector', () => {
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved.render(context)).toBe('.foo .bar');
-    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(resolved.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('keeps nested generated pseudo placement text narrow without replacing selector metadata', async () => {
@@ -343,6 +344,6 @@ describe('PseudoSelector', () => {
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved.render(context)).toBe(':unknown(.foo.bar)');
     expect(sourceArg?.parent).toBe(pseudoNode);
-    expect(resolved.keySet.equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import { isNode } from './is-node.js';
 import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
+import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 
 function shareKeySetLibrary(a: Selector, b: Selector): boolean {
   return !!a.keySetLibrary && a.keySetLibrary === b.keySetLibrary;
@@ -759,7 +760,7 @@ export function findExtendableLocations(
   const canFastReject = shareKeySetLibrary(target, find);
 
   // OPTIMIZATION 2: BitSet fast rejection - bail early for impossible matches
-  if (canFastReject && isDisjoint(target.keySet, find.keySet)) {
+  if (canFastReject && isDisjoint(keySetOf(target), keySetOf(find))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
@@ -767,7 +768,7 @@ export function findExtendableLocations(
   }
 
   // OPTIMIZATION 3: RequiredKeyBits subset rejection for partial matching
-  if (canFastReject && !isSubsetOf(find.requiredKeySet, target.keySet)) {
+  if (canFastReject && !isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
@@ -825,7 +826,7 @@ export function selectorMatchesExtendTarget(
   target: Selector,
   partial: boolean
 ): boolean {
-  if (shareKeySetLibrary(selector, target) && !isSubsetOf(target.requiredKeySet, selector.keySet)) {
+  if (shareKeySetLibrary(selector, target) && !isSubsetOf(requiredKeySetOf(target), keySetOf(selector))) {
     return false;
   }
   const targetValue = target.valueOf();

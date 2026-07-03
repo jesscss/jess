@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { amp, compound, el, sel, pseudo, co, sellist, is, type Selector } from '../../../index.js';
 import { Context } from '../../../context.js';
-import { selectorAnalysisFor } from '../selector-analysis.js';
+import { selectorAnalysisFor, keySetOf, visibleKeySetOf, requiredKeySetOf } from '../selector-analysis.js';
 
-// The service must produce byte-identical key sets to the legacy node getters for
-// every selector shape — including string-normalized leaves that the node model
-// special-cased inline. Once this parity holds, consumers can migrate to the
-// service and the node getters/fields can be deleted.
-describe('SelectorAnalysis parity with node key-set methods', () => {
+// The keySetOf/visibleKeySetOf/requiredKeySetOf free helpers must resolve the same
+// service instance (via the selector's keySetLibrary) as an explicit
+// selectorAnalysisFor(context.selectorBits) lookup — for every selector shape,
+// including string-normalized leaves.
+describe('SelectorAnalysis free helpers resolve the context service', () => {
   const cases: Array<{ name: string; make: () => Selector }> = [
     { name: 'simple leaf', make: () => el('.foo') },
     { name: 'compound (nodes)', make: () => compound([el('.foo'), el('.bar')]) },
@@ -33,9 +33,9 @@ describe('SelectorAnalysis parity with node key-set methods', () => {
       await selector.eval(context);
       const analysis = selectorAnalysisFor(context.selectorBits);
 
-      expect(analysis.keySet(selector).equals(selector.keySet)).toBe(true);
-      expect(analysis.visibleKeySet(selector).equals(selector.visibleKeySet)).toBe(true);
-      expect(analysis.requiredKeySet(selector).equals(selector.requiredKeySet)).toBe(true);
+      expect(analysis.keySet(selector).equals(keySetOf(selector))).toBe(true);
+      expect(analysis.visibleKeySet(selector).equals(visibleKeySetOf(selector))).toBe(true);
+      expect(analysis.requiredKeySet(selector).equals(requiredKeySetOf(selector))).toBe(true);
     });
   }
 });

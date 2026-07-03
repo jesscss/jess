@@ -126,6 +126,7 @@ import { findExtendableLocations, type ExtendLocation } from './extend-helpers.j
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { isDisjoint, isSubsetOf } from './bitset.js';
+import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 import {
   selectorCompare,
   type SelectorComparisonResult,
@@ -1453,12 +1454,12 @@ export function extendSelector(
   // the find selector can never match within the target. SelectorList OR-paths are
   // encoded as an empty/smaller requiredKeySet, so this stays a pure data-type swap.
   if (!partial && canFastReject) {
-    if (!isSubsetOf(find.requiredKeySet, target.keySet)) {
+    if (!isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
       return 'NOT_FOUND';
     }
   } else if (partial && canFastReject) {
     // For partial extends, find's keys must have at least some overlap with target's keys
-    if (isDisjoint(find.keySet, target.keySet)) {
+    if (isDisjoint(keySetOf(find), keySetOf(target))) {
       return 'NOT_FOUND';
     }
   }

@@ -37,10 +37,10 @@ export enum ExtendFlag {
 }
 
 export type ExtendValue = {
-  /** The current selector. By default is `&` */
-  selector?: Selector;
-  /** The target to extend */
-  target: Selector;
+  /** The current selector. By default is `&`. An array stands in for a SelectorList. */
+  selector?: Selector | Selector[];
+  /** The target to extend. An array stands in for a SelectorList. */
+  target: Selector | Selector[];
   /**
    * Optional namespace scoping for extend targets.
    *
@@ -78,8 +78,9 @@ export class Extend extends Node<ExtendValue> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.selector = value.selector;
-    this.target = value.target;
+    // An array stands in for a SelectorList — normalize on construction.
+    this.selector = Array.isArray(value.selector) ? SelectorList.create(value.selector) : value.selector;
+    this.target = Array.isArray(value.target) ? SelectorList.create(value.target) : value.target;
     this.namespace = value.namespace;
     this.flag = value.flag;
     this.removeFlag(F_VISIBLE);

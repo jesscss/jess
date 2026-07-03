@@ -4,7 +4,7 @@ import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { Bool } from './bool.js';
 import { Condition } from './condition.js';
-import { attachSelectorBitLibrary, Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
@@ -17,7 +17,7 @@ import {
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { BasicSelector } from './selector-basic.js';
-import { SelectorList, type SelectorListItem } from './selector-list.js';
+import { SelectorList, normalizeSelectorLike, type SelectorListItem } from './selector-list.js';
 import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { Ampersand } from './ampersand.js';
@@ -49,7 +49,11 @@ import {
 } from './util/raw-selector.js';
 
 export type RulesetValue = {
-  selector: string | Selector | Nil;
+  /**
+   * A string, a selector node, or an array of either — an array stands in for a
+   * SelectorList (normalized on construction). See {@link SelectorLike}.
+   */
+  selector: SelectorLike | Nil;
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -486,7 +490,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   override allowRoot = true;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
-  selector: RulesetValue['selector'] | undefined;
+  /** Stored (normalized) form: input arrays become a SelectorList on construction. */
+  selector: Selector | string | Nil | undefined;
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
@@ -511,14 +516,18 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     super(value.rules, options, location, treeContext);
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
-    if (typeof value.selector === 'string') {
+    // An array selector stands in for a SelectorList — normalize it here.
+    const selector = Array.isArray(value.selector)
+      ? normalizeSelectorLike(value.selector)
+      : value.selector;
+    if (typeof selector === 'string') {
       // The parser is the authority on selector syntax; the runtime stores
       // whatever string it produced (materializing to nodes lazily when needed).
-      this.selector = value.selector.trim();
+      this.selector = selector.trim();
       this.guard = 'guard' in value ? value.guard : undefined;
       this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
     } else {
-      this.selector = value.selector;
+      this.selector = selector;
       this.guard = value.guard;
       this.selectorBeforeExtend = value.selectorBeforeExtend;
     }

@@ -4,7 +4,6 @@ import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary } from './util/bitset.js';
-import { selectorAnalysisFor } from './util/selector-analysis.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
@@ -32,6 +31,20 @@ function selectorArg(value: unknown): Selector | undefined {
 function nodeType(value: Node | undefined): string {
   return value?.type ?? 'none';
 }
+
+/**
+ * A single selector value: a selector node, or a plain string leaf. String-backed
+ * basic selectors and combinators are strings, so a bare `string` IS a selector.
+ * (Once `BasicSelector` is deleted and the base class is renamed, this becomes the
+ * canonical `Selector` and the `| string` folds away.)
+ */
+export type SelectorValue = Selector | string;
+
+/**
+ * Anything accepted where a selector is expected: a single selector value, or an
+ * array of them. An array stands in for a `SelectorList` — no wrapper node needed.
+ */
+export type SelectorLike = SelectorValue | SelectorValue[];
 
 /**
  * This represents anything that is valid in a selector
@@ -71,7 +84,12 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   keySetLibrary: BitSetLibrary<string> | undefined;
 
-  protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
+  /**
+   * Resolve the bit-set library this selector belongs to (own, else parent/source,
+   * else context/tree). Used by the SelectorAnalysis free helpers to look up the
+   * right service instance — the node no longer surfaces key-set getters itself.
+   */
+  requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
     const { keySetLibrary, sourceNode, parent } = this;
     const sourceLibrary = sourceNode !== this && isSelector(sourceNode)
       ? sourceNode.keySetLibrary
@@ -150,21 +168,10 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
-  // Selector key-sets (keySet / visibleKeySet / requiredKeySet) are computed by the
-  // SelectorAnalysis service, not on the node — see util/selector-analysis.ts. The
-  // service caches per identity; the node holds no key-set fields.
-  get keySet() {
-    return selectorAnalysisFor(this._requireKeySetLibrary()).keySet(this);
-  }
-
-  get visibleKeySet() {
-    return selectorAnalysisFor(this._requireKeySetLibrary()).visibleKeySet(this);
-  }
-
-  get requiredKeySet() {
-    return selectorAnalysisFor(this._requireKeySetLibrary()).requiredKeySet(this);
-  }
-
+  // Selector key-sets (keySet / visibleKeySet / requiredKeySet) are owned entirely by
+  // the SelectorAnalysis service — see util/selector-analysis.ts and its keySetOf /
+  // visibleKeySetOf / requiredKeySetOf free helpers. The node holds no key-set getters
+  // or fields; it only carries `keySetLibrary` so the service instance can be found.
   invalidateCache(): void {
     this._valueOf = undefined;
   }

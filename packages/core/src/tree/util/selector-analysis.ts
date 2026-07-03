@@ -227,3 +227,18 @@ export function selectorAnalysisFor(library: BitSetLibrary<string>): SelectorAna
   }
   return analysis;
 }
+
+// Free-function access to a selector's key-sets. These replace the old node getters:
+// the service is the sole owner of key-set computation; a selector only carries the
+// `keySetLibrary` pointer used to resolve the right service instance.
+export function keySetOf(selector: Selector): BitSet<string> {
+  return selectorAnalysisFor(selector.requireKeySetLibrary()).keySet(selector);
+}
+
+export function visibleKeySetOf(selector: Selector): BitSet<string> {
+  return selectorAnalysisFor(selector.requireKeySetLibrary()).visibleKeySet(selector);
+}
+
+export function requiredKeySetOf(selector: Selector): BitSet<string> {
+  return selectorAnalysisFor(selector.requireKeySetLibrary()).requiredKeySet(selector);
+}

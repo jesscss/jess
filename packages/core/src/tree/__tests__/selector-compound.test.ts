@@ -1,4 +1,5 @@
 import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
 import type { Trivia, TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -260,17 +261,17 @@ describe('Compound Selector', () => {
         el('.class')
       ]);
       await sel1.eval(context);
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('string-backed compound', async () => {
       const sel1 = compound(['a', '#id', '.class']);
       await sel1.eval(context);
       expect(sel1.toTrimmedString()).toBe('a#id.class');
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(requiredKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('nested compound', async () => {
@@ -283,10 +284,10 @@ describe('Compound Selector', () => {
       ]);
 
       await sel2.eval(context);
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -286,18 +287,18 @@ describe('Complex selector', () => {
         el('.three')
       ]);
       await sel1.eval(context);
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '.two', '>', '.three']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '.two', '>', '.three']))).toBe(true);
       // visibleKeySet excludes combinators
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
 
     test('string-backed complex', async () => {
       const sel1 = sel(['.one', '>', '.two', '+', 'div']);
       await sel1.eval(context);
       expect(sel1.toTrimmedString()).toBe('.one > .two + div');
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', 'div']))).toBe(true);
-      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '.two', 'div']))).toBe(true);
+      expect(requiredKeySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
     });
 
     test('nested complex (w/ relative :is)', async () => {
@@ -309,9 +310,9 @@ describe('Complex selector', () => {
         ])
       ]);
       await sel2.eval(context);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '>', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '>', '.two', '.one']))).toBe(true);
       // visibleKeySet excludes combinators (even those inside :is() complex args)
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
     test('nested complex (w/o relative :is)', async () => {
       let sel2 = sel([
@@ -322,8 +323,8 @@ describe('Complex selector', () => {
         ])
       ]);
       await sel2.eval(context);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
     test(':is w/ selector list', async () => {
       let sel2 = sel([
@@ -334,8 +335,8 @@ describe('Complex selector', () => {
         ])
       ]);
       await sel2.eval(context);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', 'b', '#id', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', 'b', '#id', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', '#id', '.two', '.one']))).toBe(true);
     });
 
     test(':is w/ complex selector list', async () => {
@@ -353,9 +354,9 @@ describe('Complex selector', () => {
         ])
       ]);
       await sel2.eval(context);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
       // visibleKeySet excludes combinators (including those inside :is() complex args)
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '.two', '.one']))).toBe(true);
     });
   });
 });
