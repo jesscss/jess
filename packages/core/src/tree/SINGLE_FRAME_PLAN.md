@@ -303,30 +303,35 @@ the remaining wrappers AND the last uncovered scopes (R3). Landed:
   by the `evaluated` deletion; the real blocker was #1 (bespoke eval adopting children),
   fixed by the share-without-adopt + `ownControlBodyChildren` combination above.
 
-### 2026-07-02 — WHY `$while` can't share yet (deep-rework root cause, verified)
-A focused attempt to make `$while` share too (self-referential counter `i:i+1` + `tick:@i`,
-test `keeps native loop render aligned`) was made and reverted. Five approaches
-(share-without-adopt; live-slots-on-iteration-frame; source-order eval-then-render;
-per-iteration `runWithRulesContext`; and combinations) all left the counter reading `1,1,1`.
-Root cause is NOT the loop layer — it's TWO in-place mutations in the eval core that assume
-one-eval-per-node (safe for mixins/rulesets, each placement evaluated once; unsafe for a
-SHARED body re-evaluated per iteration):
-1. **`Declaration.materializeValueState` (declaration.ts ~1670)**: `this.adopt(state.value);
-   this.value = state.value; return this` — caches the EVALUATED value on the node in place
-   (the fast path, avoiding a copy). Iteration 1 sets the shared `tick`'s `value = Num(1)`;
-   every later iteration renders the stale cached `1`. The copy-on-write path (`withParts`,
-   ~1674) exists but is bypassed for deferred values for perf.
-2. **`Reference._rulesLookupHandle`**: the cached lookup handle keys `targetRules` on
-   `context.rulesContext` (reference.ts ~2217). `$while` runs the whole loop under one
-   persistent `runWithRulesContext(stateRules)`, so a shared body's `@i` handle survives
-   across iterations. (Rendering each iteration under its own rulesContext helps this one,
-   but #1 remains.)
-Making `$while` share requires making Declaration/Reference eval **copy-on-write for shared
-re-evaluation** without a copy on the common single-eval path — a cross-cutting eval-core
-change (related to task #18 "trivia loss on Declaration eval with variable-ref value"). High
-risk, broad blast radius. The **copy-split ($while copies) is the correct solution**: it
-isolates each iteration so the in-place mutations are per-iteration-safe, exactly as they are
-per-placement-safe for mixins. Not a limitation — the right model for stateful iteration.
+### 2026-07-02 — WHY `$while` can't share yet (PRECISE root cause, verified by frame dumps)
+Making `$while` share a self-referential counter (`$while(@i<3){ i: i+1; tick: @i }`, test
+`keeps native loop render aligned`) was attempted from ~8 angles (share-without-adopt;
+live-slots-on-iteration-frame; source-order eval-then-render; per-iteration `runWithRulesContext`;
+disabling the Reference `_rulesLookupHandle` cache entirely; Declaration copy-on-write; and
+combinations). ALL left the counter rendering `1,1,1` instead of `1,2,3`. The earlier "two
+in-place mutations" framing was incomplete — the PRECISE cause, from a scope-frame lookup-chain
+dump, is:
+
+- The incoming loop state IS correctly on the iteration frame as a **live slot** — verified: the
+  copied slot value is `MISSING`(iter1, root), `1`(iter2), `2`(iter3). State propagation is FINE.
+- **But the body's `i: i+1` vardecl registers a NEW `i` binding into that same frame, whose value
+  is the RAW unevaluated `i+1` node, and this registered binding OVERWRITES the live slot's entry
+  in `currentBindingsByName`.** The lookup chain during the body's resolution is
+  `Rules[i=$i1(raw i+1)] -> Rules[i=0(root)]` — the live slot (`i=1,live`) is shadowed/gone, and
+  the frame chains to root (`i=0`). So both the RHS `@i` and `tick:@i` resolve to the vardecl's
+  own raw `i+1` reading root `0` → `0+1 = 1` forever.
+- The COPY path is correct because each iteration's COPIED vardecl registers into a frame whose
+  PARENT is the persistent state frame (carrying the synced value), and copy isolation +
+  source-order resolve it; the shared path collapses the "previous i" and "this i" into one
+  overwritten binding.
+
+**The real fix** = a `$while` state vardecl must **write the incoming live-slot cell's value**
+(the `setDefined`/[[feedback-setdefined-cell-not-node]] "write the cell, not the node" semantics)
+instead of registering a new declaration that shadows it with a raw node. That is a deliberate
+variable-set-semantics change in the declaration/registration path (a `$while` body vardecl over
+an existing live slot is an UPDATE, not a fresh shadow), not a mechanical deletion — real, but
+scoped and now precisely located. The **copy-split ($while copies) remains correct and shipped**:
+it isolates each iteration so this collapse can't happen — the right model for stateful iteration.
 
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
