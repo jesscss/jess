@@ -55,7 +55,7 @@ export type RulesetValue = {
    * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  rules: Rules | Node[];
+  rules: Node[];
   guard?: string | Condition | Nil;
   /**
    * When this ruleset is extended, we store its selector before the first extend.
@@ -509,14 +509,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     ) {
       options = { ...options, hasDefault: true };
     }
-    // Accept either a bare Node array or a Rules container node (unwrapped to
-    // its child array) — factories like `ruleset({ rules: rules([...]) })` pass
-    // the latter, while the parser passes the array directly.
-    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
-    if (!Array.isArray(rulesValue)) {
-      throw new TypeError('Ruleset requires rules to be a Node array.');
-    }
-    super(rulesValue, options, location, treeContext);
+    super(value.rules, options, location, treeContext);
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     if (typeof value.selector === 'string') {
       // The parser is the authority on selector syntax; the runtime stores
@@ -573,10 +566,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private ownRules(value: RulesetValue['rules']): Node[] {
-    const arr = value instanceof Rules ? value.rules : value;
-    const owned = new Array<Node>(arr.length);
-    for (let i = 0; i < arr.length; i++) {
-      const copied = copyOwnedWithReusableLeaves(arr[i]!);
+    const owned = new Array<Node>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      const copied = copyOwnedWithReusableLeaves(value[i]!);
       if (!(copied instanceof Node)) {
         throw new TypeError('Expected ruleset rule copy to remain a node');
       }

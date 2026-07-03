@@ -42,16 +42,6 @@ function throwInvalidWhileIterationRegistrationPrep(): never {
   throw new TypeError('Expected $while iteration registration prep to return Rules');
 }
 
-// Accept either a bare Node array or a Rules container node (unwrapped to its
-// child array). Factories pass a Rules node; the parser passes the array.
-function normalizeRulesBody(owner: string, rules: unknown): Node[] {
-  const arr = rules instanceof Rules ? rules.rules : rules;
-  if (!Array.isArray(arr)) {
-    throw new TypeError(`${owner} requires rules to be a Node array.`);
-  }
-  return arr;
-}
-
 function makeDirectiveRulesPublic(rules: Rules<any>) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
@@ -509,7 +499,7 @@ export class If extends Rules<IfValue> {
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
-    super(normalizeRulesBody('If', value.rules), options, location as LocationInfo | undefined, treeContext);
+    super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.else = value.else;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -637,7 +627,7 @@ export class For extends Rules<StructuredLoopValue> {
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
-    super(normalizeRulesBody('For', value.rules), options, location as LocationInfo | undefined, treeContext);
+    super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -852,7 +842,7 @@ export class While extends Rules<WhileValue> {
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
-    super(normalizeRulesBody('While', value.rules), options, location as LocationInfo | undefined, treeContext);
+    super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);

@@ -24,6 +24,7 @@ import {
   type Selector,
   atrule
 } from '../index.js';
+import type { MixinOptions } from '../mixin.js';
 import { Context, TreeContext } from '../../context.js';
 import type { DeclarationFindOptions } from '../util/lookup-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -1419,10 +1420,10 @@ describe('Rules', () => {
           // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
             name: any('my-mixin'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'live' }) })
-            ], { rulesVisibility: { VarDeclaration: 'optional' } })
-          }),
+            ]
+          }, { rulesVisibility: { VarDeclaration: 'optional' } } as MixinOptions),
 
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({

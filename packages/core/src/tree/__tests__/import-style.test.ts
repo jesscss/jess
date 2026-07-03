@@ -3581,20 +3581,18 @@ describe('Style import', () => {
         rules: [decl({ name: any('color'), value: any('green') })]
       });
       localContext.sourceTrees.set(referencedPath, rules([leaf]));
-      const namespaceBody = rules([
-        style({
-          path: quoted(any('reference-namespace-mixin-callable.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
-      const node = rules([
-        mixin({
-          name: any('#parent-namespace'),
-          rules: namespaceBody
-        })
-      ]);
+      const namespaceBody = mixin({
+        name: any('#parent-namespace'),
+        rules: [
+          style({
+            path: quoted(any('reference-namespace-mixin-callable.jess'))
+          }, {
+            type: 'import',
+            importOptions: { reference: true }
+          })
+        ]
+      });
+      const node = rules([namespaceBody]);
       const broadFastHits: string[] = [];
       let namespaceBodyFindMixinCount = 0;
       RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
@@ -3635,20 +3633,18 @@ describe('Style import', () => {
           rules: [decl({ name: any('color'), value: any('green') })]
         })
       ]));
-      const namespaceBody = rules([
-        style({
-          path: quoted(any('reference-uncalled-namespace-mixin-callable.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
-      const node = rules([
-        mixin({
-          name: any('#parent-namespace'),
-          rules: namespaceBody
-        })
-      ]);
+      const namespaceBody = mixin({
+        name: any('#parent-namespace'),
+        rules: [
+          style({
+            path: quoted(any('reference-uncalled-namespace-mixin-callable.jess'))
+          }, {
+            type: 'import',
+            importOptions: { reference: true }
+          })
+        ]
+      });
+      const node = rules([namespaceBody]);
       const broadFastHits: string[] = [];
       RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;

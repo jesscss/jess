@@ -91,8 +91,7 @@ function makeLoop(
   return new For({
     pattern: normalizedPattern,
     iterable: { kind: 'node', value: iterable },
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    rules: loopRules as unknown as Node[]
+    rules: loopRules.rules
   });
 }
 
@@ -130,8 +129,7 @@ describe('Control Nodes', () => {
     const treeContext = new TreeContext();
     const branchRules = rules([]);
     const ifRule = new If({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      condition: bool(true), rules: branchRules as unknown as Node[]
+      condition: bool(true), rules: branchRules.rules
     }, undefined, undefined, treeContext);
     const forRule = new For({
       pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
@@ -266,8 +264,7 @@ describe('Control Nodes', () => {
       rules: [decl({ name: 'color', value: any('red') })],
       else: new If({
         condition: bool(true),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: selectedRules as unknown as Node[],
+        rules: selectedRules.rules,
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
@@ -792,8 +789,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: loopRules as unknown as Node[]
+        rules: loopRules.rules
       });
 
       const css = await Promise.resolve(node.render(context, buffer));
@@ -883,8 +879,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -928,8 +923,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -977,8 +971,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -1008,8 +1001,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: renderRules as unknown as Node[]
+      rules: renderRules.rules
     });
 
     const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
@@ -1035,8 +1027,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: evalRules as unknown as Node[]
+      rules: evalRules.rules
     });
     const evalRoot = rules([evalWhile]);
 
@@ -1411,7 +1402,9 @@ describe('Control Nodes', () => {
 
   it('preserves function bindings on runtime $for iteration surfaces', async () => {
     const context = new Context();
-    const loopRules = rules([
+    // The For node IS its own body container now; the function binding belongs on it,
+    // not on a separate rules() wrapper (which is discarded to its child array).
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), rules([
       decl({
         name: 'color',
         value: call({
@@ -1419,12 +1412,12 @@ describe('Control Nodes', () => {
           args: list([])
         })
       })
-    ]);
-    loopRules.setFunctionBinding('make-blue', new JsFunction({
+    ]));
+    loop.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
   });
@@ -1722,8 +1715,7 @@ describe('Control Nodes', () => {
     });
     const ifNode = new If({
       condition: new Any('true', { role: 'any' }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: privateRules as unknown as Node[]
+      rules: privateRules.rules
     });
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -1732,27 +1724,11 @@ describe('Control Nodes', () => {
     const forNode = new For({
       pattern: { kind: 'single', value: singlePattern },
       iterable: { kind: 'node', value: list([new Any('a')]) },
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      }) as unknown as Node[]
+      rules: []
     });
     const whileNode = new While({
       condition: new Any('true', { role: 'any' }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      }) as unknown as Node[]
+      rules: []
     });
     expect(ifNode.options.rulesVisibility.Declaration).toBe('public');
     expect(ifNode.options.rulesVisibility.Ruleset).toBe('public');
@@ -1815,8 +1791,7 @@ describe('Control Nodes', () => {
             kind: 'node',
             value: list([new Any('one'), new Any('two')])
           },
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          rules: loopRules as unknown as Node[]
+          rules: loopRules.rules
         })
       ]
     });

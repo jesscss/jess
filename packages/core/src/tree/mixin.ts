@@ -31,7 +31,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
-  rules: Rules | Node[];
+  rules: Node[];
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -97,14 +97,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     ) {
       options = { ...options, hasDefault: true };
     }
-    // Accept either a bare Node array or a Rules container node (unwrapped to
-    // its child array) — factories like `mixin({ rules: rules([...]) })` pass the
-    // latter, while the parser passes the array directly.
-    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
-    if (!Array.isArray(rulesValue)) {
-      throw new TypeError('Mixin requires rules to be a Node array.');
-    }
-    super(rulesValue, options, location, treeContext);
+    super(value.rules, options, location, treeContext);
     this.name = value.name;
     this.params = value.params;
     this.guard = value.guard;
@@ -181,7 +174,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   private withParts(value: MixinValue): Mixin {
     const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
-    const ownedRules = this.ownRules(Array.isArray(value.rules) ? value.rules : value.rules.rules);
+    const ownedRules = this.ownRules(value.rules);
     const derived: MixinValue = {
       rules: ownedRules
     };

@@ -1514,10 +1514,9 @@ describe('Call', () => {
   it('marks declarations important by replacing owned declaration slots', () => {
     const topDeclaration = decl({ name: 'color', value: any('red') });
     const nestedDeclaration = decl({ name: 'background', value: any('blue') });
-    const nestedRules = rules([nestedDeclaration]);
     const nestedRuleset = ruleset({
       selector: el('.nested'),
-      rules: nestedRules
+      rules: [nestedDeclaration]
     });
     const root = rules([topDeclaration, nestedRuleset]);
     const rule = call({ name: 'noop' });
@@ -1525,7 +1524,7 @@ describe('Call', () => {
     expect(rule.makeImportant(root)).toBe(root);
 
     const topReplacement = root.rules[0];
-    const nestedReplacement = nestedRules.rules[0];
+    const nestedReplacement = nestedRuleset.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
     expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);

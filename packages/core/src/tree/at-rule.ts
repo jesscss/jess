@@ -647,13 +647,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   declare readonly rules: Node[];
 
   constructor(value: AtRuleValue | AtRuleParts, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    // Accept either a bare Node array or a Rules container node (unwrapped to its
-    // child array) — factories pass a Rules node; the parser passes the array.
-    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
-    if (!Array.isArray(rulesValue)) {
-      throw new TypeError('AtRule requires rules to be a Node array. Use AtRuleStatement for semicolon at-rules.');
-    }
-    super(rulesValue, options, location, treeContext);
+    super(value.rules, options, location, treeContext);
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
     this.prelude = value.prelude;

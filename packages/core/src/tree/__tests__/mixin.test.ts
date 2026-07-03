@@ -172,7 +172,7 @@ describe('Mixin', () => {
     };
     const node = mixin({
       name: any('.button'),
-      rules: body
+      rules: body.rules
     });
 
     expect(node.toTrimmedString()).toBe('.button() {\n\n}');
@@ -183,7 +183,7 @@ describe('Mixin', () => {
     const body = rules([bodyDecl]);
     const node = mixin({
       name: any('.button'),
-      rules: body
+      rules: body.rules
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -321,18 +321,21 @@ describe('Mixin', () => {
     it('keeps static direct mixin output placements source-backed without moving source children', async () => {
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
-      const mixinBody = rules([sourceDecl]);
+      // The Mixin node IS the body container: it owns the source children directly.
       const mixinDef = mixin({
         name: any('.static-direct'),
-        rules: mixinBody
+        rules: [sourceDecl]
       });
-      const callerRules = rules([]);
+      const mixinBody = mixinDef;
+      // The caller scope must be the Ruleset itself (it owns the body array); a
+      // separate rules([]) wrapper is discarded and never chains to root.
+      const callerRules = ruleset({
+        selector: el('.use'),
+        rules: []
+      });
       const root = rules([
         mixinDef,
-        ruleset({
-          selector: el('.use'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -393,7 +396,7 @@ describe('Mixin', () => {
           vardecl({ name: 'accent', value: any('red') }),
           mixin({
             name: any('.commented'),
-            rules: mixinBody
+            rules: mixinBody.rules
           }),
           ruleset({
             selector: el('.use'),
@@ -463,7 +466,12 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // The caller scope is the `.test` Ruleset directly (it owns its body array);
+        // a separate rules([]) wrapper is discarded and never chains to root.
+        const callerRules = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           ruleset({
             selector: el('.my-mixin'),
@@ -471,10 +479,7 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ]
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          callerRules
         ]);
         context.root = root;
         context.rulesContext = callerRules;
@@ -539,21 +544,19 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('red') })
         ]
       });
-      const sourceBody = rules([
-        sourceComment,
-        sourceNested
-      ]);
+      // The Ruleset IS its own body container (no separate `sourceBody` wrapper);
+      // it owns the source children and the caller scope is the `.test` ruleset.
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: [sourceComment, sourceNested]
       });
-      const callerRules = rules([]);
+      const callerRules = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -566,17 +569,17 @@ describe('Mixin', () => {
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.rules);
-      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.rules);
-      expect(sourceBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.source)).toEqual(sourceBody.rules);
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceRuleset.rules);
+      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceRuleset.rules);
+      expect(sourceRuleset.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.source)).toEqual(sourceRuleset.rules);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.output)).toEqual(result.rules);
       expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
       expect(result.rules[0]).not.toBe(sourceComment);
       expect(result.rules[1]).not.toBe(sourceNested);
-      expect(sourceComment.parent).toBe(sourceBody);
-      expect(sourceNested.parent).toBe(sourceBody);
+      expect(sourceComment.parent).toBe(sourceRuleset);
+      expect(sourceNested.parent).toBe(sourceRuleset);
       expect(result.rules.map(child => child.parent)).toEqual([result, result]);
     });
 
@@ -1122,7 +1125,7 @@ describe('Mixin', () => {
           vardecl({ name: 'size', value: any('14px') }, { paramVar: true }),
           vardecl({ name: 'weight', value: any('normal') }, { paramVar: true })
         ]),
-        rules: mixinBody
+        rules: mixinBody.rules
       });
       const importedRoot = rules([importedMixinDef]);
 
@@ -1337,20 +1340,22 @@ describe('Mixin', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const mixinBody = mixinNoParam as unknown as RulesClass;
 
-      const callerRules = rules([
-        vardecl({ name: 'parameterDefault', value: any('inside') }),
-        vardecl({ name: 'anotherVariable', value: any('inside') }),
-        vardecl({ name: 'subScopeOnly', value: any('inside') })
-      ]);
+      // The caller scope is the `#allAreUsedHere` Ruleset directly (it owns its body
+      // and chains to root); a detached rules([]) wrapper never resolves up to root.
+      const callerRules = ruleset({
+        selector: el('#allAreUsedHere'),
+        rules: [
+          vardecl({ name: 'parameterDefault', value: any('inside') }),
+          vardecl({ name: 'anotherVariable', value: any('inside') }),
+          vardecl({ name: 'subScopeOnly', value: any('inside') })
+        ]
+      });
 
       const root = rules([
         vardecl({ name: 'parameterDefault', value: any('top level') }),
         vardecl({ name: 'anotherVariable', value: any('top level') }),
         mixinNoParam,
-        ruleset({
-          selector: el('#allAreUsedHere'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -2584,7 +2589,7 @@ describe('Mixin', () => {
         // lookup spy) must target the mixin, not the throwaway body-builder rules.
         const namespaceMixin = mixin({
           name: any('#namespace'),
-          rules: rules([])
+          rules: []
         });
         const root = rules([namespaceMixin]);
         const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
@@ -2634,7 +2639,7 @@ describe('Mixin', () => {
         // attach the fallback frame + nested lookup spy to the mixin, not the body rules.
         const namespaceMixin = mixin({
           name: any('#namespace'),
-          rules: rules([])
+          rules: []
         });
         const root = rules([namespaceMixin]);
         const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
@@ -2947,7 +2952,7 @@ describe('Mixin', () => {
         // discarded `childRules` wrapper's.
         const parentMixin = mixin({
           name: any('#parent-namespace'),
-          rules: childRules
+          rules: childRules.rules
         });
         const root = rules([parentMixin]);
         root.getScopeFrame();
@@ -2984,7 +2989,7 @@ describe('Mixin', () => {
         const root = rules([
           mixin({
             name: any('#parent-namespace'),
-            rules: childRules
+            rules: childRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3022,7 +3027,7 @@ describe('Mixin', () => {
         const root = rules([
           mixin({
             name: any('#parent-namespace'),
-            rules: namespaceRules
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3075,7 +3080,7 @@ describe('Mixin', () => {
       root = rules([
         mixin({
           name: any('#parent-namespace'),
-          rules: namespaceRules
+          rules: namespaceRules.rules
         })
       ]);
 
@@ -3134,7 +3139,7 @@ describe('Mixin', () => {
         root = rules([
           mixin({
             name: any('#parent-namespace'),
-            rules: namespaceRules
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3197,7 +3202,7 @@ describe('Mixin', () => {
         root = rules([
           mixin({
             name: any('#parent-namespace'),
-            rules: namespaceRules
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3247,7 +3252,7 @@ describe('Mixin', () => {
         // frame is the Mixin's own, not the discarded `childRules` wrapper's.
         const parentMixin = mixin({
           name: any('#parent-with-fallback-namespace'),
-          rules: rules([])
+          rules: []
         });
         const root = rules([parentMixin]);
         root.getScopeFrame();
@@ -3290,7 +3295,7 @@ describe('Mixin', () => {
         // scope frame is the Mixin's own, not the discarded `childRules` wrapper's.
         const parentMixin = mixin({
           name: any('#parent-with-covered-fallback'),
-          rules: childRules
+          rules: childRules.rules
         });
         const root = rules([parentMixin]);
         root.getScopeFrame();
@@ -3328,7 +3333,7 @@ describe('Mixin', () => {
       // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
       const parentMixin = mixin({
         name: any('#parent-with-fallback-import'),
-        rules: rules([])
+        rules: []
       });
       const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
@@ -3396,7 +3401,7 @@ describe('Mixin', () => {
       // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
       const parentMixin = mixin({
         name: any('#parent-with-fallback-import'),
-        rules: rules([])
+        rules: []
       });
       const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
@@ -3463,7 +3468,7 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
@@ -3533,7 +3538,7 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
@@ -3610,7 +3615,7 @@ describe('Mixin', () => {
       const root = rules([
         mixin({
           name: any('#parent-with-fallback-ambiguous-import'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
@@ -4792,7 +4797,7 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('.mixin-only-surface'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
 
@@ -7763,7 +7768,7 @@ describe('Mixin', () => {
       const node = mixin({
         name: dynamicMixinName,
         params,
-        rules: body
+        rules: body.rules
       });
 
       const prepared = await node.prepareRegistration(context);

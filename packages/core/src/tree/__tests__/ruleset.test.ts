@@ -337,7 +337,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
     node.prepareRegistration = () => {
       throw new Error('Static ruleset direct render should not prepare registration');
@@ -380,7 +380,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
     node.prepareRegistration = () => {
       throw new Error('Static ruleset with leaf at-rule should not prepare registration');
@@ -452,7 +452,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
     node.prepareRegistration = () => {
       throw new Error('Static ruleset with invisible variable should not prepare registration');
@@ -600,7 +600,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
     const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
     let ownedBodyPrepCalls = 0;
@@ -698,7 +698,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector: new Nil(),
-      rules: body
+      rules: body.rules
     });
     node.resolve = () => {
       throw new Error('Ruleset nil-selector render should evaluate natively');
@@ -737,7 +737,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector: new Nil(),
-      rules: body
+      rules: body.rules
     });
     const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
     let prepareCalls = 0;
@@ -779,7 +779,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector: new Nil(),
-      rules: nestedBody
+      rules: nestedBody.rules
     });
     const originalRender = nestedBody.render;
     let sourceBodyRenderCalls = 0;
@@ -814,7 +814,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector: new Nil(),
-      rules: dynamicBody
+      rules: dynamicBody.rules
     });
     const originalRender = dynamicBody.render;
     let sourceBodyRenderCalls = 0;
@@ -849,7 +849,7 @@ describe('Rule', () => {
     const node = ruleset({
       selector: new Nil(),
       guard,
-      rules: body
+      rules: body.rules
     });
     const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
     let prepareCalls = 0;
@@ -902,7 +902,7 @@ describe('Rule', () => {
     const node = ruleset({
       selector: new Nil(),
       guard,
-      rules: body
+      rules: body.rules
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -924,7 +924,7 @@ describe('Rule', () => {
     const node = ruleset({
       selector,
       guard: condition([bool(true)]),
-      rules: body
+      rules: body.rules
     });
     const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
     let sourceBodyPrepCalls = 0;
@@ -969,7 +969,7 @@ describe('Rule', () => {
     const node = ruleset({
       selector,
       guard: condition([bool(false)]),
-      rules: body
+      rules: body.rules
     });
     const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
     let sourceBodyPrepCalls = 0;
@@ -1045,7 +1045,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -1169,7 +1169,7 @@ describe('Rule', () => {
     ]);
     const node = ruleset({
       selector,
-      rules: body
+      rules: body.rules
     });
 
     const resolved = await node.resolve(context);
