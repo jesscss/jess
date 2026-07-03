@@ -413,7 +413,10 @@ progress tracker — statuses in the sections above are detail, not the index.
 - [ ] **D5** `F_MAY_ASYNC` over-taint audit; async bookkeeping only on real thenables
 - [ ] **D6** allocating accessors (`options` read-probe split; `span` covered by E6)
 - [ ] **D7** `valueOf()` string building on compare paths → structural/keyset compare
-- [ ] **D8** Context eager fields → uniform lazy `??=`
+- [x] **D8 (rejected with reasoning)** Context is ONE object per render — eager
+      arrays cost nothing measurable, and lazy-ifying hot-read fields (frames,
+      parenFrames, rulesetFrames) would add accessor indirection on eval-path
+      reads, violating the micro-pattern guidance above. Non-item.
 - [ ] **B1** Context split (eval state vs ImportResolver I/O)
 - [ ] **B8** rules.ts split (registration/lookup/render) — after deletions
 - [ ] **B6** two serialization entry points; hoist `getWriterTextSincePosition`
@@ -422,8 +425,13 @@ progress tracker — statuses in the sections above are detail, not the index.
 - [ ] **C1** extend-walk Complex-application parity → delete legacy `extend.ts`
       (~4.3k lines; start parity early, land deletion last)
 - [ ] **A3** shrink Node public method surface to the ~8-method contract
-- [ ] **A4** delete deprecated context options (disablePluginRule,
-      leakyRules/bubbleRootAtRules single-home)
+- [x] **A4 (investigated, mostly rejected)** `disablePluginRule` is a SUPPORTED
+      deprecation alias (registry entry in deprecation.ts:63, config
+      normalization in options.ts:161, jess warning emission at index.ts:799,
+      dedicated tests in core/jess/config) — it stays until the deprecation
+      window closes; it's a feature, not debt. `leakyRules`/`bubbleRootAtRules`
+      dual storage (TreeContext + Context) is semantic: per-file vs global
+      resolution differ by design. Revisit only when the deprecation ships.
 
 Gates per pass (repo convention): focused tests first, `git diff --check`,
 `pnpm run verify:aggressive-cutting-review`, benchmark protocol for D/E claims,
