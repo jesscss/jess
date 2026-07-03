@@ -176,7 +176,10 @@ const cssRules = rules((g: any) => {
   const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
   const VarCall = node('VarCall',
     parser({ trivia: rw }, choice(
-      sequence(nonKnownAtVar, g.MixinArgs, optional(important), optional(literal(';'))),
+      // A var call is `@name(...)` with the `(` ADJACENT to the name (no space).
+      // `@foo (bar)` — space before `(` — is never a var call; it's an unknown
+      // at-rule prelude, so noTrivia makes this branch defer to AtRuleBlock.
+      sequence(noTrivia(sequence(nonKnownAtVar, regex(/(?=\()/))), g.MixinArgs, optional(important), optional(literal(';'))),
       // Known at-rule name with EMPTY parens only.
       sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
     )),
