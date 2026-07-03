@@ -888,8 +888,11 @@ describe('Control Nodes', () => {
       tick: yes;
       tick: yes;
     `);
+    // $while COPIES per iteration (it carries mutable state across iterations, so the
+    // body is isolated), so the SOURCE child is not prepared — only its per-iteration
+    // copies are. The While OWNS its body children (parent === node, not the wrapper).
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
@@ -930,8 +933,10 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
+    // $while COPIES per iteration (isolated stateful body): the source child is not
+    // prepared, only its copies. The While owns its body children (parent === node).
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
@@ -976,8 +981,10 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
+    // $while COPIES per iteration (isolated stateful body): the source child is not
+    // prepared, only its copies. The While owns its body children (parent === node).
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('keeps canonical $while body children parented to the source wrapper', async () => {
@@ -1005,25 +1012,26 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(renderCalls).toBe(3);
-    expect(renderDecl.parent).toBe(renderRules);
+    // New model: the While OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the node.
+    expect(renderDecl.parent).toBe(renderNode);
 
     const evalContext = new Context();
     const evalDecl = decl({ name: 'tick', value: any('yes') });
     const evalRules = rules([evalDecl]);
     let evalCalls = 0;
-    const evalRoot = rules([
-      new While({
-        condition: call({
-          name: new JsFunction({
-            name: 'keep-going-eval',
-            fn: () => bool(++evalCalls <= 2)
-          }),
-          args: list([])
+    const evalWhile = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going-eval',
+          fn: () => bool(++evalCalls <= 2)
         }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: evalRules as unknown as Node[]
-      })
-    ]);
+        args: list([])
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: evalRules as unknown as Node[]
+    });
+    const evalRoot = rules([evalWhile]);
 
     const evald = await evalRoot.eval(evalContext);
 
@@ -1032,7 +1040,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(evalCalls).toBe(3);
-    expect(evalDecl.parent).toBe(evalRules);
+    expect(evalDecl.parent).toBe(evalWhile);
   });
 
   it('throws when $while exceeds its iteration guard', async () => {
@@ -1241,12 +1249,14 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([]), loopRules);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toBe('');
 
+    // Empty iterable → zero iterations → the shared body is never evaluated.
     expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -1329,13 +1339,17 @@ describe('Control Nodes', () => {
       const loopRules = rules([
         itemDecl
       ]);
-      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+      const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules);
+      const root = rules([loop]);
 
       const css = await renderNodeToString(root, context);
 
       expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
-      expect(itemDecl.parent).toBe(loopRules);
+      // New model: the loop OWNS its body (no `_passedRulesWrapper`); the passed
+      // `loopRules` wrapper is unwrapped and the child parents to the loop node.
+      // Iteration surfaces SHARE the body children (no per-iteration Rules.clone).
+      expect(itemDecl.parent).toBe(loop);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -1511,13 +1525,16 @@ describe('Control Nodes', () => {
     const context = new Context();
     const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the loop OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the loop.
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
@@ -1564,15 +1581,20 @@ describe('Control Nodes', () => {
       colorDecl,
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(colorDecl.parent).toBe(loopRules);
+    // New model: iteration surfaces SHARE the body children (no per-iteration
+    // copies), so the source child IS the node evaluated each iteration — prepared
+    // once per iteration (2 here), idempotently (rendering the loop twice is
+    // stable). The child is owned by the loop node, not the discarded wrapper.
+    expect(sourcePrepCalls).toBe(2);
+    expect(colorDecl.parent).toBe(loop);
   });
 
   it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
@@ -1585,14 +1607,17 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the dynamic body child is SHARED and re-evaluated once per
+    // iteration (2), producing the per-iteration value. Owned by the loop node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {

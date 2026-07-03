@@ -59,6 +59,22 @@ function makeDirectiveRulesPublic(rules: Rules<any>) {
   };
 }
 
+// The control node IS its own body (like the canonical Mixin/Ruleset): parent its
+// body children to `this`. `new If/For/While` (parser + `makeLoop`) does not run
+// the factory `parentChildren`, so without this the children stay parented to the
+// discarded `value.rules` wrapper. Owning them is what lets a per-iteration THIN
+// surface (`sourceNode` → the control node) recognize the shared children as reused
+// source children and skip re-adopting them (rules.ts `_storePreparedRegistrationNode`).
+function ownControlBodyChildren(owner: Rules<any>): void {
+  const children = owner.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (child instanceof Node) {
+      owner.adopt(child);
+    }
+  }
+}
+
 function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
   return render(createRenderBuffer('flat'));
 }
@@ -105,7 +121,8 @@ async function renderControlRules(
 
 function createDerivedIterationRulesSurface(
   sourceRules: Rules<any>,
-  childNodes?: Node[]
+  childNodes?: Node[],
+  shareChildren = false
 ): Rules {
   const sourceOptions = sourceRules.options;
   const sourceLocation = sourceRules.location.length === 0
@@ -125,8 +142,21 @@ function createDerivedIterationRulesSurface(
   }
   output.scopeFrame = undefined;
   if (childNodes) {
-    for (const childNode of childNodes) {
-      output.push(childNode);
+    if (shareChildren) {
+      // THIN SURFACE: share the canonical body children WITHOUT adopting them
+      // (direct array push, like `Rules.derive`) so their `.parent` is never
+      // rewritten to this ephemeral per-iteration surface. The caller sets
+      // `output.sourceNode` to the loop body so shared children re-point their
+      // scope frame to this surface via §4. Flags come from `.inherit()` above.
+      for (const childNode of childNodes) {
+        output.rules.push(childNode);
+      }
+    } else {
+      // COPY path ($while): the children are per-iteration COPIES owned by this
+      // surface — adopt + register them normally.
+      for (const childNode of childNodes) {
+        output.push(childNode);
+      }
     }
   }
   return output;
@@ -185,33 +215,27 @@ function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): Fo
   };
 }
 
-function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
-  // TODO(§4/§6.2): make this a true thin surface like mixin/import — SHARE the
-  // canonical body children with the loop counter/value/key as the only
-  // per-iteration live slots. Re-probed 2026-07-02 (share `[...sourceRules.rules]`
-  // + set `sourceNode`): only +8 net on the suite, so blocker 2 below (shared
-  // children retaining their first eval result) is RESOLVED by the `evaluated`
-  // deletion — output is correct. The remaining blocker is #1:
-  //  1) The loop runs a BESPOKE registration/eval path that ADOPTS its body
-  //     children into the per-iteration surface (unlike the mixin/ruleset thin
-  //     surface, whose `_evaluateSourceOrder` is copy-on-write and never reparents
-  //     shared children). On SHARED children that reparent mutates the CANONICAL
-  //     source across iterations — a real correctness bug (control.test.ts "keeps
-  //     canonical $for/$while body children parented to the source wrapper" guards
-  //     exactly this). Fixing it means routing loop-body eval/render through the
-  //     normal copy-on-write eval path (so the §4 sourceNode walk-re-point applies
-  //     and no child is adopted), then deleting the bespoke
-  //     `attachIterationFallbackFrame`. Deferred: the per-iteration copy already
-  //     reuses scalar leaves (copyWithReusableLeaves only shallow-copies
-  //     containers), so the perf win is marginal vs. the depth/risk of retrofitting
-  //     loops onto the thin-surface eval path.
-  //  2) [RESOLVED] Shared children retaining their first eval result — the
-  //     `evaluated` flag is deleted and non-static nodes always re-eval. See
-  //     LIVE_BINDING_ARCHITECTURE.md §2.7.
+// `share` = THIN surface: share the canonical body children (a per-iteration
+// surface with `sourceNode` → the loop body, so shared children re-point their
+// scope frame via §4). Used by `$for`/`$if`, where each iteration/branch is an
+// independent evaluation — no intra-loop state carried on the body.
+//
+// `share=false` = COPY per iteration. Used by `$while`, which carries mutable
+// state ACROSS iterations (`$while` body reads and writes the same vars, e.g.
+// `i = i + 1` + `tick: @i`). A stateful iteration genuinely needs an isolated body
+// so one iteration's evaluated-reference/value state cannot leak into the next;
+// sharing the body would make the counter read a stale value. The per-iteration
+// copy already reuses scalar leaves (copyWithReusableLeaves only shallow-copies
+// containers), so its cost is bounded.
+function createIterationEvalSurface(sourceRules: Rules<any>, share = true): Rules {
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
-    sourceRules.rules.map(deriveIterationChild)
+    share ? [...sourceRules.rules] : sourceRules.rules.map(deriveIterationChild),
+    share
   );
+  if (share) {
+    iterationRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
+  }
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
@@ -257,7 +281,9 @@ function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rul
 }
 
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
-  const iterationRules = createIterationEvalSurface(sourceRules);
+  // $while COPIES per iteration (share=false): the loop carries mutable state across
+  // iterations, so each iteration body must be isolated (see createIterationEvalSurface).
+  const iterationRules = createIterationEvalSurface(sourceRules, false);
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame(), undefined, undefined, true);
   return iterationRules;
 }
@@ -497,10 +523,9 @@ export class If extends Rules<IfValue> {
       makeDirectiveRulesPublic(this.else);
     }
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the If IS its own body — body children parent to the If via
-    // the `if()` factory's parentChildren (childKeys includes 'rules'). No
-    // `_passedRulesWrapper` duplicate (the Ruleset/Mixin wrapper removal, applied
-    // to control nodes).
+    // R2 single-frame: the If IS its own body (no `_passedRulesWrapper`) — own the
+    // body children so per-iteration thin surfaces recognize them as reused.
+    ownControlBodyChildren(this);
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
@@ -633,10 +658,12 @@ export class For extends Rules<StructuredLoopValue> {
       }
     }
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the For IS its own body (no `_passedRulesWrapper`); body
-    // children parent to the For via the `for()` factory parentChildren. Carry
-    // function bindings from a factory-passed rules wrapper so iteration surfaces
-    // can look them up during eval (createIterationEvalSurface reads this.functionsByName).
+    // R2 single-frame: the For IS its own body (no `_passedRulesWrapper`) — own the
+    // body children so per-iteration thin surfaces recognize them as reused.
+    ownControlBodyChildren(this);
+    // Carry function bindings from a factory-passed rules wrapper so iteration
+    // surfaces can look them up during eval (createIterationEvalSurface reads
+    // this.functionsByName).
     if (value.rules instanceof Rules && value.rules.functionsByName) {
       for (const [name, fn] of value.rules.functionsByName) {
         this.setFunctionBinding(name, fn);
@@ -836,8 +863,9 @@ export class While extends Rules<WhileValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the While IS its own body (no `_passedRulesWrapper`); body
-    // children parent to the While via the `while()` factory parentChildren.
+    // R2 single-frame: the While IS its own body (no `_passedRulesWrapper`) — own the
+    // body children so per-iteration thin surfaces recognize them as reused.
+    ownControlBodyChildren(this);
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
