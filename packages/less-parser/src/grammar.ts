@@ -95,7 +95,9 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // Less-specific terminals.
 // First char may be a digit \u2014 Less allows numeric variable names (`@3`, `@{3}`).
-const lessVar = regex(/@-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+// `@` + one or more name chars (dash included), so a dash-only name like `@-` is
+// valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
+const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
 const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
 
 // ---------------------------------------------------------------------------
