@@ -2573,24 +2573,25 @@ describe('Mixin', () => {
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
         const fallbackRules = rules([
           mixin({
             name: any('.other-leaf'),
             rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
-        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        // The `#namespace` mixin IS the namespace scope identity: it adopts the body
+        // array but owns its own scope frame, so the fallback frame (and the nested
+        // lookup spy) must target the mixin, not the throwaway body-builder rules.
+        const namespaceMixin = mixin({
+          name: any('#namespace'),
+          rules: rules([])
+        });
+        const root = rules([namespaceMixin]);
+        const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-          if (this === namespaceRules) {
+          if (this === namespaceMixin) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
@@ -2624,23 +2625,23 @@ describe('Mixin', () => {
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
         const fallbackMixin = mixin({
           name: any('.fallback-leaf'),
           rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackRules = rules([fallbackMixin]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
-        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        // The `#namespace` mixin IS the namespace scope identity (see sibling test):
+        // attach the fallback frame + nested lookup spy to the mixin, not the body rules.
+        const namespaceMixin = mixin({
+          name: any('#namespace'),
+          rules: rules([])
+        });
+        const root = rules([namespaceMixin]);
+        const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-          if (this === namespaceRules) {
+          if (this === namespaceMixin) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
@@ -3242,15 +3243,15 @@ describe('Mixin', () => {
           rules: [leaf]
         });
         const fallbackRules = rules([fallbackChildNamespace]);
-        const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-fallback-namespace'),
-            rules: childRules
-          })
-        ]);
+        // New model: the parent Mixin owns its (empty) body directly; the body scope
+        // frame is the Mixin's own, not the discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: any('#parent-with-fallback-namespace'),
+          rules: rules([])
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
         expect(root.findMixin([
           '#parent-with-fallback-namespace',
@@ -3323,13 +3324,13 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
+      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+      const parentMixin = mixin({
+        name: any('#parent-with-fallback-import'),
+        rules: rules([])
+      });
+      const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3351,7 +3352,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3391,13 +3392,13 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
+      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+      const parentMixin = mixin({
+        name: any('#parent-with-fallback-import'),
+        rules: rules([])
+      });
+      const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
@@ -3419,7 +3420,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3486,7 +3487,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3554,7 +3557,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3629,7 +3634,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
