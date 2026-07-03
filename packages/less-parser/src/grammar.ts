@@ -553,8 +553,12 @@ const cssRules = rules((g: any) => {
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
     (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+  // An at-rule body (@media / @supports / @starting-style / …) holds the SAME
+  // statements as a ruleset body — nested rules, mixin calls, each(), extends,
+  // var calls — not just declarations. Mirror declarationList's choice set.
   const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.VarDeclaration, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    sequence(g.Call, optional(literal(';'))), literal(';')
   )));
 
   return {
