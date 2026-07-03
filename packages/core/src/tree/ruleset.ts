@@ -36,7 +36,6 @@ import type { AtRule } from './at-rule.js';
 import { AtRuleStatement } from './at-rule-statement.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
-import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments } from './util/cloning.js';
@@ -2291,15 +2290,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
     }
     return node;
-  }
-
-  /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
-  getImplicitSelector(parentSelector: Selector, collapseNesting = false) {
-    const selector = this.materializeRawSelectorForSemantics();
-    if (selector instanceof Nil) {
-      return selector;
-    }
-    return getImplicitSelectorUtil(selector, parentSelector, collapseNesting);
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {

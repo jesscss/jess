@@ -945,16 +945,6 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
             && !maybeCombinator.hasFlag(F_VISIBLE);
           const outputPrefix = (dropImplicitPrefix || dropImplicitPrefixViaGeneratedIs) ? [] : prefix;
 
-          // Visible vs invisible ampersand (with partial extends producing :is()):
-          // - Visible authored `&`: keep one ampersand in front of the whole list.
-          // - Invisible (implicit) `&`: copy invisible ampersand + combinator onto each selector list
-          //   item so valueOf() is correct for extend matching (e.g. ".bb .bb", ".aa .dd").
-          const retainInvisibleAmpersandAndCombinator = dropImplicitPrefix && outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
-          const isIndexInResult = result.length - 1;
-          const suffixAfterIs = retainInvisibleAmpersandAndCombinator
-            ? copyComplexComponentsForPlacement(value.slice(isIndexInResult + 1))
-            : [];
-
           for (const inner of argList) {
             let innerSel = inner;
             // If the inner selector redundantly starts with the same prefix selector we already have,
@@ -973,29 +963,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               }
             }
             const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
-            if (retainInvisibleAmpersandAndCombinator) {
-              // Copy invisible ampersand + combinator onto each item so selector list items have
-              // correct valueOf() for extend (e.g. .bb .bb, .aa .dd). Preserve selectorContainer when present so & stays live.
-              if (!isNode(originalFirst, N.Ampersand)) {
-                throw new TypeError('Expected implicit ampersand source');
-              }
-              const origAmp = originalFirst;
-              const resolved = origAmp.getResolvedSelector();
-              const parentSel = resolved ?? undefined;
-              let amp = origAmp.derive();
-              if (!origAmp.getStoredSelector() && isSelectorNode(parentSel)) {
-                amp = Ampersand.create({ selectorContainer: { selector: copySelectorForExtend(parentSel) } });
-              }
-              amp.addFlag(F_IMPLICIT_AMPERSAND);
-              amp.removeFlag(F_VISIBLE);
-              const combCopy = copyComplexComponentForPlacement(maybeCombinator);
-              if (typeof combCopy !== 'string') {
-                combCopy.removeFlag(F_VISIBLE);
-              }
-              const parts: ComplexSelectorComponent[] = [amp, combCopy, copySelectorForExtend(innerSel), ...suffixAfterIs];
-              const next = ComplexSelector.create(parts).inherit(el);
-              push(next);
-            } else if (outputPrefix.length === 0 && omitCombinator) {
+            if (outputPrefix.length === 0 && omitCombinator) {
               // Prefix/combinator dropped but not implicit (e.g. first was :is()): emit inner as-is.
               push(copySelectorForExtend(innerSel).inherit(el));
             } else {
