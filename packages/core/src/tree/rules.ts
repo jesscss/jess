@@ -1063,7 +1063,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         resolvedParent,
         undefined,
         pendingDeclarationNames ?? this.collectScopeFramePendingDeclarationNames(),
-        this.varsByName !== undefined && !this.hasEnterableDeclarationChildSurface(rulesBody),
+        undefined,
         this.callableLookupCache,
         undefined,
         prepareCallableCoverage ? !this.hasDirectLookupChildSurface() : false,
@@ -1073,8 +1073,34 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._hasReferenceImports
       );
       this.prepareScopeFrameAssignmentBindings(this._scopeFrame, rulesBody);
+      this.linkInlineImportFallbackFrames(this._scopeFrame, rulesBody);
     }
     return this._scopeFrame;
+  }
+
+  // A non-boundary `@import` inlines its body into this scope. Chain each such
+  // imported Rules' own scope frame (which already indexes the imported decls +
+  // callables) as this frame's fallback, so lookups resolve imported symbols on the
+  // fast frame path — consulted only AFTER the primary scope chain, so an enclosing
+  // declaration always wins. Boundaries (`@compose` = true, rulesets = undefined)
+  // are skipped. Reuses the already-read rules array (no extra scan).
+  private linkInlineImportFallbackFrames(frame: ScopeFrame, rulesBody: Node[]): void {
+    let chain: ScopeFrame | undefined = frame.fallbackFrame;
+    for (let i = 0; i < rulesBody.length; i++) {
+      const child = rulesBody[i]!;
+      if (!(child instanceof Rules) || child.options.importBoundary !== false) {
+        continue;
+      }
+      const importFrame = child.getScopeFrame();
+      if (importFrame === frame || importFrame === chain) {
+        continue;
+      }
+      if (importFrame.fallbackFrame === undefined) {
+        importFrame.fallbackFrame = chain;
+      }
+      chain = importFrame;
+    }
+    frame.fallbackFrame = chain;
   }
 
   private collectScopeFramePendingDeclarationNames(): VarDeclaration[] | undefined {
@@ -1285,38 +1311,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? child && rulesMayContainExactCallableSurface(child)
         : child && rulesMayContainExactMixinSurface(child);
       if (childHasSurface) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // A scope's ScopeFrame may only claim `declarationsCovered` (its declaration
-  // index fully answers a variable/property lookup) when it has no child surface
-  // whose declarations LEAK into this scope. A non-boundary `@import` behaves as if
-  // its body were inline here, so its public declarations are visible via the child
-  // entry — exactly like a Less mixin call's ambient output. Nested rulesets / mixin
-  // bodies / `@compose` boundaries do NOT leak, so they keep the frame covered (fast
-  // path). This uses the SAME entry gate the direct-rules crawl uses, so an uncovered
-  // frame simply defers to that crawl, which resolves the leaked declaration in
-  // source position with correct visibility.
-  hasEnterableDeclarationChildSurface(value: Node[] = this.rules): boolean {
-    const childEntries = this.collectDirectDeclarationChildEntries(value);
-    if (!childEntries?.length) {
-      return false;
-    }
-    for (let i = childEntries.length - 1; i >= 0; i--) {
-      const entry = childEntries[i]!;
-      // A non-boundary `@import` is the only child that INLINES its declarations
-      // into this scope. It is marked `importBoundary === false` (a `@compose`
-      // boundary is `true`; every other Rules/Ruleset/mixin body is `undefined` and
-      // keeps its own scope). Public visibility alone is NOT leakage: a nested
-      // ruleset defaults `VarDeclaration: 'public'` yet its vars stay scoped and are
-      // only reachable via a target accessor — so we must not uncover for those.
-      if (entry.node.options.importBoundary !== false) {
-        continue;
-      }
-      if (entry.hasVarDeclarationSurface !== false || entry.hasDeclarationSurface !== false) {
         return true;
       }
     }
@@ -4339,14 +4333,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
-        // A newly-placed child whose declarations leak into this scope (a
-        // non-boundary `@import` behaving as if inline, or an ambient mixin output)
-        // means this frame's declaration index no longer fully answers a lookup —
-        // drop coverage so the lookup defers to the direct-rules crawl over the
-        // child entry. Boundary children (rulesets, `@compose`) are not enterable,
-        // so coverage is retained.
-        if (this._scopeFrame.declarationsCovered && this.hasEnterableDeclarationChildSurface()) {
-          this._scopeFrame.declarationsCovered = false;
+        // A non-boundary `@import` inlines its body here: its public declarations
+        // and callables must resolve in this scope as if written in place — like a
+        // Less mixin call's ambient output. Rather than flatten the AST or slow every
+        // lookup to the crawl, link the imported Rules' OWN scope frame (which already
+        // indexes the imported decls) as this frame's fallback. `lookupScopeFrame*`
+        // consults fallbacks only AFTER the primary scope chain, so an enclosing
+        // declaration always wins (leaked vars never override), and the fast frame
+        // path is preserved. `@compose` (importBoundary === true) and nested rulesets
+        // (undefined) are boundaries and are not linked.
+        if (node.options.importBoundary === false) {
+          const importFrame = node.getScopeFrame();
+          if (importFrame !== this._scopeFrame && importFrame.fallbackFrame === undefined) {
+            importFrame.fallbackFrame = this._scopeFrame.fallbackFrame;
+          }
+          this._scopeFrame.fallbackFrame = importFrame;
         }
       }
       if (rulesMayContainExtends(node)) {
