@@ -1063,7 +1063,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         resolvedParent,
         undefined,
         pendingDeclarationNames ?? this.collectScopeFramePendingDeclarationNames(),
-        undefined,
+        this.varsByName !== undefined && !this.hasEnterableDeclarationChildSurface(rulesBody),
         this.callableLookupCache,
         undefined,
         prepareCallableCoverage ? !this.hasDirectLookupChildSurface() : false,
@@ -1285,6 +1285,38 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? child && rulesMayContainExactCallableSurface(child)
         : child && rulesMayContainExactMixinSurface(child);
       if (childHasSurface) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // A scope's ScopeFrame may only claim `declarationsCovered` (its declaration
+  // index fully answers a variable/property lookup) when it has no child surface
+  // whose declarations LEAK into this scope. A non-boundary `@import` behaves as if
+  // its body were inline here, so its public declarations are visible via the child
+  // entry — exactly like a Less mixin call's ambient output. Nested rulesets / mixin
+  // bodies / `@compose` boundaries do NOT leak, so they keep the frame covered (fast
+  // path). This uses the SAME entry gate the direct-rules crawl uses, so an uncovered
+  // frame simply defers to that crawl, which resolves the leaked declaration in
+  // source position with correct visibility.
+  hasEnterableDeclarationChildSurface(value: Node[] = this.rules): boolean {
+    const childEntries = this.collectDirectDeclarationChildEntries(value);
+    if (!childEntries?.length) {
+      return false;
+    }
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      // A non-boundary `@import` is the only child that INLINES its declarations
+      // into this scope. It is marked `importBoundary === false` (a `@compose`
+      // boundary is `true`; every other Rules/Ruleset/mixin body is `undefined` and
+      // keeps its own scope). Public visibility alone is NOT leakage: a nested
+      // ruleset defaults `VarDeclaration: 'public'` yet its vars stay scoped and are
+      // only reachable via a target accessor — so we must not uncover for those.
+      if (entry.node.options.importBoundary !== false) {
+        continue;
+      }
+      if (entry.hasVarDeclarationSurface !== false || entry.hasDeclarationSurface !== false) {
         return true;
       }
     }
@@ -4307,6 +4339,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
+        // A newly-placed child whose declarations leak into this scope (a
+        // non-boundary `@import` behaving as if inline, or an ambient mixin output)
+        // means this frame's declaration index no longer fully answers a lookup —
+        // drop coverage so the lookup defers to the direct-rules crawl over the
+        // child entry. Boundary children (rulesets, `@compose`) are not enterable,
+        // so coverage is retained.
+        if (this._scopeFrame.declarationsCovered && this.hasEnterableDeclarationChildSurface()) {
+          this._scopeFrame.declarationsCovered = false;
+        }
       }
       if (rulesMayContainExtends(node)) {
         this._hasExtends = true;
