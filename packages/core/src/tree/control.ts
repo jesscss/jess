@@ -14,7 +14,6 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import {
   buildScopeFrame,
-  copyScopeFrameLiveBindingSlots,
   getBindingCellValue,
   setScopeFrameLiveBinding,
   type BindingCell,
@@ -275,14 +274,10 @@ function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules)
   // UPDATE, not a shadow). Committed as architecture progress; being pushed forward.
   const stateFrame = stateRules.getScopeFrame();
   const iterationRules = createIterationEvalSurface(sourceRules, true);
-  iterationRules.scopeFrame = buildScopeFrame(
-    undefined,
-    iterationRules,
-    stateFrame.parent,
-    copyScopeFrameLiveBindingSlots(stateFrame),
-    undefined,
-    true
-  );
+  // Parent = the state frame: the body's `i: i+1` SHADOWS the incoming state `i` (a
+  // child-frame declaration), and its RHS `@i` reads the parent (previous) value via
+  // position (`start`) resolution — the read-write counter semantics.
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateFrame, undefined, undefined, true);
   return iterationRules;
 }
 
