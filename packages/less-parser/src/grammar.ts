@@ -65,6 +65,7 @@ const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n
 // Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
 // definition as css-parser grammar.ts (a mixin call is just a selector).
 const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
+const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
@@ -385,7 +386,7 @@ const cssRules = rules((g: any) => {
   // through getInterpolatedNode. We mirror that: try the interpolated-ident regex
   // first (it requires at least one `@{…}`), else a plain ident.
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(choice(interpKey, ident), optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(choice(interpKey, propName), optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
   // Opportunistic structuring for a `{ … }` custom-property value: try it as a
