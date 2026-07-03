@@ -163,15 +163,14 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
   if (isNode(node, N.ComplexSelector) && isNode(find, N.ComplexSelector)) {
     return areComplexEquivalent(node as ComplexSelector, find as ComplexSelector);
   }
-  if (isNode(node, N.ComplexSelector) && !isNode(find, N.ComplexSelector)) {
-    return false;
-  }
   if (isNode(node, N.CompoundSelector) && isNode(find, N.CompoundSelector)) {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);
   }
-  if (isNode(node, N.CompoundSelector) && !isNode(find, N.CompoundSelector)) {
-    return false;
-  }
+  // Mismatched container vs. simpler find: a WHOLE match only when they serialize
+  // identically — i.e. the node reduces to a single unit equal to find (a
+  // single-component compound `.a` or single-compound complex `.a`). A genuine
+  // multi-part node (`.a.b`, `.a .b`) has a different valueOf, so find is only a
+  // COMPONENT of it and full mode correctly rejects it here (→ partial path).
   return node.valueOf() === find.valueOf();
 }
 
