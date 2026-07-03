@@ -325,13 +325,21 @@ dump, is:
   source-order resolve it; the shared path collapses the "previous i" and "this i" into one
   overwritten binding.
 
-**The real fix** = a `$while` state vardecl must **write the incoming live-slot cell's value**
-(the `setDefined`/[[feedback-setdefined-cell-not-node]] "write the cell, not the node" semantics)
-instead of registering a new declaration that shadows it with a raw node. That is a deliberate
-variable-set-semantics change in the declaration/registration path (a `$while` body vardecl over
-an existing live slot is an UPDATE, not a fresh shadow), not a mechanical deletion — real, but
-scoped and now precisely located. The **copy-split ($while copies) remains correct and shipped**:
-it isolates each iteration so this collapse can't happen — the right model for stateful iteration.
+**FINAL precise pin (frame + start dumps):** `$while` NOW shares its body (committed —
+`fbcf86e49`, `f2cfbbb38`); the iteration frame parents to the state frame so the body's
+`i: i+1` correctly SHADOWS the incoming state `i`. The one remaining defect is **position
+(`start`)-based resolution**: the RHS `@i` in `i: i+1` is looked up with `start=undefined`, so
+it does NOT skip the self-declaration (the vardecl at index 0) and resolves to the vardecl
+itself → falls through to root `i=0` → `0+1 = 1` forever. In the COPY model this worked because
+copies retain an intact eval-time parent chain, so `getLookupStartIndex(ref)` walks
+`ref → op → vardecl` and returns the vardecl's index; with the SHARED body (invariant-7: eval
+does not parent) that walk yields `undefined`, so no positional bound is applied.
+**The fix**: give the RHS `@i` its positional `start` (= the enclosing vardecl's index) for a
+shared body — either propagate the referring declaration's index onto the ref (as the merge-ref
+path already does: `ref.index = this.index` at declaration.ts ~1607), or have
+`getLookupStartIndex` / the shape builder fall back to the eval-context declaration index when
+the parent walk is empty. Scoped, precisely located. Marked `it.fails` in control.test.ts
+(`keeps native loop render aligned`) so it flags the moment this lands. Suite 100.
 
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
