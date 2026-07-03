@@ -515,8 +515,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    const skippedDuplicateDeclarations = new Set<number>();
-    const seenDeclarationsByProp = new Map<string, Set<string>>();
+    let skippedDuplicateDeclarations: Set<number> | undefined;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
@@ -554,55 +553,64 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     // Less-style duplicate declaration handling:
     // for each property, keep the last exact serialized declaration and skip earlier duplicates.
-    if (serializeProfileCounters) {
-      incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
-    }
-    const declarationCountsByProp = new Map<string, number>();
+    let duplicateDeclarationProps: Set<string> | undefined;
+    let seenDeclarationProps: Set<string> | undefined;
     for (let i = 0; i < rulesToRender.length; i++) {
       const node = rulesToRender[i]!.node;
       if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
         continue;
       }
       const declProp = node.name.valueOf();
-      declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
+      if (seenDeclarationProps?.has(declProp)) {
+        duplicateDeclarationProps ??= new Set<string>();
+        duplicateDeclarationProps.add(declProp);
+        continue;
+      }
+      (seenDeclarationProps ??= new Set<string>()).add(declProp);
     }
-    for (let i = rulesToRender.length - 1; i >= 0; i--) {
-      const node = rulesToRender[i]!.node;
-      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
-        continue;
-      }
-      const declProp = node.name.valueOf();
-      if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
-        continue;
-      }
-      const declWriter = new OutputWriter();
-      const declSaved = savePrintState(options, ['writer', 'depth']);
-      options.writer = declWriter;
-      options.depth = options.depth + 1;
+    if (duplicateDeclarationProps) {
       if (serializeProfileCounters) {
-        incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
+        incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
       }
-      withScratchEmittedTrivia(options, () => {
-        node.writeSyntax(options);
-      });
-      const declOut = declWriter.toString();
-      restorePrintState(options, declSaved);
-      const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-      let seenValues = seenDeclarationsByProp.get(declProp);
-      if (!seenValues) {
-        seenValues = new Set<string>();
-        seenDeclarationsByProp.set(declProp, seenValues);
-      }
-      if (
-        seenValues.has(declKey)
-        && !originatesFromCall(node)
-        && !originatesFromMixin(node)
-        && !originatesFromControl(node)
-        && !keepsDuplicateGeneratedOutput(node)
-      ) {
-        skippedDuplicateDeclarations.add(i);
-      } else {
-        seenValues.add(declKey);
+      const seenDeclarationsByProp = new Map<string, Set<string>>();
+      for (let i = rulesToRender.length - 1; i >= 0; i--) {
+        const node = rulesToRender[i]!.node;
+        if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+          continue;
+        }
+        const declProp = node.name.valueOf();
+        if (!duplicateDeclarationProps.has(declProp)) {
+          continue;
+        }
+        const declWriter = new OutputWriter();
+        const declSaved = savePrintState(options, ['writer', 'depth']);
+        options.writer = declWriter;
+        options.depth = options.depth + 1;
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
+        }
+        withScratchEmittedTrivia(options, () => {
+          node.writeSyntax(options);
+        });
+        const declOut = declWriter.toString();
+        restorePrintState(options, declSaved);
+        const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
+        let seenValues = seenDeclarationsByProp.get(declProp);
+        if (!seenValues) {
+          seenValues = new Set<string>();
+          seenDeclarationsByProp.set(declProp, seenValues);
+        }
+        if (
+          seenValues.has(declKey)
+          && !originatesFromCall(node)
+          && !originatesFromMixin(node)
+          && !originatesFromControl(node)
+          && !keepsDuplicateGeneratedOutput(node)
+        ) {
+          (skippedDuplicateDeclarations ??= new Set<number>()).add(i);
+        } else {
+          seenValues.add(declKey);
+        }
       }
     }
 
@@ -728,7 +736,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (inReferenceMode && !renderEnabled && !isContainer) {
           continue;
         }
-        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
+        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
           continue;
         }
 
