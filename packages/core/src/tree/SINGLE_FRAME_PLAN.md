@@ -341,6 +341,23 @@ path already does: `ref.index = this.index` at declaration.ts ~1607), or have
 the parent walk is empty. Scoped, precisely located. Marked `it.fails` in control.test.ts
 (`keeps native loop render aligned`) so it flags the moment this lands. Suite 100.
 
+### 2026-07-02 — RESOLVED (commit `10f757998`). The prior two diagnoses above were WRONG.
+Fresh frame + binding-result dumps (labeled per-reference, per-iteration) disproved both the
+"vardecl overwrites the live slot" and the "RHS needs positional `start`" theories:
+- **State propagation is correct AND the RHS `@i` is correct.** The synced state values are
+  `1,2,3` — i.e. `i: i+1`'s RHS reads the previous state value fine. The iteration frame parents
+  to the state frame; the body vardecl SHADOWS the incoming state without overwriting it.
+- **The only broken reference was `tick: @i`.** It resolves (correctly) to the shadowing body
+  vardecl and re-evaluates `i + 1`. That inner `@i` runs with the vardecl in `context.searchScope`
+  (the recursion guard). syncWhileState had anchored the **state live slot on the SAME sourceNode
+  (the body vardecl)**, so the guard blocked BOTH the vardecl (iteration frame) AND the state slot
+  (parent frame), sending the read past the state to root `0` → `0+1 = 1` every time. The direct
+  SYNC eval (no searchScope) was unaffected, which is why state stayed correct while `tick` didn't.
+- **Fix** (control.ts `syncWhileState`): anchor the state slot's `sourceNode` on the state surface,
+  not the body vardecl. The committed value is fully evaluated (cannot recurse), so it must stay
+  readable while the body vardecl is mid-eval. One-line change; no positional-`start` work needed.
+  All 66 control tests pass; the `it.fails` marker is removed.
+
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
 without stable frame identity, Steps 2-4 will thrash exactly like the naive attempt did
