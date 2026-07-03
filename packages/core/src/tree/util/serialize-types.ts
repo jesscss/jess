@@ -188,8 +188,22 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     return childFieldsStr ? `${open}\n${childFieldsStr}\n${pad})` : `${open})`;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  // Dimension owns its data in scalar `number`/`unit` fields (childKeys=null, no
+  // `value`; valueOf() yields the compact display string like '10px'). Expand the
+  // scalar fields the way a plain-object value would serialize.
+  if (typeName === 'Dimension') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const dim = n as unknown as { number: number; unit?: string };
+    const inner = serializePlainObject({ number: dim.number, unit: dim.unit }, depth, opts, visiting);
+    visiting.delete(n);
+    if (optionsStr) {
+      return `${open}\n${optionsStr}${inner ? '\n' + inner : ''}\n${pad})`;
+    }
+    return inner ? `${open}\n${inner}\n${pad})` : `${open})`;
+  }
+
   const value = 'value' in n
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     ? (n as unknown as { value: unknown }).value
     // Nodes that own their data in named fields instead of `value` (e.g.
     // Dimension/Num store number/unit) expose the display value via valueOf().
