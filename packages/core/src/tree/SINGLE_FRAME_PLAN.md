@@ -263,7 +263,8 @@ deferred loop subsystem). The Ruleset is now its own canonical body:
   body-parentage assertions moved from the wrapper to the node (`child.parent === node`,
   `node.rules === body.rules`). Final: suite 101, delta 0 (zero net regressions).
 
-### 2026-07-02 (Loop subsystem) — Stages 1 & 3 DONE; Stage 2 deferred with rationale
+### 2026-07-02 (Loop subsystem) — ALL THREE STAGES DONE
+(Stage 2 was initially deferred, then completed — see the Stage 2 note below, superseded.)
 The `$if`/`$for`/`$while` loop subsystem (`control.ts`) was the last holdout — it owned
 the remaining wrappers AND the last uncovered scopes (R3). Landed:
 - **Stage 1 (`2c2c6f23a`)** — eliminated `If`/`For`/`While` `_passedRulesWrapper` (+
@@ -278,15 +279,29 @@ the remaining wrappers AND the last uncovered scopes (R3). Landed:
   still legitimately serves `hasTarget`/interpolated lookups, which is why the code stays).
   Also FIXED a real state-sync lag bug — a stateful `$while` now emits the correct final
   counter (tick 1,2,3 not 1,2,2).
-- **Stage 2 (thin iteration surfaces) — DEFERRED (`e0b8fabf3` documents it).** Re-probed
-  sharing (`[...sourceRules.rules]` + `sourceNode`): only +8 net, so the old blocker 2
-  (shared children retaining first eval result) is RESOLVED by the `evaluated` deletion.
-  The real blocker is #1: the loop runs a BESPOKE registration/eval path that ADOPTS body
-  children (unlike the mixin/ruleset copy-on-write thin surface), so on shared children it
-  mutates the canonical source across iterations — a real correctness regression guarded by
-  the "keeps canonical body children parented" tests. Fixing it = retrofitting loops onto
-  the copy-on-write eval path + deleting `attachIterationFallbackFrame`. The per-iteration
-  copy already reuses scalar leaves, so the perf win is marginal vs. that depth/risk.
+- **Stage 2 (thin iteration surfaces) — DONE (`75a43fad3`, cleanup `f297d66a3`).**
+  `$for`/`$if` now SHARE the canonical body children across iterations/branches (a true
+  thin surface: `sourceNode` → the loop body; shared children re-point their scope frame
+  via §4). Two mechanisms make it non-mutating:
+  - `createDerivedIterationRulesSurface` shares via direct array push (no adopt), like
+    `Rules.derive`, so shared children are never reparented to the ephemeral surface.
+  - `ownControlBodyChildren` (constructor): the control node OWNS its body children
+    (`child.parent === node`), so the reused-source-child guard in
+    `_storePreparedRegistrationNode` skips re-adopting them (this also fixed a latent
+    Stage-1 inconsistency where `new For`/`makeLoop` left children parented to the
+    discarded `value.rules` wrapper).
+  With sharing correct, `attachIterationFallbackFrame` became dead (the §4 re-point covers
+  nested-ruleset scope) and was deleted.
+  **`$while` deliberately COPIES per iteration (`share=false`)** — it carries mutable state
+  ACROSS iterations (body reads+writes the same vars, e.g. `i=i+1` + `tick:@i`), so each
+  iteration body MUST be isolated; sharing let a counter read a stale value (verified: the
+  shared `@i` handle invalidated correctly but the self-referential vardecl still produced
+  `1,1,1`). This is a principled split, not a limitation: `$for`/`$if` iterations are
+  independent (safe to share); `$while` is stateful (needs isolation). Verified rendering
+  the same loop twice is stable (no canonical mutation). Suite 100, delta -1 (one net fix).
+  The **old blocker-2** ("shared children retain first eval result") is genuinely resolved
+  by the `evaluated` deletion; the real blocker was #1 (bespoke eval adopting children),
+  fixed by the share-without-adopt + `ownControlBodyChildren` combination above.
 
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
