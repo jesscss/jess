@@ -2402,8 +2402,9 @@ describe('reference', () => {
         expect((resolvedColl.entries[0] as Mixin | undefined)?.sourceNode).toBe(mixinDef);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         expect((resolvedColl.entries[0] as Mixin | undefined)?.rules).toBe(mixinDef.rules);
-        // @ts-expect-error – rules is Node[] and arrays have no .parent; mixin body is owned by the mixin node itself
-        expect(mixinDef.rules.parent).toBe(mixinDef);
+        // rules is Node[]; the mixin body is owned by the mixin node itself,
+        // so each body child is parented to the mixin.
+        expect(mixinDef.rules[0]?.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
         const resolvedAgain = resolved.resolve(context);
@@ -2417,12 +2418,11 @@ describe('reference', () => {
     });
 
     it('materializes mixin reference targets without double-inheriting evaluated rules', async () => {
-      const mixinRules = rules([
-        decl({ name: 'color', value: any('green') })
-      ]);
       const mixinDef = mixin({
         name: any('.box'),
-        rules: mixinRules
+        rules: [
+          decl({ name: 'color', value: any('green') })
+        ]
       });
       const root = rules([
         vardecl({ name: 'target', value: mixinDef }),
@@ -2434,13 +2434,17 @@ describe('reference', () => {
           }, { type: 'index' })
         })
       ]);
-      const originalInherit = RulesClass.prototype.inherit;
+      // New model: the mixin IS its own body container. Materializing a mixin
+      // index-reference evaluates the mixin in place (Mixin.evalNode returns
+      // `this`) and looks the key up directly in the mixin's own rules — the
+      // canonical mixin body is never re-inherited into a separate surface.
+      const originalInherit = MixinClass.prototype.inherit;
       let inheritedFromMixinRules = 0;
-      RulesClass.prototype.inherit = function inheritForCounting(
-        this: RulesClass,
+      MixinClass.prototype.inherit = function inheritForCounting(
+        this: MixinClass,
         ...args: Parameters<typeof originalInherit>
       ): ReturnType<typeof originalInherit> {
-        if (args[0] === mixinRules) {
+        if (args[0] === mixinDef) {
           inheritedFromMixinRules++;
         }
         return originalInherit.apply(this, args);
@@ -2452,10 +2456,10 @@ describe('reference', () => {
         expect(await renderNodeToString(evald, context)).toBeString(`
           out: green;
         `);
-        expect(inheritedFromMixinRules).toBe(1);
+        expect(inheritedFromMixinRules).toBe(0);
         expect(context.referenceStack).toBe(0);
       } finally {
-        RulesClass.prototype.inherit = originalInherit;
+        MixinClass.prototype.inherit = originalInherit;
       }
     });
 
@@ -3188,18 +3192,18 @@ describe('reference', () => {
 
     it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
-      const childRules = rules([
-        decl({
-          name: any('seen'),
-          value: colorRef
-        })
-      ]);
+      const childRules = ruleset({
+        selector: el('.scope'),
+        rules: [
+          decl({
+            name: any('seen'),
+            value: colorRef
+          })
+        ]
+      });
       const root = rules([
         vardecl({ name: 'color', value: any('red') }),
-        ruleset({
-          selector: el('.scope'),
-          rules: childRules
-        })
+        childRules
       ]);
       context.root = root;
       context.rulesContext = childRules;
@@ -3247,18 +3251,18 @@ describe('reference', () => {
 
     it('ancestor variable binding handles invalidate when a child frame gains a current binding', async () => {
       const colorRef = ref({ key: 'color' }, { type: 'variable' });
-      const childRules = rules([
-        decl({
-          name: any('seen'),
-          value: colorRef
-        })
-      ]);
+      const childRules = ruleset({
+        selector: el('.scope'),
+        rules: [
+          decl({
+            name: any('seen'),
+            value: colorRef
+          })
+        ]
+      });
       const root = rules([
         vardecl({ name: 'color', value: any('red') }),
-        ruleset({
-          selector: el('.scope'),
-          rules: childRules
-        })
+        childRules
       ]);
       context.root = root;
       context.rulesContext = childRules;
@@ -3612,7 +3616,7 @@ describe('reference', () => {
       const root = rules([
         ruleset({
           selector: el('.scope'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
       await root.eval(context);
@@ -3632,10 +3636,7 @@ describe('reference', () => {
       ]);
       const root = rules([
         decl({ name: any('root-color'), value: any('red') }),
-        ruleset({
-          selector: el('.scope'),
-          rules: childRules
-        })
+        childRules
       ]);
       await root.eval(context);
 
@@ -5506,12 +5507,7 @@ describe('reference', () => {
       const childRules = rules([
         decl({ name: 'color', value: any('blue') })
       ]);
-      const root = rules([
-        ruleset({
-          selector: el('.scope'),
-          rules: childRules
-        })
-      ]);
+      const root = rules([childRules]);
       setRulesContext(await root.eval(context));
       const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
