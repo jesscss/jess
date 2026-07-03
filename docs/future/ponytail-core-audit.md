@@ -281,7 +281,6 @@ direction.
   independent of the exhausted 32-bit `nodeType` mask). All fields below have **0
   external non-test reads** (verified repo-wide), so these are mechanical, not
   consumer-breaking:
-  - `frozen` → **F_FROZEN** (9 total sites) — mechanical.
   - `generated` → **F_GENERATED** (touches `inherit`'s `generated ||=`; becomes flag OR).
   - `registrationPrepared` → **F_REG_PREPARED**.
   - `allowRoot` / `allowRuleRoot` → **prototype defaults** (delete the base `= false`
@@ -294,7 +293,10 @@ direction.
   - **Keep** (hot reads, self-init is what makes them branch-free): `sourceNode` (82
     reads), `index` (56), `_treeContext`, `_sourceRoot`, `_options`, `parent`,
     `spanStart`/`spanEnd`, `_requiredSemi`.
-  Net: base `Node` sheds ~6 own boolean/tri-state fields into the existing `flags` int +
+  - **NOT here:** `frozen` — see E11. It is NOT a flag-fold target; folding it cements a
+    concept we want to delete. Handle by removing the *reason* (re-parenting), not by
+    making the guard cheaper.
+  Net: base `Node` sheds ~5 own boolean/tri-state fields into the existing `flags` int +
   the prototype.
 
 - **E9. Decompose `inherit` — stop the base metadata-copy from knowing selector/closure
@@ -317,13 +319,38 @@ direction.
   NOT mechanical. Also closes a B-type abstraction leak (base `Node` knowing about
   extend/ampersand/detached-ruleset closures).
 
-- **E10. `fullRender` is test-only in production — delete it.** Grep: the only writers of
-  `fullRender = true` are test setup files (`Node.prototype.fullRender = true`). No
-  production path sets it, yet 22 hot render/serialize guards read
-  `!visible && !fullRender`. Replace the test usage with an explicit print/render option
-  (e.g. `renderHidden`) threaded through `PrintOptions`, then delete the field and
-  simplify all 22 guards to the visibility check. Medium effort (touches test harness +
-  every render guard); do after the E3 flag folds so the guard edits happen once.
+- **E10. `fullRender` is test-only in production — delete it, don't option-ify it.** Grep
+  confirms **zero production writers**; the only writers are test setup
+  (`Node.prototype.fullRender = true` in ~7 files). Yet 22 hot render/serialize guards
+  read `!visible && !fullRender`. An option (`renderHidden` on `PrintOptions`) would just
+  swap a field read for an option read — the production branch survives. Correct move
+  (per user): the tests that need invisible nodes to serialize should force it at the
+  test boundary (override `toString`/`render` on the fixture, or assert against the
+  node's structure directly), and production deletes the field AND collapses all 22
+  guards to the bare `!visible` check. Net: 22 production branches → 22 simpler ones, one
+  concept gone. Effort is in the ~7 test setups, not production.
+
+- **E11. `frozen` — delete the reason, not the field (do NOT fold to a flag).** `frozen`
+  guards `adopt`/`inherit` from re-parenting a shared node (`if (!node.frozen)
+  setParent(...)`). It is the enforcement mechanism for "share, don't copy": freeze
+  points are shared inert leaves (`reuseAsLeaf`, `cloning.ts:17`) AND placement
+  containers / derived selectors (`cloneForPlacement` `clone.frozen = true`,
+  `declaration.ts:610`, `ampersand.ts:676`, `cloning.ts:47`). The container/derived cases
+  protect nodes whose `parent` IS read by lookup, so `frozen` is **load-bearing today** —
+  61 `adopt` sites remain, many at eval/placement time; re-parenting is not yet
+  eliminated. Therefore:
+  - Do NOT fold `frozen` into `flags`: that cements a concept the architecture wants gone
+    (HANDOFF: "live lookup/binding/placement state instead of routine copied eval trees").
+  - Precondition for deletion: `parent` stops being live placement state — either moved
+    to a side table, or `adopt` split into `parentAtConstruction` (parse) vs
+    `placeWithoutReparent` (eval). Then no shared node's `parent` can be hijacked and the
+    guard is unnecessary.
+  - Cheap first probe (independent of the container work): does anything read `.parent` on
+    a *reused leaf* (static, source-free, childless — the `canReuseAsLeaf` set)? Lookup
+    walks parents from Rules/Reference/Declaration, not value leaves. If leaf `.parent` is
+    never read, **leaf-freezing is already dead** and `reuseAsLeaf`/`reuseLeaf` can drop
+    the `frozen = true` immediately, shrinking the guard's live surface to
+    containers/derived only. Verify before cutting.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
@@ -443,13 +470,18 @@ progress tracker — statuses in the sections above are detail, not the index.
       lane, not a mechanical pass. `Node.create` has 8 live internal callers.
 - [ ] **B3** type-check idiom unification (isNode everywhere hot)
 - [ ] **E3 (mechanical slice)** field→flag/prototype folds, all 0-external-read:
-      frozen/generated/registrationPrepared → flags; allowRoot/allowRuleRoot →
-      prototype; hoistToRoot → 2 flag bits. Low risk, gate like the deletion passes
+      generated/registrationPrepared → flags; allowRoot/allowRuleRoot →
+      prototype; hoistToRoot → 2 flag bits. Low risk, gate like the deletion passes.
+      (frozen removed from this slice — see E11)
 - [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
       base per-node probe + 5 casts); selector flags → `Selector.inherit`.
       Binding-lane, benchmark + full-suite gated
-- [ ] **E10** delete `fullRender` (test-only in production); replace with a
-      `renderHidden` print option; simplify 22 render guards
+- [ ] **E10** delete `fullRender` entirely (0 production writers); tests force
+      render at the fixture boundary (override, not a production field/option);
+      collapse 22 guards to bare `!visible`
+- [ ] **E11** `frozen` — YAGNI-delete gated on `parent` leaving live placement
+      state (side table, or adopt split). First probe: is reused-*leaf* `.parent`
+      ever read? If not, drop leaf-freezing now. Do NOT fold to a flag.
 - [ ] **E1+E4** remaining shape hygiene: constructor-complete fields
       (`_closureScope`/`frames`/`fieldSpans` late-assign), Parséman
       `state`/`_tag`/`_cstChildren` to prototype/side-table — benchmark before/after
