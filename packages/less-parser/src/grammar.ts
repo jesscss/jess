@@ -121,11 +121,17 @@ const cssRules = rules((g: any) => {
 
   // ── Less variable declaration / reference ───────────────────────────────────
   const detachedBlock = sequence(literal('{'), g.declarationList, literal('}'));
-  // The var-name colon is adjacent (`@x:`), NOT separated by trivia — otherwise
-  // `@page :first { … }` (an at-rule with a pseudo-page prelude) is mis-read as a
-  // variable declaration `@page: first`. noTrivia keeps `@x` and `:` contiguous.
+  // Var-decl colon. Spaces around it are fine (`@x : y` is a declaration). It is
+  // NOT a declaration only in the pseudo pattern `<space>:<word>` — the colon has a
+  // space before AND clings to the following ident (e.g. `@page :first { … }` is an
+  // at-rule prelude, not `@page: first`). So: colon adjacent to the name (noTrivia),
+  // OR colon not immediately followed by an ident-start.
+  const varColon = choice(
+    noTrivia(sequence(lessVar, literal(':'))),
+    sequence(lessVar, regex(/:(?![-_a-zA-Z-￿])/))
+  );
   const VarDeclaration = node('VarDeclaration',
-    parser({ trivia: rw }, sequence(noTrivia(sequence(lessVar, literal(':'))), choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))),
+    parser({ trivia: rw }, sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))),
     (c: any, r: any, s: any) => mk('VarDeclaration', c, r, s));
   // Regex-based content scan: one level of nested parens + strings, all as one leaf.
   // Avoids the balanced('(',')')-inside-scanTo CSTLeaf pollution bug (balanced uses
