@@ -123,6 +123,9 @@ with `--no-verify` after the explicit gates pass.
 - Metadata mutations: none.
 - Review-flagged diff tokens: [node construction] — the direct `new` replacing
   `Reflect.construct` in `defineType`; same semantics, prosecuted here.
+  [generic defensive read]: the one typed cast to a concrete constructor at
+  factory-definition time replaces the runtime Reflect indirection; it is a
+  compile-time-only assertion, not a runtime defensive read.
 - Evidence: zero `Reflect.construct` remains in core src; core build; suite
   failure set identical to post-E2 state. No speed claim (parse-path change;
   benchmark harness still unbuildable in this worktree).
