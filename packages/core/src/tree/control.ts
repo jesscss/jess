@@ -262,21 +262,24 @@ function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rul
 }
 
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
-  // THIN surface (share the body, like $for/$if). The current loop state is exposed
-  // as LIVE SLOTS directly ON this iteration's fresh frame (copied from stateRules),
-  // parent = the placement scope — so the shared body SEES the synced state and each
-  // iteration's fresh cells re-resolve instead of caching against a stable frame.
+  // THIN surface (share the body, like $for/$if). Iteration frame's parent is the
+  // state frame; the body's `i: i+1` SHADOWS the incoming state `i` and its RHS `@i`
+  // should read the parent (previous) value.
   //
-  // KNOWN GAP (SINGLE_FRAME_PLAN.md "WHY $while can't share yet"): a self-referential
-  // state vardecl (`i: i+1`) still registers a NEW `i` binding holding the raw i+1 node,
-  // overwriting the live slot, so a stateful counter renders `1,1,1`. The fix is a
-  // declaration-set-semantics change (a $while body vardecl over a live slot is an
-  // UPDATE, not a shadow). Committed as architecture progress; being pushed forward.
+  // KNOWN GAP — a self-referential counter (`i: i+1` + `tick:@i`) renders `1,1,1`
+  // (marked `it.fails`; full mechanism in SINGLE_FRAME_PLAN.md). The RHS `@i` reads
+  // root `0` instead of the state because THREE things collude for a SHARED body,
+  // and all three must be fixed together:
+  //   1) this explicit frame (no live bindings) is CLEARED + rebuilt during eval's
+  //      derive, re-wiring parent to the canonical node chain (→ root), not the state.
+  //   2) the recursion guard (`context.searchScope`) blocks the body vardecl AND — in
+  //      the live-slot variant — the state slot, because syncWhileState gives the state
+  //      slot the SAME `sourceNode` (the vardecl); the guard then walks past both to root.
+  //   3) a body vardecl over the state name registers a shadowing raw binding rather
+  //      than UPDATING the state cell.
+  // The copy path avoids all three (isolated copy whose rulesParent IS the surface).
   const stateFrame = stateRules.getScopeFrame();
   const iterationRules = createIterationEvalSurface(sourceRules, true);
-  // Parent = the state frame: the body's `i: i+1` SHADOWS the incoming state `i` (a
-  // child-frame declaration), and its RHS `@i` reads the parent (previous) value via
-  // position (`start`) resolution — the read-write counter semantics.
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateFrame, undefined, undefined, true);
   return iterationRules;
 }
