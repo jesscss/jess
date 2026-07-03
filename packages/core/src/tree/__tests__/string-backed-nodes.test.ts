@@ -304,13 +304,13 @@ describe('string-backed scanner-first proof nodes', () => {
     expect(selector.parent).toBe(node);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((selector.value[0]! as Node).parent).toBe(selector);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    expect((selector.value[1]! as Node).parent).toBe(selector);
+    // Combinators are string-normalized leaves now; they carry no parent.
+    expect(selector.value[1]).toBe('>');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((selector.value[2]! as Node).parent).toBe(selector);
     const types = serializeTypes(node);
     expect(types).toContain('(ComplexSelector');
-    expect(types).toContain('(Combinator \'>\')');
+    expect(types).toContain('\'>\'');
 
     expect(types).toContain('\'.a\'');
     expect(types).toContain('(CompoundSelector');

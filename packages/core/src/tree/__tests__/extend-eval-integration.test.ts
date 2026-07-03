@@ -7,7 +7,6 @@ import {
   Ampersand,
   attr,
   atrule,
-  co,
   color,
   comment,
   compound,
@@ -55,20 +54,20 @@ describe('extend integration (eval -> toString)', () => {
       name: ':is',
       arg: sellist([
         compound([el('.replace'), el('.replace')]),
-        sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+        sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
       ])
     });
 
     const root = rules([
       ruleset({
-        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.clone(true), co(' '), el('.c')])]),
+        selector: sellist([sel([parentIs, ' ', el('.replace')]), sel([parentIs.clone(true), ' ', el('.c')])]),
         rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
       }),
       ruleset({
         selector: el('.rep_ace'),
         rules: [
           extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
+            target: sel([compound([el('.replace'), el('.replace')]), ' ', el('.replace')]),
             flag: ExtendFlag.Exact
           })
         ]
@@ -99,7 +98,7 @@ describe('extend integration (eval -> toString)', () => {
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
-          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+          sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
         ]),
         rules: [
           ruleset({
@@ -212,7 +211,7 @@ describe('extend integration (eval -> toString)', () => {
             selector: footerNav,
             rules: [
               extend({
-                target: sel([el('.header'), co(' '), el('.header-nav')]),
+                target: sel([el('.header'), ' ', el('.header-nav')]),
                 flag: ExtendFlag.All
               })
             ]
@@ -480,7 +479,7 @@ describe('extend integration (eval -> toString)', () => {
     // .all:extend(.ext1 all) {}
     const root = rules([
       ruleset({
-        selector: sellist([sel([el('.ext1'), co(' '), el('.ext2')])]),
+        selector: sellist([sel([el('.ext1'), ' ', el('.ext2')])]),
         rules: [decl({ name: 'background', value: any('black') })]
       }),
       atrule({
@@ -488,7 +487,7 @@ describe('extend integration (eval -> toString)', () => {
         prelude: any('(tv)'),
         rules: [
           ruleset({
-            selector: sellist([sel([el('.ext1'), co(' '), el('.ext3')])]),
+            selector: sellist([sel([el('.ext1'), ' ', el('.ext3')])]),
             rules: [decl({ name: 'color', value: any('inherit') })]
           }),
           ruleset({
@@ -503,7 +502,7 @@ describe('extend integration (eval -> toString)', () => {
             prelude: any('(hires)'),
             rules: [
               ruleset({
-                selector: sellist([sel([el('.ext1'), co(' '), el('.ext4')])]),
+                selector: sellist([sel([el('.ext1'), ' ', el('.ext4')])]),
                 rules: [decl({ name: 'color', value: any('green') })]
               }),
               ruleset({
@@ -1205,7 +1204,7 @@ describe('extend integration (eval -> toString)', () => {
             selector: el('.footer-nav'),
             rules: [
               extend({
-                target: sel([el('.header'), co(' '), el('.header-nav')]),
+                target: sel([el('.header'), ' ', el('.header-nav')]),
                 flag: ExtendFlag.All
               })
             ]
@@ -1264,7 +1263,7 @@ describe('extend integration (eval -> toString)', () => {
         selector: el('.theme'),
         rules: [
           extend({
-            target: sel([el('.one'), co(' '), el('.three')]),
+            target: sel([el('.one'), ' ', el('.three')]),
             flag: ExtendFlag.Exact
           })
         ]

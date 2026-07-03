@@ -8,7 +8,7 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
-import { isCombinator } from './combinator.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
 
@@ -527,7 +527,7 @@ export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSele
 
     // Both must be same type
     if (isCombinator(aComp) && isCombinator(bComp)) {
-      if (aComp.value !== bComp.value) {
+      if (combinatorValue(aComp) !== combinatorValue(bComp)) {
         return false;
       }
     } else if (!isCombinator(aComp) && !isCombinator(bComp)) {
@@ -1060,7 +1060,7 @@ function tryPartialComplexMatch(
       }
 
       if (isCombinator(tComp) && isCombinator(fComp)) {
-        if (tComp.value !== fComp.value) {
+        if (combinatorValue(tComp) !== combinatorValue(fComp)) {
           matches = false;
           break;
         }
@@ -1496,7 +1496,7 @@ function tryComplexSelectorPatternMatch(
 
       if (isCombinator(targetComp) && isCombinator(complexComp)) {
         // Both are combinators - must match exactly
-        if (targetComp.value !== complexComp.value) {
+        if (combinatorValue(targetComp) !== combinatorValue(complexComp)) {
           isMatch = false;
           break;
         }
@@ -1605,7 +1605,7 @@ function trySequentialComplexMatch(
 
       // If both are combinators, they must match exactly
       if (isCombinator(targetComp) && isCombinator(findComp)) {
-        if (targetComp.value !== findComp.value) {
+        if (combinatorValue(targetComp) !== combinatorValue(findComp)) {
           matches = false;
           break;
         }

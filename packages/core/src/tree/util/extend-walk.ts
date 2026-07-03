@@ -351,7 +351,7 @@ function findSubsequence(
       const tc = targetComps[start + j]!;
       const fc = findComps[j]!;
       if (fc.type === 'Combinator') {
-        if (!isCombinator(tc) || (tc as Combinator).value !== fc.value) {
+        if (!isCombinator(tc) || combinatorValue(tc) !== fc.value) {
           matches = false;
           break;
         }
@@ -1387,7 +1387,7 @@ function wouldMatchWithParent(
     ? (child as SelectorList).value.filter((item): item is Selector => typeof item !== 'string')
     : [child];
 
-  const spaceComb = Combinator.create(' ');
+  const spaceComb = ' ';
   for (const pItem of parentItems) {
     const parentComps = isNode(pItem, N.ComplexSelector)
       ? (pItem as ComplexSelector).value

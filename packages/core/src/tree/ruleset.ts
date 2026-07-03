@@ -446,7 +446,7 @@ function createRawComplexSelectorSurface(
   const components: ComplexSelectorComponent[] = [];
   for (const part of parts) {
     if (part === ' ' || part === '>' || part === '+' || part === '~') {
-      components.push(Combinator.create(part));
+      components.push(part);
       continue;
     }
     const branch = createRawSelectorNode(part, location, treeContext);
@@ -831,7 +831,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const childStartsWithCombinator = trailing.length > 0 && isCombinator(trailing[0]!);
     const merged = childStartsWithCombinator
       ? [...leading, ...trailing]
-      : [...leading, Combinator.create(' '), ...trailing];
+      : [...leading, ' ', ...trailing];
 
     return attachSelectorBitLibrary(ComplexSelector.create(merged).inherit(child), library);
   }

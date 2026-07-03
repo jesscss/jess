@@ -252,7 +252,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         );
         resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
           parentIs,
-          Combinator.create(' '),
+          ' ',
           copySelectorForExtendRecord(ownSel, selectorBits)
         ]), selectorBits);
         usedParentListComposition = true;
@@ -268,7 +268,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             copySelectorForExtendRecord(parentSel, selectorBits),
-            Combinator.create(' '),
+            ' ',
             copySelectorForExtendRecord(resolvedSel, selectorBits)
           ]), selectorBits);
         }

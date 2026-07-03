@@ -830,11 +830,15 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
         : CompoundSelector.create(compoundProcessed).inherit(el));
     } else if (isNode(el, N.ComplexSelector)) {
       let value = el.value;
-      let complexProcessed = createProcessedSelector(value.filter((c): c is Selector => typeof c !== 'string'));
+      // Preserve string-backed leaves AND combinators in place (combinators are
+      // plain strings); the index logic below depends on combinators staying at
+      // their positions. Filtering strings out (old behavior) dropped them.
+      let complexProcessed = processComponentsPreservingStrings(value, false);
       if (typeof complexProcessed === 'string') {
         return complexProcessed;
       }
-      let result = expectComplexComponents(complexProcessed);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      let result = expectComplexComponents(complexProcessed as unknown as Selector[]);
       let outputComponents = result;
       let [first, second] = value;
       /** Remove invisibility on combinator if it's a generated */
@@ -1435,6 +1439,10 @@ export function extendSelector(
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
 ): Selector | ExtendErrorType {
+  if (process.env.PROBE_EXTEND) {
+    // eslint-disable-next-line no-console
+    console.error('[PROBE enter]', JSON.stringify({ target: target.valueOf(), find: find.valueOf(), partial }));
+  }
   if (partial && find.valueOf() === extendWith.valueOf()) {
     return target;
   }
@@ -2175,7 +2183,7 @@ function extendSelectorList(
     // Prefix with the same implicit `&` + combinator shape from the template.
     const prefixed = ComplexSelector.create([
       first.derive(),
-      isCombinator(second) ? copyComplexComponentForPlacement(second) : Combinator.create(' ').inherit(first),
+      isCombinator(second) ? copyComplexComponentForPlacement(second) : ' ',
       copySelectorForExtend(s)
     ]).inherit(s);
     return prefixed;
@@ -3526,7 +3534,7 @@ function handleAmpersandBoundaryCrossing(
     // Create the combined selector: :is(parent) :is(inner)
     const combined = ComplexSelector.create([
       parentWrapped,
-      Combinator.create(' '),
+      ' ',
       innerWrapped
     ]).inherit(selector);
 

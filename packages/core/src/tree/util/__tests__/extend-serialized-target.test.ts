@@ -8,7 +8,6 @@ import {
   compound,
   sellist,
   sel,
-  co,
   decl,
   any,
   ExtendFlag
@@ -21,7 +20,7 @@ describe('extend serialized target repro', () => {
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
-          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+          sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
         ]),
         rules: [
           ruleset({
@@ -34,7 +33,7 @@ describe('extend serialized target repro', () => {
         selector: el('.rep_ace'),
         rules: [
           extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
+            target: sel([compound([el('.replace'), el('.replace')]), ' ', el('.replace')]),
             flag: ExtendFlag.Exact
           })
         ]
