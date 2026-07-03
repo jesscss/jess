@@ -14,6 +14,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import {
   buildScopeFrame,
+  copyScopeFrameLiveBindingSlots,
   getBindingCellValue,
   setScopeFrameLiveBinding,
   type BindingCell,
@@ -262,10 +263,26 @@ function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rul
 }
 
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
-  // $while COPIES per iteration (share=false): the loop carries mutable state across
-  // iterations, so each iteration body must be isolated (see createIterationEvalSurface).
-  const iterationRules = createIterationEvalSurface(sourceRules, false);
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame(), undefined, undefined, true);
+  // THIN surface (share the body, like $for/$if). The current loop state is exposed
+  // as LIVE SLOTS directly ON this iteration's fresh frame (copied from stateRules),
+  // parent = the placement scope — so the shared body SEES the synced state and each
+  // iteration's fresh cells re-resolve instead of caching against a stable frame.
+  //
+  // KNOWN GAP (SINGLE_FRAME_PLAN.md "WHY $while can't share yet"): a self-referential
+  // state vardecl (`i: i+1`) still registers a NEW `i` binding holding the raw i+1 node,
+  // overwriting the live slot, so a stateful counter renders `1,1,1`. The fix is a
+  // declaration-set-semantics change (a $while body vardecl over a live slot is an
+  // UPDATE, not a shadow). Committed as architecture progress; being pushed forward.
+  const stateFrame = stateRules.getScopeFrame();
+  const iterationRules = createIterationEvalSurface(sourceRules, true);
+  iterationRules.scopeFrame = buildScopeFrame(
+    undefined,
+    iterationRules,
+    stateFrame.parent,
+    copyScopeFrameLiveBindingSlots(stateFrame),
+    undefined,
+    true
+  );
   return iterationRules;
 }
 
@@ -936,12 +953,15 @@ export class While extends Rules<WhileValue> {
         }
         let iterationRules = createWhileIterationSurface(originalRules, stateRules);
         if (hasIterationStateMutation(originalRules)) {
-          const preparedIterationRules = await iterationRules.prepareRegistration(context);
-          if (!(preparedIterationRules instanceof Rules)) {
+          // Source-order EVAL (not prepareRegistration): a self-referential state
+          // vardecl (`i: i + 1`) must resolve its RHS `@i` to the incoming state
+          // (live slot) BEFORE the decl registers, matching evalNode.
+          const evaluated = await iterationRules.eval(context);
+          if (!(evaluated instanceof Rules)) {
             throwInvalidWhileIterationRegistrationPrep();
           }
-          await syncWhileState(stateRules, preparedIterationRules, context);
-          iterationRules = preparedIterationRules;
+          await syncWhileState(stateRules, evaluated, context);
+          iterationRules = evaluated;
         }
         output += await iterationRules.render(context, buffer, options);
       }
