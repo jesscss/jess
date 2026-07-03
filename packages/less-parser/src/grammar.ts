@@ -286,7 +286,7 @@ const cssRules = rules((g: any) => {
   // paren only follows a bare `&` in practice (prefix forms have no `(`).
   const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node('LessAmpersand',
-    parser({ trivia: rw }, sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, singleStr, doubleStr] }), literal(')'))))),
+    parser({ trivia: rw }, sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))))),
     (c: any, r: any, s: any) => mk('LessAmpersand', c, r, s));
   const InterpolatedSelector = node('InterpolatedSelector',
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
@@ -343,10 +343,10 @@ const cssRules = rules((g: any) => {
   // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
   // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
   // LessSelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
-  const pseudoArg = choice(nth, g.LessSelectorList, scanTo(literal(')'), { skip: [bParen] }));
+  const pseudoArg = choice(nth, g.LessSelectorList, scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
   const pseudoSelectorParens = choice(
     sequence(literal('('), choice(nth, g.LessSelectorList), literal(')')),
-    sequence(literal('('), scanTo(literal(')'), { skip: [bParen] }), literal(')'))
+    sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))
   );
   const PseudoSelector = node('PseudoSelector',
     parser({ trivia: rw }, sequence(pseudoColon, choice(interpKey, ident), optional(g.pseudoSelectorParens))),
@@ -536,7 +536,7 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('For', c, r, s));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
-  const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, singleStr, doubleStr] }));
+  const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
 
   // ── Structured, committed query block (@media / @container / @supports) ──────
   // The flat `atPrelude` above walks past ANY bracket content to the first
@@ -589,8 +589,8 @@ const cssRules = rules((g: any) => {
   // Ordered before the generic AtRuleStatement; the existing
   // `_buildImportAtRuleFromPrelude` builder reconstructs the AST from source.
   const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
-  const importOptionsParen = sequence(literal('('), scanTo(literal(')'), { skip: [bParen, singleStr, doubleStr] }), literal(')'));
-  const importMedia = scanTo(literal(';'), { skip: [bParen, bSquare, singleStr, doubleStr] });
+  const importOptionsParen = sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'));
+  const importMedia = scanTo(literal(';'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
   const ImportAtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(
       importKeyword, optional(importOptionsParen),
