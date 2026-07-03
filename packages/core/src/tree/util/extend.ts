@@ -624,6 +624,38 @@ function assignPseudoArg(pseudo: PseudoSelector, arg: Node): void {
   pseudo.invalidateCache();
 }
 
+// Reprocess a compound/complex component array WITHOUT dropping string-backed
+// leaves. `createProcessedSelector` only accepts Selector nodes, so we process the
+// node components and re-merge the processed results back into their original
+// positions, leaving string leaves (`'.a'`) untouched. Safe because component
+// reprocessing runs with root=false (no dedup / no :is flattening), so the node
+// count is preserved and the positional re-merge is exact. Previously these sites
+// filtered strings out entirely, rebuilding e.g. `compound(['.a'])` as empty.
+function processComponentsPreservingStrings(
+  components: readonly (string | Selector)[],
+  root: boolean
+): (string | Selector)[] | ExtendErrorType {
+  const nodes = components.filter((c): c is Selector => typeof c !== 'string');
+  if (nodes.length === components.length) {
+    const processed = createProcessedSelector(nodes, root);
+    return typeof processed === 'string' ? processed : expectSelectorArray(processed);
+  }
+  const processedResult = createProcessedSelector(nodes, root);
+  if (typeof processedResult === 'string') {
+    return processedResult;
+  }
+  const processedNodes = expectSelectorArray(processedResult);
+  if (processedNodes.length !== nodes.length) {
+    return processedNodes;
+  }
+  const out: (string | Selector)[] = [];
+  let pi = 0;
+  for (const c of components) {
+    out.push(typeof c === 'string' ? c : processedNodes[pi++]!);
+  }
+  return out;
+}
+
 export function createProcessedSelector(value: Selector | Selector[], root?: boolean): Selector | Selector[] | ExtendErrorType {
   let out: Selector[] = [];
   // Only deduplicate at root level (SelectorList context), not for compound selector value
@@ -786,15 +818,15 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       push(sameArrayItems(flattened, el.value) ? el : SelectorList.create(flattened).inherit(el));
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound value can have duplicate value (e.g., .v.w.v)
-      // Process value with root=false to prevent deduplication
-      const compoundProcessed = createProcessedSelector(el.value.filter((c): c is Selector => typeof c !== 'string'), false);
+      // Process value with root=false to prevent deduplication. Preserve
+      // string-backed leaves (`compound(['.a'])`) instead of filtering them out.
+      const compoundProcessed = processComponentsPreservingStrings(el.value, false);
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
-      const processedComponents = expectSelectorArray(compoundProcessed);
-      push(sameArrayItems(processedComponents, el.value)
+      push(sameArrayItems(compoundProcessed, el.value)
         ? el
-        : CompoundSelector.create(processedComponents).inherit(el));
+        : CompoundSelector.create(compoundProcessed).inherit(el));
     } else if (isNode(el, N.ComplexSelector)) {
       let value = el.value;
       let complexProcessed = createProcessedSelector(value.filter((c): c is Selector => typeof c !== 'string'));

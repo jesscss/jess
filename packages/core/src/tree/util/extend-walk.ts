@@ -268,9 +268,15 @@ function tailOf(sel: Selector): Selector {
  *   .y  vs  :is(.x > .y)  → true (.y is the tail of .x > .y)
  *   .x  vs  :is(.x > .y)  → false (.x is in the ancestral prefix)
  */
-function positionSimpleMatches(find: Selector, target: Selector): boolean {
-  if (find.valueOf() === target.valueOf()) {
+function positionSimpleMatches(find: Selector, target: string | Selector): boolean {
+  if (find.valueOf() === (typeof target === 'string' ? target : target.valueOf())) {
     return true;
+  }
+  // A string-backed leaf (`'.a'`) carries no structure to recurse into, so a
+  // valueOf mismatch is a definitive miss — the :is()/tail expansions below only
+  // apply to node targets.
+  if (typeof target === 'string') {
+    return false;
   }
 
   // find is :is() → OR: try each alternative's tail
@@ -385,7 +391,7 @@ function findSubsequence(
  * Returns matched indices or null if not all consumed.
  */
 function consumeSimples(
-  targetComps: SimpleSelector[],
+  targetComps: readonly (string | SimpleSelector)[],
   findSimples: Selector[]
 ): number[] | null {
   const matchIndices: number[] = [];
@@ -690,9 +696,19 @@ function walkCompoundSelector(
   let anyChanged = false;
   const newComponents = [...value];
 
+  const singleSimple = spec.positions.length === 1 && spec.positions[0]!.length === 1;
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
     if (typeof comp === 'string') {
+      // String leaf: a component match inside a compound is PARTIAL. Full mode
+      // rejects it (leave unchanged); partial wraps the matched leaf in :is().
+      if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
+        const wrapped = wrapInIs(spec.original, extendWith);
+        if (wrapped.valueOf() !== comp) {
+          newComponents[i] = wrapped;
+          anyChanged = true;
+        }
+      }
       continue;
     }
     const childCtx: WalkContext = {
@@ -727,7 +743,7 @@ function consumeSimplesFromCompound(
   spec: FindSpec,
   extendWith: Selector
 ): Selector {
-  const targetComps = compound.value.filter((c): c is SimpleSelector => typeof c !== 'string');
+  const targetComps = compound.value;
   const findSimples = spec.positions[0]!;
 
   const matchIndices = consumeSimples(targetComps, findSimples);
@@ -736,7 +752,7 @@ function consumeSimplesFromCompound(
   }
 
   const matchedSet = new Set(matchIndices);
-  const remainders: SimpleSelector[] = [];
+  const remainders: (string | SimpleSelector)[] = [];
   for (let i = 0; i < targetComps.length; i++) {
     if (!matchedSet.has(i)) {
       remainders.push(targetComps[i]!);
@@ -747,7 +763,7 @@ function consumeSimplesFromCompound(
   if (!(isWrapper instanceof SimpleSelector)) {
     return compound;
   }
-  const newComponents: SimpleSelector[] = [isWrapper, ...remainders];
+  const newComponents: (string | SimpleSelector)[] = [isWrapper, ...remainders];
   const result = CompoundSelector.create(newComponents).inherit(compound);
   result.addFlag(F_EXTENDED);
   return result;
@@ -1082,6 +1098,14 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   return false;
 }
 
+// `classifyExtendMatch` reports whether a target CONTAINS the find (presence, for
+// self-extend / F_EXTEND_TARGET marking), whereas `wouldExtendChange` reports
+// whether applying the extend would change OUTPUT. They differ only for a
+// self-extend (`find === extendWith`): presence is still true, output-change is
+// false. The recursive walk is fully synchronous, so a save/restore module flag
+// carries that one bit of intent without threading a param through every call site.
+let presenceMatchMode = false;
+
 export function wouldExtendChange(
   target: Selector,
   find: Selector,
@@ -1089,8 +1113,14 @@ export function wouldExtendChange(
   partial: boolean,
   parentSelector?: Selector
 ): boolean {
-  const spec = decomposeFind(find);
-  return !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  const prev = presenceMatchMode;
+  presenceMatchMode = false;
+  try {
+    const spec = decomposeFind(find);
+    return !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  } finally {
+    presenceMatchMode = prev;
+  }
 }
 
 export function classifyExtendMatch(
@@ -1100,8 +1130,14 @@ export function classifyExtendMatch(
   partial: boolean,
   parentSelector?: Selector
 ): MatchResult {
-  const spec = decomposeFind(find);
-  return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  const prev = presenceMatchMode;
+  presenceMatchMode = true;
+  try {
+    const spec = decomposeFind(find);
+    return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  } finally {
+    presenceMatchMode = prev;
+  }
 }
 
 function wouldMatchNode(
@@ -1115,7 +1151,7 @@ function wouldMatchNode(
   if (typeof node === 'string') {
     return false;
   }
-  if (spec.original.valueOf() === extendWith.valueOf()) {
+  if (!presenceMatchMode && spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
 
