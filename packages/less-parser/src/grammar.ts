@@ -135,7 +135,7 @@ const cssRules = rules((g: any) => {
   // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
   const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
   const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?@\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:@\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
+  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(optional(refKey), literal(']'))));
