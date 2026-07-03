@@ -166,7 +166,12 @@ below is from direct reading and needs the grep pass as its proof surface.)
   single largest deletion available (~8% of core). Queue: extend walk to Complex
   application parity → flip the gate → delete `extend.ts` and its test twin. Not
   deletable today; make it the explicit target so no new code lands in the legacy file.
-- **C2. Commented-out and `@todo`-delete debris in `node-base.ts`**: `collectRoots`
+- **C2. Commented-out and `@todo`-delete debris in `node-base.ts`**: *Status
+  2026-07-03: LANDED for IS_PROXY/NodeMapArray/GeneratedNodeValue/Mutable/
+  collectRoots/toModule + context exports-set/parentScope/isRuntime + the five
+  zero-consumer conversion plugins + use-webpack-resolver.ts/debug-log.ts
+  whole-file deletions. ABORT/REMOVE/Primitive are live (kept); Node.create is
+  live (B5's business).* `collectRoots`
   (975-989), `toModule` block (1614-1619), `Primitive`/`PrimitiveOrFunc` + the three
   symbols (49-56), `Mutable`/`ValueBearingNode` types (283-291), `NodeMapArray` (79-83),
   `GeneratedNodeValue` (192-195), commented flag reserves (276-281). Also
@@ -344,25 +349,60 @@ direction.
 
 ---
 
-## Execution queue (ordered, each item = one prosecutable pass)
+## Execution checklist (ordered, each item = one prosecutable pass)
 
 Ordering principle: delete before you reorganize; reorganize before you optimize;
 measure everything in D/E against the benchmark protocol.
 
-1. **A1+A2** explicit exports (grep-driven) — makes all later deletions safe to verify.
-2. **C2/C3/C5/C6/C7** small certain-dead deletions (one pass, grep proof each).
-3. **B2+E8** finish childKeys migration; delete legacy `.value` walkers.
-4. **B4+E2** layering fix; delete prototype patches + `_createMinimalNil`.
-5. **B5+C3** single construction path; delete `defineType` Reflect wrapper + `create`.
-6. **B3** type-check idiom unification.
-7. **E1+E3+E4+E6** shape hygiene (constructor-complete fields, flags-bitmask fold,
-   Parséman fields to prototype/side-table, parseman `Span` as the single location
-   object) — benchmark before/after.
-8. **D1–D7** allocation passes, one hot path each, benchmark-gated.
-9. **B1** Context split; **B8** rules.ts split (mechanical, after deletions).
-10. **C1** extend-walk parity → delete legacy `extend.ts` (biggest single win, longest
-    lead time — start the parity work early, land the deletion last).
-11. **A3/A4** Node method surface + deprecated options, once consumers are pinned by A1.
+Maintenance rule: when a pass lands, check its box and record the commit hash;
+split a box if only part of it landed. This checklist is the audit's single
+progress tracker — statuses in the sections above are detail, not the index.
+
+- [x] **E6 (core side)** `spanStart`/`spanEnd` inline offset fields; hot location
+      reads off the tuple; empty-`[]` lazy allocation deleted — `c88672538`
+- [x] **A1+A2 (first pass)** explicit `src/index.ts` exports, census-driven;
+      compare/cast/find-extendable-locations/collections internalized — `0d11e8e10`
+- [ ] **A1 (second pass)** tree barrel + explicit lists for
+      plugin/jess-error/define-function/types/visitor modules
+- [x] **C2/C5 slice** certain-dead deletions (IS_PROXY, NodeMapArray,
+      GeneratedNodeValue, Mutable, collectRoots/toModule corpses, context
+      exports-set/parentScope/isRuntime, five zero-consumer conversion plugins,
+      use-webpack-resolver.ts, debug-log.ts) — see commit for hash
+- [ ] **C4/C6/C7** remaining dead-code candidates: vestigial node classes
+      (Combinator post-flip, selector-capture, selector-interpolated, rules-raw,
+      range, log), visitor fallbacks, duplicated `getWriterTextSincePosition` ×5
+- [ ] **B2+E8** finish childKeys migration; delete legacy `.value` walkers and the
+      base constructor `value` param
+- [ ] **B4+E2** layering fix; delete node.ts/tree-index prototype patches +
+      `_createMinimalNil`
+- [ ] **B5+C3** single construction path; delete `defineType` Reflect wrapper +
+      `Node.create`
+- [ ] **B3** type-check idiom unification (isNode everywhere hot)
+- [ ] **E1+E3+E4** shape hygiene: constructor-complete fields, booleans → flags
+      bitmask, Parséman `state`/`_tag`/`_cstChildren` to prototype/side-table —
+      benchmark before/after
+- [ ] **E6 (parser side)** parsers pass spans; delete the `LocationInfo` tuple
+      storage + `spanToLocation`; line/col derived lazily (needs jess-error/
+      diagnostics offset→line/col first; touches parser packages)
+- [ ] **D1** hot-path generator traversal → callback loops
+- [ ] **D2** finish `toString` mark/readback deletion (base method last copy)
+- [ ] **D3** `SelectorList.writeSyntax` per-render array rebuild + `:is()` unwrap
+      cached/moved to construction
+- [ ] **D4** selector eval clone-chain churn; stop copying `_options` per clone
+- [ ] **D5** `F_MAY_ASYNC` over-taint audit; async bookkeeping only on real thenables
+- [ ] **D6** allocating accessors (`options` read-probe split; `span` covered by E6)
+- [ ] **D7** `valueOf()` string building on compare paths → structural/keyset compare
+- [ ] **D8** Context eager fields → uniform lazy `??=`
+- [ ] **B1** Context split (eval state vs ImportResolver I/O)
+- [ ] **B8** rules.ts split (registration/lookup/render) — after deletions
+- [ ] **B6** two serialization entry points; hoist `getWriterTextSincePosition`
+      into OutputWriter (overlaps C7)
+- [ ] **B7** one visitor protocol; delete reflection fallbacks
+- [ ] **C1** extend-walk Complex-application parity → delete legacy `extend.ts`
+      (~4.3k lines; start parity early, land deletion last)
+- [ ] **A3** shrink Node public method surface to the ~8-method contract
+- [ ] **A4** delete deprecated context options (disablePluginRule,
+      leakyRules/bubbleRootAtRules single-home)
 
 Gates per pass (repo convention): focused tests first, `git diff --check`,
 `pnpm run verify:aggressive-cutting-review`, benchmark protocol for D/E claims,

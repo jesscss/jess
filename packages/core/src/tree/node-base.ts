@@ -45,15 +45,11 @@ type AllNodeOptions = {
   semi?: boolean;
 };
 
-/**
- * @todo - Clean up and delete these types and symbols, if not used.
- */
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
-export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
@@ -75,12 +71,6 @@ type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
-
-export type NodeMapArray<
-  T extends NodeValueObject = NodeValueObject,
-  K = keyof T,
-  V = T[string]
-> = Array<[K, V]>;
 
 export type LocationInfo = [
   startOffset: number,
@@ -189,11 +179,6 @@ function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMeth
   return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
-/**
- * Utility type to mark a node's value as generated
- */
-export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
-
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
@@ -279,9 +264,6 @@ export const F_DEFAULT = F_VISIBLE;
 // export const LOCKED = 0b100000000;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
-
-export type Mutable<T extends { value: unknown }> =
-  Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
 type ValueBearingNode = Node & {
   value: unknown;
@@ -996,25 +978,6 @@ export abstract class Node<
   }
 
   /**
-   * @todo - Remove?
-   */
-  // collectRoots(): Node[] {
-  //   let list: Node[] = []
-  //   this.walkNodes(n => {
-  //     if (n.type === 'Rules') {
-  //       const rules = n.rootRules
-  //       if (rules) {
-  //         for (let n of rules) {
-  //           list.push(n)
-  //         }
-  //         n.rootRules = undefined
-  //       }
-  //     }
-  //   })
-  //   return list
-  // }
-
-  /**
    * Accept a visitor (classic visitor pattern).
    *
    * Visits the node itself first, then recursively visits children.
@@ -1637,12 +1600,6 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Generates a .js module
-   * @todo - Generate a .ts module & .js.map
-   */
-  /** Move to ToModuleVisitor */
-  // toModule?(context: Context, out: OutputCollector): void
 }
 
 /** When converting Less/Sass to Jess, we'll switch this flag temporarily */

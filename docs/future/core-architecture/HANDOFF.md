@@ -103,6 +103,22 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: certain-dead deletions (ponytail audit C2/C5 slice).
+- Verdict: accepted as pure machinery deletion, grep-proven zero consumers per
+  item. Deleted: `use-webpack-resolver.ts` and `debug-log.ts` (whole files, no
+  importers); `IS_PROXY` symbol, `NodeMapArray`, `GeneratedNodeValue`,
+  `Mutable` types, the commented `collectRoots`/`toModule` blocks
+  (node-base.ts); the `_exports`/`exports` Set, `parentScope` option, and
+  `isRuntime` comment (context.ts); `clamp`, `lengthToPx`, `timeToMs`,
+  `frequencyToHz`, `angleToRadians` conversion plugins (test-only consumers —
+  tests deleted with them). Kept after grep proved live: `ABORT`, `REMOVE`,
+  `Node.create`, `Primitive`/`PrimitiveOrFunc` (referenced by the legacy value
+  regime until the childKeys migration completes).
+- New traversal / node / render / metadata / error control / allocations:
+  none — deletions only.
+- Evidence: per-identifier repo-wide grep (excluding build output), core
+  build, core suite failure set vs saved baseline, `git diff --check`.
+
 - Latest pass: explicit `@jesscss/core` export surface (ponytail audit A1/A2).
 - Verdict: accepted as an API-surface cut. `src/index.ts` no longer wildcard
   re-exports internal util modules; `compare`, `cast`,

@@ -110,13 +110,6 @@ export interface ContextOptions {
 export interface TreeContextOptions extends ContextOptions {
   inlineJavaScript?: boolean;
 
-  /**
-   * For instances where a new tree needs to inherit from scope
-   * (like Less / SCSS `@import` rule)
-   *
-   * @todo - remove?
-   */
-  parentScope?: Rules;
   scope?: Rules;
 
   isModule?: boolean;
@@ -449,24 +442,6 @@ export class Context {
    * such as within a function call.
    */
   parenFrames: boolean[] = [];
-
-  /**
-   * Keys of @let variables --
-   * We need this b/c we need to generate code
-   * for over-riding in the exported function.
-   *
-   * @todo - remove?
-   */
-  private _exports: Set<string> | undefined;
-  get exports(): Set<string> {
-    return (this._exports ??= new Set());
-  }
-
-  /**
-   * currently generating a runtime module or not
-   * @todo - remove in favor of ToModuleVisitor?
-   */
-  // isRuntime: boolean
 
   /**
    * In a custom declaration's value. All nodes should
