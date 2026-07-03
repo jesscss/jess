@@ -103,6 +103,31 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: explicit `@jesscss/core` export surface (ponytail audit A1/A2).
+- Verdict: accepted as an API-surface cut. `src/index.ts` no longer wildcard
+  re-exports internal util modules; `compare`, `cast`,
+  `find-extendable-locations`, and `collections` are fully internal (a
+  repo-wide import census found zero external consumers), and
+  context/logger/is-node/calculate/should-operate/print/trivia/list-like/
+  serialize-types/conversions are narrowed to the names the census proved
+  consumed. The tree barrel, plugin, jess-error, deprecation, define-function,
+  types, and visitor modules keep their module-level exports for now.
+- New traversal / node / render / metadata / error control: none — export
+  statements only.
+- Helper/API surface: shrunk. Names cut from the public barrel remain
+  importable only relatively inside core.
+- Evidence: census script over all consumer packages (145 unique imported
+  names); core build; consumer builds green for css/less/scss/jess-parser,
+  fns, style-resolver, patch-css, plugin-less, plugin-scss,
+  plugin-node-modules, plugin-less-compat; runtime export presence check for
+  every census name (only misses: `RuntimeFunction`, a type, still exported;
+  `getValues`, which does not exist in core at all — pre-existing
+  language-service breakage, flagged separately); `verify:package-exports`
+  passed; `verify:public-packages` fails only on packages whose builds are
+  already broken by the rolldown-plugin-dts/typescript-rc toolchain issue
+  (jess, plugin-js, rollup-plugin-jess, config); full core suite failure set
+  identical to the saved baseline.
+
 - Latest pass: denormalized `spanStart`/`spanEnd` offset fields on `Node`.
 - Verdict: accepted as a hot-read/object-avoidance slice under the ponytail core
   audit (`docs/future/ponytail-core-audit.md` E6), not a measured performance

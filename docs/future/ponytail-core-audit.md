@@ -37,7 +37,16 @@ Snapshot: `packages/core/src` = 145 non-test files, ~55k LOC. Largest:
 
 ### Plan
 
-- **A1. Replace `export *` with explicit export lists.** Derive the list empirically:
+- **A1. Replace `export *` with explicit export lists.** *Status 2026-07-03:
+  first pass LANDED — `src/index.ts` is explicit for all util/infra modules;
+  compare/cast/find-extendable-locations/collections fully internalized (census:
+  zero external consumers). Remaining: the tree barrel itself, and per-module
+  explicit lists for plugin/jess-error/define-function/types/visitor. Census
+  data: 145 unique names consumed across 12 packages; conversions.ts exports
+  `clamp`/`lengthToPx`/`timeToMs`/`frequencyToHz`/`angleToRadians` with zero
+  consumers anywhere → C-item deletion candidates. `getValues` is imported by
+  language-service but does not exist in core (pre-existing breakage, task
+  chip filed).* Derive the list empirically:
   `grep -rhoE "import[^;]*from '@jesscss/core[^']*'" packages --include='*.ts' | grep -v packages/core/`
   (blocked during this audit by a tooling outage — run it as the first step). Expected
   tiers: (i) node classes + factories + `Node`/`TreeContext`/`Context`; (ii) plugin/diagnostic
