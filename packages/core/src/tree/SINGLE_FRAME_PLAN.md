@@ -303,6 +303,31 @@ the remaining wrappers AND the last uncovered scopes (R3). Landed:
   by the `evaluated` deletion; the real blocker was #1 (bespoke eval adopting children),
   fixed by the share-without-adopt + `ownControlBodyChildren` combination above.
 
+### 2026-07-02 — WHY `$while` can't share yet (deep-rework root cause, verified)
+A focused attempt to make `$while` share too (self-referential counter `i:i+1` + `tick:@i`,
+test `keeps native loop render aligned`) was made and reverted. Five approaches
+(share-without-adopt; live-slots-on-iteration-frame; source-order eval-then-render;
+per-iteration `runWithRulesContext`; and combinations) all left the counter reading `1,1,1`.
+Root cause is NOT the loop layer — it's TWO in-place mutations in the eval core that assume
+one-eval-per-node (safe for mixins/rulesets, each placement evaluated once; unsafe for a
+SHARED body re-evaluated per iteration):
+1. **`Declaration.materializeValueState` (declaration.ts ~1670)**: `this.adopt(state.value);
+   this.value = state.value; return this` — caches the EVALUATED value on the node in place
+   (the fast path, avoiding a copy). Iteration 1 sets the shared `tick`'s `value = Num(1)`;
+   every later iteration renders the stale cached `1`. The copy-on-write path (`withParts`,
+   ~1674) exists but is bypassed for deferred values for perf.
+2. **`Reference._rulesLookupHandle`**: the cached lookup handle keys `targetRules` on
+   `context.rulesContext` (reference.ts ~2217). `$while` runs the whole loop under one
+   persistent `runWithRulesContext(stateRules)`, so a shared body's `@i` handle survives
+   across iterations. (Rendering each iteration under its own rulesContext helps this one,
+   but #1 remains.)
+Making `$while` share requires making Declaration/Reference eval **copy-on-write for shared
+re-evaluation** without a copy on the common single-eval path — a cross-cutting eval-core
+change (related to task #18 "trivia loss on Declaration eval with variable-ref value"). High
+risk, broad blast radius. The **copy-split ($while copies) is the correct solution**: it
+isolates each iteration so the in-place mutations are per-iteration-safe, exactly as they are
+per-placement-safe for mixins. Not a limitation — the right model for stateful iteration.
+
 ## Ordering rationale
 R1 first because it's WHY correct fixes (frame-attach, closure capture) silently fail —
 without stable frame identity, Steps 2-4 will thrash exactly like the naive attempt did
