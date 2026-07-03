@@ -374,10 +374,10 @@ export abstract class Node<
   /**
    * Keys of direct instance fields that hold child nodes.
    *
-   * `undefined` means this node still uses legacy `value` introspection.
-   * `null` marks a migrated leaf with no child fields.
+   * `null` marks a leaf with no child fields (the default). Every child-bearing
+   * node class must declare its own list; there is no legacy `value` fallback.
    */
-  static childKeys: readonly string[] | null | undefined = undefined;
+  static childKeys: readonly string[] | null = null;
 
   private _loc: NodeLocation | undefined = undefined;
 
@@ -710,22 +710,13 @@ export abstract class Node<
    * factory after construction; NEVER by the raw `new Foo()` (which shares) nor
    * by eval-time construction. Drives parenting off `childKeys` so every
    * child-bearing node is handled by this ONE primitive:
-   *   - `null`      → migrated leaf, no child fields: no-op.
-   *   - `undefined` → legacy: children live in `value`.
-   *   - `[...]`     → parent each listed direct child field, one level.
+   *   - `null`  → leaf, no child fields: no-op.
+   *   - `[...]` → parent each listed direct child field, one level.
    */
   parentChildren(): this {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const childKeys = (this.constructor as typeof Node).childKeys;
     if (childKeys === null) {
-      return this;
-    }
-    if (childKeys === undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const value = (this as unknown as { value: unknown }).value;
-      if (value !== undefined) {
-        this._processNodes(value);
-      }
       return this;
     }
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

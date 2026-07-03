@@ -103,6 +103,20 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: legacy `childKeys === undefined` regime deletion (ponytail B2).
+- Verdict: accepted as machinery deletion. Inventory proved every node class
+  resolves a `childKeys` (Collection/RawRules/Stylesheet inherit `Rules`'s;
+  SimpleSelector/AttributeSelector inherit the selector base's `['value']`, the
+  latter documented as a deliberate record-value exception). The base default is
+  now `null` (typed `readonly string[] | null`) and `parentChildren` lost its
+  legacy `.value`-introspection arm. The plain-object recursion in the leaf/
+  entry walkers stays: it serves object-shaped childKey fields, not the legacy
+  regime. External `childKeys` readers all use `?? []` (verified) and no
+  package outside core subclasses `Node`.
+- New traversal / node / render / metadata / error control / allocations: none.
+- Evidence: core build; core suite failure set identical to the post-C2/C5
+  state; repo-wide grep for `extends Node` and `childKeys` outside core.
+
 - Latest pass: certain-dead deletions (ponytail audit C2/C5 slice).
 - Verdict: accepted as pure machinery deletion, grep-proven zero consumers per
   item. Deleted: `use-webpack-resolver.ts` and `debug-log.ts` (whole files, no

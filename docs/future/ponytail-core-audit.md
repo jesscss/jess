@@ -367,12 +367,19 @@ progress tracker — statuses in the sections above are detail, not the index.
 - [x] **C2/C5 slice** certain-dead deletions (IS_PROXY, NodeMapArray,
       GeneratedNodeValue, Mutable, collectRoots/toModule corpses, context
       exports-set/parentScope/isRuntime, five zero-consumer conversion plugins,
-      use-webpack-resolver.ts, debug-log.ts) — see commit for hash
+      use-webpack-resolver.ts, debug-log.ts) — `9ec8b175f`
 - [ ] **C4/C6/C7** remaining dead-code candidates: vestigial node classes
       (Combinator post-flip, selector-capture, selector-interpolated, rules-raw,
       range, log), visitor fallbacks, duplicated `getWriterTextSincePosition` ×5
-- [ ] **B2+E8** finish childKeys migration; delete legacy `.value` walkers and the
-      base constructor `value` param
+- [x] **B2 (legacy regime)** childKeys migration is complete class-side (all 5
+      undeclared classes inherit correct keys); deleted the `undefined` legacy
+      arm from `parentChildren` and narrowed `static childKeys` to
+      `string[] | null` — see commit for hash. NOTE: the plain-object recursion
+      in visitValueEntries/visitLeafValues/_walkFromValue/_mapChildNodes is NOT
+      legacy — it serves object-shaped childKey fields (AttributeSelector's
+      `{name, op, value, mod}` record) and stays.
+- [ ] **E8** delete the base constructor `value` param (touches every subclass
+      super() call — mechanical, large diff)
 - [ ] **B4+E2** layering fix; delete node.ts/tree-index prototype patches +
       `_createMinimalNil`
 - [ ] **B5+C3** single construction path; delete `defineType` Reflect wrapper +
