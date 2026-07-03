@@ -112,7 +112,17 @@ with `--no-verify` after the explicit gates pass.
   untouched). Full construction-path unification and `Node.create` deletion
   are recorded as deferred in the audit checklist: raw-new-shares vs
   factory-parents is load-bearing for eval-time sharing.
-- New traversal / node / render / metadata / error control / allocations: none.
+- Architecture surface: none changed — one factory helper's construction call.
+- Separation/duplication: none added; one Reflect indirection deleted.
+- Cumulative node weight: unchanged (same constructions, one fewer builtin call
+  per factory construction).
+- New traversal: none.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: unchanged; the factory signature is identical.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] — the direct `new` replacing
+  `Reflect.construct` in `defineType`; same semantics, prosecuted here.
 - Evidence: zero `Reflect.construct` remains in core src; core build; suite
   failure set identical to post-E2 state. No speed claim (parse-path change;
   benchmark harness still unbuildable in this worktree).
