@@ -124,7 +124,8 @@ export class LessGrammar extends CssParser {
       case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
       case 'MixinArgs':           return this._buildMixinArgs(children, loc);
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
-      case 'For':                 return this._buildEachFor(children, raw, loc) as unknown as JessNode;
+      case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
+      case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'InterpValue':         return this._buildInterpValue(raw, loc);
@@ -1278,15 +1279,23 @@ export class LessGrammar extends CssParser {
    * the loop rules. A literal block callback carries no captured params here, so the
    * pattern defaults to the Less `[value, key, index]` triple.
    */
-  private _buildEachFor(children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
-    const items = spannedComponents(raw);
-    const commaIdx = items.findIndex(i => i.comp === ',');
-    const braceIdx = items.findIndex((i, idx) => idx > commaIdx && i.comp === '{');
-    const between = (lo: number, hi: number): JessNode[] =>
-      items.slice(lo, hi).map(i => i.comp).filter((c): c is JessNode => typeof c !== 'string');
-    const iterableNodes = commaIdx >= 0 ? between(0, commaIdx) : [];
-    const paramsList = braceIdx > commaIdx ? between(commaIdx + 1, braceIdx).find(n => n.type === 'List') : undefined;
-    const ruleNodes = braceIdx >= 0 ? between(braceIdx + 1, items.length) : [];
+  /** A bare detached ruleset `{ … }` in value / argument position → a Mixin holding
+   * its rules (same shape `@var: { … }` produces in `_buildVarDeclaration`). */
+  private _buildDetachedRuleset(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ruleNodes = nodeChildren(children);
+    return new Mixin({ rules: ruleNodes } as any, {}, loc);
+  }
+
+  private _buildEachFor(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // Args come from the shared functionCallArgs: the callback (detached ruleset /
+    // `.(…){…}`) is a Mixin sub-node; everything else is the iterable.
+    const nodes = nodeChildren(children);
+    const callback = nodes.find(n => n.type === 'Mixin') as unknown as { rules?: JessNode[]; params?: JessNode } | undefined;
+    const iterableNodes = nodes.filter(n => (n as unknown) !== (callback as unknown));
+    const paramsList = ((callback?.params as unknown as { type?: string } | undefined)?.type === 'List')
+      ? callback!.params as JessNode
+      : undefined;
+    const ruleNodes = callback?.rules ?? [];
     const iterable: JessNode = iterableNodes.length === 1
       ? iterableNodes[0]!
       : (new List(iterableNodes as any, undefined, loc) as unknown as JessNode);

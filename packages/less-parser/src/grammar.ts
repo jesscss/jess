@@ -437,6 +437,17 @@ const cssRules = rules((g: any) => {
   const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
   const Url = node('Url', parser({ trivia: rw }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
   const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
+  // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
+  const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))), (c: any, r: any, s: any) => mk('DetachedRuleset', c, r, s));
+  // Function-call arguments are their OWN production (parity with the Chevrotain
+  // functionCallArgs/callArgument rules), NOT `parenBody`: unlike a parenthesized
+  // value, a function argument may be an anonymous mixin `.(…){…}` or a bare
+  // detached ruleset `{…}` — e.g. `each(@list, { … })`, `func({a:1}, {b:2})`. The
+  // comma phase takes value SEQUENCES (comma is the arg separator); after a `;` the
+  // args become value LISTS (comma allowed within an arg).
+  const callArgSeq = choice(g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
+  const callArgList = choice(g.AnonymousMixinDefinition, DetachedRuleset, g.valueList);
+  const functionCallArgs = parser({ trivia: rw }, sequence(optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(callArgList))))), literal(')')));
   // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
   // bare `%` operand (e.g. `calc(1 %)`) is a syntax error (Chevrotain: mathProduct
   // has no `%` alt, so the trailing `%` fails the closing `)`). We model calc as a
@@ -450,7 +461,7 @@ const cssRules = rules((g: any) => {
   const calcList = parser({ trivia: rw }, sequence(calcSequence, many(sequence(literal(','), calcSequence))));
   const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'), ')')));
   const CalcCall = node('Call', parser({ trivia: rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
-  const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
+  const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
   const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
   const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)), (c: any, r: any, s: any) => mk('SquareParen', c, r, s));
@@ -461,12 +472,13 @@ const cssRules = rules((g: any) => {
   // function call — parse it straight into a `For` node. The callback is a literal
   // detached ruleset / anonymous mixin; a bare `each(list)` with no block callback
   // falls through to a normal Call.
+  // `each(<iterable>, { … })` builds a `For` directly (not a throwaway Call). Its
+  // ARGUMENTS reuse the shared `functionCallArgs` — same args any function accepts,
+  // so the iterable + detached-ruleset / `.(…){…}` callback parse uniformly. The
+  // builder pulls the callback (a Mixin) out of the parsed args.
   const EachFor = node('For',
     parser({ trivia: rw }, sequence(
-      regex(/each(?![-\w])/i), literal('('), g.valueSequence, literal(','),
-      optional(sequence(literal('.'), g.MixinArgs)),
-      literal('{'), g.declarationList, literal('}'),
-      literal(')'), optional(literal(';'))
+      regex(/each(?![-\w])/i), literal('('), functionCallArgs, optional(literal(';'))
     )),
     (c: any, r: any, s: any) => mk('For', c, r, s));
 
@@ -548,7 +560,7 @@ const cssRules = rules((g: any) => {
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
     valueList, valueSequence, value, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
+    parenBody, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
     QueryFeature, QueryInParens, QueryCondition, QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
