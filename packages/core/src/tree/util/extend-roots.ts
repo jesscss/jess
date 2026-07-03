@@ -15,6 +15,7 @@ import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
+import { isDisjoint, isSubsetOf } from './bitset.js';
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -60,6 +61,32 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
     && typeof value === 'object'
     && 'selector' in value
     && !!value.selector;
+}
+
+function instructionMayAffectSelectorSurface(
+  instruction: ExtendInstruction,
+  selector: Selector,
+  parentSelector?: Selector
+): boolean {
+  const { target, partial } = instruction;
+  if (!target.keySetLibrary || target.keySetLibrary !== selector.keySetLibrary) {
+    return true;
+  }
+  if (partial) {
+    if (!isDisjoint(target.keySet, selector.keySet)) {
+      return true;
+    }
+    return !!parentSelector
+      && target.keySetLibrary === parentSelector.keySetLibrary
+      && !isDisjoint(target.keySet, parentSelector.keySet);
+  }
+  if (isSubsetOf(target.requiredKeySet, selector.keySet)) {
+    return true;
+  }
+  if (parentSelector) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -637,6 +664,13 @@ export function processExtends(context: Context): void {
         if (parentSel) {
           parentSel.keySetLibrary ??= context.selectorBits;
         }
+        const candidateExtends = visibleExtends.filter(instruction =>
+          instructionMayAffectSelectorSurface(instruction, selector, parentSel)
+        );
+        if (!candidateExtends.length) {
+          ruleset.removeFlag(F_EXTENDED);
+          continue;
+        }
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
         let hasAnyLocalMatch = false;
@@ -645,7 +679,7 @@ export function processExtends(context: Context): void {
         const excludedFromLocal = new Set<RootExtendInstruction>();
         // First pass: classify each instruction.
         const classifications = new Map<RootExtendInstruction, MatchResult>();
-        for (const instruction of visibleExtends) {
+        for (const instruction of candidateExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
             const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
@@ -666,7 +700,7 @@ export function processExtends(context: Context): void {
             if (!extendingRs) {
               continue;
             }
-            for (const other of visibleExtends) {
+            for (const other of candidateExtends) {
               if (other === instruction) {
                 continue;
               }
@@ -684,7 +718,7 @@ export function processExtends(context: Context): void {
           }
         }
         // Third pass: aggregate.
-        for (const instruction of visibleExtends) {
+        for (const instruction of candidateExtends) {
           const matchType = classifications.get(instruction);
           if (!matchType) {
             continue;
@@ -716,7 +750,7 @@ export function processExtends(context: Context): void {
         // parent chain relative to the current target. When `selector` IS set, use
         // the user-specified extendWith as-is.
         const localApplicableExtends: RootExtendInstruction[] = [];
-        for (const inst of visibleExtends) {
+        for (const inst of candidateExtends) {
           const matchType = classifications.get(inst);
           if (matchType !== 'local') {
             continue;
