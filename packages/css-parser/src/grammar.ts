@@ -329,15 +329,18 @@ export function toParseError(message: string, offset: number | undefined, source
   let line = 1;
   let column = 1;
   if (typeof offset === 'number') {
-    const clamped = Math.max(0, Math.min(offset, source.length));
+    const clamped = offset < 0 ? 0 : (offset > source.length ? source.length : offset);
+    // Offset → line/column. Runs at most ONCE per parse (only on error, never on a
+    // clean parse), so no precomputed line index is worth building. A single forward
+    // pass over `String.indexOf('\n')` — V8 vectorizes it (SIMD), far cheaper than a
+    // JS-level charCodeAt loop — yields BOTH the line count and the last newline
+    // before the offset (→ column), reading each newline once and stopping at offset.
     let lastNl = -1;
-    for (let i = 0; i < clamped; i++) {
-      if (source.charCodeAt(i) === 10) {
-        line++;
-        lastNl = i;
-      }
+    for (let i = source.indexOf('\n'); i !== -1 && i < clamped; i = source.indexOf('\n', i + 1)) {
+      line++;
+      lastNl = i;
     }
-    column = clamped - lastNl;
+    column = clamped - lastNl; // lastNl === -1 (line 1) → column = clamped + 1
   }
   const err = makeJessError({ code: 'parse/syntax-error', phase: 'parse', source, filePath, line, column, summary: message });
   (err as JessError & { offset?: number }).offset = offset;
