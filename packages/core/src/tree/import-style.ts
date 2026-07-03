@@ -1131,6 +1131,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         node.options.resolvedFromPath = resolvedFromPath;
         node.options.resolvedFromFilePath = resolvedFromFilePath;
         rules.options.importBoundary ??= this.options.type !== 'import';
+        // A plain `@import` or a wildcard `@compose (namespace: *)` inlines its
+        // members into the enclosing scope (the enclosing frame links this as a
+        // fallback). A named/plain compose keeps its members behind its namespace.
+        rules.options.inlinesMembersToParent ??=
+          this.options.type === 'import' || this.options.namespace === '*';
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {
           // Plain imports still need an import-site-local Rules surface during

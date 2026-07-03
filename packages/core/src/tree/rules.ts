@@ -155,6 +155,15 @@ function isImportAtRule(node: Node): node is AtRule {
     && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
 }
 
+// An evaluated import placement that dumps its members into the ENCLOSING scope:
+// a plain `@import` (marked `importBoundary === false`) or a wildcard
+// `@compose (namespace: *)` (marked `inlinesMembersToParent`, while it keeps
+// `importBoundary === true` to still block the imported body from seeing parent vars).
+function importInlinesMembersToParent(rules: Rules): boolean {
+  return rules.options.importBoundary === false
+    || rules.options.inlinesMembersToParent === true;
+}
+
 function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
   if (keys.length > path.length - pathStart) {
     return false;
@@ -650,6 +659,14 @@ export type RulesOptions = {
   forward?: boolean;
   /** Non-classic import boundary marker (`compose`, `use`, `forward`, etc.). */
   importBoundary?: boolean;
+  /**
+   * This import placement dumps its members into the ENCLOSING scope as if written
+   * in place: a plain `@import`, or a `@compose (namespace: *)` wildcard. Distinct
+   * from `importBoundary` (which blocks the imported body from seeing PARENT vars —
+   * the opposite direction): a wildcard compose both blocks upward AND inlines down.
+   * The enclosing ScopeFrame links such a placement's frame as a fallback.
+   */
+  inlinesMembersToParent?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
 };
@@ -1088,7 +1105,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let chain: ScopeFrame | undefined = frame.fallbackFrame;
     for (let i = 0; i < rulesBody.length; i++) {
       const child = rulesBody[i]!;
-      if (!(child instanceof Rules) || child.options.importBoundary !== false) {
+      if (!(child instanceof Rules) || !importInlinesMembersToParent(child)) {
         continue;
       }
       const importFrame = child.getScopeFrame();
@@ -4333,16 +4350,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
-        // A non-boundary `@import` inlines its body here: its public declarations
-        // and callables must resolve in this scope as if written in place — like a
+        // A member-inlining import (`@import`, or `@compose (namespace: *)`) dumps its
+        // declarations and callables into this scope as if written in place — like a
         // Less mixin call's ambient output. Rather than flatten the AST or slow every
         // lookup to the crawl, link the imported Rules' OWN scope frame (which already
         // indexes the imported decls) as this frame's fallback. `lookupScopeFrame*`
         // consults fallbacks only AFTER the primary scope chain, so an enclosing
-        // declaration always wins (leaked vars never override), and the fast frame
-        // path is preserved. `@compose` (importBoundary === true) and nested rulesets
-        // (undefined) are boundaries and are not linked.
-        if (node.options.importBoundary === false) {
+        // declaration always wins (imported members never override), and the fast frame
+        // path is preserved. Named `@compose` and nested rulesets keep their own scope.
+        if (importInlinesMembersToParent(node)) {
           const importFrame = node.getScopeFrame();
           if (importFrame !== this._scopeFrame && importFrame.fallbackFrame === undefined) {
             importFrame.fallbackFrame = this._scopeFrame.fallbackFrame;
