@@ -103,6 +103,20 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `defineType` Reflect.construct removal (ponytail B5 slice).
+- Verdict: accepted as an indirection cut on the factory construction path.
+  `Reflect.construct(Clazz, args)` with default newTarget is semantically
+  identical to direct `new`; the Reflect form existed only to satisfy the
+  `AbstractClass<Node>` compile-time constraint, now handled by one typed cast
+  at factory-definition time. No construction semantics changed (invariant 7
+  untouched). Full construction-path unification and `Node.create` deletion
+  are recorded as deferred in the audit checklist: raw-new-shares vs
+  factory-parents is load-bearing for eval-time sharing.
+- New traversal / node / render / metadata / error control / allocations: none.
+- Evidence: zero `Reflect.construct` remains in core src; core build; suite
+  failure set identical to post-E2 state. No speed claim (parse-path change;
+  benchmark harness still unbuildable in this worktree).
+
 - Latest pass: `_createMinimalNil` deletion (ponytail E2) + B4 patch verdict.
 - Verdict: accepted as shape-hazard deletion. The fallback mutated
   type/shortType/nodeType/value onto a raw abstract `Node` instance (instant

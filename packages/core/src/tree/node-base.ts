@@ -213,9 +213,12 @@ export const defineType = <
   Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
+  // The abstract-class constraint is a compile-time nicety; every class passed
+  // here is concrete, so construct it directly instead of through Reflect.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const Concrete = Clazz as unknown as new (...args: Args) => InstanceType<T>;
   return (...args: Args): InstanceType<T> => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const node = Reflect.construct(Clazz, args) as InstanceType<T>;
+    const node = new Concrete(...args);
     // Invariant 7: the factory parents one level; the raw constructor did not.
     return args.length > 0 ? (node.parentChildren() as InstanceType<T>) : node;
   };

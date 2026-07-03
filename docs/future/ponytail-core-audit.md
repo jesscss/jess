@@ -390,8 +390,14 @@ progress tracker — statuses in the sections above are detail, not the index.
       `nil`/`operate` need leaf constructors (true base↔leaf cycle). The two
       patch sites (node.ts, tree/index.ts) are the minimal expression of the
       current module graph — revisit only if the graph changes.
-- [ ] **B5+C3** single construction path; delete `defineType` Reflect wrapper +
-      `Node.create`
+- [x] **B5 (Reflect slice)** `defineType` factory constructs via direct `new`
+      instead of `Reflect.construct` (per-node parse-time win, zero semantics
+      change) — see commit for hash
+- [ ] **B5 (construction-path unification) + C3 (`Node.create`)** DEFERRED with
+      reasoning: invariant 7 (raw `new` shares children; factory parents one
+      level) is load-bearing for eval-time sharing — collapsing the two paths
+      changes placement/ownership semantics and belongs to the binding/lookup
+      lane, not a mechanical pass. `Node.create` has 8 live internal callers.
 - [ ] **B3** type-check idiom unification (isNode everywhere hot)
 - [ ] **E1+E3+E4** shape hygiene: constructor-complete fields, booleans → flags
       bitmask, Parséman `state`/`_tag`/`_cstChildren` to prototype/side-table —
