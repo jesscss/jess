@@ -60,6 +60,10 @@ const ws = regex(/[ \t\n\r\f]+/);
 const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 const rw = trivia(oneOrMore(choice(ws, comment, lineComment)));
+// Whitespace-only trivia for url() bodies: inside `url(…)`, `//` and `/*` are URL
+// characters, not comments (`url(//host/x)` is protocol-relative), so the normal
+// `rw` (which skips line/block comments) must not apply there.
+const urlWs = trivia(ws);
 
 const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
 // Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
@@ -449,7 +453,7 @@ const cssRules = rules((g: any) => {
   // bare number; the not()-lookahead folded into the regex -> one match, one leaf.
   const Num = node('Num', regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/), (c: any, r: any, s: any) => mk('Num', c, r, s));
   const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
-  const Url = node('Url', parser({ trivia: rw }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
+  const Url = node('Url', parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
   const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
   const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))), (c: any, r: any, s: any) => mk('DetachedRuleset', c, r, s));
