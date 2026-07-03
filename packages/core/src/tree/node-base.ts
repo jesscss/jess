@@ -1153,8 +1153,7 @@ export abstract class Node<
     const stripComments = options?.stripComments !== false;
     const reuseLeaves = options?.reuseLeaves !== false;
     if (stripComments && this.type === 'Comment') {
-      const nilNode = this.nil?.() || this._createMinimalNil();
-      return nilNode.inherit(this);
+      return this.nil().inherit(this);
     }
     if (reuseLeaves && this.canReuseAsLeaf()) {
       return this.reuseAsLeaf();
@@ -1166,8 +1165,7 @@ export abstract class Node<
     // NOT recurse into a deep copy.
     const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
-        const nilNode = n.nil?.() || n._createMinimalNil();
-        return nilNode.inherit(n);
+        return n.nil().inherit(n);
       }
       return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
@@ -1198,18 +1196,6 @@ export abstract class Node<
         }
       }
     }
-  }
-
-  /** Minimal nil fallback for edge cases where prototype method isn't attached yet */
-  private _createMinimalNil(): Node {
-    // @ts-expect-error - normally an abstract class
-    const nilish = new Node();
-    nilish.type = 'Nil';
-    nilish.shortType = 'nil';
-    nilish.nodeType = nodeTypeBits['Nil']!;
-    nilish.removeFlag(F_VISIBLE);
-    nilish.value = '';
-    return nilish;
   }
 
   /**

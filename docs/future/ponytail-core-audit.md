@@ -380,8 +380,16 @@ progress tracker — statuses in the sections above are detail, not the index.
       `{name, op, value, mod}` record) and stays.
 - [ ] **E8** delete the base constructor `value` param (touches every subclass
       super() call — mechanical, large diff)
-- [ ] **B4+E2** layering fix; delete node.ts/tree-index prototype patches +
-      `_createMinimalNil`
+- [x] **E2** `_createMinimalNil` deleted; Comment→Nil placement paths call
+      `this.nil()` directly — see commit for hash
+- [x] **B4 (rescoped: patches stay)** investigation proved both prototype
+      patches are load-order-necessary, not stale: `selector-match-core`
+      imports the whole selector family at module scope, so `Selector.compare`
+      cannot live in selector.ts (TDZ crash via
+      selector→compare→selector-match-core→selector-simple→`extends Selector`);
+      `nil`/`operate` need leaf constructors (true base↔leaf cycle). The two
+      patch sites (node.ts, tree/index.ts) are the minimal expression of the
+      current module graph — revisit only if the graph changes.
 - [ ] **B5+C3** single construction path; delete `defineType` Reflect wrapper +
       `Node.create`
 - [ ] **B3** type-check idiom unification (isNode everywhere hot)

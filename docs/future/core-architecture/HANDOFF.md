@@ -103,6 +103,17 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: `_createMinimalNil` deletion (ponytail E2) + B4 patch verdict.
+- Verdict: accepted as shape-hazard deletion. The fallback mutated
+  type/shortType/nodeType/value onto a raw abstract `Node` instance (instant
+  hidden-class divergence); every runtime path loads `node.js` before
+  constructing nodes, so `this.nil()` is always patched. Comment→Nil placement
+  paths in node-base and cloning.ts now call it directly. B4 investigation
+  verdict recorded: both prototype patch sites are load-order-necessary (module
+  graph proof in the audit doc), so they stay as documented seams.
+- New traversal / node / render / metadata / error control / allocations: none.
+- Evidence: core build; suite failure set identical to post-B2 state.
+
 - Latest pass: legacy `childKeys === undefined` regime deletion (ponytail B2).
 - Verdict: accepted as machinery deletion. Inventory proved every node class
   resolves a `childKeys` (Collection/RawRules/Stylesheet inherit `Rules`'s;

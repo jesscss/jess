@@ -40,10 +40,7 @@ function copyForPlacement(
   options: { owned?: boolean; preserveComments?: boolean } = {}
 ): Node {
   if (!options.preserveComments && node.type === 'Comment') {
-    const nilNode = node.nil?.();
-    if (nilNode) {
-      return nilNode.inherit(node);
-    }
+    return node.nil().inherit(node);
   }
   const derivedAmpersand = deriveAmpersand(node);
   if (derivedAmpersand) {
