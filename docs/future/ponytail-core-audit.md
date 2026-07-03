@@ -275,12 +275,55 @@ direction.
   `nodeType`/`value` onto a raw `Node` instance — instant shape divergence *and* it
   shadows prototype fields. B4's layering fix (base can construct a real `Nil`) deletes
   this entirely.
-- **E3. Slim the per-node field count.** Base `Node` initializes ~17 own fields; at
-  millions of nodes this is both memory and constructor time. Fold the booleans into the
-  existing `flags` bitmask: `generated`, `frozen`, `registrationPrepared`, `allowRoot`,
-  `allowRuleRoot` → `F_GENERATED`, `F_FROZEN`, `F_REG_PREPARED`, … (flags already has
-  spare bits; `fullRender` is already prototype-resident — same trick). `hoistToRoot`
-  (tri-state) can be two bits. Net: 6 fields → 0.
+- **E3. Slim the per-node field count — concrete disposition table.** Base `Node`
+  initializes ~17 own fields; at millions of nodes this is memory + constructor time.
+  `flags` is a JS SMI (bits used through bit 8, `F_HAS_NODE_CHILD`; ~22 bits free,
+  independent of the exhausted 32-bit `nodeType` mask). All fields below have **0
+  external non-test reads** (verified repo-wide), so these are mechanical, not
+  consumer-breaking:
+  - `frozen` → **F_FROZEN** (9 total sites) — mechanical.
+  - `generated` → **F_GENERATED** (touches `inherit`'s `generated ||=`; becomes flag OR).
+  - `registrationPrepared` → **F_REG_PREPARED**.
+  - `allowRoot` / `allowRuleRoot` → **prototype defaults** (delete the base `= false`
+    instance fields; the 25 subclass `= true` overrides become `X.prototype.allowRoot =
+    true`). Removes two own boolean properties from *every* node — the single biggest
+    per-node field win here.
+  - `hoistToRoot` (tri-state) → **two flag bits** (read in 9 files, hot).
+  - `fullRender` → **delete** (see E10 — it is set `true` only in test setup; 22
+    production render guards check a field no production path ever writes).
+  - **Keep** (hot reads, self-init is what makes them branch-free): `sourceNode` (82
+    reads), `index` (56), `_treeContext`, `_sourceRoot`, `_options`, `parent`,
+    `spanStart`/`spanEnd`, `_requiredSemi`.
+  Net: base `Node` sheds ~6 own boolean/tri-state fields into the existing `flags` int +
+  the prototype.
+
+- **E9. Decompose `inherit` — stop the base metadata-copy from knowing selector/closure
+  semantics (highest-value base-class cut).** `inherit` runs at **189 call sites**, once
+  per node per eval-replacement — the hottest metadata copy in core. Today the base
+  method carries concerns that belong to two subclasses:
+  - `_closureScope` is declared only on `Rules` (`rules.ts:909`) yet written via
+    `as unknown` casts onto arbitrary value/arg nodes (`reference.ts:508`,
+    `callable-args.ts:40,45`) and **probed by base `inherit` on every node**
+    (`node-base.ts:1396`, double cast). Move it to a **WeakMap side table**
+    (`closureScopeOf`/`setClosureScope`): deletes the per-node probe from the hot path
+    and all 5 `as unknown` casts, and `Rules`/`callable-args` read/write the table
+    explicitly. This is the E1 cross-class-field-via-cast hazard in its worst form.
+  - `F_IMPLICIT_AMPERSAND` / `F_EXTENDED` / `F_EXTEND_TARGET` are selector-only flags but
+    copied in base `inherit` for every non-selector node. Move into the **already-present
+    `Selector.inherit` override** (selector.ts:116).
+  After: base `inherit` = parent + location + sourceRoot + F_VISIBLE + generated + index
+  only — a short monomorphic path; selectors/rules get their extras via override. This is
+  a **binding-lane** change (placement/closure semantics): benchmark + full-suite gated,
+  NOT mechanical. Also closes a B-type abstraction leak (base `Node` knowing about
+  extend/ampersand/detached-ruleset closures).
+
+- **E10. `fullRender` is test-only in production — delete it.** Grep: the only writers of
+  `fullRender = true` are test setup files (`Node.prototype.fullRender = true`). No
+  production path sets it, yet 22 hot render/serialize guards read
+  `!visible && !fullRender`. Replace the test usage with an explicit print/render option
+  (e.g. `renderHidden`) threaded through `PrintOptions`, then delete the field and
+  simplify all 22 guards to the visibility check. Medium effort (touches test harness +
+  every render guard); do after the E3 flag folds so the guard edits happen once.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
@@ -399,9 +442,17 @@ progress tracker — statuses in the sections above are detail, not the index.
       changes placement/ownership semantics and belongs to the binding/lookup
       lane, not a mechanical pass. `Node.create` has 8 live internal callers.
 - [ ] **B3** type-check idiom unification (isNode everywhere hot)
-- [ ] **E1+E3+E4** shape hygiene: constructor-complete fields, booleans → flags
-      bitmask, Parséman `state`/`_tag`/`_cstChildren` to prototype/side-table —
-      benchmark before/after
+- [ ] **E3 (mechanical slice)** field→flag/prototype folds, all 0-external-read:
+      frozen/generated/registrationPrepared → flags; allowRoot/allowRuleRoot →
+      prototype; hoistToRoot → 2 flag bits. Low risk, gate like the deletion passes
+- [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
+      base per-node probe + 5 casts); selector flags → `Selector.inherit`.
+      Binding-lane, benchmark + full-suite gated
+- [ ] **E10** delete `fullRender` (test-only in production); replace with a
+      `renderHidden` print option; simplify 22 render guards
+- [ ] **E1+E4** remaining shape hygiene: constructor-complete fields
+      (`_closureScope`/`frames`/`fieldSpans` late-assign), Parséman
+      `state`/`_tag`/`_cstChildren` to prototype/side-table — benchmark before/after
 - [ ] **E6 (parser side)** parsers pass spans; delete the `LocationInfo` tuple
       storage + `spanToLocation`; line/col derived lazily (needs jess-error/
       diagnostics offset→line/col first; touches parser packages)
@@ -425,6 +476,11 @@ progress tracker — statuses in the sections above are detail, not the index.
 - [ ] **C1** extend-walk Complex-application parity → delete legacy `extend.ts`
       (~4.3k lines; start parity early, land deletion last)
 - [ ] **A3** shrink Node public method surface to the ~8-method contract
+      (construction, clone, eval/resolve, render, toString, compare, valueOf,
+      walk). Mark eval/render plumbing protected/@internal: `renderSource`,
+      `renderOutput`, `evalNode`, `prepareRegistration`, `parentChildren`,
+      `adopt`, `propagateFlagsFrom`, `detachTrivia`, and `inherit` (0 external
+      reads — it is internal placement machinery, not API)
 - [x] **A4 (investigated, mostly rejected)** `disablePluginRule` is a SUPPORTED
       deprecation alias (registry entry in deprecation.ts:63, config
       normalization in options.ts:161, jess warning emission at index.ts:799,
