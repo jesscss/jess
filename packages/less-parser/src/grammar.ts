@@ -178,8 +178,10 @@ const cssRules = rules((g: any) => {
   const MixinCall = node('MixinCall',
     parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('MixinCall', c, r, s));
+  // Anonymous mixin callback: `.(…){…}` OR `#(…){…}` — the Chevrotain
+  // AnonMixinStart token is `/[.#]\(/`, so both prefixes are valid.
   const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
-    parser({ trivia: rw }, sequence(literal('.'), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
+    parser({ trivia: rw }, sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
   // A bare name with nothing after it is NOT a statement — require args (a mixin
   // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
