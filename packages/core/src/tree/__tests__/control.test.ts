@@ -652,12 +652,12 @@ describe('Control Nodes', () => {
     `);
   });
 
-  // KNOWN GAP: with $while sharing its body (thin surface), a self-referential state
-  // counter (`i: i+1`) renders `1,1,1` — the vardecl registers a raw `i+1` binding that
-  // shadows the incoming state live slot (see SINGLE_FRAME_PLAN.md "WHY $while can't share
-  // yet"). `.fails` keeps CI honest AND flags the moment the declaration-set-semantics fix
-  // lands (this test will start passing, and `.fails` will then error → remove `.fails`).
-  it.fails('keeps native loop render aligned with eval serialization for stateful loops', async () => {
+  // $while shares its body (thin surface). A self-referential counter (`i: i+1` +
+  // `tick: @i`) resolves correctly: the body vardecl shadows the incoming state `i`,
+  // `tick` reads the shadow (new value), and the state slot — anchored on the state
+  // surface, not the body vardecl — stays readable through the recursion guard so the
+  // vardecl's RHS `@i` reads the previous value. See syncWhileState in control.ts.
+  it('keeps native loop render aligned with eval serialization for stateful loops', async () => {
     const makeRoot = () => rules([
       vardecl({ name: 'i', value: num(0) }),
       new While({

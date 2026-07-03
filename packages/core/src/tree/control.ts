@@ -264,20 +264,11 @@ function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rul
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
   // THIN surface (share the body, like $for/$if). Iteration frame's parent is the
   // state frame; the body's `i: i+1` SHADOWS the incoming state `i` and its RHS `@i`
-  // should read the parent (previous) value.
-  //
-  // KNOWN GAP — a self-referential counter (`i: i+1` + `tick:@i`) renders `1,1,1`
-  // (marked `it.fails`; full mechanism in SINGLE_FRAME_PLAN.md). The RHS `@i` reads
-  // root `0` instead of the state because THREE things collude for a SHARED body,
-  // and all three must be fixed together:
-  //   1) this explicit frame (no live bindings) is CLEARED + rebuilt during eval's
-  //      derive, re-wiring parent to the canonical node chain (→ root), not the state.
-  //   2) the recursion guard (`context.searchScope`) blocks the body vardecl AND — in
-  //      the live-slot variant — the state slot, because syncWhileState gives the state
-  //      slot the SAME `sourceNode` (the vardecl); the guard then walks past both to root.
-  //   3) a body vardecl over the state name registers a shadowing raw binding rather
-  //      than UPDATING the state cell.
-  // The copy path avoids all three (isolated copy whose rulesParent IS the surface).
+  // reads the parent (previous) value. A later body reference (`tick: @i`) resolves
+  // to the shadowing body vardecl (nearest scope, last-wins) = this iteration's new
+  // value. syncWhileState commits the body vardecl into the state slot at iteration
+  // end; the slot is anchored on the state surface (not the vardecl) so the recursion
+  // guard never blocks it while the body vardecl is mid-evaluation.
   const stateFrame = stateRules.getScopeFrame();
   const iterationRules = createIterationEvalSurface(sourceRules, true);
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateFrame, undefined, undefined, true);
@@ -301,9 +292,19 @@ async function syncWhileState(
       continue;
     }
     const value = await getBindingCellValue(last.cell).eval(context);
+    // The state live slot's `sourceNode` MUST be distinct from the body vardecl
+    // (`last.sourceNode`). A self-referential counter (`i: i + 1`) evaluates the
+    // body vardecl with that vardecl in `context.searchScope` (the recursion
+    // guard). When a later body reference (`tick: @i`) resolves to the vardecl
+    // and re-evaluates `i + 1`, the inner `@i` walks up to this state slot for the
+    // PREVIOUS value — if the slot carried the vardecl as its sourceNode the guard
+    // would block it too, sending the read past the state to the root (rendering a
+    // stale `1,1,1`). Anchoring the slot on the state surface keeps it always
+    // readable while the body vardecl is being evaluated. The value is already
+    // fully evaluated, so it can never itself recurse.
     setScopeFrameLiveBinding(stateFrame, name, {
       value,
-      sourceNode: last.sourceNode,
+      sourceNode: stateRules,
       readonly: last.cell.readonly
     });
   }
