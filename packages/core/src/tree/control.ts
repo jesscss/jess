@@ -243,25 +243,6 @@ function createIterationEvalSurface(sourceRules: Rules<any>, share = true): Rule
   return iterationRules;
 }
 
-function attachIterationFallbackFrame(
-  node: Node,
-  frame: ScopeFrame,
-  seen = new Set<Node>(),
-  includeSelf = false
-): void {
-  if (seen.has(node)) {
-    return;
-  }
-  seen.add(node);
-  if (includeSelf && isNode(node, N.Rules)) {
-    const scopeFrame = node.getScopeFrame();
-    scopeFrame.fallbackFrame ??= frame;
-  }
-  for (const child of node.walk()) {
-    attachIterationFallbackFrame(child, frame, seen, true);
-  }
-}
-
 function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rules {
   const stateRules = createDerivedIterationRulesSurface(
     sourceRules
@@ -483,7 +464,6 @@ async function createForIterationSurface(
     undefined,
     true
   );
-  attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
   return iterationRules.prepareRegistration(context);
 }
 
@@ -727,8 +707,6 @@ export class For extends Rules<StructuredLoopValue> {
         );
         counter++;
         const result = await iterationRules.eval(context);
-        const iterationFrame = iterationRules.getScopeFrame();
-        attachIterationFallbackFrame(result, iterationFrame);
 
         if (isNode(result, N.Rules)) {
           result.scopeFrame = undefined;
