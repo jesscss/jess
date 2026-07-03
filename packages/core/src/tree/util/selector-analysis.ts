@@ -19,7 +19,12 @@ import type { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { F_VISIBLE } from '../node.js';
-import { isStringCombinator } from '../selector-complex.js';
+
+// Inlined from selector-complex to keep this module leaf-level (no runtime import
+// of selector node classes), so the base Selector can delegate to it cycle-free.
+function isStringCombinator(value: string): boolean {
+  return value === ' ' || value === '>' || value === '+' || value === '~' || value === '|';
+}
 
 export interface SelectorKeySets {
   keySet: BitSet<string>;
@@ -37,6 +42,10 @@ interface PseudoLike extends Selector {
   arg?: unknown;
   generated?: boolean;
   generatedPseudoPlacementOverride?: { omitWrapperForSingleSelectorList?: boolean };
+}
+
+interface AmpersandLike extends Selector {
+  getKeySetContainerSelector(): Selector | undefined;
 }
 
 export class SelectorAnalysis {
@@ -57,6 +66,12 @@ export class SelectorAnalysis {
   }
 
   compute(selector: Selector): SelectorKeySets {
+    // Structural selectors are immutable per identity, so their key-sets memoize
+    // safely. An Ampersand is the exception: its key-set tracks the runtime parent
+    // in its container, which can change, so it must recompute every time.
+    if (isNode(selector, N.Ampersand)) {
+      return this.computeUncached(selector);
+    }
     const cached = this.cache.get(selector);
     if (cached) {
       return cached;
@@ -176,12 +191,13 @@ export class SelectorAnalysis {
     if (isNode(selector, N.Ampersand)) {
       // Ampersand's key-set is not a pure function of its structure: it reflects
       // the RUNTIME-resolved parent selector held in its container, and its visible
-      // / required sets are always empty. That runtime state lives on the node, so
-      // this is the one selector whose key-set the node still owns.
+      // / required sets are always empty. Read that parent as data and union its
+      // keys through the service (a bare `&` / string / Nil contributes none).
+      const current = (selector as AmpersandLike).getKeySetContainerSelector();
       return {
-        keySet: selector.keySet,
-        visibleKeySet: selector.visibleKeySet,
-        requiredKeySet: selector.requiredKeySet
+        keySet: current ? this.compute(current).keySet : library.getBitset(),
+        visibleKeySet: library.getBitset(),
+        requiredKeySet: library.getBitset()
       };
     }
 

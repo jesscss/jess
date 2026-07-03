@@ -552,6 +552,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
+  // The raw container selector used for key-set analysis: only a concrete parent
+  // Selector contributes keys (a bare `&`, a string, or Nil contributes none).
+  // Unlike getResolvedSelector this does NOT wrap a list in `:is()` — key-set
+  // computation unions the list's keys directly. Used by SelectorAnalysis.
+  getKeySetContainerSelector(): Selector | undefined {
+    const current = this._selectorContainer?.selector;
+    return current && typeof current !== 'string' && !isNode(current, N.Nil)
+      ? current
+      : undefined;
+  }
+
   getResolvedSelector(): Selector | Nil | undefined {
     const rawSelector = this._selectorContainer?.selector;
     const selector: Selector | Nil | undefined = typeof rawSelector === 'string'

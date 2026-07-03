@@ -4,6 +4,7 @@ import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
+import { selectorAnalysisFor } from './util/selector-analysis.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
@@ -166,10 +167,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   protected _requiredKeySet: BitSet<string> | undefined;
 
   get keySet() {
-    if (!this._keySet) {
-      this.computeKeySets();
-    }
-    return this._keySet!;
+    return selectorAnalysisFor(this._requireKeySetLibrary()).keySet(this);
   }
 
   getKeySet(context?: Context): BitSet<string> {
@@ -191,17 +189,11 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   }
 
   get visibleKeySet() {
-    if (!this._visibleKeySet) {
-      this.computeKeySets();
-    }
-    return this._visibleKeySet!;
+    return selectorAnalysisFor(this._requireKeySetLibrary()).visibleKeySet(this);
   }
 
   get requiredKeySet() {
-    if (!this._requiredKeySet) {
-      this.computeKeySets();
-    }
-    return this._requiredKeySet!;
+    return selectorAnalysisFor(this._requireKeySetLibrary()).requiredKeySet(this);
   }
 
   invalidateCache(): void {
