@@ -31,7 +31,7 @@ import {
   For, type ForPattern,
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
-  Mixin, Expression, Operation,
+  Mixin, Expression, Operation, Negative,
   shouldOperateWithMathFrames, type MathMode,
   StyleImport, type StyleImportOptions,
   JsImport,
@@ -127,6 +127,8 @@ export class LessGrammar extends CssParser {
       case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
+      case 'Negative':            return new Negative(nodeChildren(children)[0]!, undefined, loc) as unknown as JessNode;
+      case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'InterpValue':         return this._buildInterpValue(raw, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
@@ -502,23 +504,17 @@ export class LessGrammar extends CssParser {
           ? getInterpolatedNode(nameStr, loc)
           : new Any(nameStr, { role: 'property' }, loc);
     }
-    // Arithmetic: a `<value> <op> <value>` sequence folds into Operation nodes
-    // (precedence-climbed), then the outer math gets an explicit parenthesized
-    // Expression (the Jess `$( … )` form). Port of expressionSum/expressionProduct.
+    // Arithmetic precedence is now folded in the grammar (topSum → Operation node),
+    // so a top-level `10px + 5px` arrives as a single Operation. Wrap it in an
+    // explicit parenthesized Expression (the Jess `$( … )` form) when math mode would
+    // actually perform the operation. Port of wrapOuterExpressionIfNeeded.
     const dvRaw = (decl as unknown as { value?: unknown }).value;
-    if (Array.isArray(dvRaw)) {
-      const folded = this._foldOperations(dvRaw, loc, { slashEnabled: this.mathMode === 'always' });
-      if (folded) {
-        const f = folded as unknown as { type?: string; operator?: any; left?: any; right?: any };
-        // wrapOuterExpressionIfNeeded: only wrap a top-level Operation that math mode
-        // would actually perform (the Jess `$( … )` form).
-        const wrapped = f.type === 'Operation'
-          && shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)
-          ? new Expression(folded as any, { parens: true } as any, loc) as unknown as JessNode
-          : folded;
-        (decl as unknown as { value: unknown }).value = wrapped;
-        return decl;
+    if (dvRaw && typeof dvRaw === 'object' && (dvRaw as { type?: string }).type === 'Operation') {
+      const f = dvRaw as unknown as { operator?: any; left?: any; right?: any };
+      if (shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)) {
+        (decl as unknown as { value: unknown }).value = new Expression(dvRaw as any, { parens: true } as any, loc);
       }
+      return decl;
     }
     // A top-level `/`-list that math mode WOULD divide (e.g. `math:always`) promotes to
     // a division Operation. Default `parens-division` keeps a top-level slash a list.
@@ -592,9 +588,9 @@ export class LessGrammar extends CssParser {
     ) as unknown as JessNode;
   }
 
-  // _foldOperations / _isDivisionLike are inherited from CssParser. Less enables
-  // math in any parens, so the base _buildParen (which folds with slashEnabled:
-  // true) is used as-is — no override needed.
+  // Precedence is folded in the grammar (mathSum/topSum → Operation); the base
+  // _buildOperation / _isDivisionLike (inherited from CssParser) handle the slash-
+  // vs-list decision. `OperationTop` dispatches here with slashEnabled = math:always.
 
   private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');

@@ -491,51 +491,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.addFlag(F_AMPERSAND);
   }
 
-  override computeKeySets(): void {
-    let library = this.keySetLibrary;
-    if (!library) {
-      library = this._requireKeySetLibrary();
-    }
-    const stored = this._storedSelector;
-    const current = this._selectorContainer?.selector;
-    /** Ampersands don't participate to the visible key set */
-    if (!this._visibleKeySet) {
-      this._visibleKeySet = library.getBitset();
-    }
-    if (!this._requiredKeySet) {
-      this._requiredKeySet = library.getBitset();
-    }
-    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
-      if (!this._keySet) {
-        this._keySet = library.getBitset();
-      }
-      return;
-    }
-    if ((current as Selector).isSelector && !(current as Selector).keySetLibrary) {
-      (current as Selector).keySetLibrary = library;
-    }
-    if (!this._keySet || stored !== current) {
-      this._keySet = current.keySet;
-    }
-  }
-
-  override getKeySet(context?: Context) {
-    if (!context) {
-      return this.keySet;
-    }
-
-    const current = this._selectorContainer?.selector;
-    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
-      const library = this.keySetLibrary;
-      if (!library) {
-        return this._requireKeySetLibrary().getBitset();
-      }
-      return library.getBitset();
-    }
-
-    return current.getKeySet(context);
-  }
-
   /**
    * Returns the raw stored container selector (without any `:is()` wrapping).
    * Used by extend-walk to peek at the container parent for "within-ampersand"

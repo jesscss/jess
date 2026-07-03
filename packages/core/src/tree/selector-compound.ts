@@ -168,33 +168,6 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     return w.getSince(mark);
   }
 
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const value = this.value;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    let requiredKeySet = library.getBitset();
-    for (const selector of value) {
-      if (typeof selector === 'string') {
-        const selectorKeySet = library.getBitset([selector]);
-        keySet = keySet.or(selectorKeySet);
-        visibleKeySet = visibleKeySet.or(selectorKeySet);
-        requiredKeySet = requiredKeySet.or(selectorKeySet);
-        continue;
-      }
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-      requiredKeySet = requiredKeySet.or(selector.requiredKeySet);
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    this._requiredKeySet = requiredKeySet;
-  }
-
   override valueOf() {
     let value = this._valueOf;
     if (!value) {

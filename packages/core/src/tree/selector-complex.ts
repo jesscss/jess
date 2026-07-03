@@ -237,43 +237,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return value;
   }
 
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const { value } = this;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    let requiredKeySet = library.getBitset();
-    for (const component of value) {
-      if (typeof component === 'string') {
-        const componentKeySet = library.getBitset([component]);
-        keySet = keySet.or(componentKeySet);
-        if (!isStringCombinator(component)) {
-          visibleKeySet = visibleKeySet.or(componentKeySet);
-        }
-        requiredKeySet = requiredKeySet.or(componentKeySet);
-        continue;
-      }
-      if (isNode(component, N.Combinator)) {
-        component.keySetLibrary ??= library;
-        keySet = keySet.or(component.keySet);
-        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
-        continue;
-      }
-      if (component instanceof Selector) {
-        component.keySetLibrary ??= library;
-        keySet = keySet.or(component.keySet);
-        visibleKeySet = visibleKeySet.or(component.visibleKeySet);
-        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
-      }
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    this._requiredKeySet = requiredKeySet;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderComplexSyntax(options);
   }

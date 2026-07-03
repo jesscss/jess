@@ -37,14 +37,16 @@ type Component = string | Selector;
 
 // Minimal structural views of the selector node shapes we dispatch on. Reading
 // `.value` / `.arg` / `.name` as data keeps this off the node classes' methods.
-interface PseudoLike extends Selector {
+// Structural views read as data off the node (accessed via `as unknown as`), so
+// this module needs no runtime import of the concrete selector classes.
+interface PseudoLike {
   name: string;
   arg?: unknown;
   generated?: boolean;
   generatedPseudoPlacementOverride?: { omitWrapperForSingleSelectorList?: boolean };
 }
 
-interface AmpersandLike extends Selector {
+interface AmpersandLike {
   getKeySetContainerSelector(): Selector | undefined;
 }
 
@@ -151,7 +153,7 @@ export class SelectorAnalysis {
     }
 
     if (isNode(selector, N.PseudoSelector)) {
-      const pseudo = selector as PseudoLike;
+      const pseudo = selector as unknown as PseudoLike;
       const arg = pseudo.arg;
       if (isNode(arg, N.Selector)) {
         const argSets = this.compute(arg);
@@ -193,7 +195,7 @@ export class SelectorAnalysis {
       // the RUNTIME-resolved parent selector held in its container, and its visible
       // / required sets are always empty. Read that parent as data and union its
       // keys through the service (a bare `&` / string / Nil contributes none).
-      const current = (selector as AmpersandLike).getKeySetContainerSelector();
+      const current = (selector as unknown as AmpersandLike).getKeySetContainerSelector();
       return {
         keySet: current ? this.compute(current).keySet : library.getBitset(),
         visibleKeySet: library.getBitset(),

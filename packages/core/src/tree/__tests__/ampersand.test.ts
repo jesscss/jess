@@ -9,6 +9,7 @@ import {
   type SimpleSelector, type Combinator
 } from '../index.js';
 import { Selector } from '../selector.js';
+import { selectorAnalysisFor } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -593,13 +594,15 @@ describe('Ampersand', () => {
     expect(publicStringCalls).toBe(0);
     expect(resolved.toTrimmedString()).toBe('.one > .child-theme,\n.two .child-theme');
     expect(resolved.hoistToRoot).toBe(true);
-    const keySet = resolved.getKeySet(context);
+    const analysis = selectorAnalysisFor(context.selectorBits);
+    const keySet = analysis.keySet(resolved);
     expect(context.selectorBits.hasBit(keySet, '.one')).toBe(true);
     expect(context.selectorBits.hasBit(keySet, '.two')).toBe(true);
     expect(context.selectorBits.hasBit(keySet, '.child-theme')).toBe(true);
-    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.one')).toBe(true);
-    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.two')).toBe(true);
-    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.child-theme')).toBe(true);
+    const visibleKeySet = analysis.visibleKeySet(resolved);
+    expect(context.selectorBits.hasBit(visibleKeySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(visibleKeySet, '.two')).toBe(true);
+    expect(context.selectorBits.hasBit(visibleKeySet, '.child-theme')).toBe(true);
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);

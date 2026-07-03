@@ -181,31 +181,6 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     }
   }
 
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const value = this.value;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    for (const selector of value) {
-      if (typeof selector === 'string') {
-        const selectorKeySet = library.getBitset([selector]);
-        keySet = keySet.or(selectorKeySet);
-        visibleKeySet = visibleKeySet.or(selectorKeySet);
-        continue;
-      }
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    // SelectorLists represent alternatives - requiredKeySet is empty
-    // (any branch could match, so no single key is "required")
-    this._requiredKeySet = library.getBitset();
-  }
 
   /** Normalize value on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {

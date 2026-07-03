@@ -203,44 +203,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return w.getSince(mark);
   }
 
-  override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const { name } = this;
-    const { arg } = this;
-    const library = this._requireKeySetLibrary();
-    if (isNode(arg, N.Selector)) {
-      arg.keySetLibrary ??= library;
-      if (name === ':is') {
-        this._keySet = arg.keySet;
-        this._visibleKeySet = arg.visibleKeySet;
-        if (isNode(arg, N.SelectorList)) {
-          const omitGeneratedWrapper = this.generated
-            && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.value.length === 1;
-          const firstItem = arg.value[0]!;
-          this._requiredKeySet = omitGeneratedWrapper && typeof firstItem !== 'string'
-            ? firstItem.requiredKeySet
-            : library.getBitset();
-        } else {
-          this._requiredKeySet = arg.requiredKeySet;
-        }
-      } else {
-        let pos = library.add(name);
-        let keySet = this._keySet = arg.keySet.clone();
-        let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
-        keySet.set(pos, 1);
-        visibleKeySet.set(pos, 1);
-        this._requiredKeySet = arg.requiredKeySet.clone();
-        this._requiredKeySet.set(pos, 1);
-      }
-    } else {
-      this._keySet = library.getBitset([this.valueOf()]);
-      this._visibleKeySet = this._keySet;
-      this._requiredKeySet = this._keySet;
-    }
-  }
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderPseudoSyntax(options);

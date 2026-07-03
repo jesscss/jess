@@ -1,9 +1,9 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { F_VISIBLE, Node, type NodeLocation, type NodeOptions, type NodeValue, defineType } from './node.js';
+import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
-import { BitSetLibrary, BitSet } from './util/bitset.js';
+import { BitSetLibrary } from './util/bitset.js';
 import { selectorAnalysisFor } from './util/selector-analysis.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
@@ -43,7 +43,6 @@ function nodeType(value: Node | undefined): string {
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
-  getKeySet(context?: Context): BitSet<string>;
   eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
@@ -151,41 +150,11 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
-  /**
-   * A set of all simplified (valueOf) selectors,
-   * for easy lookup to see if the selector is extendable
-   * by the key sets in the extend scope.
-   */
-  protected _keySet: BitSet<string> | undefined;
-  /** Used for mixin registry indexing - only includes visible selectors */
-  protected _visibleKeySet: BitSet<string> | undefined;
-  /**
-   * Like keySet but excludes keys inside `:is()` SelectorList args.
-   * For `:is(.a, .b) .c`, requiredKeySet = `{.c}` while keySet = `{.a, .b, .c}`.
-   * Safe for subset rejection: if requiredKeySet keys aren't in target, no match possible.
-   */
-  protected _requiredKeySet: BitSet<string> | undefined;
-
+  // Selector key-sets (keySet / visibleKeySet / requiredKeySet) are computed by the
+  // SelectorAnalysis service, not on the node — see util/selector-analysis.ts. The
+  // service caches per identity; the node holds no key-set fields.
   get keySet() {
     return selectorAnalysisFor(this._requireKeySetLibrary()).keySet(this);
-  }
-
-  getKeySet(context?: Context): BitSet<string> {
-    if (!context) {
-      return this.keySet;
-    }
-    const library = this._requireKeySetLibrary(context);
-    const selectors = selectorArray(this.value);
-    if (selectors) {
-      let keySet: BitSet<string> | undefined;
-      for (const child of selectors) {
-        const childKeySet = child.getKeySet(context);
-        keySet = keySet ? keySet.or(childKeySet) : childKeySet.clone();
-      }
-      return keySet ?? library.getBitset();
-    }
-    const selectorValue = String(this.valueOf());
-    return library.getBitset([selectorValue]);
   }
 
   get visibleKeySet() {
@@ -198,51 +167,6 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   invalidateCache(): void {
     this._valueOf = undefined;
-    this._keySet = undefined;
-    this._visibleKeySet = undefined;
-    this._requiredKeySet = undefined;
-  }
-
-  /**
-   * Computes keySet, visibleKeySet, and requiredKeySet in one pass.
-   * Subclasses should override this to implement their specific logic.
-   */
-  protected computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const selectors = selectorArray(this.value);
-    if (selectors) {
-      let keySet: BitSet<string> | undefined;
-      let visibleKeySet: BitSet<string> | undefined;
-      let requiredKeySet: BitSet<string> | undefined;
-      for (const child of selectors) {
-        const childKeySet = child.keySet;
-        keySet = keySet
-          ? keySet.or(childKeySet)
-          : childKeySet.clone();
-        visibleKeySet = visibleKeySet
-          ? visibleKeySet.or(child.visibleKeySet)
-          : child.visibleKeySet.clone();
-        requiredKeySet = requiredKeySet
-          ? requiredKeySet.or(child.requiredKeySet)
-          : child.requiredKeySet.clone();
-      }
-      this._keySet = keySet ?? library.getBitset();
-      this._visibleKeySet = visibleKeySet ?? library.getBitset();
-      this._requiredKeySet = requiredKeySet ?? library.getBitset();
-      return;
-    }
-    const selectorValue = String(this.valueOf());
-    this._keySet = library.getBitset([selectorValue]);
-    this._requiredKeySet = this._keySet;
-
-    if (this.hasFlag(F_VISIBLE)) {
-      this._visibleKeySet = this._keySet;
-    } else {
-      this._visibleKeySet = library.getBitset();
-    }
   }
 }
 

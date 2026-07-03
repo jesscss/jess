@@ -467,7 +467,11 @@ const cssRules = rules((g: any) => {
   // error in Less v5 (stricter than Less 4.x, which tolerated it). The dangling
   // comma is left unconsumed and surfaces as one syntax error via the net.
   const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
-  const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
+  // A space-separated value sequence: each item is a full top-level EXPRESSION
+  // (topSum), so arithmetic folds into the grammar (`1 + 2` → one Operation) while
+  // non-operator items stay a list (`1px 2px 3px`). topSum collapses to the bare
+  // operand when there is no operator, so a plain list is byte-identical to before.
+  const valueSequence = parser({ trivia: rw }, oneOrMore(g.topSum));
   // Interpolated value token (`@{colorVar}`, `pre-@{x}`). Chevrotain lexes this as
   // InterpolatedIdent and `processValueToken` runs it through getInterpolatedOrString
   // → Interpolated (role=ident). Ordered before Reference: `@{` cannot match lessVar,
@@ -475,9 +479,65 @@ const cssRules = rules((g: any) => {
   const InterpValue = node('InterpValue',
     parser({ trivia: rw }, interpKey),
     (c: any, r: any, s: any) => mk('InterpValue', c, r, s));
-  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  // ── Math expressions — precedence in the grammar (port of expressionSum /
+  // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
+  // `collapse` option makes a single-operand level pass its operand straight
+  // through (no Operation wrapper), so a plain value is byte-identical to the
+  // pre-expression grammar. The build folds the flat `operand op operand …`
+  // children into Operation nodes (see _buildOperation).
+  //
+  // `+`/`-` operator token: a sign NOT glued to a following number. A glued
+  // `-23`/`+5` is ONE signed operand (Num/Dimension eats the sign), mirroring the
+  // lexer's Plus/Minus-vs-Signed split — so `1 - 2` subtracts, but `1 -23` (space
+  // before, glued) does NOT continue the sum: the sign belongs to the next
+  // operand. At top level that trailing operand makes a space-list; inside a bare
+  // paren it has no operator before it, so the paren's `)` fails (a parse error,
+  // matching Less 4.x on `(12 (13))` / `(… 5 -23)`).
+  // The deprecated `./` dot-slash operator is intentionally NOT accepted — it was
+  // obscure, rarely used, and removed in v5. A `./` in a math context therefore
+  // leaves the `.` unconsumed and surfaces as a parse error (wrap division in
+  // parens instead).
+  const prodOp = regex(/[*\/%]/);
+  // A `+`/`-` operator fires when it is NOT a signed operand glued after a space:
+  //   • `[-+](?![0-9.])` — standalone (space / non-number after): `8 + 4`, `8 - (…)`.
+  //   • `(?<=\S)[-+](?=[0-9.])` — glued with NO space before (port of the Signed
+  //     branch's noSep gate): `8+4`, `8-4` are arithmetic. `8 +4` (space before,
+  //     glued) matches NEITHER — the `+4` is a separate signed operand (a list at
+  //     top level, a paren error inside `( … )`).
+  const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
+  // Leading unary minus → Negative (port of expressionValue's OPTION(Minus)). Only
+  // a STANDALONE `-` (not glued to a number — that's a signed operand) at an operand
+  // position: `-(@a * 2)`, `-@var`. The sum level consumes a binary `-` first, so
+  // this only fires where an operand is expected.
+  const Negative = node('Negative',
+    parser({ trivia: rw }, sequence(regex(/-(?![0-9.])/), g.value)),
+    (c: any, r: any, s: any) => mk('Negative', c, r, s));
+  const operand = choice(g.Negative, g.value);
+  const mathProduct = node('Operation',
+    parser({ trivia: rw }, sequence(operand, many(sequence(prodOp, operand)))),
+    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+  const mathSum = node('Operation',
+    parser({ trivia: rw }, sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct)))),
+    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+  // Top-level (declaration / space-list) variant of the same precedence grammar.
+  // Identical shape, but built as `OperationTop`, whose slash-vs-list decision uses
+  // the DECLARATION context: `/` divides only under `math: always` (default
+  // `parens-division` keeps a top-level `/` a slash-List, e.g. `font: 12px/1.5`).
+  // A math paren nested inside a top-level value still uses the `Operation` variant
+  // (slash divides), since being in-parens turns division on.
+  const topProduct = node('OperationTop',
+    parser({ trivia: rw }, sequence(operand, many(sequence(prodOp, operand)))),
+    (c: any, r: any, s: any) => mk('OperationTop', c, r, s), { collapse: true });
+  const topSum = node('OperationTop',
+    parser({ trivia: rw }, sequence(g.topProduct, many(sequence(sumOp, g.topProduct)))),
+    (c: any, r: any, s: any) => mk('OperationTop', c, r, s), { collapse: true });
+  // An escaped paren `~( … )` is a RAW list, not a math expression: it holds an
+  // arbitrary space / comma / `;`-separated value sequence (`~(1 2 3)`, `~(1; 2)`),
+  // so it uses the permissive body — unlike a bare `( … )`, which is one expression.
+  const escapedParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
   const EscapedValue = node('EscapedValue',
-    parser({ trivia: rw }, sequence(literal('~'), choice(g.Paren, g.Quoted))),
+    parser({ trivia: rw }, sequence(literal('~'), choice(escapedParen, g.Quoted))),
     (c: any, r: any, s: any) => mk('EscapedValue', c, r, s));
   const NamedColor = node('NamedColor', regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9])/i), (c: any, r: any, s: any) => mk('NamedColor', c, r, s));
   // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
@@ -489,7 +549,38 @@ const cssRules = rules((g: any) => {
   const Num = node('Num', regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/), (c: any, r: any, s: any) => mk('Num', c, r, s));
   const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
   const Url = node('Url', parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
-  const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), literal(')')));
+  // A bare paren holds ONE expression per comma-segment (a Sum), NOT a
+  // space-separated value sequence — `(12 13)` / `(12 (13))` are incoherent (two
+  // operands, no operator) and error, matching Less 4.x. `;`-separated segments
+  // (used by `~( … ; … )` escapes) and commas are still lists. The closing `)` is
+  // committed (`expect`), so a leftover operand surfaces as `Expected ')'` at the
+  // offending token rather than being silently left unconsumed.
+  // A paren item is one expression, optionally followed by a single comparison
+  // (`(@i > 5)`) OR a declaration-form `feature: value` pair (`(min-width: @val)` —
+  // a media condition stored for reuse). The separator/operator stays a raw leaf in
+  // the stream (not folded into an Operation), so the Paren builder sees the same
+  // flat `left op right` it always did. A bare `12 (13)` has NO separator, so it
+  // still fails the `)`.
+  const parenSep = choice(compareOp, literal(':'));
+  const parenExpr = parser({ trivia: rw }, sequence(g.mathSum, optional(sequence(parenSep, g.mathSum))));
+  // A paren whose content BEGINS with a `#`/`.` namespace selector is a
+  // namespace-lookup reference (`(#ns.options[option])`, `(.mixin()[key])`), not an
+  // arithmetic expression — its `[…]`/`(…)` accessor chain is captured as a value
+  // sequence and the Paren builder reassembles it into a Reference/Call
+  // (_tryParseNamespaceRef). The lookahead requires a selector START (`.`/`#` + a
+  // name char), so `.5` (a number) and a bare `12 (13)` are NOT namespace refs and
+  // stay strict expressions — the incoherent `12 (13)` still fails the `)`.
+  const namespaceAhead = regex('(?=[.#]-?[_a-zA-Z\\u0080-\\uffff])');
+  const parenItem = choice(sequence(namespaceAhead, g.valueSequence), parenExpr);
+  const parenExprList = parser({ trivia: rw }, sequence(parenItem, many(sequence(literal(','), parenItem))));
+  const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.parenExprList, many(sequence(literal(';'), optional(g.parenExprList))))), expect(literal(')'), ')')));
+  // Permissive paren body (the pre-expression valueList form). Used ONLY by
+  // GluedParen — a `(` glued (no space) to a preceding selector/accessor token,
+  // i.e. mixin-reference ARGS (`.mixin1(@foo: bar)`, `#ns.x(.valToGet[])`), which
+  // hold arbitrary named args / accessor chains, not arithmetic. A `(` with space
+  // before it (or at value start) is a real value paren and takes the strict
+  // single-expression `parenBody` above, so `(12 (13))` still errors.
+  const permissiveParenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')'), ')')));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
   const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))), (c: any, r: any, s: any) => mk('DetachedRuleset', c, r, s));
   // Function-call arguments are their OWN production (parity with the Chevrotain
@@ -510,12 +601,28 @@ const cssRules = rules((g: any) => {
   const calcAnyTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!%]+/);
   const calcAnyValue = choice(ident, calcAnyTok);
   const calcValue = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
-  const calcSequence = parser({ trivia: rw }, oneOrMore(calcValue));
+  // calc math grammar (port of mathSum/mathProduct): operators are ONLY `+ - * /` —
+  // NO `%` (a standalone `%` stays unconsumed → the `)` fails → syntax error, per
+  // CSS calc). `/` always divides here (calc is a math context), built as
+  // `Operation`. Precedence + collapse identical to the value-position rules.
+  const calcProdOp = regex(/[*\/]/);
+  const calcProduct = node('Operation',
+    parser({ trivia: rw }, sequence(calcValue, many(sequence(calcProdOp, calcValue)))),
+    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+  const calcSum = node('Operation',
+    parser({ trivia: rw }, sequence(calcProduct, many(sequence(sumOp, calcProduct)))),
+    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+  const calcSequence = parser({ trivia: rw }, oneOrMore(calcSum));
   const calcList = parser({ trivia: rw }, sequence(calcSequence, many(sequence(literal(','), calcSequence))));
   const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'), ')')));
   const CalcCall = node('Call', parser({ trivia: rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)), (c: any, r: any, s: any) => mk('Call', c, r, s));
   const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  // Mixin-argument paren: `(` immediately preceded (lookbehind, no trivia) by a
+  // selector / accessor char — the args of a `.name(…)` / `#ns.x(…)` reference.
+  // Parsed permissively; the Declaration builder reassembles the selector +
+  // round-paren-args + square-paren-accessor items into a Reference/Call chain.
+  const GluedParen = node('Paren', parser({ trivia: rw }, sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff-])\\('), g.permissiveParenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
   const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
   const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)), (c: any, r: any, s: any) => mk('SquareParen', c, r, s));
   const Quoted = node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => mk('Quoted', c, r, s));
@@ -616,8 +723,8 @@ const cssRules = rules((g: any) => {
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
-    valueList, valueSequence, value, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
+    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
+    parenBody, permissiveParenBody, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
     QueryFeature, QueryInParens, QueryCondition, QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
