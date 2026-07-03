@@ -119,6 +119,7 @@ import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
@@ -170,7 +171,7 @@ function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
   return isNode(value, N.SimpleSelector)
     || isNode(value, N.CompoundSelector)
     || isNode(value, N.ComplexSelector)
-    || isNode(value, N.Combinator);
+    || isCombinator(value);
 }
 
 function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType): ComplexSelectorComponent[] {
@@ -871,7 +872,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       if (result.length >= 3) {
         const maybeCombinator = result[result.length - 2];
         const maybeIs = result[result.length - 1];
-        if (isNode(maybeCombinator, N.Combinator)
+        if (isCombinator(maybeCombinator)
           && isNode(maybeIs, N.PseudoSelector)
           && maybeIs.name === ':is'
           && maybeIs.arg
@@ -905,7 +906,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
               && !originalFirst.hasFlag(F_VISIBLE)
               && !!originalSecond
-              && isNode(originalSecond, N.Combinator)
+              && isCombinator(originalSecond)
               && !originalSecond.hasFlag(F_VISIBLE));
 
           // Only flatten when we know this is the implicit `& ` nesting case.
@@ -935,7 +936,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
             && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
             && !originalFirst.hasFlag(F_VISIBLE)
             && !!originalSecond
-            && isNode(originalSecond, N.Combinator)
+            && isCombinator(originalSecond)
             && !originalSecond.hasFlag(F_VISIBLE);
           const dropImplicitPrefixViaGeneratedIs =
             !!first
@@ -1505,7 +1506,7 @@ export function extendSelector(
         partial
         && ampersandCrossingInfo.reason === 'resolved-only'
         && isNode(originalTarget, N.ComplexSelector)
-        && isNode(originalTarget.value[0], N.Combinator)
+        && isCombinator(originalTarget.value[0])
       );
       if (shouldSkipResolvedOnlySimpleBoundary || shouldSkipRelativePartialBoundary) {
         // Keep local extends on nested/relative value in normal flow.
@@ -1664,7 +1665,7 @@ export function extendSelector(
             const sComp = selectorComponents[i];
             const tComp = findComponents[i];
 
-            if (sComp && tComp && !isNode(sComp, N.Combinator) && !isNode(tComp, N.Combinator)) {
+            if (sComp && tComp && !isCombinator(sComp) && !isCombinator(tComp)) {
               // Check if find component partially matches selector component
               if (isNode(sComp, N.CompoundSelector) && isNode(tComp, N.SimpleSelector)) {
                 const sCompSimple = sComp.value.filter((el): el is SimpleSelector => typeof el !== 'string');
@@ -1772,7 +1773,7 @@ export function extendSelector(
             return false;
           }
           const component = target.value[loc.path[0]];
-          return !!component && !isNode(component, N.Combinator);
+          return !!component && !isCombinator(component);
         });
 
         const compoundInnerMatches = searchResult.locations.filter((loc: ExtendLocation) => {
@@ -1845,7 +1846,7 @@ export function extendSelector(
               continue;
             }
             const component = newComponents[componentIndex];
-            if (!component || typeof component === 'string' || isNode(component, N.Combinator)) {
+            if (!component || typeof component === 'string' || isCombinator(component)) {
               continue;
             }
 
@@ -2028,7 +2029,7 @@ export function extendSelector(
       }
       const matchedComponent = target.value[componentIndex];
 
-      if (matchedComponent && typeof matchedComponent !== 'string' && !isNode(matchedComponent, N.Combinator)) {
+      if (matchedComponent && typeof matchedComponent !== 'string' && !isCombinator(matchedComponent)) {
         // Replace the matched component with :is(original, extension)
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its value to avoid nesting
@@ -2174,7 +2175,7 @@ function extendSelectorList(
     // Prefix with the same implicit `&` + combinator shape from the template.
     const prefixed = ComplexSelector.create([
       first.derive(),
-      isNode(second, N.Combinator) ? copyComplexComponentForPlacement(second) : Combinator.create(' ').inherit(first),
+      isCombinator(second) ? copyComplexComponentForPlacement(second) : Combinator.create(' ').inherit(first),
       copySelectorForExtend(s)
     ]).inherit(s);
     return prefixed;
@@ -2341,7 +2342,7 @@ function extendSelectorList(
         if (!isNode(first, N.PseudoSelector) || first.name !== ':is' || first.generated) {
           continue;
         }
-        if (!isNode(second, N.Combinator)) {
+        if (!isCombinator(second)) {
           continue;
         }
         const arg = first.arg;
@@ -2429,7 +2430,7 @@ function extendSelectorList(
       if (!isNode(parentSel, N.PseudoSelector) || (parentSel as PseudoSelector).name !== ':is') {
         continue;
       }
-      if (!isNode(second, N.Combinator)) {
+      if (!isCombinator(second)) {
         continue;
       }
       if (!isNode(third, N.BasicSelector)) {
@@ -2453,7 +2454,7 @@ function extendSelectorList(
       const template = candidates[0]!.sel;
       const first = template.value[0];
       const second = template.value[1];
-      if (!isNode(first, N.Ampersand) || !isNode(second, N.Combinator)) {
+      if (!isNode(first, N.Ampersand) || !isCombinator(second)) {
         throw new TypeError('Expected implicit ampersand factorization template');
       }
       const childBasics = candidates.map((c) => {
@@ -2512,7 +2513,7 @@ function extendSelectorList(
         const first = cs.value[0];
         const second = cs.value[1];
         const third = cs.value[2];
-        if (!isSelectorNode(first) || !isNode(second, N.Combinator) || !isSelectorNode(third)) {
+        if (!isSelectorNode(first) || !isCombinator(second) || !isSelectorNode(third)) {
           continue;
         }
         const groupKey = second.valueOf();
@@ -3264,7 +3265,7 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
     return (
       isNode(first, N.Ampersand)
       && (first as Ampersand).hasFlag(F_IMPLICIT_AMPERSAND)
-      && isNode(second, N.Combinator)
+      && isCombinator(second)
     );
   };
   if (isNode(selector, N.SelectorList)) {
@@ -3442,7 +3443,7 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
           // (implicit nesting uses `&` + generated whitespace combinator).
           const next = parentItems[idx];
-          if (isNode(next, N.Combinator) && next.value === ' ') {
+          if (isCombinator(next) && next.value === ' ') {
             parentItems.splice(idx, 1);
           }
         }
@@ -3497,7 +3498,7 @@ function handleAmpersandBoundaryCrossing(
         return copySelectorForExtend(item);
       }
       let start = 1;
-      if (parts[start] && isNode(parts[start], N.Combinator)) {
+      if (parts[start] && isCombinator(parts[start])) {
         start += 1;
       }
       const tail = parts.slice(start).filter(isComplexComponent);
@@ -3818,7 +3819,7 @@ function collectSelectorSubtreeValues(
 
   if (isNode(selector, N.ComplexSelector)) {
     for (const item of selector.value) {
-      if (isNode(item, N.Combinator)) {
+      if (isCombinator(item)) {
         continue;
       }
       if (isSelectorNode(item)) {
@@ -3866,7 +3867,7 @@ function collectNewSelectorCandidates(
 
   if (isNode(selector, N.ComplexSelector)) {
     for (const item of selector.value) {
-      if (isNode(item, N.Combinator)) {
+      if (isCombinator(item)) {
         continue;
       }
       if (isSelectorNode(item)) {

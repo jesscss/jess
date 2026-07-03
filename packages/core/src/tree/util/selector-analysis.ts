@@ -18,6 +18,7 @@ import type { BitSet, BitSetLibrary } from './bitset.js';
 import type { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { F_VISIBLE } from '../node.js';
 
 // Inlined from selector-complex to keep this module leaf-level (no runtime import
@@ -138,7 +139,7 @@ export class SelectorAnalysis {
           requiredKeySet = requiredKeySet.or(bits);
           continue;
         }
-        if (isNode(component, N.Combinator)) {
+        if (isCombinator(component)) {
           const c = this.compute(component);
           keySet = keySet.or(c.keySet);
           requiredKeySet = requiredKeySet.or(c.requiredKeySet);

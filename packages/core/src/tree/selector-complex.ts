@@ -10,6 +10,7 @@ import {
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
@@ -150,11 +151,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     };
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
-      if (!(isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component)))) {
+      if (!(isCombinator(component) || (typeof component === 'string' && isStringCombinator(component)))) {
         options.ampersandFirst = isFirstSelector;
         isFirstSelector = false;
       }
-      if (isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component))) {
+      if (isCombinator(component) || (typeof component === 'string' && isStringCombinator(component))) {
         if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
@@ -394,7 +395,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         unresolvedAmpersandCount++;
       } else if (
         typeof part === 'string'
-        || (!isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand))
+        || (!isCombinator(part) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand))
       ) {
         hasOtherSelectorParts = true;
       }
@@ -438,18 +439,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let outIndex = 0;
     for (let i = 0; i < value.length; i++) {
       const part = value[i]!;
-      if (isNode(part, N.Combinator) || (typeof part === 'string' && isStringCombinator(part))) {
+      if (isCombinator(part) || (typeof part === 'string' && isStringCombinator(part))) {
         const prev = outIndex > 0 ? value[outIndex - 1] : undefined;
         let next: Node | string | undefined;
         for (let j = i + 1; j < value.length; j++) {
           const candidate = value[j]!;
-          if (!(isNode(candidate, N.Combinator) || (typeof candidate === 'string' && isStringCombinator(candidate)))) {
+          if (!(isCombinator(candidate) || (typeof candidate === 'string' && isStringCombinator(candidate)))) {
             next = candidate;
             break;
           }
         }
         if (i === 0) {
-          if (next && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))) {
+          if (next && !(isCombinator(next) || (typeof next === 'string' && isStringCombinator(next)))) {
             value[outIndex++] = part;
           }
           continue;
@@ -457,8 +458,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (
           prev
           && next
-          && !(isNode(prev, N.Combinator) || (typeof prev === 'string' && isStringCombinator(prev)))
-          && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))
+          && !(isCombinator(prev) || (typeof prev === 'string' && isStringCombinator(prev)))
+          && !(isCombinator(next) || (typeof next === 'string' && isStringCombinator(next)))
         ) {
           value[outIndex++] = part;
         }

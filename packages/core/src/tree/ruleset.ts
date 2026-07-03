@@ -6,6 +6,7 @@ import { Bool } from './bool.js';
 import { Condition } from './condition.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
@@ -784,7 +785,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (
       selector instanceof SimpleSelector
       || isNode(selector, N.CompoundSelector)
-      || isNode(selector, N.Combinator)
+      || isCombinator(selector)
       || isNode(selector, N.Ampersand)
     ) {
       return selector;
@@ -800,7 +801,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (
       owned instanceof SimpleSelector
       || isNode(owned, N.CompoundSelector)
-      || isNode(owned, N.Combinator)
+      || isCombinator(owned)
       || isNode(owned, N.Ampersand)
     ) {
       return owned;
@@ -827,7 +828,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       ? child.value.map(component => Ruleset._ownComplexComponentForCompose(component))
       : [Ruleset._ownComplexComponentForCompose(Ruleset._toComplexComponent(child))];
 
-    const childStartsWithCombinator = trailing.length > 0 && isNode(trailing[0]!, N.Combinator);
+    const childStartsWithCombinator = trailing.length > 0 && isCombinator(trailing[0]!);
     const merged = childStartsWithCombinator
       ? [...leading, ...trailing]
       : [...leading, Combinator.create(' '), ...trailing];
@@ -917,7 +918,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         const parentParts = parent.value.slice();
         let lastIdx = -1;
         for (let i = parentParts.length - 1; i >= 0; i--) {
-          if (!isNode(parentParts[i]!, N.Combinator)) {
+          if (!isCombinator(parentParts[i]!)) {
             lastIdx = i;
             break;
           }
@@ -997,7 +998,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           // Simple or Compound parent: single-component insertion, always safe.
           newParts.push(Ruleset._toComplexComponent(parent));
         }
-      } else if (!isNode(part, N.Combinator) && part.hasFlag(F_AMPERSAND)) {
+      } else if (!isCombinator(part) && part.hasFlag(F_AMPERSAND)) {
         const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
         const allowSmartSpliceInPlace = i === 0 && !rightTight;
         const sub = Ruleset._substituteAmpersand(
@@ -1046,7 +1047,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return false;
     }
     const c = parts[idx];
-    if (!c || !isNode(c, N.Combinator)) {
+    if (!c || !isCombinator(c)) {
       return false;
     }
     const v = String((c as Combinator).valueOf() ?? '');

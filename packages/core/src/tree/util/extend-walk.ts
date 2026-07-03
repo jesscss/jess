@@ -57,6 +57,7 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { Ruleset } from '../ruleset.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
@@ -209,7 +210,7 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
   for (let i = 0; i < a.value.length; i++) {
     const ac = a.value[i]!;
     const bc = b.value[i]!;
-    if (isNode(ac, N.Combinator) !== isNode(bc, N.Combinator)) {
+    if (isCombinator(ac) !== isCombinator(bc)) {
       return false;
     }
     if (ac instanceof Combinator) {
@@ -350,12 +351,12 @@ function findSubsequence(
       const tc = targetComps[start + j]!;
       const fc = findComps[j]!;
       if (fc.type === 'Combinator') {
-        if (!isNode(tc, N.Combinator) || (tc as Combinator).value !== fc.value) {
+        if (!isCombinator(tc) || (tc as Combinator).value !== fc.value) {
           matches = false;
           break;
         }
       } else {
-        if (isNode(tc, N.Combinator)) {
+        if (isCombinator(tc)) {
           matches = false;
           break;
         }
@@ -647,7 +648,7 @@ function walkComplexSelector(
 
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
-    if (isNode(comp, N.Combinator) || typeof comp === 'string') {
+    if (isCombinator(comp) || typeof comp === 'string') {
       continue;
     }
 
@@ -954,7 +955,7 @@ function walkAlternativeTailAware(
   const comps = alt.value;
   let tailIdx = -1;
   for (let i = comps.length - 1; i >= 0; i--) {
-    if (!isNode(comps[i], N.Combinator)) {
+    if (!isCombinator(comps[i])) {
       tailIdx = i;
       break;
     }
@@ -1089,7 +1090,7 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   }
   if (isNode(parent, N.ComplexSelector)) {
     return parent.value.some(comp =>
-      !isNode(comp, N.Combinator) && isSelectorNode(comp) && parentContainsTarget(comp, target)
+      !isCombinator(comp) && isSelectorNode(comp) && parentContainsTarget(comp, target)
     );
   }
   if (isNode(parent, N.CompoundSelector)) {
@@ -1216,7 +1217,7 @@ function wouldMatchNode(
     }
     for (let i = 0; i < node.value.length; i++) {
       const comp = node.value[i]!;
-      if (isNode(comp, N.Combinator)) {
+      if (isCombinator(comp)) {
         continue;
       }
       const result = wouldMatchNode(comp, spec, extendWith, partial, {
@@ -1334,7 +1335,7 @@ function wouldMatchPseudoTailAware(
     }
     const comps = alt.value;
     for (let i = comps.length - 1; i >= 0; i--) {
-      if (!isNode(comps[i], N.Combinator)) {
+      if (!isCombinator(comps[i])) {
         return wouldMatchNode(comps[i]!, spec, extendWith, partial, {
           isRoot: false,
           parentType: 'CompoundSelector',

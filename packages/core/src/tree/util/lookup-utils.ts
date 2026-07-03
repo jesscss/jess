@@ -2,6 +2,7 @@
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
@@ -63,7 +64,7 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
     if (!foundBasic && isNode(node, N.Ampersand)) {
       return;
     }
-    if (isNode(node, N.Combinator)) {
+    if (isCombinator(node)) {
       return;
     }
     if (isNode(node, N.BasicSelector)) {

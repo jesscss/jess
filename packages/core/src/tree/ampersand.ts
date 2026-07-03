@@ -8,6 +8,7 @@ import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
@@ -334,7 +335,7 @@ function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
     isNode(node, N.SimpleSelector)
     || isNode(node, N.CompoundSelector)
     || isNode(node, N.ComplexSelector)
-    || isNode(node, N.Combinator)
+    || isCombinator(node)
   ) {
     return node;
   }
@@ -388,7 +389,7 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   if (isNode(selector, N.ComplexSelector)) {
     for (let i = selector.value.length - 1; i >= 0; i--) {
       const component = selector.value[i]!;
-      if (isNode(component, N.Combinator)) {
+      if (isCombinator(component)) {
         continue;
       }
       if (typeof component === 'string') {

@@ -8,6 +8,7 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
 
@@ -92,7 +93,7 @@ export function isSelector(value: any): value is Selector {
  * This pattern appears in many complex selector algorithms
  */
 export function getNonCombinatorComponents(selector: ComplexSelector): Selector[] {
-  return selector.value.filter((c): c is Selector => typeof c !== 'string' && !isNode(c, N.Combinator));
+  return selector.value.filter((c): c is Selector => typeof c !== 'string' && !isCombinator(c));
 }
 
 /**
@@ -100,7 +101,7 @@ export function getNonCombinatorComponents(selector: ComplexSelector): Selector[
  * Used in complex selector matching algorithms
  */
 export function getCombinatorComponents(selector: ComplexSelector): Combinator[] {
-  return selector.value.filter(c => isNode(c, N.Combinator)) as Combinator[];
+  return selector.value.filter(c => isCombinator(c)) as Combinator[];
 }
 
 /**
@@ -525,11 +526,11 @@ export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSele
     }
 
     // Both must be same type
-    if (isNode(aComp, N.Combinator) && isNode(bComp, N.Combinator)) {
+    if (isCombinator(aComp) && isCombinator(bComp)) {
       if (aComp.value !== bComp.value) {
         return false;
       }
-    } else if (!isNode(aComp, N.Combinator) && !isNode(bComp, N.Combinator)) {
+    } else if (!isCombinator(aComp) && !isCombinator(bComp)) {
       // Both are value - check equivalence
       if (isNode(aComp, N.CompoundSelector) && isNode(bComp, N.CompoundSelector)) {
         if (!areCompoundSelectorsEquivalent(aComp, bComp)) {
@@ -995,7 +996,7 @@ function tryFastPathExtendMatch(
     const locations: ExtendLocation[] = [];
     for (let i = 0; i < target.value.length; i++) {
       const component = target.value[i];
-      if (component && typeof component !== 'string' && !isNode(component, N.Combinator)) {
+      if (component && typeof component !== 'string' && !isCombinator(component)) {
         const childResult = tryFastPathExtendMatch(component, find, [...basePath, i]);
         if (childResult) {
           locations.push(...childResult);
@@ -1015,7 +1016,7 @@ function tryFastPathExtendMatch(
           if (lastSeg === 0) {
             const remainingComponents = target.value.slice(1);
             const firstRemaining = remainingComponents[0];
-            location.remainders = remainingComponents.length === 1 && firstRemaining && typeof firstRemaining !== 'string' && !isNode(firstRemaining, N.Combinator)
+            location.remainders = remainingComponents.length === 1 && firstRemaining && typeof firstRemaining !== 'string' && !isCombinator(firstRemaining)
               ? [firstRemaining]
               : [new ComplexSelector(remainingComponents).inherit(target)];
           }
@@ -1058,12 +1059,12 @@ function tryPartialComplexMatch(
         break;
       }
 
-      if (isNode(tComp, N.Combinator) && isNode(fComp, N.Combinator)) {
+      if (isCombinator(tComp) && isCombinator(fComp)) {
         if (tComp.value !== fComp.value) {
           matches = false;
           break;
         }
-      } else if (!isNode(tComp, N.Combinator) && !isNode(fComp, N.Combinator) && typeof tComp !== 'string' && typeof fComp !== 'string') {
+      } else if (!isCombinator(tComp) && !isCombinator(fComp) && typeof tComp !== 'string' && typeof fComp !== 'string') {
         let compMatch = componentsMatch(tComp, fComp);
         // Compound superset: target compound can contain find compound as subsequence (.a.c.b contains .a.b)
         if (!compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.CompoundSelector)) {
@@ -1412,7 +1413,7 @@ function searchWithinComplexSelector(
   for (let index = 0; index < complex.value.length; index++) {
     const component = complex.value[index]!;
     // Skip combinators, only search selector value
-    if (!isNode(component, N.Combinator) && typeof component !== 'string') {
+    if (!isCombinator(component) && typeof component !== 'string') {
       currentPath.push(index);
       searchWithinSelector(component, target, currentPath, locations);
       currentPath.pop();
@@ -1433,7 +1434,7 @@ function searchWithinComplexSelector(
         if (lastPathSegment === 0) {
           const remainingComponents = complex.value.slice(1);
           const firstRem = remainingComponents[0];
-          if (remainingComponents.length === 1 && firstRem && typeof firstRem !== 'string' && !isNode(firstRem, N.Combinator)) {
+          if (remainingComponents.length === 1 && firstRem && typeof firstRem !== 'string' && !isCombinator(firstRem)) {
             location.remainders = [firstRem];
           } else if (remainingComponents.length > 0) {
             location.remainders = [new ComplexSelector(remainingComponents).inherit(complex)];
@@ -1493,13 +1494,13 @@ function tryComplexSelectorPatternMatch(
         break;
       }
 
-      if (isNode(targetComp, N.Combinator) && isNode(complexComp, N.Combinator)) {
+      if (isCombinator(targetComp) && isCombinator(complexComp)) {
         // Both are combinators - must match exactly
         if (targetComp.value !== complexComp.value) {
           isMatch = false;
           break;
         }
-      } else if (isNode(targetComp, N.Combinator) || isNode(complexComp, N.Combinator)) {
+      } else if (isCombinator(targetComp) || isCombinator(complexComp)) {
         // One is combinator, other is not - no match
         isMatch = false;
         break;
@@ -1543,7 +1544,7 @@ function tryComplexSelectorPatternMatch(
       // Create remainder selector if there are remaining value
       let remainders: any[] = [];
       if (remainingComponents.length > 0) {
-        if (remainingComponents.length === 1 && !isNode(remainingComponents[0], N.Combinator)) {
+        if (remainingComponents.length === 1 && !isCombinator(remainingComponents[0])) {
           remainders = [remainingComponents[0]];
         } else if (remainingComponents.length > 1) {
           remainders = [ComplexSelector.create(remainingComponents).inherit(complex)];
@@ -1597,18 +1598,18 @@ function trySequentialComplexMatch(
       }
 
       // Both must be same type (combinator vs selector)
-      if (isNode(targetComp, N.Combinator) !== isNode(findComp, N.Combinator)) {
+      if (isCombinator(targetComp) !== isCombinator(findComp)) {
         matches = false;
         break;
       }
 
       // If both are combinators, they must match exactly
-      if (isNode(targetComp, N.Combinator) && isNode(findComp, N.Combinator)) {
+      if (isCombinator(targetComp) && isCombinator(findComp)) {
         if (targetComp.value !== findComp.value) {
           matches = false;
           break;
         }
-      } else if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+      } else if (!isCombinator(targetComp) && !isCombinator(findComp)) {
         // If both are value, use existing selector matching logic
         // But also check for partial compound matching
         if (typeof targetComp === 'string' || typeof findComp === 'string') {
@@ -1649,7 +1650,7 @@ function trySequentialComplexMatch(
         const targetComp = targetComponents[startIdx + i];
         const findComp = findComponents[i];
 
-        if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+        if (!isCombinator(targetComp) && !isCombinator(findComp)) {
           if (isNode(targetComp, N.CompoundSelector) && isNode(findComp, N.SimpleSelector)) {
             // Check if there's a partial match leaving compound remainders
             const matchingComponent = targetComp.value.find(comp => comp.valueOf() === findComp.valueOf());
@@ -1690,8 +1691,8 @@ function tryBacktrackingComplexMatch(
   basePath: Array<string | number>
 ): ExtendLocation[] | null {
   // Extract non-combinator value
-  const targetComponents = target.value.filter(c => !isNode(c, N.Combinator));
-  const findComponents = find.value.filter(c => !isNode(c, N.Combinator));
+  const targetComponents = target.value.filter(c => !isCombinator(c));
+  const findComponents = find.value.filter(c => !isCombinator(c));
 
   if (findComponents.length === 0) {
     return null;
@@ -1717,7 +1718,7 @@ function tryBacktrackingComplexMatch(
         // If :is() contains a complex selector
         if (isNode(isArg, N.ComplexSelector)) {
           // Get the :is() content value
-          const isArgComponents = isArg.value.filter((c): c is Selector => !isNode(c, N.Combinator) && typeof c !== 'string');
+          const isArgComponents = isArg.value.filter((c): c is Selector => !isCombinator(c) && typeof c !== 'string');
 
           // Try to match the find pattern
           if (isArgComponents.length >= 2) {

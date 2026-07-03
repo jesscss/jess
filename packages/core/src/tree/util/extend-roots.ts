@@ -9,6 +9,7 @@ import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
@@ -63,7 +64,7 @@ function collapseWrappedSelector(sel: Selector): Selector {
       && Array.isArray(value)
       && value.length === 1
       && typeof value[0] !== 'string'
-      && !isNode(value[0], N.Combinator)
+      && !isCombinator(value[0])
       && isSelectorValue(value[0])
     ) {
       current = value[0];
