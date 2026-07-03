@@ -353,14 +353,15 @@ export class CssParser {
     for (const rule of orderedRuleNodes) {
       const nextStart = rule.location[0];
       if (typeof nextStart === 'number' && nextStart >= gapStart) {
-        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, loc));
+        const followingIsNestedRule = (rule as { type?: string }).type === 'Ruleset';
+        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
         const nextEnd = rule.location[3];
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
       }
       out.push(rule);
     }
     // Trailing gap (after the last node): no following node → always standalone.
-    out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, loc));
+    out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, false, loc));
     return out;
   }
 
@@ -375,6 +376,7 @@ export class CssParser {
     gapStart: number,
     gapEnd: number,
     followingStart: number | undefined,
+    followingIsNestedRule: boolean,
     loc: LocationInfo
   ): JessNode[] {
     const comments: JessNode[] = [];
@@ -388,7 +390,7 @@ export class CssParser {
           j++;
         }
         const end = Math.min(j + 2, gapEnd);
-        this._maybeEmitComment(src, i, end, followingStart, comments, loc);
+        this._maybeEmitComment(src, i, end, followingStart, followingIsNestedRule, comments, loc);
         i = end;
         continue;
       }
@@ -398,7 +400,7 @@ export class CssParser {
         while (j < gapEnd && src.charCodeAt(j) !== 10 && src.charCodeAt(j) !== 13) {
           j++;
         }
-        this._maybeEmitComment(src, i, j, followingStart, comments, loc);
+        this._maybeEmitComment(src, i, j, followingStart, followingIsNestedRule, comments, loc);
         i = j;
         continue;
       }
@@ -419,10 +421,17 @@ export class CssParser {
     start: number,
     end: number,
     followingStart: number | undefined,
+    followingIsNestedRule: boolean,
     out: JessNode[],
     loc: LocationInfo
   ) {
-    if (followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
+    // A comment on the same source line as the FOLLOWING node stays inline (trivia)
+    // ONLY when that node is a nested ruleset/selector: its leading trivia is
+    // recovered from the position-indexed trivia map at serialize time (`a { /*x*/
+    // b {…} }`). Same-line comments ahead of a DECLARATION are lifted to `Comment`
+    // nodes instead, so they survive eval — which transforms the tree and drops the
+    // trivia map (`#x { /* c *​/ prop: val }`).
+    if (followingIsNestedRule && followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
       return;
     }
     out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
