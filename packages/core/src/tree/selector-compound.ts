@@ -45,7 +45,7 @@ function emitCompoundPart(
   }
   if (emitLeadingTrivia && options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, part.location[0], 'before', options),
+      consumeTrivia(options.trivia, part.spanStart, 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );

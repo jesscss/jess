@@ -43,7 +43,7 @@ function incrementSerializeProfileCounter(counter: SerializeProfileCounter): voi
 }
 
 function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
-  return side === 'before' ? node.location[0] : node.location[3];
+  return side === 'before' ? node.spanStart : node.spanEnd;
 }
 
 export function hasPrintableTriviaAt(
@@ -127,7 +127,7 @@ type RenderRuleEntry = {
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
   const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
-  return triviaHasBlockComment(trivia?.lookup(node.location[0], 'before'));
+  return triviaHasBlockComment(trivia?.lookup(node.spanStart, 'before'));
 }
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {

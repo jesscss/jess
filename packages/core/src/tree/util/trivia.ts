@@ -139,7 +139,7 @@ export function emitNodeSourceSyntaxWithTrivia(
   const suppressPre = options.suppressBoundaryTrivia === 'pre'
     || options.suppressBoundaryTrivia === 'both';
   if (!suppressPre && trivia) {
-    emitTriviaTokens(consumeTrivia(trivia, node.location[0], 'before', options), options);
+    emitTriviaTokens(consumeTrivia(trivia, node.spanStart, 'before', options), options);
   }
   node.writeSyntax(options);
 }
@@ -154,8 +154,8 @@ export function emitCommentTriviaBetweenNodes(
     ?? treeTrivia(prev)
     ?? treeTrivia(next)
   );
-  const prevEnd = prev.location[3];
-  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+  const prevEnd = prev.spanEnd;
+  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
     return false;
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -180,8 +180,8 @@ export function emitCommentTriviaBeforeDelimiter(
     ?? treeTrivia(prev)
     ?? treeTrivia(next)
   );
-  const prevEnd = prev.location[3];
-  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+  const prevEnd = prev.spanEnd;
+  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
     return;
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -199,7 +199,7 @@ export function emitCommentTriviaAfterNode(
     options.trivia
     ?? treeTrivia(node)
   );
-  const offset = node.location[3];
+  const offset = node.spanEnd;
   if (!trivia || offset === undefined) {
     return;
   }
@@ -251,8 +251,8 @@ export function consumeTriviaBetween(
   next: Node,
   options: TriviaEmitOptions
 ): Trivia | undefined {
-  const prevEnd = prev.location[3];
-  const nextStart = next.location[0];
+  const prevEnd = prev.spanEnd;
+  const nextStart = next.spanStart;
   if (!trivia || prevEnd === undefined || nextStart === undefined || prevEnd > nextStart) {
     return undefined;
   }

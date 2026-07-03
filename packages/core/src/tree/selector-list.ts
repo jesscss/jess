@@ -172,7 +172,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
       w.add(`,\n${space}`);
       if (printOptions.trivia && typeof item !== 'string') {
         emitTriviaTokens(
-          consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
+          consumeTrivia(printOptions.trivia, item.spanStart, 'before', printOptions),
           printOptions,
           { skipLeadingWhitespace: true }
         );

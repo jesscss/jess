@@ -103,6 +103,38 @@ with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: denormalized `spanStart`/`spanEnd` offset fields on `Node`.
+- Verdict: accepted as a hot-read/object-avoidance slice under the ponytail core
+  audit (`docs/future/ponytail-core-audit.md` E6), not a measured performance
+  pass. `_location` is now a prototype accessor whose setter syncs two plain
+  number fields; all hot core location reads (`location[0]`/`location[3]` in
+  trivia/serialize/list/sequence/call/selector paths, `canReuseAsLeaf`,
+  `canReuseLeaf`, the Parséman `span` getter, base `toString`) read the fields
+  directly. Generated nodes no longer lazily allocate an empty `[]` tuple via
+  the `location` getter on serialization reads. The tuple is retained because
+  parser packages assign and mutate it post-construction; the parser-side pass
+  (spans in, tuple deleted) is queued in the audit doc.
+- New traversal: none.
+- Review-flagged allocations: none added. One baseline-failing test that
+  asserts inherit does not allocate empty location arrays now passes.
+- New node/materialization: none.
+- Render path: unchanged behavior; identical core test failure set vs the
+  pre-change baseline plus the one fixed test
+  (`cloning.test.ts` source-free inherit).
+- Helper/API surface: two public readonly-in-practice fields (`spanStart`,
+  `spanEnd`) on `Node`; no exports added.
+- Metadata mutations: `inherit` copies `_location`/span fields directly instead
+  of materializing the source's empty tuple through the `location` getter.
+- Routine error control: none added.
+- Allocation changes: deleted lazy `[]` materialization on hot reads; +2 inline
+  number fields per node until the parser-side tuple deletion lands.
+- Evidence: `pnpm --filter @jesscss/core build`, full core suite failure-set
+  diff vs saved baseline (identical minus one fixed test), `git diff --check`,
+  and `verify:aggressive-cutting-review` passed. No speed claim: the jess
+  benchmark harness does not currently build in this worktree (pre-existing
+  rolldown-plugin-dts/typescript-rc failure); run the ref-compare A/B when the
+  harness is repaired.
+
 - Latest pass: merge `feature/less-v5-alpha-readiness` into
   `feature/scanner-first-parser-docs`.
 - Verdict: accepted as branch repair and history integration, not a measured

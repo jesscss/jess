@@ -61,11 +61,11 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(start);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
-      w.add(consumeTriviaText(trivia, value.location[0], 'before', options));
+      w.add(consumeTriviaText(trivia, value.spanStart, 'before', options));
     }
     value.writeSyntax(options);
     if (trivia) {
-      w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
+      w.add(consumeTriviaText(trivia, this.spanEnd, 'before', options));
     }
     w.add(end);
     return w.getSince(position);

@@ -285,7 +285,7 @@ const emitLeadingTriviaForSingleInterpolatedCustomValue = (
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, source.location[0], 'before', options), options);
+  emitTriviaTokens(consumeTrivia(trivia, source.spanStart, 'before', options), options);
 };
 
 const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
@@ -301,7 +301,7 @@ const emitLeadingTriviaForCustomValue = (
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, value.location[0], 'before', options), options);
+  emitTriviaTokens(consumeTrivia(trivia, value.spanStart, 'before', options), options);
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {

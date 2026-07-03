@@ -397,7 +397,33 @@ export abstract class Node<
    */
   static childKeys: readonly string[] | null | undefined = undefined;
 
-  _location: NodeLocation | undefined;
+  private _loc: NodeLocation | undefined = undefined;
+
+  /**
+   * Start/end source offsets, denormalized from the location tuple so hot
+   * paths (trivia, serialization) read plain SMI fields instead of chasing the
+   * tuple. `undefined` = no source location. Synced by the `_location` setter;
+   * line/col slots ([1],[2],[4],[5]) may still be mutated in place on the
+   * tuple, but offsets must be set by assigning the whole tuple.
+   */
+  spanStart: number | undefined = undefined;
+  spanEnd: number | undefined = undefined;
+
+  get _location(): NodeLocation | undefined {
+    return this._loc;
+  }
+
+  set _location(location: NodeLocation | undefined) {
+    this._loc = location;
+    if (location !== undefined && location.length > 0) {
+      this.spanStart = location[0];
+      this.spanEnd = location[3];
+    } else {
+      this.spanStart = undefined;
+      this.spanEnd = undefined;
+    }
+  }
+
   get location() {
     return (this._location ??= []);
   }
@@ -458,8 +484,8 @@ export abstract class Node<
   /** Source byte-offset span for Parséman's NodeLike interface. */
   get span(): { start: number; end: number } {
     return {
-      start: this._location?.[0] ?? 0,
-      end: this._location?.[3] ?? 0
+      start: this.spanStart ?? 0,
+      end: this.spanEnd ?? 0
     };
   }
 
@@ -1134,7 +1160,7 @@ export abstract class Node<
    * replace their children for a specific placement.
    */
   canReuseAsLeaf(): boolean {
-    return (this._location?.length ?? 0) === 0
+    return this.spanStart === undefined
       && !this.hasFlag(F_NON_STATIC)
       && !this.hasFlag(F_HAS_NODE_CHILD);
   }
@@ -1391,7 +1417,7 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    this._location = node.location;
+    this._location = node._location;
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
       this._treeContext ??= node.sourceRoot?._treeContext;
@@ -1488,7 +1514,7 @@ export abstract class Node<
     const suppressPre = options.suppressBoundaryTrivia === 'pre'
       || options.suppressBoundaryTrivia === 'both';
     if (!suppressPre && trivia) {
-      emitTrivia(trivia, 'before', this.location[0], options);
+      emitTrivia(trivia, 'before', this.spanStart, options);
     }
     this.toTrimmedString(options);
     return w.getSince(mark);

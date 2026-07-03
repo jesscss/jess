@@ -94,7 +94,7 @@ function emitCallArgSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, arg, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    ? consumeTrivia(options.trivia, arg.spanStart, 'before', options)
     : undefined;
   const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
@@ -118,8 +118,8 @@ function emitCommentTriviaBetweenCallArgs(
   options: FinalPrintOptions
 ): string {
   const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
-  const prevEnd = prev.location[3];
-  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+  const prevEnd = prev.spanEnd;
+  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
     return '';
   }
   const run = trivia.lookup(prevEnd, 'after');

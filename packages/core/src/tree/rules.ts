@@ -567,7 +567,7 @@ function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
-  const offset = node.location[0];
+  const offset = node.spanStart;
   return trivia ? consumeTriviaText(trivia, offset, 'before', options) : '';
 }
 

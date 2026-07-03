@@ -122,7 +122,7 @@ export function renderListValueSyntax<T extends Node>(
     item = value[i]!;
     emitCommentTriviaBetweenNodes(prev, item, printOptions);
     const leadingTrivia = printOptions.trivia
-      ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
+      ? consumeTrivia(printOptions.trivia, item.spanStart, 'before', printOptions)
       : undefined;
     const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
     if (sep === '/') {
@@ -150,7 +150,7 @@ function emitListSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, item, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, item.location[0], 'before', options)
+    ? consumeTrivia(options.trivia, item.spanStart, 'before', options)
     : undefined;
   const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {

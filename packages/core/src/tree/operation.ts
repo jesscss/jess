@@ -109,7 +109,7 @@ export class Operation extends Node<OperationValue> {
     w.add(` ${op} `, this);
     if (options.trivia) {
       emitTriviaTokens(
-        consumeTrivia(options.trivia, right.location[0], 'before', options),
+        consumeTrivia(options.trivia, right.spanStart, 'before', options),
         options,
         { skipLeadingWhitespace: true }
       );

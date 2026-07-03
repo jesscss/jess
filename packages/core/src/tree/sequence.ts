@@ -243,12 +243,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         const hasTrivia = Boolean(
           trivia
           && (
-            hasNonWhitespaceTrivia(trivia.lookup(prev.location[3], 'after'))
-            || hasNonWhitespaceTrivia(trivia.lookup(node.location[0], 'before'))
+            hasNonWhitespaceTrivia(trivia.lookup(prev.spanEnd, 'after'))
+            || hasNonWhitespaceTrivia(trivia.lookup(node.spanStart, 'before'))
           )
         );
-        const prevEnd = prev.location[3];
-        const nodeStart = node.location[0];
+        const prevEnd = prev.spanEnd;
+        const nodeStart = node.spanStart;
         const noSep = Boolean(
           sourceTrivia
           && prevEnd !== undefined
@@ -363,7 +363,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     emitCommentTriviaBetweenNodes(prev, node, printOptions);
     const emittedBetween = (printOptions.emittedTrivia?.size ?? 0) !== emittedBefore;
     const leadingTrivia = sourceTrivia
-      ? consumeTrivia(sourceTrivia, node.location[0], 'before', printOptions)
+      ? consumeTrivia(sourceTrivia, node.spanStart, 'before', printOptions)
       : undefined;
     if (leadingTrivia) {
       emitTriviaTokens(leadingTrivia, printOptions);
@@ -374,8 +374,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const prevLastChar = w.lastChar();
     const prevEndsWithSpace = prevLastChar === ' ';
-    const prevEnd = prev.location[3];
-    const nodeStart = node.location[0];
+    const prevEnd = prev.spanEnd;
+    const nodeStart = node.spanStart;
     const noSep = Boolean(
       sourceTrivia
       && prevEnd !== undefined

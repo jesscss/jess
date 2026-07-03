@@ -190,7 +190,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
               w.add(' ', this);
             }
           } else {
-            const coStart = component.location[0];
+            const coStart = component.spanStart;
             const spaceBeforeTrivia = coStart !== undefined
               && tokens?.start !== undefined
               && coStart < tokens.start;
