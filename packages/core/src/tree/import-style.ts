@@ -999,6 +999,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       local: isLocal,
       forward: isForward,
       importBoundary: hasImportBoundary,
+      // A plain `@import` or a wildcard `@compose (namespace: *)` dumps its members
+      // into the enclosing scope (linked as a fallback frame there). A named/plain
+      // compose keeps its members behind its namespace.
+      inlinesMembersToParent: this.options.type === 'import' || this.options.namespace === '*',
       referenceMode: isReferenceMode,
       readonly
     };
