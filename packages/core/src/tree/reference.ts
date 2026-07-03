@@ -13,7 +13,7 @@ import { Num } from './number.js';
 import { Dimension } from './dimension.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { Rules } from './rules.js';
+import { Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
@@ -297,7 +297,14 @@ function getLookupStartIndex(node: Node): number | undefined {
     }
   }
 
-  while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
+  // Walk up to the nearest ENCLOSING SCOPE boundary, taking the outermost
+  // in-scope statement's index. The boundary is any Rules SUBCLASS — Ruleset,
+  // Mixin, and the control nodes ($if/$for/$while all extend Rules) — not just the
+  // exact `N.Rules` bit. `isNode(parent, N.Rules)` missed control-node parents, so
+  // for a SHARED loop body a body declaration's `@ref` walked PAST its own
+  // VarDeclaration up to the `$while`, overstating `start` and making a
+  // self-referential `i: i+1` read itself instead of the enclosing (previous) value.
+  while (currentNode && currentNode.parent && !(currentNode.parent instanceof Rules)) {
     currentNode = currentNode.parent;
     if (currentNode && currentNode.index !== undefined) {
       startIndex = currentNode.index;
