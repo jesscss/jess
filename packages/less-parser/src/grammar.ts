@@ -435,8 +435,12 @@ const cssRules = rules((g: any) => {
   // fallback for non-CSS-shaped values.
   const cpSingleStr = regex(/'(?:[^'\n\\]|\\.)*'/);
   const cpDoubleStr = regex(/"(?:[^"\n\\]|\\.)*"/);
-  const cpInnerContent = regex(/[^(){}[\]'"\/]+|\/(?!\*)/);
-  const cpOuterContent = regex(/[^(){}[\];'"\/]+|\/(?!\*)/);
+  // Content runs include CSS escapes (`\'`, `\(`, `\;`): `\` + any non-newline is an
+  // escaped code point (§4.3.7), so an escaped quote/bracket/semicolon is literal
+  // content, NOT a string/bracket/terminator. A lone `/` (division) is content;
+  // `/*` is left for the comment alt.
+  const cpInnerContent = regex(/(?:\\[^\n]|[^(){}[\]'"\/\\])+|\/(?!\*)/);
+  const cpOuterContent = regex(/(?:\\[^\n]|[^(){}[\];'"\/\\])+|\/(?!\*)/);
   const cpInner = many(choice(cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
   const cpParen = sequence(literal('('), g.cpInner, expect(literal(')'), ')'));
   const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']'), ']'));
