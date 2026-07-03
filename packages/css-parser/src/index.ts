@@ -9,4 +9,4 @@ export {
   buildLazyTriviaMap,
   type Component, type Spanned
 } from './builders.js';
-export { parseCssFn } from './grammar.js';
+export { parseCssFn, toParseError } from './grammar.js';

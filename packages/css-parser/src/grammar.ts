@@ -16,7 +16,7 @@ import {
   not, scanTo, balanced, parser, trivia, rules, expect
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, type Rules, type TriviaMap, nil } from '@jesscss/core';
+import { Node, type Rules, type TriviaMap, nil, makeJessError, type JessError } from '@jesscss/core';
 import { CssParser, buildLazyTriviaMap } from './builders.js';
 
 // ---------------------------------------------------------------------------
@@ -313,10 +313,36 @@ export const {
 
 export type CssParseResult = {
   tree: Rules;
-  errors: Array<{ message: string; offset?: number }>;
+  errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
 };
+
+/**
+ * Convert a raw furthest-fail diagnostic (`{ message, offset }`) into the typed
+ * `JessError` every parser must emit — carrying line/column (1-based, derived
+ * from `source` + `offset`), the source, and a `parse/syntax-error` code. Shared
+ * by the css and less functional parsers so their `errors` output is identical in
+ * shape. `offset` is preserved on the instance for callers that still want it.
+ */
+export function toParseError(message: string, offset: number | undefined, source: string, filePath?: string): JessError {
+  let line = 1;
+  let column = 1;
+  if (typeof offset === 'number') {
+    const clamped = Math.max(0, Math.min(offset, source.length));
+    let lastNl = -1;
+    for (let i = 0; i < clamped; i++) {
+      if (source.charCodeAt(i) === 10) {
+        line++;
+        lastNl = i;
+      }
+    }
+    column = clamped - lastNl;
+  }
+  const err = makeJessError({ code: 'parse/syntax-error', phase: 'parse', source, filePath, line, column, summary: message });
+  (err as JessError & { offset?: number }).offset = offset;
+  return err;
+}
 
 /**
  * First offset at/after `from` holding real (non-trivia) input, or null if only
@@ -382,7 +408,9 @@ export function parseCssFn(input: string): CssParseResult {
   }
   // Default: report ONE error and stop — the earliest by position.
   collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
-  const errors = collected.length > 0 ? [collected[0]!] : [];
+  const errors: JessError[] = collected.length > 0
+    ? [toParseError(collected[0]!.message, collected[0]!.offset, input)]
+    : [];
 
   return {
     tree,

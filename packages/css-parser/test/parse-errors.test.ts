@@ -12,6 +12,7 @@ import { describe, test, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseCssFn } from '../src/grammar.js';
+import { JessError } from '@jesscss/core';
 
 const dir = path.join(__dirname, 'css', 'errors');
 
@@ -42,11 +43,14 @@ describe('css syntax errors (parseCssFn)', () => {
       const { errors } = parseCssFn(src);
       expect(errors.length).toBeGreaterThanOrEqual(1);
       const err = errors[0]!;
+      // Every parser emits a typed JessError (same shape across css/less).
+      expect(err).toBeInstanceOf(JessError);
+      expect(err.code).toBe('parse/syntax-error');
       // category, not exact message
       expect(err.message.toLowerCase()).toContain(category);
-      // position (line/column), not printed shape
-      expect(err.offset).toBeTypeOf('number');
-      expect(lineCol(src, err.offset!)).toEqual({ line, column });
+      // typed line/column directly off the JessError (not recomputed from offset)
+      expect({ line: err.line, column: err.column }).toEqual({ line, column });
+      void lineCol;
     });
   }
 

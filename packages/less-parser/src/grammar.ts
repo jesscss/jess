@@ -11,9 +11,9 @@ import {
   not, scanTo, balanced, parser, trivia, noTrivia, rules, expect, sepBy
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, Rules, type TriviaMap, type MathMode, nil } from '@jesscss/core';
+import { Node, Rules, type TriviaMap, type MathMode, nil, type JessError } from '@jesscss/core';
 import { LessGrammar } from './builders.js';
-import { buildLazyTriviaMap } from '@jesscss/css-parser';
+import { buildLazyTriviaMap, toParseError } from '@jesscss/css-parser';
 
 // ---------------------------------------------------------------------------
 // Builder host — reuse LessGrammar's builders (Less + inherited CSS buildNode).
@@ -582,7 +582,7 @@ const ALIASES: Record<string, string> = {
 
 export type LessFnParseResult = {
   tree: Rules;
-  errors: Array<{ message: string; offset?: number }>;
+  errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
   lexerResult: { errors: Array<unknown> };
@@ -664,7 +664,9 @@ export function parseLessFn(input: string, rule = 'stylesheet', mathMode: MathMo
   }
   collected.push(...host.getErrors());
   collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
-  const errors = collected.length > 0 ? [collected[0]!] : [];
+  const errors: JessError[] = collected.length > 0
+    ? [toParseError(collected[0]!.message, collected[0]!.offset, input)]
+    : [];
 
   return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input), lexerResult: { errors: [] } };
 }
