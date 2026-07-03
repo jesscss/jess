@@ -425,18 +425,23 @@ const cssRules = rules((g: any) => {
   // So an unmatched, stray, or CROSS-TYPE bracket (`({[ })`) surfaces a syntax error
   // instead of being swallowed. noTrivia keeps the value verbatim; inside a group a
   // `;` is content (only the group's own close ends it), at top level `;`/`}` end it.
-  const cpInnerContent = regex(/[^(){}[\]'"]+/);
-  const cpOuterContent = regex(/[^(){}[\];'"]+/);
-  // A custom-property value is permissive/opaque: a stray apostrophe (`i'm serious`
-  // inside the value) is consumed as a literal char so scanning continues. Only `'`
-  // — an unclosed `"` stays a hard error (custom-property-unmatched-block-3). Tried
-  // AFTER singleStr/doubleStr so real quoted strings still win.
-  const cpStray = regex(/'/);
-  const cpInner = many(choice(cpInnerContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr, cpStray));
+  // Custom-property value = CSS `<declaration-value>` (spec-close, not Less 4.x's
+  // permissive pass): opaque tokens with ()/[]/{} balanced; `/* … */` comments are
+  // preserved and their contents NOT tokenized (`/* { ; } */`); strings are
+  // line-bounded, so a quote left unclosed before the newline is a
+  // `<bad-string-token>` → hard error (matches browsers — `--x: don't` is invalid).
+  // `//` is NOT a comment here (CSS), just delim content. A `{ … }` value that fits
+  // a declaration list is structured upstream by customCurlyBlock; this is the
+  // fallback for non-CSS-shaped values.
+  const cpSingleStr = regex(/'(?:[^'\n\\]|\\.)*'/);
+  const cpDoubleStr = regex(/"(?:[^"\n\\]|\\.)*"/);
+  const cpInnerContent = regex(/[^(){}[\]'"\/]+|\/(?!\*)/);
+  const cpOuterContent = regex(/[^(){}[\];'"\/]+|\/(?!\*)/);
+  const cpInner = many(choice(cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
   const cpParen = sequence(literal('('), g.cpInner, expect(literal(')'), ')'));
   const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']'), ']'));
   const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}'), '}'));
-  const cpValue = noTrivia(many(choice(cpOuterContent, g.cpParen, g.cpSquare, g.cpCurly, singleStr, doubleStr, cpStray)));
+  const cpValue = noTrivia(many(choice(cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
