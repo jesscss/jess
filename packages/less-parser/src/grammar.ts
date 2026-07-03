@@ -320,7 +320,7 @@ const cssRules = rules((g: any) => {
     sequence(literal('('), scanTo(literal(')'), { skip: [balanced('(', ')')] }), literal(')'))
   );
   const PseudoSelector = node('PseudoSelector',
-    parser({ trivia: rw }, sequence(pseudoColon, ident, optional(g.pseudoSelectorParens))),
+    parser({ trivia: rw }, sequence(pseudoColon, choice(interpKey, ident), optional(g.pseudoSelectorParens))),
     (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
 
   // ── Extend grammar (faithful port of selectors.ts `extend`/`ampersandExtend`)
