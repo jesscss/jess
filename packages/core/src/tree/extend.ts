@@ -21,6 +21,7 @@ import { SelectorList } from './selector-list.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { copySelectorForPlacement } from './util/selector-utils.js';
 import {
@@ -397,7 +398,7 @@ function hasMaterializableImplicitAmpersand(
     if (isNode(node, N.ComplexSelector)) {
       return node.value.some(part => (
         typeof part !== 'string'
-        && !isNode(part, N.Combinator)
+        && !isCombinator(part)
         && visit(part)
       ));
     }

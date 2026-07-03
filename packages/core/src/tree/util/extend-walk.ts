@@ -57,7 +57,7 @@ import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { Ruleset } from '../ruleset.js';
 import { isNode } from './is-node.js';
-import { isCombinator } from './combinator.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
@@ -86,7 +86,7 @@ function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
   return value instanceof SimpleSelector
     || value instanceof CompoundSelector
     || value instanceof ComplexSelector
-    || value instanceof Combinator;
+    || isCombinator(value);
 }
 
 function selectorArgOf(pseudo: PseudoSelector): Selector | undefined {
@@ -121,8 +121,8 @@ function decomposeFind(find: Selector): FindSpec {
     const positions: Selector[][] = [];
     const combinators: string[] = [];
     for (const comp of find.value) {
-      if (comp instanceof Combinator) {
-        combinators.push(comp.value);
+      if (isCombinator(comp)) {
+        combinators.push(combinatorValue(comp));
       } else if (comp instanceof CompoundSelector) {
         positions.push(comp.value.filter((c): c is SimpleSelector => typeof c !== 'string'));
       } else if (isSelectorNode(comp)) {
@@ -213,8 +213,8 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
     if (isCombinator(ac) !== isCombinator(bc)) {
       return false;
     }
-    if (ac instanceof Combinator) {
-      if (!(bc instanceof Combinator) || ac.value !== bc.value) {
+    if (isCombinator(ac)) {
+      if (!isCombinator(bc) || combinatorValue(ac) !== combinatorValue(bc)) {
         return false;
       }
       continue;
@@ -251,7 +251,7 @@ function tailOf(sel: Selector): Selector {
     const comps = sel.value;
     for (let i = comps.length - 1; i >= 0; i--) {
       const comp = comps[i];
-      if (comp && !(comp instanceof Combinator) && isSelectorNode(comp)) {
+      if (comp && !isCombinator(comp) && isSelectorNode(comp)) {
         return comp;
       }
     }

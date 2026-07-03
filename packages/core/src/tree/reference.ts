@@ -5,7 +5,7 @@ import type { DeclarationFindOptions } from './util/lookup-utils.js';
 import { Any, type AnyRole } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
-import { isCombinator } from './util/combinator.js';
+import { isCombinator, combinatorValue } from './util/combinator.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
@@ -270,7 +270,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
       ) {
         continue;
       }
-      if (isCombinator(node) && (node.value === '>' || node.value === ' ')) {
+      if (isCombinator(node) && (combinatorValue(node) === '>' || combinatorValue(node) === ' ')) {
         continue;
       }
       return selector.valueOf();

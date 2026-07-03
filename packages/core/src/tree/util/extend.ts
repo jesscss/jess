@@ -119,7 +119,7 @@ import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
-import { isCombinator } from './combinator.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
@@ -3443,7 +3443,7 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
           // (implicit nesting uses `&` + generated whitespace combinator).
           const next = parentItems[idx];
-          if (isCombinator(next) && next.value === ' ') {
+          if (isCombinator(next) && combinatorValue(next) === ' ') {
             parentItems.splice(idx, 1);
           }
         }
