@@ -23,6 +23,7 @@ import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
+import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
@@ -316,6 +317,15 @@ export class Context {
   ruleCounter = 1;
 
   selectorBits = new BitSetLibrary<string>();
+
+  /**
+   * Selector key-set analysis (keySet / visibleKeySet / requiredKeySet), computed
+   * off the selector nodes. Scoped to this Context's bit library, so its cache and
+   * interned keys live and die with the compilation — no cross-run leak.
+   */
+  get selectorAnalysis(): SelectorAnalysis {
+    return selectorAnalysisFor(this.selectorBits);
+  }
 
   /** Rules depth, used to figure out source order */
   depth = -1;
