@@ -431,7 +431,9 @@ const cssRules = rules((g: any) => {
   const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
-  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
+  // The value after a comma is optional so a trailing comma is tolerated
+  // (`@items: a, b, c,;` — Less accepts it as a comma list with an empty tail).
+  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), optional(g.valueSequence)))));
   const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
   // Interpolated value token (`@{colorVar}`, `pre-@{x}`). Chevrotain lexes this as
   // InterpolatedIdent and `processValueToken` runs it through getInterpolatedOrString
