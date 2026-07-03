@@ -32,8 +32,6 @@ export type VarDeclarationOptions = DeclarationOptions & {
  * e.g. `$(var1, var2): 1 2`
  */
 export class VarDeclaration extends Declaration<VarDeclarationOptions> {
-  override allowRuleRoot = true;
-  override allowRoot = true;
   constructor(
     value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,

@@ -545,8 +545,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   name: DeclarationValue['name'];
   important: DeclarationValue['important'];
 
-  override allowRuleRoot = true;
-
   constructor(
     value: DeclarationValue,
     options?: Opts,

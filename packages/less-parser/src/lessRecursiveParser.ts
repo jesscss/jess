@@ -109,6 +109,11 @@ export type RuleContext = CssRuleContext & {
   atRulePreludeBareVariableAs?: 'index';
 };
 
+/**
+ * @deprecated LEGACY — Chevrotain-based Less parser engine (extends the deprecated
+ * CssRecursiveParser). Superseded by the functional macro grammar in ./grammar.ts.
+ * Kept only for benchmarking; TO BE DELETED once the functional parser fully lands.
+ */
 export class LessRecursiveParser extends CssRecursiveParser {
   declare T: TokenMap;
   looseMode: boolean;

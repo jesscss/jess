@@ -866,9 +866,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   readonly rules: Node[];
 
-  override allowRuleRoot = true;
-  override allowRoot = true;
-
   functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
   varsByName: Map<string, BindingEntry[]> | undefined;

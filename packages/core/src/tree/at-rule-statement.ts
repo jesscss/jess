@@ -30,9 +30,6 @@ function trimLeadingHeaderWhitespace(text: string): string {
 export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
   static override childKeys = ['name', 'prelude'] as const;
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   name: AtRuleStatementField;
   prelude: AtRuleStatementField | undefined;
 

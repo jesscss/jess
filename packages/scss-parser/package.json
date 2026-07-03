@@ -37,10 +37,10 @@
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/parser": "workspace:*",
-    "chevrotain": "^12.0.0",
-    "parseman": "workspace:*"
+    "chevrotain": "^12.0.0"
   },
   "devDependencies": {
+    "parseman": "workspace:*",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

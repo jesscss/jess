@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type {
   TokenType
 } from 'chevrotain';
@@ -33,6 +34,13 @@ export type JessRuleContext = {
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
 
+/**
+ * @deprecated LEGACY — Chevrotain-based Jess parser engine (extends the deprecated
+ * ScssRecursiveParser). The functional macro grammar (`JessGrammar` /
+ * `JessParserParseman` in ./parseman/) is the successor; it is not yet at full
+ * parity, so the `JessParser` wrapper still ships as the primary `Parser`. TO BE
+ * DELETED once the functional Jess parser reaches parity.
+ */
 export class JessRecursiveParser extends ScssRecursiveParser {
   declare T: JessTokenMap;
 
@@ -74,12 +82,13 @@ export class JessRecursiveParser extends ScssRecursiveParser {
     T: JessTokenMap,
     config: JessParserConfig = {}
   ) {
-    super(T as unknown as CombinedTokenMap, config);
+    super(T as any, config);
     this.T = T;
     type ProductionFactory = (this: JessRecursiveParser, T: JessTokenMap) => Rule;
-    const entries = Object.entries(productions) as Array<[keyof typeof productions, ProductionFactory]>;
-
-    for (const [key, factory] of entries) {
+    for (const [key, factory] of Object.entries(productions as Record<string, ProductionFactory>)) {
+      if (typeof factory !== 'function') {
+        continue;
+      }
       const rule = factory.call(this, this.T);
       if (key in cssProductions) {
         this.OVERRIDE_RULE(key, rule);
@@ -88,7 +97,7 @@ export class JessRecursiveParser extends ScssRecursiveParser {
       }
     }
 
-    if ((this.constructor as typeof JessRecursiveParser) === JessRecursiveParser) {
+    if (this.constructor === JessRecursiveParser) {
       this.performSelfAnalysis();
     }
   }

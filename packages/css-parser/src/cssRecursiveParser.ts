@@ -95,6 +95,12 @@ export interface CssRecursiveParserConfig {
 
 // ── Parser ───────────────────────────────────────────────────────────
 
+/**
+ * @deprecated LEGACY — Chevrotain-based CSS parser engine. Superseded by the
+ * functional macro grammar (`parseCssFn` / `CssParser` builders in ./grammar.ts +
+ * ./builders.ts). Kept only for benchmarking; TO BE DELETED once the functional
+ * parser fully lands.
+ */
 export class CssRecursiveParser extends EmbeddedActionsParser {
   /** Chevrotain uses RECORDING_PHASE during performSelfAnalysis */
   declare RECORDING_PHASE: boolean;

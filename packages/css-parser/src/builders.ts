@@ -484,16 +484,26 @@ export class CssParser {
     return node;
   }
 
+  // ── Selector-node construction seams ───────────────────────────────────────
+  // `SelectorList` and `BasicSelector` are slated for removal: a selector list
+  // becomes a plain array, and a basic selector becomes a bare string. Every
+  // functional-builder construction routes through these two helpers so that
+  // migration is a one-line change here instead of ~20 scattered edits.
+  protected _makeSelectorList(items: unknown, loc: LocationInfo): JessNode {
+    return new SelectorList(items as (Selector | string)[], undefined, loc) as unknown as JessNode;
+  }
+
+  protected _makeBasicSelector(value: string, loc: LocationInfo): JessNode {
+    return new BasicSelector(value, undefined, loc) as unknown as JessNode;
+  }
+
   protected _buildSelectorList(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const items = spannedComponents(rawChildren).filter(i => i.comp !== ',');
     if (items.length === 1) {
       return items[0]!.comp as unknown as JessNode;
     }
-    const node = new SelectorList(
-      items.map(i => i.comp) as unknown as (Selector | string)[],
-      undefined, loc
-    );
-    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
+    const node = this._makeSelectorList(items.map(i => i.comp), loc);
+    setValueSpans(node, items.map(i => i.span));
     return node;
   }
 
@@ -796,82 +806,6 @@ export class CssParser {
     return false;
   }
 
-  /**
-   * Fold a flat `operand op operand …` sequence into precedence-climbed Operation
-   * nodes (`* / %` bind tighter than `+ -`, left-associative). Returns null when the
-   * sequence is not a clean arithmetic chain, so a plain value list is left
-   * untouched. `slashEnabled` decides whether `/` divides (Operation) or stays a
-   * slash-List.
-   *
-   * The Less grammar now folds arithmetic in the grammar itself (mathSum/topSum →
-   * Operation nodes), so this is a no-op on the Less path (a pre-built Operation is a
-   * single part). The CSS grammar still emits a flat token run for calc/paren bodies,
-   * which this structures — hence it is retained on the shared CssParser builder.
-   */
-  protected _foldOperations(
-    parts: ReadonlyArray<unknown>,
-    loc: LocationInfo,
-    opts: { slashEnabled: boolean }
-  ): JessNode | null {
-    const asOp = (p: unknown): string | null => {
-      const v = typeof p === 'string'
-        ? p.trim()
-        : (p && typeof p === 'object' && (p as { type?: string }).type === 'Any'
-            ? String((p as { value?: unknown }).value ?? '').trim()
-            : '');
-      return v && /^[-+*/%]$/.test(v) ? v : null;
-    };
-    const isOperand = (p: unknown): boolean =>
-      !!p && typeof p === 'object' && 'type' in (p as object) && !asOp(p);
-    if (parts.length < 3 || parts.length % 2 === 0) {
-      return null;
-    }
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 0 ? !isOperand(parts[i]) : !asOp(parts[i])) {
-        return null;
-      }
-    }
-    const { slashEnabled } = opts;
-    const makeOp = (l: unknown, op: string, r: unknown): JessNode =>
-      new Operation(
-        [l, op, r] as unknown as ConstructorParameters<typeof Operation>[0],
-        undefined, loc
-      ) as unknown as JessNode;
-    const product = (seq: ReadonlyArray<unknown>): unknown[] => {
-      const out: unknown[] = [seq[0]];
-      for (let i = 1; i < seq.length; i += 2) {
-        const op = asOp(seq[i])!;
-        const right = seq[i + 1];
-        if (op === '+' || op === '-') {
-          out.push(seq[i], right);
-          continue;
-        }
-        const left = out.pop();
-        if (op === '/' && !(slashEnabled && this._isDivisionLike(left) && this._isDivisionLike(right))) {
-          const leftList = left as { type?: string; value?: unknown[]; options?: { sep?: string } };
-          out.push(
-            leftList && leftList.type === 'List' && leftList.options?.sep === '/'
-              ? new List([...leftList.value!, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
-              : new List([left, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
-          );
-        } else {
-          out.push(makeOp(left, op, right));
-        }
-      }
-      return out;
-    };
-    const sum = (seq: ReadonlyArray<unknown>): unknown[] => {
-      const out: unknown[] = [seq[0]];
-      for (let i = 1; i < seq.length; i += 2) {
-        out.push(makeOp(out.pop(), asOp(seq[i])!, seq[i + 1]));
-      }
-      return out;
-    };
-    const folded = sum(product(parts));
-    return folded.length === 1 ? (folded[0] as JessNode) : null;
-  }
-
-
   protected _buildCustomDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const propName = ls[0]?.value ?? '';
@@ -913,30 +847,18 @@ export class CssParser {
       return name;
     }
     const inner = this._betweenParens(items);
-    // `calc(…)` is a math context: fold its body into an Operation chain (`/` always
-    // divides here). The Less grammar already folds arithmetic into Operation nodes,
-    // so `inner` is a single Operation and this is a no-op there; the CSS grammar
-    // still emits a flat token run that this fold structures.
-    if (name.toLowerCase() === 'calc') {
-      const folded = this._foldOperations(inner.map(i => i.comp), loc, { slashEnabled: true });
-      if (folded) {
-        return new Call({ name, args: new List([folded as unknown as Node], undefined, loc) }, undefined, loc);
-      }
-    }
+    // Arithmetic (calc bodies, nested groups) is folded into Operation nodes by the
+    // grammar's math rules in both the CSS and Less grammars, so `inner` already
+    // carries the built expression — no builder-side precedence fold is needed.
     const args = this._assembleArgs(inner, loc);
     return new Call({ name, args: args as unknown as List<Node> }, undefined, loc);
   }
 
   protected _buildParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const inner = this._betweenParens(spannedComponents(rawChildren));
-    // A value-position paren in a math context (calc / nested groups): fold an
-    // arithmetic chain into Operation nodes. The Less grammar already produces a
-    // single Operation here (no-op fold); the CSS grammar produces a flat token run
-    // that this fold structures.
-    const folded = this._foldOperations(inner.map(i => i.comp), loc, { slashEnabled: true });
-    if (folded) {
-      return new Paren(folded as unknown as Node, undefined, loc);
-    }
+    // Arithmetic inside the paren is already folded into an Operation node by the
+    // grammar (calcParen / Less mathSum), so `inner` carries the built expression —
+    // assemble directly.
     const { value } = this._assembleValue(inner, loc);
     return new Paren(value as unknown as Node, undefined, loc);
   }

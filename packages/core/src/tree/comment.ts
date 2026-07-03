@@ -20,8 +20,6 @@ export class Comment extends Node<string, CommentOptions> {
 
   readonly value: string;
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
   readonly lineComment: boolean;
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {

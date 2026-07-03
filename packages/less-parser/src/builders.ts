@@ -644,8 +644,8 @@ export class LessGrammar extends CssParser {
     const flag = hasFlag ? ExtendFlag.All : ExtendFlag.Exact;
     const targetComp = comps.find(c => !isFlag(c.comp))?.comp;
     const target = (typeof targetComp === 'string'
-      ? new BasicSelector(targetComp, undefined, loc) as unknown as Selector
-      : (targetComp ?? new BasicSelector('&', undefined, loc)) as unknown as Selector);
+      ? this._makeBasicSelector(targetComp, loc) as unknown as Selector
+      : (targetComp ?? this._makeBasicSelector('&', loc)) as unknown as Selector);
     return new Extend({ target, flag }, {}, loc) as unknown as JessNode;
   }
 
@@ -660,14 +660,14 @@ export class LessGrammar extends CssParser {
       target: Selector; flag: number;
     }>;
     if (targets.length === 0) {
-      return new Extend({ target: new BasicSelector('&', undefined, loc), flag: ExtendFlag.Exact }, {}, loc) as unknown as JessNode;
+      return new Extend({ target: this._makeBasicSelector('&', loc), flag: ExtendFlag.Exact }, {}, loc) as unknown as JessNode;
     }
     const firstFlag = targets[0]!.flag;
     const allSameFlag = targets.every(t => t.flag === firstFlag);
     if (allSameFlag) {
       const target = targets.length === 1
         ? targets[0]!.target
-        : new SelectorList(targets.map(t => t.target) as any, undefined, loc) as unknown as Selector;
+        : this._makeSelectorList(targets.map(t => t.target) as any, loc) as unknown as Selector;
       return new Extend({ target, flag: firstFlag }, {}, loc) as unknown as JessNode;
     }
     const extendNodes: JessNode[] = targets.map(t =>
@@ -685,7 +685,7 @@ export class LessGrammar extends CssParser {
     children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
   ): JessNode {
     const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List');
-    return (built ?? new Extend({ target: new BasicSelector('&', undefined, loc), flag: ExtendFlag.Exact }, {}, loc)) as unknown as JessNode;
+    return (built ?? new Extend({ target: this._makeBasicSelector('&', loc), flag: ExtendFlag.Exact }, {}, loc)) as unknown as JessNode;
   }
 
   /**
@@ -1488,7 +1488,7 @@ export class LessGrammar extends CssParser {
     let anyNormalized = false;
     for (const item of selector.value) {
       const normalized = typeof item === 'string'
-        ? new BasicSelector(item as string, undefined, loc) as unknown as JessNode
+        ? this._makeBasicSelector(item as string, loc) as unknown as JessNode
         : item as unknown as JessNode;
       if (normalized !== item) {
         anyNormalized = true;
@@ -1508,7 +1508,7 @@ export class LessGrammar extends CssParser {
       const normalizedItems = perSelector.map(s => s.clean).filter(Boolean);
       const combinedSel = normalizedItems.length === 1
         ? normalizedItems[0]!
-        : new SelectorList(normalizedItems as any, undefined, loc);
+        : this._makeSelectorList(normalizedItems as any, loc);
       return new Ruleset(
         { selector: combinedSel as any, rules: baseRules },
         undefined, loc
@@ -1524,7 +1524,7 @@ export class LessGrammar extends CssParser {
       const cleanedItems = perSelector.map(s => s.clean).filter(Boolean);
       const combinedSel = cleanedItems.length === 1
         ? cleanedItems[0]!
-        : new SelectorList(cleanedItems as any, undefined, loc);
+        : this._makeSelectorList(cleanedItems as any, loc);
       return new Ruleset(
         { selector: combinedSel as any, rules: [...uniqueExtends, ...baseRules] },
         undefined, loc
@@ -1553,7 +1553,7 @@ export class LessGrammar extends CssParser {
 
     const combinedSel = cleanedItems.length === 1
       ? cleanedItems[0]!
-      : new SelectorList(cleanedItems as any, undefined, loc);
+      : this._makeSelectorList(cleanedItems as any, loc);
 
     wrapperRules.push(new Ruleset(
       { selector: combinedSel as any, rules: baseRules },
@@ -1599,7 +1599,7 @@ export class LessGrammar extends CssParser {
         : newParts.length === 1
           // Single string part → wrap as BasicSelector so serializeTypes shows the type
           ? (typeof newParts[0] === 'string'
-              ? new BasicSelector(newParts[0], undefined, loc) as unknown as JessNode
+              ? this._makeBasicSelector(newParts[0], loc) as unknown as JessNode
               : newParts[0] as JessNode)
           : new CompoundSelector(newParts, undefined, loc) as unknown as JessNode;
       return { cleanedSelector, extractedExtends };
@@ -1639,7 +1639,7 @@ export class LessGrammar extends CssParser {
         // Single leftover part → unwrap; wrap a bare string as BasicSelector so
         // serializeTypes shows the selector type (mirrors the CompoundSelector branch).
         ? (typeof newParts[0] === 'string'
-            ? new BasicSelector(newParts[0], undefined, loc) as unknown as JessNode
+            ? this._makeBasicSelector(newParts[0], loc) as unknown as JessNode
             : newParts[0] as JessNode)
         : new ComplexSelector(newParts as any, undefined, loc) as unknown as JessNode;
       return { cleanedSelector: newComplex, extractedExtends: allExtends };
@@ -1652,7 +1652,7 @@ export class LessGrammar extends CssParser {
       let changed = false;
       for (const item of selector.value) {
         const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(
-          typeof item === 'string' ? new BasicSelector(item, undefined, loc) as unknown as JessNode : item as any,
+          typeof item === 'string' ? this._makeBasicSelector(item, loc) as unknown as JessNode : item as any,
           loc
         );
         allExtends.push(...ee);
@@ -1670,12 +1670,12 @@ export class LessGrammar extends CssParser {
         // No extends, but strings were normalized to BasicSelector
         const newSel = cleanedItems.length === 1
           ? cleanedItems[0] as JessNode
-          : new SelectorList(cleanedItems, undefined, loc) as unknown as JessNode;
+          : this._makeSelectorList(cleanedItems, loc) as unknown as JessNode;
         return { cleanedSelector: newSel, extractedExtends: [] };
       }
       const newSel = cleanedItems.length === 1
         ? cleanedItems[0] as JessNode
-        : new SelectorList(cleanedItems, undefined, loc) as unknown as JessNode;
+        : this._makeSelectorList(cleanedItems, loc) as unknown as JessNode;
       return { cleanedSelector: newSel, extractedExtends: allExtends };
     }
 

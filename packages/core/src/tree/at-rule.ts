@@ -637,7 +637,6 @@ export type AtRuleOptions = NodeOptions;
  */
 export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   static override childKeys = ['name', 'prelude', 'rules'] as const;
-  override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
 

@@ -23,9 +23,6 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
 
   readonly value: Extend[];
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.

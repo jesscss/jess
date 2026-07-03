@@ -180,7 +180,6 @@ function deriveIterationChild(node: Node): Node {
   return copyWithReusableLeaves(node);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the VarDeclaration field type of each binding decl.
 function cloneForPattern(pattern: ForPattern, cloneFn: (n: Node) => Node): ForPattern {
   if (pattern.kind === 'single') {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -494,9 +493,6 @@ export class If extends Rules<IfValue> {
   readonly else: IfValue['else'];
   declare readonly rules: Node[];
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
@@ -621,9 +617,6 @@ export class For extends Rules<StructuredLoopValue> {
   readonly pattern: ForPattern;
   readonly iterable: ForIterable;
   declare readonly rules: Node[];
-
-  override allowRoot = true;
-  override allowRuleRoot = true;
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
@@ -836,9 +829,6 @@ export class While extends Rules<WhileValue> {
 
   readonly condition: Node;
   declare readonly rules: Node[];
-
-  override allowRoot = true;
-  override allowRuleRoot = true;
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.

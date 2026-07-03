@@ -11,8 +11,6 @@ import { emitNodeSourceSyntaxWithTrivia } from './util/trivia.js';
  * without parent-managed newlines or indentation.
  */
 export class RawRules extends Rules {
-  override allowRuleRoot = true;
-
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(rawOptions?: PrintOptions) {
     const options = getPrintOptions(rawOptions);

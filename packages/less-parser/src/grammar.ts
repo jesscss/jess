@@ -14,6 +14,10 @@ import type { Span } from 'parseman';
 import { Node, Rules, type TriviaMap, type MathMode, nil, type JessError } from '@jesscss/core';
 import { LessGrammar } from './builders.js';
 import { buildLazyTriviaMap, toParseError } from '@jesscss/css-parser';
+// Shared Num/Color rules, spread into the map below. Imported cross-package from
+// css-parser; the macro resolves it to css-parser's SOURCE (via its `source`
+// export condition) and inlines it — the same rules the CSS grammar uses.
+import { numericRules, parenRules, queryRules, stringRules } from '@jesscss/css-parser/shared-value-rules';
 
 // ---------------------------------------------------------------------------
 // Builder host — reuse LessGrammar's builders (Less + inherited CSS buildNode).
@@ -48,7 +52,7 @@ class BuilderHost extends LessGrammar {
 
 const host = new BuilderHost();
 
-export function mk(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
+export function build(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
   return host.build(type, { start: span.start, end: span.end }, children, rawChildren);
 }
 
@@ -75,6 +79,8 @@ const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
 const attrMod = regex(/[is]/i);
 const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
+// Same pattern as shared-value-rules.ts `singleStr`/`doubleStr` — local so the macro
+// can statically evaluate regex(); `\\` + newline is valid CSS line continuation.
 const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
 const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 // Balanced bracket scans that treat strings as opaque holes — a bracket inside
@@ -92,7 +98,6 @@ const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
 const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
-const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
 const urlOpen = regex(/url\(/i);
 // Unquoted url() body: any run of non-delimiter chars, with CSS escapes (\" \( …)
 // so escaped quotes/parens inside the URL don't terminate it.
@@ -119,7 +124,7 @@ const cssRules = rules((g: any) => {
       g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
       sequence(g.Call, optional(literal(';'))), literal(';')
     ))),
-    (c: any, r: any, s: any) => mk('Stylesheet', c, r, s));
+    (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
 
   // Plain helper consts referenced before their section must be defined up-front
   // (Phase-1 evaluation is sequential; only g.* refs resolve lazily).
@@ -138,7 +143,7 @@ const cssRules = rules((g: any) => {
   );
   const VarDeclaration = node('VarDeclaration',
     parser({ trivia: rw }, sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))),
-    (c: any, r: any, s: any) => mk('VarDeclaration', c, r, s));
+    (c: any, r: any, s: any) => build('VarDeclaration', c, r, s));
   // Regex-based content scan: one level of nested parens + strings, all as one leaf.
   // Avoids the balanced('(',')')-inside-scanTo CSTLeaf pollution bug (balanced uses
   // literal() internally, which pushes leaves into the enclosing node()'s collector).
@@ -160,7 +165,7 @@ const cssRules = rules((g: any) => {
   // '[' / '(', keeping the chain contiguous (production's noSep()).
   const Reference = node('Reference',
     noTrivia(sequence(lessVar, many(choice(refIndex, refCall)))),
-    (c: any, r: any, s: any) => mk('Reference', c, r, s));
+    (c: any, r: any, s: any) => build('Reference', c, r, s));
 
   // ── Detached-ruleset variable call ─────────────────────────────────────────
   // `@name(...)` (no `:`) is a variable CALL of a detached ruleset, not a var
@@ -183,7 +188,7 @@ const cssRules = rules((g: any) => {
       // Known at-rule name with EMPTY parens only.
       sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
     )),
-    (c: any, r: any, s: any) => mk('VarCall', c, r, s));
+    (c: any, r: any, s: any) => build('VarCall', c, r, s));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
   // Structured mixin args: the COMBINATORS split on the separators (sepBy), each
@@ -196,19 +201,19 @@ const cssRules = rules((g: any) => {
     { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
   const MixinArgs = node('MixinArgs',
     parser({ trivia: rw }, sequence(literal('('), optional(sepBy(sepBy(argChunk, literal(',')), literal(';'))), literal(')'))),
-    (c: any, r: any, s: any) => mk('MixinArgs', c, r, s));
+    (c: any, r: any, s: any) => build('MixinArgs', c, r, s));
   const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
   const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const mixinCallPath = parser({ trivia: rw }, sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel))));
   const MixinCall = node('MixinCall',
     parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('MixinCall', c, r, s));
+    (c: any, r: any, s: any) => build('MixinCall', c, r, s));
   // Anonymous mixin callback: `.(…){…}` OR `#(…){…}` — the Chevrotain
   // AnonMixinStart token is `/[.#]\(/`, so both prefixes are valid.
   const AnonymousMixinDefinition = node('AnonymousMixinDefinition',
     parser({ trivia: rw }, sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}'))),
-    (c: any, r: any, s: any) => mk('AnonymousMixinDefinition', c, r, s));
+    (c: any, r: any, s: any) => build('AnonymousMixinDefinition', c, r, s));
   // A bare name with nothing after it is NOT a statement — require args (a mixin
   // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
   // ident like `x` or `nonsense` would be silently accepted.
@@ -225,7 +230,7 @@ const cssRules = rules((g: any) => {
       sequence(g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard), literal('{'), g.declarationList, literal('}')),
       sequence(g.mixinCallPath, optional(g.MixinArgs), optional(g.Guard), optional(important), optional(literal(';')))
     )),
-    (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
+    (c: any, r: any, s: any) => build('MixinOrQualifiedRule', c, r, s));
 
   // ── Guards / comparisons ───────────────────────────────────────────────────
   // Faithful port of the Chevrotain guard productions (src/productions/guards.ts):
@@ -243,17 +248,17 @@ const cssRules = rules((g: any) => {
   const guardOperand = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node('Comparison',
     parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))),
-    (c: any, r: any, s: any) => mk('Comparison', c, r, s));
+    (c: any, r: any, s: any) => build('Comparison', c, r, s));
   const GuardDefault = node('GuardDefault',
     parser({ trivia: rw }, regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/)),
-    (c: any, r: any, s: any) => mk('GuardDefault', c, r, s));
+    (c: any, r: any, s: any) => build('GuardDefault', c, r, s));
   // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
   const GuardInParens = node('GuardInParens',
     parser({ trivia: rw }, choice(
       g.GuardDefault,
       sequence(literal('('), g.GuardOr, literal(')'))
     )),
-    (c: any, r: any, s: any) => mk('GuardInParens', c, r, s));
+    (c: any, r: any, s: any) => build('GuardInParens', c, r, s));
   // A single guard term: optional `not`, then either a parenthesized guard or a
   // bare comparison (`left <op> right`) / value.
   const GuardTerm = node('GuardTerm',
@@ -264,18 +269,18 @@ const cssRules = rules((g: any) => {
         sequence(guardOperand, optional(sequence(compareOp, guardOperand)))
       )
     )),
-    (c: any, r: any, s: any) => mk('GuardTerm', c, r, s));
+    (c: any, r: any, s: any) => build('GuardTerm', c, r, s));
   // 'and' chain of terms (left-associative).
   const GuardAnd = node('GuardAnd',
     parser({ trivia: rw }, sequence(g.GuardTerm, many(sequence(regex(/and(?![-\w])/), g.GuardTerm)))),
-    (c: any, r: any, s: any) => mk('GuardAnd', c, r, s));
+    (c: any, r: any, s: any) => build('GuardAnd', c, r, s));
   // 'or' / ',' chain of and-expressions (left-associative).
   const GuardOr = node('GuardOr',
     parser({ trivia: rw }, sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd)))),
-    (c: any, r: any, s: any) => mk('GuardOr', c, r, s));
+    (c: any, r: any, s: any) => build('GuardOr', c, r, s));
   const Guard = node('Guard',
     parser({ trivia: rw }, sequence(regex(/when(?![-\w])/), g.GuardOr)),
-    (c: any, r: any, s: any) => mk('Guard', c, r, s));
+    (c: any, r: any, s: any) => build('Guard', c, r, s));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
   // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
@@ -287,10 +292,10 @@ const cssRules = rules((g: any) => {
   const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node('LessAmpersand',
     parser({ trivia: rw }, sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))))),
-    (c: any, r: any, s: any) => mk('LessAmpersand', c, r, s));
+    (c: any, r: any, s: any) => build('LessAmpersand', c, r, s));
   const InterpolatedSelector = node('InterpolatedSelector',
     parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))),
-    (c: any, r: any, s: any) => mk('InterpolatedSelector', c, r, s));
+    (c: any, r: any, s: any) => build('InterpolatedSelector', c, r, s));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
   // `sel when …` is a guarded ruleset: the `when` KEYWORD is the guard boundary,
@@ -317,7 +322,7 @@ const cssRules = rules((g: any) => {
   // byte-identical — a 2+-simple / whitespace-descendant run still builds.
   const CompoundSelector = node('CompoundSelector',
     parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(selectorBoundary), g.simpleSelector)))),
-    (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('CompoundSelector', c, r, s), { collapse: true });
   // A complex selector, optionally terminated by a single `:extend(...)` pseudo.
   // Mirrors Chevrotain's `complexSelector`, which consumes extend (OPTION3) AFTER
   // the whole compound/combinator run — so extend is the LAST thing in the
@@ -326,11 +331,11 @@ const cssRules = rules((g: any) => {
   // collapse: single compound (no combinator, no extend) IS the compound.
   const LessComplexSelector = node('LessComplexSelector',
     parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(selectorBoundary), g.CompoundSelector)), optional(g.ExtendPseudo))),
-    (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('LessComplexSelector', c, r, s), { collapse: true });
   // collapse: single complex selector (no comma) IS that selector.
   const LessSelectorList = node('LessSelectorList',
     parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))),
-    (c: any, r: any, s: any) => mk('LessSelectorList', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('LessSelectorList', c, r, s), { collapse: true });
   // Attribute name may carry a CSS namespace prefix (`ns|attr`, `*|attr`,
   // `|attr`). Less also allows interpolation in the name and value: `[@{n}=@{v}]`,
   // `[data=@{attr-data}]`. interpKey matches a run containing `@{…}`.
@@ -339,7 +344,7 @@ const cssRules = rules((g: any) => {
   const attrNsPrefix = optional(sequence(optional(choice(literal('*'), ident)), regex(/\|(?!=)/)));
   const AttributeSelector = node('AttributeSelector',
     parser({ trivia: rw }, sequence(literal('['), attrNsPrefix, choice(interpKey, ident), optional(sequence(attrOp, choice(singleStr, doubleStr, interpKey, ident), optional(attrMod))), literal(']'))),
-    (c: any, r: any, s: any) => mk('AttributeSelector', c, r, s));
+    (c: any, r: any, s: any) => build('AttributeSelector', c, r, s));
   // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
   // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
   // LessSelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
@@ -350,7 +355,7 @@ const cssRules = rules((g: any) => {
   );
   const PseudoSelector = node('PseudoSelector',
     parser({ trivia: rw }, sequence(pseudoColon, choice(interpKey, ident), optional(g.pseudoSelectorParens))),
-    (c: any, r: any, s: any) => mk('PseudoSelector', c, r, s));
+    (c: any, r: any, s: any) => build('PseudoSelector', c, r, s));
 
   // ── Extend grammar (faithful port of selectors.ts `extend`/`ampersandExtend`)
   // Chevrotain models extend as: `:extend(` selectorList[inExtend] `)` where each
@@ -369,20 +374,20 @@ const cssRules = rules((g: any) => {
   // halt before a trailing flag (so `.x all` parses as target `.x` + flag `all`).
   const extendCompound = node('CompoundSelector',
     parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(selectorBoundary), not(extendFlagAhead), g.simpleSelector)))),
-    (c: any, r: any, s: any) => mk('CompoundSelector', c, r, s));
+    (c: any, r: any, s: any) => build('CompoundSelector', c, r, s));
   const extendComplex = node('LessComplexSelector',
     parser({ trivia: rw }, sequence(optional(combinator), g.extendCompound, many(sequence(optional(combinator), not(whenAhead), not(extendFlagAhead), g.extendCompound)))),
-    (c: any, r: any, s: any) => mk('LessComplexSelector', c, r, s));
+    (c: any, r: any, s: any) => build('LessComplexSelector', c, r, s));
   // A single extend target: a complex selector + its optional flag.
   const ExtendTarget = node('ExtendTarget',
     parser({ trivia: rw }, sequence(g.extendComplex, optional(extendFlag))),
-    (c: any, r: any, s: any) => mk('ExtendTarget', c, r, s));
+    (c: any, r: any, s: any) => build('ExtendTarget', c, r, s));
   // The comma-separated target list inside `extend( … )` (selectorList[inExtend]).
   const extendBody = sepBy(g.ExtendTarget, literal(','));
   // `:extend(` body `)` — the in-selector pseudo form (selectors.ts `extend`).
   const ExtendPseudo = node('ExtendPseudo',
     parser({ trivia: rw }, sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')'), ')'))),
-    (c: any, r: any, s: any) => mk('ExtendPseudo', c, r, s));
+    (c: any, r: any, s: any) => build('ExtendPseudo', c, r, s));
   // `&:extend(...)` statement, terminated by `;` (selectors.ts `ampersandExtend`).
   // The leading `&` is REQUIRED: the reference's `ampersandExtend` does an
   // unconditional `$.CONSUME(T.Ampersand)`, so a bare `:extend(...)` is NOT a valid
@@ -392,19 +397,19 @@ const cssRules = rules((g: any) => {
   // parse error (faithful: extend must be the last thing in its selector).
   const ExtendStatement = node('ExtendStatement',
     parser({ trivia: rw }, sequence(g.LessAmpersand, g.ExtendPseudo, optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('ExtendStatement', c, r, s));
+    (c: any, r: any, s: any) => build('ExtendStatement', c, r, s));
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
     parser({ trivia: rw }, sequence(g.LessSelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}'))),
-    (c: any, r: any, s: any) => mk('Ruleset', c, r, s));
+    (c: any, r: any, s: any) => build('Ruleset', c, r, s));
   // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
   // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
   // plain declaration or a `.name { }` ruleset. (declarationList only had MixinCall,
   // which has no body, so nested definitions e.g. `.vars(){…}` were unmodelled.)
   const NestedMixinDefinition = node('MixinOrQualifiedRule',
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
-    (c: any, r: any, s: any) => mk('MixinOrQualifiedRule', c, r, s));
+    (c: any, r: any, s: any) => build('MixinOrQualifiedRule', c, r, s));
   const declarationList = parser({ trivia: rw }, many(choice(
     g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
@@ -418,7 +423,7 @@ const cssRules = rules((g: any) => {
   // first (it requires at least one `@{…}`), else a plain ident.
   const Declaration = node('Declaration',
     parser({ trivia: rw }, sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('Declaration', c, r, s));
+    (c: any, r: any, s: any) => build('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
   // Opportunistic structuring for a `{ … }` custom-property value: try it as a
   // real declaration body (so nested `@var`/calls evaluate normally, same as the
@@ -428,7 +433,7 @@ const cssRules = rules((g: any) => {
   // `choice` falls through to the raw-text cpValue capture below.
   const customCurlyBlock = node('Block',
     parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))),
-    (c: any, r: any, s: any) => mk('Block', c, r, s));
+    (c: any, r: any, s: any) => build('Block', c, r, s));
   // Predictive custom-property value region — NO scanTo, NO skip. Content runs
   // interleaved with recursively-balanced ()/[]/{} groups, each closed by expect().
   // So an unmatched, stray, or CROSS-TYPE bracket (`({[ })`) surfaces a syntax error
@@ -459,7 +464,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';')))),
-    (c: any, r: any, s: any) => mk('CustomDeclaration', c, r, s));
+    (c: any, r: any, s: any) => build('CustomDeclaration', c, r, s));
   const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
@@ -478,7 +483,7 @@ const cssRules = rules((g: any) => {
   // and anyValueTok excludes `{`, so this is the only rule that accepts it.
   const InterpValue = node('InterpValue',
     parser({ trivia: rw }, interpKey),
-    (c: any, r: any, s: any) => mk('InterpValue', c, r, s));
+    (c: any, r: any, s: any) => build('InterpValue', c, r, s));
   const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
@@ -512,14 +517,14 @@ const cssRules = rules((g: any) => {
   // this only fires where an operand is expected.
   const Negative = node('Negative',
     parser({ trivia: rw }, sequence(regex(/-(?![0-9.])/), g.value)),
-    (c: any, r: any, s: any) => mk('Negative', c, r, s));
+    (c: any, r: any, s: any) => build('Negative', c, r, s));
   const operand = choice(g.Negative, g.value);
   const mathProduct = node('Operation',
     parser({ trivia: rw }, sequence(operand, many(sequence(prodOp, operand)))),
-    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('Operation', c, r, s), { collapse: true });
   const mathSum = node('Operation',
     parser({ trivia: rw }, sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct)))),
-    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('Operation', c, r, s), { collapse: true });
   // Top-level (declaration / space-list) variant of the same precedence grammar.
   // Identical shape, but built as `OperationTop`, whose slash-vs-list decision uses
   // the DECLARATION context: `/` divides only under `math: always` (default
@@ -528,27 +533,26 @@ const cssRules = rules((g: any) => {
   // (slash divides), since being in-parens turns division on.
   const topProduct = node('OperationTop',
     parser({ trivia: rw }, sequence(operand, many(sequence(prodOp, operand)))),
-    (c: any, r: any, s: any) => mk('OperationTop', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('OperationTop', c, r, s), { collapse: true });
   const topSum = node('OperationTop',
     parser({ trivia: rw }, sequence(g.topProduct, many(sequence(sumOp, g.topProduct)))),
-    (c: any, r: any, s: any) => mk('OperationTop', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('OperationTop', c, r, s), { collapse: true });
   // An escaped paren `~( … )` is a RAW list, not a math expression: it holds an
   // arbitrary space / comma / `;`-separated value sequence (`~(1 2 3)`, `~(1; 2)`),
   // so it uses the permissive body — unlike a bare `( … )`, which is one expression.
-  const escapedParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  const escapedParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)), (c: any, r: any, s: any) => build('Paren', c, r, s));
   const EscapedValue = node('EscapedValue',
     parser({ trivia: rw }, sequence(literal('~'), choice(escapedParen, g.Quoted))),
-    (c: any, r: any, s: any) => mk('EscapedValue', c, r, s));
-  const NamedColor = node('NamedColor', regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9])/i), (c: any, r: any, s: any) => mk('NamedColor', c, r, s));
+    (c: any, r: any, s: any) => build('EscapedValue', c, r, s));
+  const NamedColor = node('NamedColor', regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9])/i), (c: any, r: any, s: any) => build('NamedColor', c, r, s));
   // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
   // number + unit must be contiguous \u2014 the surrounding valueSequence runs with
   // trivia enabled, so without noTrivia() a space (`1 %`, `10 px`) would still be
   // glued into a Dimension. Chevrotain lexes those as Num + a separate token.
-  const Dimension = node('Dimension', noTrivia(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/))), (c: any, r: any, s: any) => mk('Dimension', c, r, s));
-  // bare number; the not()-lookahead folded into the regex -> one match, one leaf.
-  const Num = node('Num', regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/), (c: any, r: any, s: any) => mk('Num', c, r, s));
-  const Color = node('Color', colorHex, (c: any, r: any, s: any) => mk('Color', c, r, s));
-  const Url = node('Url', parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => mk('Url', c, r, s));
+  const Dimension = node('Dimension', noTrivia(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/))), (c: any, r: any, s: any) => build('Dimension', c, r, s));
+  // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
+  // the return object below (identical to the CSS grammar's definitions).
+  const Url = node('Url', parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))), (c: any, r: any, s: any) => build('Url', c, r, s));
   // A bare paren holds ONE expression per comma-segment (a Sum), NOT a
   // space-separated value sequence — `(12 13)` / `(12 (13))` are incoherent (two
   // operands, no operator) and error, matching Less 4.x. `;`-separated segments
@@ -582,7 +586,7 @@ const cssRules = rules((g: any) => {
   // single-expression `parenBody` above, so `(12 (13))` still errors.
   const permissiveParenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')'), ')')));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
-  const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))), (c: any, r: any, s: any) => mk('DetachedRuleset', c, r, s));
+  const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))), (c: any, r: any, s: any) => build('DetachedRuleset', c, r, s));
   // Function-call arguments are their OWN production (parity with the Chevrotain
   // functionCallArgs/callArgument rules), NOT `parenBody`: unlike a parenthesized
   // value, a function argument may be an anonymous mixin `.(…){…}` or a bare
@@ -608,24 +612,23 @@ const cssRules = rules((g: any) => {
   const calcProdOp = regex(/[*\/]/);
   const calcProduct = node('Operation',
     parser({ trivia: rw }, sequence(calcValue, many(sequence(calcProdOp, calcValue)))),
-    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('Operation', c, r, s), { collapse: true });
   const calcSum = node('Operation',
     parser({ trivia: rw }, sequence(calcProduct, many(sequence(sumOp, calcProduct)))),
-    (c: any, r: any, s: any) => mk('Operation', c, r, s), { collapse: true });
+    (c: any, r: any, s: any) => build('Operation', c, r, s), { collapse: true });
   const calcSequence = parser({ trivia: rw }, oneOrMore(calcSum));
   const calcList = parser({ trivia: rw }, sequence(calcSequence, many(sequence(literal(','), calcSequence))));
   const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'), ')')));
-  const CalcCall = node('Call', parser({ trivia: rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)), (c: any, r: any, s: any) => mk('Call', c, r, s));
-  const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)), (c: any, r: any, s: any) => mk('Call', c, r, s));
-  const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
+  // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
+  const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)), (c: any, r: any, s: any) => build('Call', c, r, s));
   // Mixin-argument paren: `(` immediately preceded (lookbehind, no trivia) by a
   // selector / accessor char — the args of a `.name(…)` / `#ns.x(…)` reference.
   // Parsed permissively; the Declaration builder reassembles the selector +
   // round-paren-args + square-paren-accessor items into a Reference/Call chain.
-  const GluedParen = node('Paren', parser({ trivia: rw }, sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff-])\\('), g.permissiveParenBody)), (c: any, r: any, s: any) => mk('Paren', c, r, s));
+  const GluedParen = node('Paren', parser({ trivia: rw }, sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff-])\\('), g.permissiveParenBody)), (c: any, r: any, s: any) => build('Paren', c, r, s));
   const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
-  const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)), (c: any, r: any, s: any) => mk('SquareParen', c, r, s));
-  const Quoted = node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => mk('Quoted', c, r, s));
+  const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)), (c: any, r: any, s: any) => build('SquareParen', c, r, s));
   const anyValue = choice(ident, anyValueTok);
 
   // `each(<iterable>, { … })` (or `.(@p) { … }`) is a $for control form, not a
@@ -640,7 +643,7 @@ const cssRules = rules((g: any) => {
     parser({ trivia: rw }, sequence(
       regex(/each(?![-\w])/i), literal('('), functionCallArgs, optional(literal(';'))
     )),
-    (c: any, r: any, s: any) => mk('For', c, r, s));
+    (c: any, r: any, s: any) => build('For', c, r, s));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
@@ -658,33 +661,18 @@ const cssRules = rules((g: any) => {
   // screen`) fail the prelude BEFORE the commit point, so the sequence backtracks
   // cleanly and the generic AtRuleBlock (→ `_buildAtRulePrelude`) handles them.
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
-  const mfComparison = regex(/<=|>=|[<>=]/);
-  const QueryFeature = node('QueryFeature',
-    parser({ trivia: rw }, sequence(ident, optional(choice(
-      sequence(literal(':'), g.valueList),
-      sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
-    )))),
-    (c: any, r: any, s: any) => mk('QueryFeature', c, r, s));
-  const QueryInParens = node('QueryInParens',
-    parser({ trivia: rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))),
-    (c: any, r: any, s: any) => mk('QueryInParens', c, r, s));
-  const QueryCondition = node('QueryCondition',
-    parser({ trivia: rw }, choice(
-      sequence(regex(/not(?![-\w])/i), g.QueryInParens),
-      sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
-    )),
-    (c: any, r: any, s: any) => mk('QueryCondition', c, r, s));
-  // Optional leading container name — an ident that is NOT a query keyword.
-  const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
-  const queryPrelude = parser({ trivia: rw }, sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
+  // The condition sub-grammar (QueryFeature / QueryInParens / QueryCondition /
+  // queryPrelude) comes from the shared `queryRules` fragment (spread below) — it is
+  // identical to CSS. Only this block wrapper differs (Less commits its opening
+  // brace via `expect`), so it stays here and reads `g.queryPrelude` from the fragment.
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
-    parser({ trivia: rw }, sequence(queryAtKeyword, queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}'))),
-    (c: any, r: any, s: any) => mk('QueryAtRuleBlock', c, r, s));
+    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}'))),
+    (c: any, r: any, s: any) => build('QueryAtRuleBlock', c, r, s));
 
   const AtRuleBlock = node('AtRuleBlock',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))),
-    (c: any, r: any, s: any) => mk('AtRuleBlock', c, r, s));
+    (c: any, r: any, s: any) => build('AtRuleBlock', c, r, s));
 
   // ── Structured, committed import statement (@import / @-import / @-export) ────
   // The flat `atPrelude` also swallows a bare ident before the path, so
@@ -704,11 +692,11 @@ const cssRules = rules((g: any) => {
       expect(choice(g.Url, g.Quoted), 'import path'),
       optional(importMedia), expect(literal(';'), ';')
     )),
-    (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+    (c: any, r: any, s: any) => build('AtRuleStatement', c, r, s));
 
   const AtRuleStatement = node('AtRuleStatement',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))),
-    (c: any, r: any, s: any) => mk('AtRuleStatement', c, r, s));
+    (c: any, r: any, s: any) => build('AtRuleStatement', c, r, s));
   // An at-rule body (@media / @supports / @starting-style / …) holds the SAME
   // statements as a ruleset body — nested rules, mixin calls, each(), extends,
   // var calls — not just declarations. Mirror declarationList's choice set.
@@ -718,14 +706,19 @@ const cssRules = rules((g: any) => {
   )));
 
   return {
+    ...numericRules(g, { build }),
+    ...stringRules(g, { build }),
+    ...parenRules(g, { build }),
+    ...queryRules(g, { build }),
+    rw,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
-    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Num, Color, Url,
-    parenBody, permissiveParenBody, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, CalcCall, Call, Paren, SquareParen, Quoted, anyValue, EachFor,
-    QueryFeature, QueryInParens, QueryCondition, QueryAtRuleBlock, ImportAtRuleStatement,
+    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Url,
+    parenBody, permissiveParenBody, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
+    QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
 });

@@ -486,8 +486,6 @@ type RulesetOptions = NodeOptions & {
  */
 export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
-  override allowRuleRoot = true;
-  override allowRoot = true;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
   /** Stored (normalized) form: input arrays become a SelectorList on construction. */
@@ -1059,7 +1057,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!c || !isCombinator(c)) {
       return false;
     }
-    const v = String((c as Combinator).valueOf() ?? '');
+    const v = String(c.valueOf() ?? '');
     return v.trim().length > 0;
   }
 

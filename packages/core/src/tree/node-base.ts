@@ -505,8 +505,6 @@ export abstract class Node<
    * Should do if some fields are not on the hot path
    * (not read very often)
    */
-  allowRoot = false;
-  allowRuleRoot = false;
   hoistToRoot: boolean | undefined = undefined;
 
   /**
@@ -1393,8 +1391,10 @@ export abstract class Node<
     // A detached-ruleset closure scope (captured at arg-binding) must survive the
     // placement clone/derive that produces the invoked surface. See
     // parseman-wrapper-is-scope-identity.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const closureScope = (node as unknown as { _closureScope?: unknown })._closureScope;
     if (closureScope !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const self = this as unknown as { _closureScope?: unknown };
       self._closureScope ??= closureScope;
     }
@@ -1579,7 +1579,6 @@ export abstract class Node<
       return -1;
     }
   }
-
 }
 
 /** When converting Less/Sass to Jess, we'll switch this flag temporarily */

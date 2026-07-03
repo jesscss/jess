@@ -113,5 +113,13 @@ export const invalidLess: string[] = [
   /** Inline JavaScript using backticks is intentionally unsupported */
   'tests-unit/javascript/javascript.less',
   'tests-config/js-type-errors/js-type-error.less',
-  'tests-config/no-js-errors/no-js-errors.less'
+  'tests-config/no-js-errors/no-js-errors.less',
+
+  /**
+   * The deprecated `./` dot-slash division operator was removed in Less v5 — it
+   * was obscure and rarely used. It is now a parse error (wrap division in parens
+   * instead). Both files use `./` in a math context.
+   */
+  'tests-config/math-parens-division/new-division.less',
+  'tests-config/math-always/no-sm-operations.less'
 ];

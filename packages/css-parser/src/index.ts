@@ -10,3 +10,4 @@ export {
   type Component, type Spanned
 } from './builders.js';
 export { parseCssFn, toParseError } from './grammar.js';
+export { numericRules, parenRules, queryRules, stringRules, singleStr, doubleStr } from './shared-value-rules.js';

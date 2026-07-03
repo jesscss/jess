@@ -1,6 +1,6 @@
 import type { Color as LSPColor, ColorInformation, ColorPresentation } from 'vscode-languageserver-types';
 import type { Node, Color, Call, Any, Context, Rules } from '@jesscss/core';
-import { isNode, getValues, N, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
+import { isNode, N, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
 import { Color as ColorClass } from '@jesscss/core';
 import type * as LessFunctions from '@jesscss/fns';
 
@@ -358,11 +358,8 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     }
 
     // Traverse children
-    const value = (node as unknown as { data?: unknown }).data;
-    for (const child of getValues(value)) {
-      if (isNode(child)) {
-        stack.push(child);
-      }
+    for (const child of node.walk()) {
+      stack.push(child);
     }
   }
 

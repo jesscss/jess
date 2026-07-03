@@ -27,9 +27,6 @@ export interface Log extends Node<LogValue, NodeOptions> {
 export class Log extends Node<LogValue, NodeOptions> {
   static override childKeys = ['level', 'message'] as const;
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
-
   readonly level: LogLevel;
   readonly message: Node;
 

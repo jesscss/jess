@@ -39,11 +39,11 @@
     "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "chevrotain": "^12.0.0",
-    "color-name": "~2.0.0",
-    "parseman": "workspace:*"
+    "color-name": "~2.0.0"
   },
   "devDependencies": {
-    "@types/color-name": "^1.1.1"
+    "@types/color-name": "^1.1.1",
+    "parseman": "workspace:*"
   },
   "type": "module",
   "module": "lib/index.js"
