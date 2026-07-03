@@ -696,8 +696,18 @@ export class LessParser {
 
   // Arrow field so `const parse = parser.parse` (used in tests) keeps `this`.
   parse = (text: string, rule = 'stylesheet'): LessFnParseResult => {
-    if (text.includes('`')) {
-      throw new Error('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.');
+    // Inline JavaScript (backticks) was removed in v5 — report it as a normal
+    // parse error at the backtick, NOT by throwing (a parser must not throw).
+    const backtick = text.indexOf('`');
+    if (backtick !== -1) {
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        tree: nil() as unknown as Rules,
+        errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
+        warnings: [],
+        trivia: buildLazyTriviaMap([], text),
+        lexerResult: { errors: [] }
+      };
     }
     return parseLessFn(text, rule, this._mathMode);
   };

@@ -43,9 +43,10 @@ describe('value', () => {
   });
 
   it('should reject backtick javascript values', () => {
-    expect(() => parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet')).toThrow(
-      'Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.'
-    );
+    // A parser must not throw — inline JS (removed in v5) is a graceful parse error.
+    const { errors } = parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet');
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0]!.message).toContain('Inline JavaScript using backticks is not supported');
   });
 
   it('parses each() with a block callback into a For control node', () => {
