@@ -61,8 +61,10 @@ const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 const rw = trivia(oneOrMore(choice(ws, comment, lineComment)));
 
-const ident = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const basicSel = regex(/(?:[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\d+(?:\.\d+)?%|\*)/);
+const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+// Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
+// definition as css-parser grammar.ts (a mixin call is just a selector).
+const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
@@ -171,7 +173,7 @@ const cssRules = rules((g: any) => {
     (c: any, r: any, s: any) => mk('MixinArgs', c, r, s));
   const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
-  const mixinCallBasicSel = regex(/[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const mixinCallPath = parser({ trivia: rw }, sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel))));
   const MixinCall = node('MixinCall',
     parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';')))),
