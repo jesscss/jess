@@ -138,6 +138,7 @@ const cssRules = rules((g: any) => {
   const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
   const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
+  const declPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})*/);
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(optional(refKey), literal(']'))));
@@ -401,7 +402,7 @@ const cssRules = rules((g: any) => {
   // through getInterpolatedNode. We mirror that: try the interpolated-ident regex
   // first (it requires at least one `@{…}`), else a plain ident.
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(choice(interpKey, propName), optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
+    parser({ trivia: rw }, sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => mk('Declaration', c, r, s));
   const customValue = parser({ trivia: rw }, sequence(g.valueList, not(regex(/[^\s;}]/))));
   // Opportunistic structuring for a `{ … }` custom-property value: try it as a
