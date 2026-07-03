@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Declaration, Deprecation, Dimension, JsFunction, type PluginInterface, type PluginVisitor, type Node, type Rules, F_VISIBLE, REMOVE, WARN, toDiagnostic } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Deprecation, Dimension, JsFunction, Node, type PluginInterface, type PluginVisitor, type Rules, F_VISIBLE, REMOVE, WARN, toDiagnostic } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
 import type { LessVisitor } from './types.js';
@@ -64,7 +64,59 @@ function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
   }
 }
 
+/**
+ * Wrap a Less 4.x-style custom function (as registered through
+ * `less.functions.functionRegistry.add`) and add it to a Jess function registry.
+ *
+ * Unlike {@link addToJessRegistry}, the evaluated arguments are converted to
+ * Less-shaped nodes via `toLessNode` before the function runs. Less 4.x custom
+ * functions receive `less.tree.*` values (with `.value`, `.unit`, `.rgb`, …),
+ * not raw Jess nodes, so this conversion is required for parity.
+ */
+function addRootFunctionToJessRegistry(jessRegistry: any, name: string, func: any): void {
+  if (!jessRegistry || typeof jessRegistry.add !== 'function') {
+    return;
+  }
+  name = name.toLowerCase();
+  const wrapped = function(this: any, ...args: any[]) {
+    const evaldArgs = args.map((arg) => {
+      if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+        try {
+          return (arg as any).eval(this);
+        } catch {
+          return arg;
+        }
+      }
+      return arg;
+    });
+
+    const call = (finalArgs: any[]) => {
+      const lessArgs = finalArgs.map(a => a instanceof Node ? toLessNode(a) : a);
+      return func.apply(this, lessArgs);
+    };
+
+    const statementContext = this?.caller?.parent?.type === 'Rules';
+    const convertResult = (r: unknown) => fromLessPluginReturnValue(r, { statementContext });
+
+    const maybeNeedsAwait = evaldArgs.some(isThenable);
+    const result = maybeNeedsAwait
+      ? Promise.all(evaldArgs.map(a => isThenable(a) ? a : Promise.resolve(a))).then(call)
+      : call(evaldArgs);
+
+    return isThenable(result) ? result.then(convertResult) : convertResult(result);
+  };
+  Object.assign(wrapped, func);
+  jessRegistry.add(name, wrapped);
+}
+
 export interface LessCompatPluginOptions {
+  /**
+   * Less 4.x custom functions registered through the root
+   * `less.functions.functionRegistry.add/addMultiple` API. Keyed by function
+   * name; each is bridged onto every compiled tree's root scope so calls resolve
+   * during evaluation, exactly like the built-in Less functions.
+   */
+  functions?: Record<string, (...args: any[]) => any>;
   /**
    * Less.js plugins - these will have their install() method called to extract visitors.
    * Can be mixed with Jess plugins - Less plugins will be handled by this compat layer,
@@ -117,6 +169,8 @@ export class LessCompatPlugin extends AbstractPlugin {
   private _currentFilePath?: string;
   private _jessFunctionRegistry?: any;
   private _context?: { warnings?: any[]; opts?: any; root?: any; plugins?: any[] };
+  /** Trees whose root scope already received the configured root functions. */
+  private _fnRegisteredTrees = new WeakSet<object>();
 
   constructor(public opts: LessCompatPluginOptions = {}) {
     super();
@@ -279,10 +333,39 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
+    // Bind root-registered Less 4.x custom functions onto this tree's root scope.
+    // This runs regardless of whether any visitor work is configured, so plain
+    // sources that only use custom functions still get them.
+    this.registerRootFunctions(tree);
     if (!this.hasConfiguredBeforeEvalWork() && !this.sourceMayContainPluginDirective(tree)) {
       return undefined;
     }
     return this.beforeEvalVisitor;
+  }
+
+  /**
+   * Register the configured Less 4.x root functions onto a parsed tree's root
+   * scope, using the same `setFunctionBinding` mechanism the Less plugin uses
+   * for built-ins. Idempotent per tree.
+   */
+  private registerRootFunctions(tree: Rules): void {
+    const fns = this.opts.functions;
+    if (!fns) {
+      return;
+    }
+    if (!tree || typeof tree.setFunctionBinding !== 'function' || typeof tree.findFunction !== 'function') {
+      return;
+    }
+    if (this._fnRegisteredTrees.has(tree)) {
+      return;
+    }
+    this._fnRegisteredTrees.add(tree);
+    const registry = this.createJessFunctionBindingRegistry(tree);
+    for (const [name, fn] of Object.entries(fns)) {
+      if (typeof fn === 'function') {
+        addRootFunctionToJessRegistry(registry, name, fn);
+      }
+    }
   }
 
   /**

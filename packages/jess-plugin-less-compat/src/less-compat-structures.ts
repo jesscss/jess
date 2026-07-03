@@ -431,11 +431,25 @@ export const LessTreeConstructors: Record<string, any> = {
 
   /**
    * Color node constructor
+   *
+   * Less.js 4.x accepts either an rgb array or a hex string (with or without a
+   * leading '#', e.g. `new tree.Color('600')`). Normalize both to an rgb array
+   * so the Jess-side converter (fromLessNode) can build a real Color node.
    */
-  Color: function(rgb: number[], alpha?: number) {
+  Color: function(rgb: number[] | string, alpha?: number) {
+    let rgbArray: number[];
+    if (typeof rgb === 'string') {
+      const hex = rgb.replace(/^#/, '');
+      const chunks = hex.length >= 6
+        ? (hex.match(/.{2}/g) ?? [])
+        : hex.split('').map(c => c + c);
+      rgbArray = chunks.slice(0, 3).map(c => parseInt(c, 16));
+    } else {
+      rgbArray = rgb || [0, 0, 0];
+    }
     return {
       type: 'Color',
-      rgb: rgb || [0, 0, 0],
+      rgb: rgbArray,
       alpha: alpha !== undefined ? alpha : 1,
       accept: function(visitor: any) {
         return visitor.visit(this);
