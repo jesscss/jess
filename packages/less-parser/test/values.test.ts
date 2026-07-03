@@ -49,6 +49,14 @@ describe('value', () => {
     expect(errors[0]!.message).toContain('Inline JavaScript using backticks is not supported');
   });
 
+  it('should reject a trailing comma in a value list (stricter than Less 4.x)', () => {
+    // A comma must be followed by a value; a dangling comma is a parse error in v5.
+    expect(parse('@x: a, b, c,;', 'stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    expect(parse('.a { prop: 1, 2,; }', 'stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    // a well-formed comma list still parses cleanly
+    expect(parse('@y: a, b, c;', 'stylesheet').errors.length).toBe(0);
+  });
+
   it('parses each() with a block callback into a For control node', () => {
     const { tree, errors } = parse(`
       .test {

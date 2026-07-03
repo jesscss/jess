@@ -440,9 +440,10 @@ const cssRules = rules((g: any) => {
   const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
-  // The value after a comma is optional so a trailing comma is tolerated
-  // (`@items: a, b, c,;` — Less accepts it as a comma list with an empty tail).
-  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), optional(g.valueSequence)))));
+  // A comma must be followed by a value — a trailing comma (`a, b,`) is a parse
+  // error in Less v5 (stricter than Less 4.x, which tolerated it). The dangling
+  // comma is left unconsumed and surfaces as one syntax error via the net.
+  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
   const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
   // Interpolated value token (`@{colorVar}`, `pre-@{x}`). Chevrotain lexes this as
   // InterpolatedIdent and `processValueToken` runs it through getInterpolatedOrString
