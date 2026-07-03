@@ -306,10 +306,14 @@ const cssRules = rules((g: any) => {
   const LessSelectorList = node('LessSelectorList',
     parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))),
     (c: any, r: any, s: any) => mk('LessSelectorList', c, r, s), { collapse: true });
-  // Less allows interpolation in the attribute name and value: `[@{n}=@{v}]`,
+  // Attribute name may carry a CSS namespace prefix (`ns|attr`, `*|attr`,
+  // `|attr`). Less also allows interpolation in the name and value: `[@{n}=@{v}]`,
   // `[data=@{attr-data}]`. interpKey matches a run containing `@{…}`.
+  // `|` is a namespace separator (`ns|attr`, `*|attr`, `|attr`) ONLY when not
+  // followed by `=` — `[prop|="x"]` is the `|=` dash-match operator, not a namespace.
+  const attrNsPrefix = optional(sequence(optional(choice(literal('*'), ident)), regex(/\|(?!=)/)));
   const AttributeSelector = node('AttributeSelector',
-    parser({ trivia: rw }, sequence(literal('['), choice(interpKey, ident), optional(sequence(attrOp, choice(singleStr, doubleStr, interpKey, ident), optional(attrMod))), literal(']'))),
+    parser({ trivia: rw }, sequence(literal('['), attrNsPrefix, choice(interpKey, ident), optional(sequence(attrOp, choice(singleStr, doubleStr, interpKey, ident), optional(attrMod))), literal(']'))),
     (c: any, r: any, s: any) => mk('AttributeSelector', c, r, s));
   // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
   // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
