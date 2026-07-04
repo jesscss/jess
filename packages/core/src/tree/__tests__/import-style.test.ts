@@ -2448,14 +2448,14 @@ describe('Style import', () => {
       if (!isNode(supportsRulesArr[0], N.AtRule)) {
         throw new Error('Expected @layer child to be AtRule');
       }
-      expect((supportsRulesArr[0] as any).name.toTrimmedString()).toBe('@supports');
+      expect(String((supportsRulesArr[0] as any).name)).toBe('@supports');
       const mediaRulesArr = (supportsRulesArr[0] as any).rules as Node[];
       expect(mediaRulesArr).toBeInstanceOf(Array);
       expect(isNode(mediaRulesArr[0], N.AtRule)).toBe(true);
       if (!isNode(mediaRulesArr[0], N.AtRule)) {
         throw new Error('Expected @supports child to be AtRule');
       }
-      expect((mediaRulesArr[0] as any).name.toTrimmedString()).toBe('@media');
+      expect(String((mediaRulesArr[0] as any).name)).toBe('@media');
 
       // Render the eval output (copy-on-write: re-evaluating the source dedups).
       const css = await renderNodeToString(evald, inlineContext, { context: inlineContext });
