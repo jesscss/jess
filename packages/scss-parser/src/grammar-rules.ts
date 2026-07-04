@@ -9,7 +9,7 @@
  * Macro-neutral: imports `'parseman'` without `with { type: 'macro' }`.
  * Self-contained: terminals are block-local inside the factory.
  */
-import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect, sepBy } from 'parseman';
+import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect, sepBy, oneOrMore } from 'parseman';
 
 export type ScssGrammarDeps = { build: (type: string, c: any, r: any, s: any) => any };
 
@@ -21,6 +21,7 @@ export type ScssGrammarDeps = { build: (type: string, c: any, r: any, s: any) =>
 export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
   // SCSS `$variable` token — first char may be a letter or `-` after `$`.
   const scssVar = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const rw = g.rw;
 
   const VarDeclaration = node('VarDeclaration',
@@ -37,6 +38,61 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
   const Reference = node('Reference',
     noTrivia(scssVar),
     (c: any, r: any, s: any) => build('Reference', c, r, s));
+
+  // ── Interpolation (#{…}) ───────────────────────────────────────────────────
+  // SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
+  // hooks: bare `#{…}` values, interpolated idents in names/selectors/strings.
+  const scssInterpKey = regex(/(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
+  const scssCustomPropInterp = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|#\{[^}]*\})+/);
+  const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
+  const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})*/);
+  const important = sequence(literal('!'), literal('important'));
+
+  const ScssInterpBare = node('ScssInterpBare',
+    parser({ trivia: rw }, sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}'))),
+    (c: any, r: any, s: any) => build('ScssInterpBare', c, r, s));
+
+  const InterpValue = node('InterpValue',
+    parser({ trivia: rw }, scssInterpKey),
+    (c: any, r: any, s: any) => build('InterpValue', c, r, s));
+
+  const value = choice(
+    ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
+    g.Url, g.CalcCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue
+  );
+
+  const staticSeg = regex(/[-_a-zA-Z0-9]+/);
+  const nameSegment = choice(staticSeg, ScssInterpBare);
+  const ScssInterpolatedName = node('ScssInterpolatedName',
+    parser({ trivia: rw }, oneOrMore(nameSegment)),
+    (c: any, r: any, s: any) => build('ScssInterpolatedName', c, r, s));
+
+  const InterpolatedSelector = node('InterpolatedSelector',
+    parser({ trivia: rw }, sequence(
+      optional(regex(/[.#]/)),
+      oneOrMore(nameSegment)
+    )),
+    (c: any, r: any, s: any) => build('InterpolatedSelector', c, r, s));
+
+  const Declaration = node('Declaration',
+    parser({ trivia: rw }, sequence(
+      scssDeclPropName,
+      optional(choice(literal('+_'), literal('+'))),
+      literal(':'),
+      optional(g.valueList),
+      optional(important),
+      optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => build('Declaration', c, r, s));
+
+  const CustomDeclaration = node('CustomDeclaration',
+    parser({ trivia: rw }, sequence(
+      choice(scssCustomPropInterp, customProp),
+      literal(':'),
+      choice(g.customCurlyBlock, g.customValue, g.cpValue),
+      optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => build('CustomDeclaration', c, r, s));
 
   // ── Control flow: @if / @else if / @else ───────────────────────────────────
   // Faithful port of the Chevrotain scssCondition* / scssIfAtRule productions
@@ -131,8 +187,6 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   // ── Mixins: @mixin / @include / @content ───────────────────────────────────
   // Faithful ports of scssMixinAtRule / scssIncludeAtRule / scssContentAtRule.
-  // Interpolated mixin names (`foo-#{$bar}`) deferred to the interpolation tranche.
-  const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const mixinKw = regex(/@mixin(?![-\w])/i);
   const includeKw = regex(/@include(?![-\w])/i);
   const contentKw = regex(/@content(?![-\w])/i);
@@ -175,10 +229,12 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     )),
     (c: any, r: any, s: any) => build('ScssMixinParams', c, r, s));
 
-  // Mixin/include name: `foo` or module-qualified `ns.foo`.
+  // Mixin/include name: `foo`, module-qualified `ns.foo`, or `foo-#{$bar}`.
+  const scssMixinIdent = choice(ScssInterpolatedName, plainIdent);
   const ScssMixinName = node('ScssMixinName',
     parser({ trivia: rw }, choice(
       sequence(plainIdent, literal('.'), plainIdent),
+      ScssInterpolatedName,
       plainIdent
     )),
     (c: any, r: any, s: any) => build('ScssMixinName', c, r, s));
@@ -189,7 +245,7 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   const ScssMixin = node('ScssMixin',
     parser({ trivia: rw }, sequence(
-      mixinKw, plainIdent, optional(g.ScssMixinParams), g.ScssDeclBody
+      mixinKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
     )),
     (c: any, r: any, s: any) => build('ScssMixin', c, r, s));
 
@@ -216,7 +272,7 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   const ScssFunction = node('ScssFunction',
     parser({ trivia: rw }, sequence(
-      functionKw, plainIdent, optional(g.ScssMixinParams), g.ScssDeclBody
+      functionKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
     )),
     (c: any, r: any, s: any) => build('ScssFunction', c, r, s));
 
@@ -240,6 +296,8 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   return {
     VarDeclaration, Reference,
+    ScssInterpBare, InterpValue, value, ScssInterpolatedName, InterpolatedSelector,
+    Declaration, CustomDeclaration,
     ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
     ScssEach, ScssFor, ScssWhile,
     ScssCallArg, ScssCallArgsInner, ScssMixinParam, ScssMixinParams, ScssMixinName,

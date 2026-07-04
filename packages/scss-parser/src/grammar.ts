@@ -10,6 +10,7 @@ import { runFunctionalParse } from '@jesscss/css-parser';
 import { lessGrammarRules } from '@jesscss/less-parser/grammar-rules';
 import { scssGrammarRules } from './grammar-rules.js';
 import { ScssGrammar } from './builders.js';
+import { setParseScssFnForInterp } from './interp.js';
 // Macro resolves nested spreads by name against the consumer's import bindings.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { numericRules, parenRules, queryRules, stringRules } from '@jesscss/css-parser/shared-value-rules';
@@ -83,6 +84,8 @@ export function parseScssFn(input: string, rule = 'stylesheet'): ScssFnParseResu
   const fn = (scssRules as Record<string, unknown>)[ruleName];
   return runFunctionalParse(input, fn, host, { lineComments: true });
 }
+
+setParseScssFnForInterp(parseScssFn);
 
 /** Functional SCSS parser — call `.parse(text)` for a Jess AST. */
 export class ScssParserParseman {

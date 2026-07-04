@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseScssFn } from '../src/index.js';
-import { isNode, N, Condition } from '@jesscss/core';
+import { isNode, N, Condition, serializeTypes } from '@jesscss/core';
 
 function parseOk(src: string) {
   const result = parseScssFn(src);
@@ -202,6 +202,84 @@ describe('ScssParserParseman — @function / @return', () => {
     expect(isNode(tree.rules[0], N.Func)).toBe(true);
     if (isNode(tree.rules[0], N.Func)) {
       expect(tree.rules[0].toTrimmedString()).toContain('$function add');
+    }
+  });
+});
+
+describe('ScssParserParseman — interpolation (#{…})', () => {
+  it('parses interpolation inside strings', () => {
+    const { tree } = parseOk('.a { content: "foo #{$bar} baz"; }');
+    const ruleset = tree.rules[0]!;
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.Declaration)).toBe(true);
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Quoted)) {
+        expect(isNode(decl.value.value, N.Interpolated)).toBe(true);
+      }
+    }
+  });
+
+  it('parses interpolation inside selectors', () => {
+    const { tree } = parseOk('.foo-#{$bar} { color: red; }');
+    const ruleset = tree.rules[0]!;
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (isNode(ruleset, N.Ruleset)) {
+      expect(serializeTypes(ruleset.selector)).toContain('Interpolated');
+    }
+  });
+
+  it('parses interpolation inside declaration names', () => {
+    const { tree } = parseOk('.a { #{$prop}: 1; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.Declaration)).toBe(true);
+      if (isNode(decl, N.Declaration)) {
+        expect(isNode(decl.name, N.Interpolated)).toBe(true);
+      }
+    }
+  });
+
+  it('parses interpolation inside custom property names', () => {
+    const { tree } = parseOk('.a { --x-#{$y}: 1; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.CustomDeclaration)).toBe(true);
+      if (isNode(decl, N.CustomDeclaration)) {
+        expect(isNode(decl.name, N.Interpolated)).toBe(true);
+      }
+    }
+  });
+
+  it('parses interpolation inside @mixin names', () => {
+    const { tree } = parseOk('@mixin foo-#{$bar} { .a { color: red; } }');
+    const mixin = tree.rules[0]!;
+    expect(isNode(mixin, N.Mixin)).toBe(true);
+    if (isNode(mixin, N.Mixin)) {
+      expect(isNode(mixin.name, N.Interpolated)).toBe(true);
+    }
+  });
+
+  it('parses interpolation inside @include mixin names', () => {
+    const { tree } = parseOk('@include foo-#{$bar}();');
+    const call = tree.rules[0]!;
+    expect(isNode(call, N.Call)).toBe(true);
+    if (isNode(call, N.Call) && isNode(call.name, N.Reference)) {
+      expect(call.name.options?.type).toBe('mixin');
+      expect(isNode(call.name.key, N.Interpolated)).toBe(true);
+    }
+  });
+
+  it('parses bare #{expr} in value position', () => {
+    const { tree } = parseOk('.a { color: #{$bar}; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Interpolated)) {
+        expect(decl.value.replacements.length).toBeGreaterThan(0);
+      }
     }
   });
 });

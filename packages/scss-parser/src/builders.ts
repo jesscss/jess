@@ -49,8 +49,19 @@ import {
   Rest,
   List,
   F_VISIBLE,
-  Func
+  Func,
+  Interpolated,
+  InterpolatedSelector,
+  CustomDeclaration,
+  Quoted,
+  INTERPOLATION_PLACEHOLDER,
+  isNode,
+  N
 } from '@jesscss/core';
+import {
+  buildScssInterpolatedFromString,
+  toInterpReplacement
+} from './interp.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,7 +79,7 @@ function spanToLocation(span: Span): LocationInfo {
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
-  return children.filter((c): c is JessNode => c._tag === 'node') as JessNode[];
+  return children.filter((c): c is JessNode => c != null && c._tag === 'node') as JessNode[];
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +145,15 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssContent':       return this._buildScssContent(children, loc);
       case 'ScssFunction':      return this._buildScssFunction(children, loc);
       case 'ScssReturn':        return this._buildScssReturn(children, _rawChildren, loc);
+      case 'ScssInterpBare':    return this._buildScssInterpBare(children, loc);
+      case 'ScssInterpolatedName': return this._buildScssInterpolatedName(children, loc);
+      case 'InterpValue':       return this._buildScssInterpValue(_rawChildren, loc);
+      case 'InterpolatedSelector': return this._buildScssInterpolatedSelector(children, loc);
+      case 'Declaration':       return this._buildScssDeclaration(_rawChildren, loc, () =>
+        super.buildNode(type, span, children, _state, _rawChildren));
+      case 'CustomDeclaration': return this._buildScssCustomDeclaration(children, loc, () =>
+        super.buildNode(type, span, children, _state, _rawChildren));
+      case 'Quoted':            return this._buildQuoted(children, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -371,6 +391,11 @@ export class ScssGrammar extends LessGrammar {
 
   /** Build a module-qualified or plain mixin `Reference`. */
   private _buildScssMixinName(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const interp = nodes.find(n => isNode(n, N.Interpolated));
+    if (interp) {
+      return new Reference({ key: interp }, { type: 'mixin', role: 'name' }, loc) as unknown as JessNode;
+    }
     const parts = children
       .filter((c): c is CSTLeaf => c._tag === 'leaf')
       .map(l => l.value)
@@ -452,9 +477,10 @@ export class ScssGrammar extends LessGrammar {
   private _buildScssMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
+    const interpName = nodes.find(n => isNode(n, N.Interpolated));
     const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
       && l.value !== '{' && l.value !== '}' && l.value !== ',');
-    const name = new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const name = interpName ?? new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
     const params = nodes.find(n => n.type === 'List') as List | undefined;
     const body = nodes.find((n): n is Rules => n instanceof Rules)!;
     return new Mixin(
@@ -476,9 +502,9 @@ export class ScssGrammar extends LessGrammar {
    * An optional content block becomes an anonymous visible `Mixin` on the call.
    */
   private _buildScssInclude(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
     const nodes = nodeChildren(children);
-    const nameRef = nodes.find(n => n.type === 'Reference') as Reference;
+    const nameRef = nodes.find(n => n.type === 'Reference') as Reference | undefined;
     const lists = nodes.filter(n => n.type === 'List') as List[];
     const hasUsing = ls.some(l => l.value === 'using');
     let args: List | undefined;
@@ -504,7 +530,7 @@ export class ScssGrammar extends LessGrammar {
       contentNode.addFlags(F_VISIBLE);
     }
     return new Call(
-      { name: nameRef, args, contentNode: contentNode as Node | undefined },
+      { name: nameRef ?? new Reference({ key: '' }, { type: 'mixin', role: 'name' }, loc), args, contentNode: contentNode as Node | undefined },
       undefined,
       loc
     ) as unknown as JessNode;
@@ -522,9 +548,10 @@ export class ScssGrammar extends LessGrammar {
   private _buildScssFunction(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
+    const interpName = nodes.find(n => isNode(n, N.Interpolated));
     const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
       && l.value !== '{' && l.value !== '}' && l.value !== ',');
-    const name = new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const name = interpName ?? new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
     const params = nodes.find(n => n.type === 'List') as List | undefined;
     const body = nodes.find((n): n is Rules => n instanceof Rules)!;
     return new Func(
@@ -548,6 +575,115 @@ export class ScssGrammar extends LessGrammar {
     const { value } = this._assembleValue(valueItems, loc);
     const name = new Any('result', { role: 'property' }, loc);
     return new VarDeclaration({ name, value: value as Node }, undefined, loc) as unknown as JessNode;
+  }
+
+  // ── Interpolation (#{…}) ───────────────────────────────────────────────────
+
+  private _buildScssInterpBare(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const expr = nodeChildren(children)[0] ?? new Any('', {}, loc);
+    return new Interpolated(
+      { source: INTERPOLATION_PLACEHOLDER, replacements: [toInterpReplacement(expr as Node, loc)] },
+      { role: 'any' },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** `foo-#{$bar}` name segments → Interpolated(role=name) or plain Any. */
+  private _buildScssInterpolatedName(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    let source = '';
+    const replacements: Node[] = [];
+    for (const c of children) {
+      if (c._tag === 'leaf') {
+        const v = (c as CSTLeaf).value;
+        if (v === '#{' || v === '}' || v === '.') {
+          continue;
+        }
+        source += v;
+      } else if (c._tag === 'node' && isNode(c as JessNode, N.Interpolated)) {
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(...(c as Interpolated).replacements);
+      }
+    }
+    if (replacements.length === 0) {
+      return new Any(source, { role: 'name' }, loc) as unknown as JessNode;
+    }
+    return new Interpolated({ source, replacements }, { role: 'name' }, loc) as unknown as JessNode;
+  }
+
+  private _buildScssInterpValue(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(raw);
+    const image = items.map(i => (typeof i.comp === 'string' ? i.comp : '')).join('');
+    const result = buildScssInterpolatedFromString(image, loc, 'ident');
+    return result as unknown as JessNode;
+  }
+
+  private _buildScssInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    let source = '';
+    const replacements: Node[] = [];
+    for (const c of children) {
+      if (c._tag === 'leaf') {
+        const v = (c as CSTLeaf).value;
+        if (v === '#{' || v === '}') {
+          continue;
+        }
+        source += v;
+      } else if (c._tag === 'node' && isNode(c as JessNode, N.Interpolated)) {
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(...(c as Interpolated).replacements);
+      }
+    }
+    const interp = new Interpolated({ source, replacements }, { role: 'ident' }, loc);
+    return new InterpolatedSelector(interp as any, {}, loc) as unknown as JessNode;
+  }
+
+  private _scssInterpDeclName(name: unknown, loc: LocationInfo): unknown {
+    const str = typeof name === 'string'
+      ? name
+      : isNode(name as Node, N.Any)
+        ? String((name as Any).valueOf())
+        : undefined;
+    if (str && str.includes('#{')) {
+      return buildScssInterpolatedFromString(str, loc, 'property');
+    }
+    return name;
+  }
+
+  private _buildScssDeclaration(
+    _raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo,
+    buildLess: () => JessNode
+  ) {
+    const decl = buildLess();
+    const d = decl as { name?: unknown };
+    if (d.name !== undefined) {
+      d.name = this._scssInterpDeclName(d.name, loc);
+    }
+    return decl;
+  }
+
+  private _buildScssCustomDeclaration(
+    children: ReadonlyArray<Child>,
+    loc: LocationInfo,
+    buildLess: () => JessNode
+  ) {
+    const decl = buildLess() as CustomDeclaration;
+    const d = decl as { name?: unknown };
+    if (d.name !== undefined) {
+      d.name = this._scssInterpDeclName(d.name, loc);
+    }
+    return decl as unknown as JessNode;
+  }
+
+  protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const text = ls.map(l => l.value).join('');
+    const inner = text.slice(1, -1);
+    const quote = text[0] as '"' | '\'';
+    if (inner.includes('#{')) {
+      const value = buildScssInterpolatedFromString(inner, loc, 'any');
+      return new Quoted(value, { quote }, loc) as unknown as JessNode;
+    }
+    return super._buildQuoted(children, loc);
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
