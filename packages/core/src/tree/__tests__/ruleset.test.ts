@@ -64,7 +64,7 @@ describe('Rule', () => {
       rules: []
     });
     const media = atrule({
-      name: any('media'),
+      name: 'media',
       prelude: any('screen'),
       rules: []
     });
@@ -731,7 +731,7 @@ describe('Rule', () => {
     // New model: `node.rules === body.rules` proves the shared (not copied) body.
     const body = rules([
       comment('/* keep */'),
-      vardecl({ name: any('private'), value: any('red') }),
+      vardecl({ name: 'private', value: any('red') }),
       decl({ name: 'color', value: any('red') }),
       new Nil()
     ]);
@@ -809,7 +809,7 @@ describe('Rule', () => {
 
   it('keeps dynamic nil-selector bodies on an owned body path', async () => {
     const dynamicBody = rules([
-      vardecl({ name: any('shade'), value: any('red') }),
+      vardecl({ name: 'shade', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
     ]);
     const node = ruleset({

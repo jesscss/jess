@@ -65,7 +65,7 @@ describe('quoted', () => {
   it('renders a resolved quoted value through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -88,7 +88,7 @@ describe('quoted', () => {
   it('writes resolved quoted render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -112,7 +112,7 @@ describe('quoted', () => {
   it('renders resolved quoted values without materializing a replacement quote', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -162,7 +162,7 @@ describe('quoted', () => {
   it('resolves quoted values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -179,7 +179,7 @@ describe('quoted', () => {
   it('keeps source quoted interpolated containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);

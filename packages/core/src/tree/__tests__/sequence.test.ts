@@ -151,7 +151,7 @@ describe('Sequence', () => {
   it('renders resolved sequence values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -297,7 +297,7 @@ describe('Sequence', () => {
   it('writes resolved sequence render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -345,7 +345,7 @@ describe('Sequence', () => {
   it('resolves sequence values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -482,7 +482,7 @@ describe('Sequence', () => {
   it('keeps resolved single-item sequence buffer output out of explicit writers', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('resolved')
       })
     ]);
@@ -501,7 +501,7 @@ describe('Sequence', () => {
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('foo')
       })
     ]);

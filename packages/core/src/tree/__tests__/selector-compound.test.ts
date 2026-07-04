@@ -108,7 +108,7 @@ describe('Compound Selector', () => {
   test('renders resolved compound selector values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -129,7 +129,7 @@ describe('Compound Selector', () => {
   test('writes resolved compound selector output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -164,7 +164,7 @@ describe('Compound Selector', () => {
   test('resolves compound selector values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -212,7 +212,7 @@ describe('Compound Selector', () => {
   test('keeps source compound selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);

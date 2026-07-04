@@ -295,7 +295,7 @@ describe('QueryCondition', () => {
   it('renders resolved query-condition values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -311,7 +311,7 @@ describe('QueryCondition', () => {
   it('writes resolved query-condition output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -357,7 +357,7 @@ describe('QueryCondition', () => {
   it('renders query conditions through their own resolved syntax instead of Sequence.render()', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -448,7 +448,7 @@ describe('QueryCondition', () => {
   it('resolves query-condition values without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);

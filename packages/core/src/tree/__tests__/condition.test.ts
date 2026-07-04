@@ -304,7 +304,7 @@ describe('Condition', () => {
     it('keeps source condition child containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
-          name: any('item'),
+          name: 'item',
           value: any('foo')
         })
       ]);

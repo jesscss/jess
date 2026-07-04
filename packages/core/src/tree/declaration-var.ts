@@ -3,9 +3,8 @@ import {
   type DeclarationValue,
   type DeclarationOptions
 } from './declaration.js';
-import { Any, type AnyRole } from './any.js';
-import { Interpolated } from './interpolated.js';
-import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
+import { type AnyRole } from './any.js';
+import { defineType, F_VISIBLE, type NodeLocation } from './node.js';
 import type { LocationInfo } from './node-base.js';
 import { Nil } from './nil.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
@@ -71,12 +70,6 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     const w = options.writer!;
     const position = w.position();
     if (this._options?.paramVar && this.value instanceof Nil) {
-      if (this.name instanceof Any) {
-        const nameText = this.name.value.replace(/\s+$/u, '');
-        w.add('$', this);
-        w.add(nameText, this.name);
-        return w.getSince(position);
-      }
       this.writeBareParameterSyntax(options);
       return w.getSince(position);
     }
@@ -87,14 +80,12 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   private writeBareParameterSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('$', this);
-    if (this.name instanceof Any) {
-      w.add(this.name.value.replace(/\s+$/u, ''), this.name);
+    if (typeof this.name === 'string') {
+      w.add(this.name.replace(/\s+$/u, ''), this);
       return;
     }
     const nameMark = w.mark();
-    if (typeof this.name !== 'string') {
-      this.name.writeSyntax(options);
-    }
+    this.name.writeSyntax(options);
     w.trimEndSince(nameMark);
   }
 
@@ -117,27 +108,8 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
 defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 
 export const vardecl = (
-  value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue<AnyRole>,
   options?: VarDeclarationOptions,
   location?: NodeLocation,
   treeContext?: Context['treeContext']
-) => {
-  const { name } = value;
-  const nameNode: DeclarationValue['name'] = typeof name === 'string'
-    ? new Any(name, { role: 'property' })
-    : name instanceof Any
-      ? new Any(name.value, { role: 'property' })
-      : name instanceof Interpolated
-        ? new Interpolated(
-          { source: name.source, replacements: name.replacements },
-          { ...name.options, role: 'property' },
-          name.location,
-          name.sourceRoot?._treeContext
-        )
-        : name;
-  const declarationValue: DeclarationValue = {
-    ...value,
-    name: nameNode
-  };
-  return new VarDeclaration(declarationValue, options, location, treeContext).parentChildren();
-};
+) => new VarDeclaration(value, options, location, treeContext).parentChildren();

@@ -29,13 +29,13 @@ describe('scss-parser (ast serialize)', () => {
           [
             (Declaration
               name:
-                (Any [role=property] 'regular')
+                'regular'
               value:
                 (Num 400)
             )
             (Declaration
               name:
-                (Any [role=property] 'medium')
+                'medium'
               value:
                 (Num 500)
             )
@@ -94,7 +94,7 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'font')
+          'font'
         value:
           (Collection
     `);
@@ -109,7 +109,7 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'margin')
+          'margin'
         value:
           (Sequence
     `);
@@ -494,8 +494,8 @@ describe('scss-parser (ast serialize)', () => {
         pattern: {
           kind: 'tuple'
       `);
-    expect(serializeTypes(tree)).toContainString(`(Any [role=property] 'a')`);
-    expect(serializeTypes(tree)).toContainString(`(Any [role=property] 'b')`);
+    expect(serializeTypes(tree)).toContainString(`'a'`);
+    expect(serializeTypes(tree)).toContainString(`'b'`);
     expect(serializeTypes(tree)).toContainString(`key: 'list'`);
   });
 

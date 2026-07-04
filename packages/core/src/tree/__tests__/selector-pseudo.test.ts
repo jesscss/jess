@@ -133,7 +133,7 @@ describe('PseudoSelector', () => {
   it('renders resolved pseudo selector values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -152,7 +152,7 @@ describe('PseudoSelector', () => {
   it('writes resolved pseudo selector output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -183,7 +183,7 @@ describe('PseudoSelector', () => {
   it('resolves pseudo selector values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -203,7 +203,7 @@ describe('PseudoSelector', () => {
   it('keeps source pseudo selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -224,7 +224,7 @@ describe('PseudoSelector', () => {
   it('keeps generated pseudo selector placement output owned when arg evaluation changes', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
       })
     ]);
@@ -249,7 +249,7 @@ describe('PseudoSelector', () => {
   it('omits generated :is() wrappers for evaluated selector placement args', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: sel([el('.foo'), co(' '), el('.bar')])
       })
     ]);
@@ -276,7 +276,7 @@ describe('PseudoSelector', () => {
   it('keeps generated pseudo placement state when cloned after selector evaluation', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: sel([el('.foo'), co(' '), el('.bar')])
       })
     ]);
@@ -301,7 +301,7 @@ describe('PseudoSelector', () => {
   it('keeps evaluated generated :is() keysets aligned with selector-list omission', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
       })
     ]);
@@ -324,7 +324,7 @@ describe('PseudoSelector', () => {
   it('keeps nested generated pseudo placement text narrow without replacing selector metadata', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([pseudo({
           name: ':unknown',
           arg: compound([el('.foo'), el('.bar')])

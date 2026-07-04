@@ -39,14 +39,14 @@ function buildDeclTree(count: number, staticRatio: number = 1.0): Node[] {
     if (i / count < staticRatio) {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(any(`value-${i}`))
         })
       );
     } else {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(ref({ key: any(`var-${i}`) }))
         })
       );

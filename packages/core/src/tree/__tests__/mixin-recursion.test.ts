@@ -84,7 +84,7 @@ describe('Mixin Recursion Detection', () => {
 
       try {
         const recursiveMixin = mixin({
-          name: any('.generate'),
+          name: '.generate',
           params: list([any('i', { role: 'property' })]),
           guard: condition([
             expr(ref({ key: 'i' }, { type: 'variable' })),

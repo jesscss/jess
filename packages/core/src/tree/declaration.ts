@@ -84,16 +84,21 @@ export type DeclarationOptions = {
    */
   throwIfDefined?: boolean;
 };
-/** Should be Any<'property'> | Interpolated<'property'> */
-type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
-type DeclarationValueSegment = Node | string;
-
+/** Declaration / VarDeclaration names are plain strings or interpolated templates. */
 export type DeclarationValue<T extends AnyRole = 'property'> = {
-  name: NameValue<T> | string;
+  name: string | Interpolated<T>;
   value: Node | string | DeclarationValueSegment[];
   /** The actual string representation of important, if it exists */
   important?: Any<'flag'> | string | boolean;
 };
+
+type DeclarationValueSegment = Node | string;
+
+export type DeclarationName<T extends AnyRole = 'property'> = string | Interpolated<T>;
+
+export function declarationNameKey(name: DeclarationName): string {
+  return typeof name === 'string' ? name : String(name.valueOf());
+}
 
 type DeclarationEvalState = {
   output: Node;
@@ -605,7 +610,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return node.reuseAsLeaf();
     }
     const copy = node.cloneForPlacement();
-    if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
+    if (!(copy instanceof Interpolated)) {
       throw new TypeError('Copied declaration name must remain a declaration name');
     }
     copy.frozen = true;
@@ -1478,28 +1483,36 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private _prepareDeclarationNameIdentity(
     state: DeclarationRegistrationState,
     context: Context
-  ): MaybePromise<Any<'property'>> {
+  ): MaybePromise<string> {
     const { name } = state;
     if (name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          state.name = key;
-          return key;
+          if (!(key instanceof Any)) {
+            throw new TypeError('Expected evaluated declaration name');
+          }
+          const resolved = String(key.valueOf());
+          state.name = resolved;
+          return resolved;
         });
       }
-      state.name = maybeKey;
-      return maybeKey;
+      if (!(maybeKey instanceof Any)) {
+        throw new TypeError('Expected evaluated declaration name');
+      }
+      const resolved = String(maybeKey.valueOf());
+      state.name = resolved;
+      return resolved;
     }
     if (typeof name === 'string') {
-      return any(name, { role: 'property' });
+      return name;
     }
-    return name;
+    throw new TypeError('Declaration name must be a string or Interpolated');
   }
 
   private _finishDeclarationRegistrationPrep(
     state: DeclarationRegistrationState,
-    name: Any<'property'>
+    name: string
   ): DeclarationRegistrationState {
     // Value is consumed as delivered by the parser (Node | string | array); no
     // lazy string->node materialization. Only assignment composition (below)
@@ -1508,7 +1521,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return state;
   }
 
-  private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: Any<'property'>): void {
+  private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: string): void {
     let { value } = state;
     const setValue = (newValue: Node) => {
       state.value = newValue;
@@ -1757,7 +1770,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       const { name, value: value } = node;
       if (value instanceof Node) {
-        const isCustomProperty = name.valueOf().startsWith('--');
+        const isCustomProperty = declarationNameKey(name).startsWith('--');
         if (isCustomProperty) {
           if (!shouldResolveCustomPropertyValue(value)) {
             return state;

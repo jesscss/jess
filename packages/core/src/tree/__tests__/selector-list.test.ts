@@ -152,7 +152,7 @@ describe('Selector list', () => {
   test('renders resolved selector-list values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -177,7 +177,7 @@ describe('Selector list', () => {
   test('writes resolved selector-list output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -216,7 +216,7 @@ describe('Selector list', () => {
   test('resolves selector-list values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -303,7 +303,7 @@ describe('Selector list', () => {
   test('keeps source selector-list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);

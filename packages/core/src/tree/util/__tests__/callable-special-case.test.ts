@@ -137,7 +137,7 @@ describe('callable special-case helper', () => {
   it('leaves ordinary mixin candidates on the main eval path', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       rules: [
         decl({ name: 'color', value: any('red') })
       ]

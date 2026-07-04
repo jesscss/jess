@@ -1585,7 +1585,7 @@ describe('AtRule', () => {
   it('keeps public body at-rule resolve results mutable and isolated even when output is unchanged', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('screen')
       })
     ]);
@@ -2598,9 +2598,9 @@ describe('AtRule', () => {
       //   .mediaMixin(100px);
       // }
       const mixinDef = mixin({
-        name: any('.mediaMixin'),
+        name: '.mediaMixin',
         params: list([
-          vardecl({ name: any('fallback', { role: 'property' }), value: dimension([200, 'px']) }, { paramVar: true })
+          vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
         ]),
         rules: [
           decl({ name: 'background', value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 }) }),
@@ -2654,7 +2654,7 @@ describe('AtRule', () => {
     it('should handle mixin with nested @media using indexed parameter references', async () => {
       const createMixinRoot = (args: Node[] = []) => {
         const mixinDef = mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
           ]),
@@ -2757,7 +2757,7 @@ describe('AtRule', () => {
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: [
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: sel([el('.body')]),
               rules: [
@@ -2790,8 +2790,8 @@ describe('AtRule', () => {
     it('should handle @media with variable references in prelude', async () => {
       // Represents: @all: ~"all"; @tv: ~"(tv)"; @media @all and @tv { ... }
       const node = rules([
-        vardecl({ name: any('all', { role: 'ident' }), value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
-        vardecl({ name: any('tv', { role: 'ident' }), value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'all', value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'tv', value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
@@ -2822,7 +2822,7 @@ describe('AtRule', () => {
     it('should handle @media with expressions in prelude', async () => {
       // Represents: @some-var: 60px; @media screen and (min-width: (@some-var + 1)) { ... }
       const node = rules([
-        vardecl({ name: any('some-var', { role: 'ident' }), value: dimension([60, 'px']) }),
+        vardecl({ name: 'some-var', value: dimension([60, 'px']) }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([
@@ -2913,7 +2913,7 @@ describe('AtRule', () => {
       //   }
       // }
       const navJustifiedMixin = mixin({
-        name: any('.nav-justified'),
+        name: '.nav-justified',
         rules: [
           atrule({
             name: any('@media', { role: 'atkeyword' }),
@@ -3036,7 +3036,7 @@ describe('AtRule', () => {
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),
-        vardecl({ name: any('var', { role: 'ident' }), value: num(42) }),
+        vardecl({ name: 'var', value: num(42) }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([any('print', { role: 'keyword' })]),
@@ -3085,7 +3085,7 @@ describe('AtRule', () => {
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: [
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: el('.body'),
               rules: [
@@ -3101,8 +3101,8 @@ describe('AtRule', () => {
             })
           ]
         }),
-        vardecl({ name: any('ratio_large', { role: 'ident' }), value: num(16) }),
-        vardecl({ name: any('ratio_small', { role: 'ident' }), value: num(9) }),
+        vardecl({ name: 'ratio_large', value: num(16) }),
+        vardecl({ name: 'ratio_small', value: num(9) }),
         atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: seq([
@@ -3352,10 +3352,10 @@ describe('AtRule', () => {
           ]
         }),
         mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({
-              name: any('fallback', { role: 'property' }),
+              name: 'fallback',
               value: dimension([200, 'px'])
             }, { paramVar: true })
           ]),
@@ -3411,7 +3411,7 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('smartphone', { role: 'ident' }),
+          name: 'smartphone',
           value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })
         }),
         atrule({
@@ -3614,7 +3614,7 @@ describe('AtRule', () => {
                       value: seq([
                         quoted(any('Page ', { role: 'any' })),
                         call({
-                          name: any('counter', { role: 'ident' }),
+                          name: 'counter',
                           args: list([
                             any('page')
                           ])
@@ -3683,7 +3683,7 @@ describe('AtRule', () => {
           ]
         }),
         mixin({
-          name: any('.bg'),
+          name: '.bg',
           rules: [
             decl({
               name: 'background',
@@ -3715,7 +3715,7 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('bpMedium', { role: 'ident' }),
+          name: 'bpMedium',
           value: dimension([1000, 'px'])
         }),
         atrule({
@@ -3874,11 +3874,11 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('all', { role: 'ident' }),
+          name: 'all',
           value: quoted(any('all', { role: 'any' }))
         }),
         vardecl({
-          name: any('tv', { role: 'ident' }),
+          name: 'tv',
           value: quoted(any('(tv)', { role: 'any' }))
         }),
         atrule({
@@ -3901,7 +3901,7 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('some-var', { role: 'ident' }),
+          name: 'some-var',
           value: dimension([60, 'px'])
         }),
         atrule({

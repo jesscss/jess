@@ -60,7 +60,7 @@ describe('callable candidate loop helper', () => {
   it('handles ordinary callable entries through candidate setup and execution', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
       rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })

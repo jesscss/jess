@@ -3,6 +3,8 @@ import { OutputWriter, getPrintOptions } from '../print.js';
 import { buildSourceMap } from '../sourcemap.js';
 import { createTriviaMap, makeTrivia } from '../trivia.js';
 import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
+import { isNode } from '../is-node.js';
+import { N } from '../../node-type.js';
 import { TreeContext } from '../../../context.js';
 
 // A trivia run is now a source range; build one whose text is exactly `text`.
@@ -15,10 +17,13 @@ describe('source map segments', () => {
       file: { name: 'root.jess', path: '.', fullPath: '/abs/root.jess' }
     });
     const root = rules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ], undefined, undefined, treeContext);
     // fake location & file for mapping
-    (root.rules[0] as any)._location = [0, 1, 1, 0, 1, 6];
+    const firstRule = root.rules[0];
+    if (isNode(firstRule, N.Declaration)) {
+      firstRule._location = [0, 1, 1, 0, 1, 6];
+    }
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('color: red;\n');
     const segs = w.getSegments();
@@ -36,7 +41,7 @@ describe('source map segments', () => {
       ruleset({
         selector: sellist([sel([el('.a')])]),
         rules: [
-          decl({ name: any('x'), value: any('y') })
+          decl({ name: 'x', value: any('y') })
         ]
       })
     ], undefined, undefined, treeContext);
@@ -60,8 +65,8 @@ describe('source map segments', () => {
 
   it('writer line/column advance for newlines between rules', () => {
     const w = new OutputWriter();
-    const a = decl({ name: any('a'), value: any('1') });
-    const b = decl({ name: any('b'), value: any('2') });
+    const a = decl({ name: 'a', value: any('1') });
+    const b = decl({ name: 'b', value: any('2') });
     // Attach fake locations so segments are recorded (orig lines are 1-based here)
     a._location = [0, 1, 1, 0, 1, 5];   // original line 1 (0-based 0)
     b._location = [0, 4, 1, 0, 4, 5];   // original line 2 (0-based 1)
@@ -107,7 +112,7 @@ describe('source map segments', () => {
       file: { name: 'left.jess', path: '.', fullPath: '/abs/left.jess' }
     });
     const left = rules([
-      decl({ name: any('a'), value: any('1') })
+      decl({ name: 'a', value: any('1') })
     ], undefined, undefined, leftContext);
     // attach file+location to the declaration itself so segments carry sources
     (left.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
@@ -116,7 +121,7 @@ describe('source map segments', () => {
       file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess' }
     });
     const right = rules([
-      decl({ name: any('b'), value: any('2') })
+      decl({ name: 'b', value: any('2') })
     ], undefined, undefined, rightContext);
     (right.value[0] as any)._location = [0, 1, 1, 0, 1, 5];
 

@@ -314,8 +314,8 @@ describe('renderNodeToBuffer', () => {
   it('keeps direct render and flat-buffer render aligned across node surfaces', async () => {
     const context = new Context();
     const root = rules([
-      vardecl({ name: any('asset'), value: quoted('image.png') }),
-      vardecl({ name: any('brand'), value: any('red') })
+      vardecl({ name: 'asset', value: quoted('image.png') }),
+      vardecl({ name: 'brand', value: any('red') })
     ]);
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
@@ -431,8 +431,8 @@ describe('renderNodeToBuffer', () => {
     for (const item of cases) {
       const context = new Context();
       const root = rules([
-        vardecl({ name: any('brand'), value: any('red') }),
-        vardecl({ name: any('class-name'), value: any('active') })
+        vardecl({ name: 'brand', value: any('red') }),
+        vardecl({ name: 'class-name', value: any('active') })
       ]);
       const evaldRoot = await root.eval(context);
       context.root = evaldRoot;
@@ -484,7 +484,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Anonymous', node: new Anonymous('legacy-anon'), expected: 'legacy-anon' },
       { surface: 'Keyword', node: keyword('auto'), expected: 'auto' },
       { surface: 'Num', node: num(7), expected: '7' },
-      { surface: 'CustomDeclaration', node: customdecl({ name: any('--gap'), value: any('0') }) },
+      { surface: 'CustomDeclaration', node: customdecl({ name: '--gap', value: any('0') }) },
       { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },
       { surface: 'Extend', node: extend({ target: el('.target') }), expected: '', expectedParts: [] },
       { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
@@ -495,12 +495,12 @@ describe('renderNodeToBuffer', () => {
       { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }), expectedParts: [] },
       {
         surface: 'Mixin',
-        node: mixin({ name: any('.paint'), rules: [decl({ name: 'color', value: any('red') })] }),
+        node: mixin({ name: '.paint', rules: [decl({ name: 'color', value: any('red') })] }),
         expectedParts: []
       },
       {
         surface: 'Func',
-        node: fn({ name: any('paint'), body: rules([decl({ name: 'return', value: any('red') })]) }),
+        node: fn({ name: 'paint', body: rules([decl({ name: 'return', value: any('red') })]) }),
         expectedParts: []
       },
       {

@@ -28,7 +28,7 @@ describe('SelectorCapture', () => {
   it('renders resolved selector values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
@@ -45,7 +45,7 @@ describe('SelectorCapture', () => {
   it('writes resolved selector capture output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
@@ -73,7 +73,7 @@ describe('SelectorCapture', () => {
   it('resolves selector capture values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
@@ -104,7 +104,7 @@ describe('SelectorCapture', () => {
   it('keeps source selector capture child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);

@@ -61,12 +61,12 @@ describe('Flag isolation', () => {
     test('sibling at-rules', () => {
       const tree = rules([
         atrule({
-          name: any('media'),
+          name: 'media',
           prelude: any('(min-width: 10px)'),
           rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
         }),
         atrule({
-          name: any('media'),
+          name: 'media',
           prelude: any('(min-width: 10px)'),
           rules: [decl({ name: 'color', value: any('red') })]
         })

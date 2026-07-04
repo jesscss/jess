@@ -567,7 +567,7 @@ describe('Call', () => {
   it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
     const root = rules([
       vardecl({
-        name: any('fnName'),
+        name: 'fnName',
         value: any('rgb')
       })
     ]);
@@ -622,7 +622,7 @@ describe('Call', () => {
   it('writes CSS call arguments without resolving child wrappers', async () => {
     const root = rules([
       vardecl({
-        name: any('red-channel'),
+        name: 'red-channel',
         value: num(100)
       })
     ]);
@@ -871,7 +871,7 @@ describe('Call', () => {
 
   it('renders dynamic stylesheet function names without evaluating the name twice', async () => {
     const fnNode = fn({
-      name: any('make-color'),
+      name: 'make-color',
       body: rules([
         decl({ name: 'return', value: any('blue') })
       ])
@@ -909,7 +909,7 @@ describe('Call', () => {
     }
 
     const fnNode = fn({
-      name: any('inspect'),
+      name: 'inspect',
       params: list([
         vardecl({ name: 'value', value: any('') })
       ]),
@@ -958,7 +958,7 @@ describe('Call', () => {
 
   it('renders dynamic mixin names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
@@ -1014,7 +1014,7 @@ describe('Call', () => {
 
   it('renders dynamic mixin collection names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('green') })
       ]
@@ -1043,7 +1043,7 @@ describe('Call', () => {
 
   it('renders dynamic callable array names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('purple') })
       ]
@@ -1071,7 +1071,7 @@ describe('Call', () => {
 
   it('renders dynamic call alias names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('orange') })
       ]
@@ -1102,7 +1102,7 @@ describe('Call', () => {
 
   it('renders silent-fail dynamic callable failures without owning a fallback call', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: ref('missing-color', { type: 'variable' }) })
       ]
@@ -1145,7 +1145,7 @@ describe('Call', () => {
   it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
     const root = rules([
       vardecl({
-        name: any('red-channel'),
+        name: 'red-channel',
         value: num(100)
       })
     ]);
@@ -1620,7 +1620,7 @@ describe('Call', () => {
   it('renders evaluated scalar node names without whole-call readback', () => {
     const writer = new CountingWriter();
     const rule = call({
-      name: any('rgb'),
+      name: 'rgb',
       args: list([num(10), num(20)])
     });
     rule._evaluatedCallOutput = true;
@@ -1773,7 +1773,7 @@ describe('Call', () => {
   it('keeps source CSS call child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('channel'),
+        name: 'channel',
         value: num(20)
       })
     ]);
@@ -2100,7 +2100,7 @@ describe('Call', () => {
     root.setFunctionBinding('decls', new JsFunction({
       name: 'decls',
       fn: () => rules([
-        decl({ name: new Any('color', { role: 'property' }), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ])
     }));
 

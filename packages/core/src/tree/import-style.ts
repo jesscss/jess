@@ -13,10 +13,10 @@ import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
+import { declarationNameKey } from './declaration.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
-import { Comment } from './comment.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -94,9 +94,7 @@ function variableNameKey(node: Node): string {
     return '';
   }
   const name = node.name;
-  return name instanceof Any
-    ? name.value
-    : String(name.valueOf?.() ?? '');
+  return declarationNameKey(name);
 }
 
 function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
@@ -1138,8 +1136,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // A plain `@import` or a wildcard `@compose (namespace: *)` inlines its
         // members into the enclosing scope (the enclosing frame links this as a
         // fallback). A named/plain compose keeps its members behind its namespace.
-        rules.options.inlinesMembersToParent ??=
-          this.options.type === 'import' || this.options.namespace === '*';
+        rules.options.inlinesMembersToParent
+          ??= this.options.type === 'import' || this.options.namespace === '*';
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {
           // Plain imports still need an import-site-local Rules surface during

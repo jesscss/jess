@@ -132,7 +132,7 @@ describe('List', () => {
   it('renders resolved list values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('four')
       })
     ]);
@@ -161,7 +161,7 @@ describe('List', () => {
   it('writes resolved list render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('four')
       })
     ]);
@@ -191,7 +191,7 @@ describe('List', () => {
   it('renders dynamic list values without materializing a replacement list', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('four')
       })
     ]);
@@ -302,7 +302,7 @@ describe('List', () => {
   it('resolves list values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('four')
       })
     ]);
@@ -363,7 +363,7 @@ describe('List', () => {
   it('keeps source list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('four')
       })
     ]);

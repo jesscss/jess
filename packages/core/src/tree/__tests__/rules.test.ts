@@ -263,7 +263,7 @@ describe('Rules', () => {
 
   it('drops empty derived scope frames while preserving fallback frames', () => {
     const source = rules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     const emptyFrame = source.getScopeFrame();
     expect(emptyFrame.rulesNode).toBe(source);
@@ -520,8 +520,8 @@ describe('Rules', () => {
 
     try {
       const root = rules([
-        vardecl({ name: any('tone'), value: any('red') }),
-        decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
+        vardecl({ name: 'tone', value: any('red') }),
+        decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
       const canonicalDecl = root.rules[1];
 
@@ -786,16 +786,16 @@ describe('Rules', () => {
 
       it('findAnyDeclaration picks VarDeclaration or Declaration by source order', async () => {
         let node = rules([
-          vardecl({ name: any('n'), value: any('from-var') }),
-          decl({ name: any('n'), value: any('from-decl') })
+          vardecl({ name: 'n', value: any('from-var') }),
+          decl({ name: 'n', value: any('from-decl') })
         ]);
         node = await node.eval(context);
         expect(isNode(getDeclEither(node, 'n'), N.Declaration)).toBe(true);
         expect(isNode(getDeclEither(node, 'n'), N.VarDeclaration)).toBe(false);
 
         let node2 = rules([
-          decl({ name: any('m'), value: any('from-decl') }),
-          vardecl({ name: any('m'), value: any('from-var') })
+          decl({ name: 'm', value: any('from-decl') }),
+          vardecl({ name: 'm', value: any('from-var') })
         ]);
         node2 = await node2.eval(context);
         expect(isNode(getDeclEither(node2, 'm'), N.VarDeclaration)).toBe(true);
@@ -1419,11 +1419,11 @@ describe('Rules', () => {
           // Mixin definition that uses explicit live-binding semantics.
           // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
-            name: any('my-mixin'),
+            name: 'my-mixin',
             rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'live' }) })
             ]
-          }, { rulesVisibility: { VarDeclaration: 'optional' } } as MixinOptions),
+          }, { rulesVisibility: { VarDeclaration: 'optional' } } satisfies MixinOptions),
 
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({
@@ -2282,11 +2282,11 @@ describe('Rules', () => {
 
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
-          { name: any('color'), value: any('blue') },
+          { name: 'color', value: any('blue') },
           { setDefined: true }
         );
         const node = rules([
-          decl({ name: any('color'), value: any('red') }),
+          decl({ name: 'color', value: any('red') }),
           assignment
         ]);
 

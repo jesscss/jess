@@ -494,7 +494,9 @@ export class LessGrammar extends CssParser {
     if (Array.isArray(pseudoArg)) {
       // Unknown-pseudo: raw string array → Keyword[] for structured serialization.
       const keywordNodes = (pseudoArg as unknown[]).map(item =>
-        typeof item === 'string' ? this._lessKeyword(item, loc) : item as JessNode
+        typeof item === 'string' && item !== ' '
+          ? this._lessKeyword(item, loc)
+          : item as JessNode
       );
       (pseudo as unknown as { arg: unknown }).arg = keywordNodes;
     }
@@ -1367,14 +1369,13 @@ export class LessGrammar extends CssParser {
       const ruleNodes = this._liftStandaloneComments(rawRuleNodes as any, bodyStart, bodyEnd, loc);
       if (hasExplicitParens) {
         // Has explicit parens -- it's a Mixin definition
-        const nameNode = new Any(name, { role: 'name' }, loc) as unknown as Any<'name'>;
         const guardText = guard !== undefined ? (guard as any).toTrimmedString?.() ?? '' : '';
         const hasDefault = guardText.includes('default');
         const nonEmptyParams = (argsList as unknown as { value?: unknown[] })?.value?.length
           ? argsList as unknown as List<Node>
           : undefined;
         return new Mixin(
-          { name: nameNode, params: nonEmptyParams, rules: ruleNodes, guard: guard as any },
+          { name, params: nonEmptyParams, rules: ruleNodes, guard: guard as any },
           { hasDefault: !!hasDefault },
           loc
         ) as unknown as JessNode;

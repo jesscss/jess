@@ -95,7 +95,7 @@ describe('Block', () => {
   it('renders resolved block values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -121,7 +121,7 @@ describe('Block', () => {
   it('writes resolved block render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -148,7 +148,7 @@ describe('Block', () => {
   it('renders resolved block values without materializing a replacement block', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -176,7 +176,7 @@ describe('Block', () => {
   it('resolves block values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -206,7 +206,7 @@ describe('Block', () => {
   it('keeps source block values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

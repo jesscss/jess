@@ -586,8 +586,8 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString(`(VarDeclaration`);
-    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'x')`);
-    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'y')`);
+    expect(serializeTypes(result.tree)).toContainString(`'x'`);
+    expect(serializeTypes(result.tree)).toContainString(`'y'`);
   });
 
   functionalIt('serializes @include ns.foo() as $ns > foo()', () => {

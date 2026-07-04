@@ -218,7 +218,7 @@ describe('reference', () => {
     it('renders a resolved variable value through render(context)', async () => {
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -234,7 +234,7 @@ describe('reference', () => {
     it('writes resolved reference output into segmented buffers', async () => {
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -260,7 +260,7 @@ describe('reference', () => {
     it('renders resolved reference output directly without public resolve', async () => {
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -278,7 +278,7 @@ describe('reference', () => {
       const sourceValue = new NativeRenderAny('value');
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: sourceValue
         })
       ]);
@@ -296,7 +296,7 @@ describe('reference', () => {
       const sourceValue = new AsyncNativeRenderAny('value');
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: sourceValue
         })
       ]);
@@ -315,7 +315,7 @@ describe('reference', () => {
 
     it('keeps definition rules context until async live-slot value eval settles', async () => {
       const definitionRules = rules([]);
-      const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: any('blue') }, { paramVar: true });
       definitionRules.push(paramDecl);
       expectedAsyncRulesContext = definitionRules;
       const asyncValue = new AsyncRulesContextAny('red');
@@ -341,7 +341,7 @@ describe('reference', () => {
 
     it('restores runtime binding frames when async live-slot value eval rejects', async () => {
       const definitionRules = rules([]);
-      const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: any('blue') }, { paramVar: true });
       definitionRules.push(paramDecl);
       const asyncValue = new RejectingAsyncAny('runtime binding failed');
       const runtimeScope = rules([]);
@@ -366,7 +366,7 @@ describe('reference', () => {
 
     it('renders runtime-binding scalar references without applying public result metadata', async () => {
       const sourceValue = any('red');
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -421,7 +421,7 @@ describe('reference', () => {
 
     it('resolves runtime-binding scalar references without frozen result metadata', async () => {
       const sourceValue = any('red');
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -476,7 +476,7 @@ describe('reference', () => {
 
       try {
         const fallbackScope = rules([
-          vardecl({ name: any('tone'), value: any('blue') })
+          vardecl({ name: 'tone', value: any('blue') })
         ]);
         await fallbackScope.eval(context);
         const runtimeScope = rules([]);
@@ -496,7 +496,7 @@ describe('reference', () => {
 
     it('does not rediscover fallback-frame parent declarations after covered misses', async () => {
       const fallbackParent = rules([
-        vardecl({ name: any('tone'), value: any('blue') })
+        vardecl({ name: 'tone', value: any('blue') })
       ]);
       const originalValue = fallbackParent.rules;
 
@@ -538,7 +538,7 @@ describe('reference', () => {
     it('keeps runtime-binding containers on the owned output path for default guards', async () => {
       const sourceDefault = defaultguard();
       const sourceValue = list([sourceDefault]);
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -569,7 +569,7 @@ describe('reference', () => {
 
     it('renders source-free runtime-binding containers as text without public result metadata', async () => {
       const sourceValue = list([any('red'), any('blue')]);
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -626,7 +626,7 @@ describe('reference', () => {
 
     it('renders source-free runtime-binding sequences as text without container copies', async () => {
       const sourceValue = spaced([any('red'), any('blue')]);
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -684,7 +684,7 @@ describe('reference', () => {
     it('renders source-backed runtime-binding containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       sourceValue._location = [10, 1, 11, 20, 1, 21];
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -748,7 +748,7 @@ describe('reference', () => {
       sourceValue._location = [10, 1, 11, 16, 1, 17];
       const node = rules([
         vardecl({
-          name: any('space'),
+          name: 'space',
           value: sourceValue
         })
       ]);
@@ -806,7 +806,7 @@ describe('reference', () => {
       const sourceValue = spaced([first, second]);
       const node = rules([
         vardecl({
-          name: any('space'),
+          name: 'space',
           value: sourceValue
         })
       ]);
@@ -836,7 +836,7 @@ describe('reference', () => {
 
     it('keeps runtime-binding container sources canonical during public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
-      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -862,7 +862,7 @@ describe('reference', () => {
 
     it('resolves dynamic runtime-binding containers without post-eval reference ownership copies', async () => {
       const sourceValue = list([new AsyncNativeRenderAny('red')]);
-      const paramDecl = vardecl({ name: any('palette'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'palette', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -905,7 +905,7 @@ describe('reference', () => {
     it('resolves a variable value without touching render state', async () => {
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -923,7 +923,7 @@ describe('reference', () => {
       const sourceValue = any('red');
       const node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: sourceValue
         })
       ]);
@@ -969,7 +969,7 @@ describe('reference', () => {
       const sourceValue = any('red');
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1015,7 +1015,7 @@ describe('reference', () => {
       const sourceValue = list([any('red'), any('blue')]);
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1064,7 +1064,7 @@ describe('reference', () => {
       const sourceValue = spaced([any('red'), any('blue')]);
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1111,7 +1111,7 @@ describe('reference', () => {
 
     it('renders dynamic runtime-binding containers without post-eval reference ownership copies', async () => {
       const sourceValue = list([new AsyncNativeRenderAny('red')]);
-      const paramDecl = vardecl({ name: any('palette'), value: sourceValue }, { paramVar: true });
+      const paramDecl = vardecl({ name: 'palette', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
         undefined,
@@ -1156,7 +1156,7 @@ describe('reference', () => {
       sourceValue._location = [10, 1, 11, 20, 1, 21];
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1204,9 +1204,9 @@ describe('reference', () => {
     it('renders dynamic declaration reference containers without post-eval reference ownership copies', async () => {
       const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
       const node = rules([
-        vardecl({ name: any('tone'), value: any('red') }),
+        vardecl({ name: 'tone', value: any('red') }),
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1240,9 +1240,9 @@ describe('reference', () => {
     it('resolves dynamic declaration reference containers without post-eval reference ownership copies', async () => {
       const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
       const node = rules([
-        vardecl({ name: any('tone'), value: any('red') }),
+        vardecl({ name: 'tone', value: any('red') }),
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -1275,7 +1275,7 @@ describe('reference', () => {
 
     it('restores declaration reference frames when async value eval rejects', async () => {
       const declaration = decl({
-        name: any('src'),
+        name: 'src',
         value: list([new RejectingAsyncAny('declaration reference failed')])
       });
       const node = rules([declaration]);
@@ -1288,7 +1288,7 @@ describe('reference', () => {
 
     it('restores important source when async important declaration reference rejects', async () => {
       const declaration = decl({
-        name: any('src'),
+        name: 'src',
         value: list([new RejectingAsyncAny('important declaration failed')]),
         important: any('!important', { role: 'flag' })
       });
@@ -1303,7 +1303,7 @@ describe('reference', () => {
 
     it('restores declaration reference frames when async merged finalization throws', async () => {
       const declaration = decl({
-        name: any('src'),
+        name: 'src',
         value: list([list([new AsyncNativeRenderAny('red')]), any('blue')]),
         important: any('!important', { role: 'flag' })
       }, { normalizedFromAssign: AssignmentType.Add });
@@ -1404,11 +1404,11 @@ describe('reference', () => {
         vardecl({ name: 'tone-var', value: any('purple') }),
         decl({ name: 'tone', value: any('orange') }),
         decl({
-          name: any('seen-var'),
+          name: 'seen-var',
           value: ref({ key: 'tone-var' }, { type: 'index' })
         }),
         decl({
-          name: any('seen-prop'),
+          name: 'seen-prop',
           value: ref({ key: quoted('tone') }, { type: 'index' })
         })
       ]);
@@ -1802,11 +1802,11 @@ describe('reference', () => {
       ]);
       const node = rules([
         vardecl({
-          name: any('item'),
+          name: 'item',
           value: any('foo')
         }),
         vardecl({
-          name: any('source'),
+          name: 'source',
           value
         })
       ]);
@@ -1846,7 +1846,7 @@ describe('reference', () => {
         return originalInherit.apply(this, args);
       };
       const sourceBinding = vardecl({
-        name: any('block'),
+        name: 'block',
         value: sourceValue
       });
       const node = rules([
@@ -1893,7 +1893,7 @@ describe('reference', () => {
       const sourceDecl = decl({ name: 'color', value: any('blue') });
       const sourceValue = rules([sourceDecl]);
       const sourceBinding = vardecl({
-        name: any('block'),
+        name: 'block',
         value: sourceValue
       });
       const node = rules([
@@ -1921,7 +1921,7 @@ describe('reference', () => {
       ]);
       const node = rules([
         vardecl({
-          name: any('block'),
+          name: 'block',
           value: sourceValue
         })
       ]);
@@ -1937,7 +1937,7 @@ describe('reference', () => {
     it('keeps fallback value containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
-          name: any('item'),
+          name: 'item',
           value: any('foo')
         })
       ]);
@@ -2371,7 +2371,7 @@ describe('reference', () => {
 
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
-        name: any('.fast-mixin'),
+        name: '.fast-mixin',
         rules: [decl({ name: 'color', value: any('green') })]
       });
       const originalInherit = MixinClass.prototype.inherit;
@@ -2419,7 +2419,7 @@ describe('reference', () => {
 
     it('materializes mixin reference targets without double-inheriting evaluated rules', async () => {
       const mixinDef = mixin({
-        name: any('.box'),
+        name: '.box',
         rules: [
           decl({ name: 'color', value: any('green') })
         ]
@@ -2466,11 +2466,11 @@ describe('reference', () => {
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);
@@ -2484,11 +2484,11 @@ describe('reference', () => {
     it('should get a property from scope via quoted index', async () => {
       let node = rules([
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: quoted('foo') }, { type: 'index' })
         })
       ]);
@@ -2506,11 +2506,11 @@ describe('reference', () => {
       };
       const node = rules([
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('blue')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: keyNode }, { type: 'declaration' })
         })
       ]);
@@ -2530,11 +2530,11 @@ describe('reference', () => {
       };
       const node = rules([
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: keyNode }, { type: 'index' })
         })
       ]);
@@ -2550,7 +2550,7 @@ describe('reference', () => {
     it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: list([any('red')])
         })
       ]);
@@ -2582,7 +2582,7 @@ describe('reference', () => {
       const sourceValue = list([any('red')]);
       const node = rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: sourceValue
         })
       ]);
@@ -2628,11 +2628,11 @@ describe('reference', () => {
     it('should get a var from scope below reference', async () => {
       let node = rules([
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'variable' })
         }),
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -2646,11 +2646,11 @@ describe('reference', () => {
     it('should get a prop from scope below reference via quoted index', async () => {
       let node = rules([
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: quoted('foo') }, { type: 'index' })
         }),
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         })
       ]);
@@ -2664,16 +2664,16 @@ describe('reference', () => {
     it('should resolve merged property lookups via quoted index inside a nested child scope', async () => {
       let node = rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('red')
         }, { assign: AssignmentType.Add }),
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('foo')
         }, { assign: AssignmentType.Add }),
         rules([
           decl({
-            name: any('background'),
+            name: 'background',
             value: ref({ key: quoted('background-color') }, { type: 'index' })
           })
         ])
@@ -2691,7 +2691,7 @@ describe('reference', () => {
       const sourceValue = list([any('red'), any('foo')]);
       const node = rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: sourceValue
         }, { normalizedFromAssign: AssignmentType.Add })
       ]);
@@ -2745,9 +2745,9 @@ describe('reference', () => {
     it('reuses already-normalized dynamic merged declaration values during public resolve', async () => {
       const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' }), any('foo')]);
       const node = rules([
-        vardecl({ name: any('tone'), value: any('red') }),
+        vardecl({ name: 'tone', value: any('red') }),
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: sourceValue
         }, { normalizedFromAssign: AssignmentType.Add })
       ]);
@@ -2780,7 +2780,7 @@ describe('reference', () => {
       const sourceValue = list([list([any('red')]), any('foo')]);
       const node = rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: sourceValue
         }, { normalizedFromAssign: AssignmentType.Add })
       ]);
@@ -2825,11 +2825,11 @@ describe('reference', () => {
     it('should treat keyword index as variable lookup', async () => {
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'index' })
         })
       ]);
@@ -2843,15 +2843,15 @@ describe('reference', () => {
     it('should find a VarDeclaration via declaration type when both types exist', async () => {
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('blue')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'declaration' })
         })
       ]);
@@ -2865,15 +2865,15 @@ describe('reference', () => {
     it('should find a Declaration via declaration type when both types exist', async () => {
       let node = rules([
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('blue')
         }),
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'declaration' })
         })
       ]);
@@ -2887,15 +2887,15 @@ describe('reference', () => {
     it('should find a variable via keyword index (not a property)', async () => {
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('blue')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'index' })
         })
       ]);
@@ -2909,15 +2909,15 @@ describe('reference', () => {
     it('should find a property via quoted index (not a variable)', async () => {
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         decl({
-          name: any('foo'),
+          name: 'foo',
           value: any('blue')
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: quoted('foo') }, { type: 'index' })
         })
       ]);
@@ -2936,15 +2936,15 @@ describe('reference', () => {
        */
       let node = rules([
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: any('red')
         }),
         vardecl({
-          name: any('foo'),
+          name: 'foo',
           value: spaced([expr(ref({ key: 'foo' }, { type: 'variable' })), any('red')])
         }),
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);
@@ -2959,7 +2959,7 @@ describe('reference', () => {
     it('should throw if the variable is not defined', async () => {
       let node = rules([
         decl({
-          name: any('bar'),
+          name: 'bar',
           value: ref({ key: 'foo' }, { type: 'variable' })
         })
       ]);
@@ -2982,7 +2982,7 @@ describe('reference', () => {
       try {
         const node = rules([
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'missing' }, { type: 'variable' })
           })
         ]);
@@ -3011,7 +3011,7 @@ describe('reference', () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({
-          name: any('seen'),
+          name: 'seen',
           value: snapshotRef
         }),
         vardecl({ name: 'color', value: any('blue') })
@@ -3048,7 +3048,7 @@ describe('reference', () => {
         const node = rules([
           vardecl({ name: 'color', value: any('red') }),
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: ref({ key: 'color' }, { type: 'variable' })
           })
         ]);
@@ -3070,7 +3070,7 @@ describe('reference', () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({
-          name: any('seen'),
+          name: 'seen',
           value: colorRef
         })
       ]);
@@ -3097,7 +3097,7 @@ describe('reference', () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({
-          name: any('seen'),
+          name: 'seen',
           value: colorRef
         })
       ]);
@@ -3169,7 +3169,7 @@ describe('reference', () => {
         const colorRef = ref({ key: 'color' }, { type: 'variable' });
         const childRules = rules([
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: colorRef
           })
         ]);
@@ -3196,7 +3196,7 @@ describe('reference', () => {
         selector: el('.scope'),
         rules: [
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: colorRef
           })
         ]
@@ -3235,7 +3235,7 @@ describe('reference', () => {
         const missingRef = ref({ key: 'missing' }, { type: 'variable' });
         const node = rules([
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: missingRef
           })
         ]);
@@ -3255,7 +3255,7 @@ describe('reference', () => {
         selector: el('.scope'),
         rules: [
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: colorRef
           })
         ]
@@ -3365,7 +3365,7 @@ describe('reference', () => {
 
     it('property occurrence lookup uses direct Declaration lookup for unfiltered exact hits', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
@@ -3377,11 +3377,11 @@ describe('reference', () => {
     it('direct property lookup records merge-chain occurrence slots', async () => {
       const directLookupNode = rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('red')
         }, { assign: AssignmentType.Add }),
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('foo')
         }, { assign: AssignmentType.Add })
       ]);
@@ -3396,11 +3396,11 @@ describe('reference', () => {
 
       const renderNode = rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('red')
         }, { assign: AssignmentType.Add }),
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('foo')
         }, { assign: AssignmentType.Add })
       ]);
@@ -3415,7 +3415,7 @@ describe('reference', () => {
 
     it('property occurrence lookup uses direct Declaration lookup for covered unfiltered misses', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
@@ -3425,7 +3425,7 @@ describe('reference', () => {
 
     it('direct declaration cache survives unrelated static declaration writes', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('blue') })
+        decl({ name: 'color', value: any('blue') })
       ]);
 
       await node.eval(context);
@@ -3463,7 +3463,7 @@ describe('reference', () => {
 
     it('direct declaration cache survives unrelated static child declaration surface writes', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('blue') })
+        decl({ name: 'color', value: any('blue') })
       ]);
 
       await node.eval(context);
@@ -3483,7 +3483,7 @@ describe('reference', () => {
       expect(missingCacheKeys.length).toBeGreaterThan(0);
 
       node.push(rules([
-        decl({ name: any('child-color'), value: any('green') })
+        decl({ name: 'child-color', value: any('green') })
       ]));
 
       expect(node.declarationLookupVersion).toBe(declarationLookupVersion);
@@ -3504,7 +3504,7 @@ describe('reference', () => {
 
     it('direct declaration cache resets for unknown child declaration surface writes', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('blue') })
+        decl({ name: 'color', value: any('blue') })
       ]);
 
       await node.eval(context);
@@ -3543,7 +3543,7 @@ describe('reference', () => {
 
     it('direct property lookup ignores empty candidate sets', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
@@ -3558,9 +3558,9 @@ describe('reference', () => {
     });
 
     it('direct property lookup records non-empty candidate hits', async () => {
-      const stale = decl({ name: any('other-color'), value: any('black') });
+      const stale = decl({ name: 'other-color', value: any('black') });
       const node = rules([
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
@@ -3580,9 +3580,9 @@ describe('reference', () => {
 
     it('unfiltered property references use direct Declaration lookup', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('red') }),
+        decl({ name: 'color', value: any('red') }),
         decl({
-          name: any('seen'),
+          name: 'seen',
           value: ref({ key: 'color' }, { type: 'property' })
         })
       ]);
@@ -3597,7 +3597,7 @@ describe('reference', () => {
 
     it('semantic filtered property lookup uses direct declaration lookup', async () => {
       const node = rules([
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]);
 
       await node.eval(context);
@@ -3611,7 +3611,7 @@ describe('reference', () => {
 
     it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
       const childRules = rules([
-        decl({ name: any('child-color'), value: any('blue') })
+        decl({ name: 'child-color', value: any('blue') })
       ]);
       const root = rules([
         ruleset({
@@ -3632,10 +3632,10 @@ describe('reference', () => {
 
     it('direct property lookup reuses carried child rule entries after indexing', async () => {
       const childRules = rules([
-        decl({ name: any('child-color'), value: any('blue') })
+        decl({ name: 'child-color', value: any('blue') })
       ]);
       const root = rules([
-        decl({ name: any('root-color'), value: any('red') }),
+        decl({ name: 'root-color', value: any('red') }),
         childRules
       ]);
       await root.eval(context);
@@ -3721,7 +3721,7 @@ describe('reference', () => {
 
     it('direct variable lookup skips child rules whose visibility cannot contain variables', async () => {
       const childRules = rules([
-        decl({ name: any('child-color'), value: any('blue') })
+        decl({ name: 'child-color', value: any('blue') })
       ], {
         rulesVisibility: {
           VarDeclaration: 'private',
@@ -3760,7 +3760,7 @@ describe('reference', () => {
 
     it('direct variable lookup enters reference-import child surfaces even when family flags are absent', async () => {
       const childRules = rules([
-        vardecl({ name: any('from-ref'), value: any('blue') })
+        vardecl({ name: 'from-ref', value: any('blue') })
       ], {
         rulesVisibility: {
           VarDeclaration: 'public'
@@ -3786,7 +3786,7 @@ describe('reference', () => {
 
     it('direct property lookup enters reference-import child surfaces even when family flags are absent', async () => {
       const childRules = rules([
-        decl({ name: any('from-ref'), value: any('blue') })
+        decl({ name: 'from-ref', value: any('blue') })
       ], {
         rulesVisibility: {
           Declaration: 'public'
@@ -3812,7 +3812,7 @@ describe('reference', () => {
 
     it('direct variable reference-import miss does not widen ordinary property child scans', async () => {
       const ordinaryChild = rules([
-        decl({ name: any('from-ref'), value: any('ordinary') })
+        decl({ name: 'from-ref', value: any('ordinary') })
       ], {
         rulesVisibility: {
           Declaration: 'public',
@@ -3872,7 +3872,7 @@ describe('reference', () => {
 
     it('direct property reference-import miss does not widen ordinary variable child scans', async () => {
       const ordinaryChild = rules([
-        vardecl({ name: any('from-ref'), value: any('ordinary') })
+        vardecl({ name: 'from-ref', value: any('ordinary') })
       ], {
         rulesVisibility: {
           Declaration: 'private',
@@ -3935,7 +3935,7 @@ describe('reference', () => {
 
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
       const childRules = rules([
-        vardecl({ name: any('from-ref'), value: any('blue') })
+        vardecl({ name: 'from-ref', value: any('blue') })
       ], {
         rulesVisibility: {
           VarDeclaration: 'public'
@@ -3976,7 +3976,7 @@ describe('reference', () => {
 
     it('direct property lookup still skips children without property or reference-import surfaces', async () => {
       const childRules = rules([
-        decl({ name: any('from-ref'), value: any('blue') })
+        decl({ name: 'from-ref', value: any('blue') })
       ], {
         rulesVisibility: {
           Declaration: 'public'
@@ -4020,7 +4020,7 @@ describe('reference', () => {
         vardecl({ name: 'color', value: any('red') }),
         vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
         decl({
-          name: any('seen'),
+          name: 'seen',
           value: ref({ key: 'color' }, { type: 'variable' })
         })
       ]);
@@ -4076,7 +4076,7 @@ describe('reference', () => {
         // `childRules` would be orphaned and `color` would miss the parent frame).
         const childRules = rules([
           decl({
-            name: any('seen'),
+            name: 'seen',
             value: ref({ key: 'color' }, { type: 'variable' })
           })
         ]);
@@ -4116,12 +4116,12 @@ describe('reference', () => {
       try {
         const node = rules([
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'missing' }, { type: 'variable' })
           }),
           rules([
             vardecl({
-              name: any('missing'),
+              name: 'missing',
               value: any('red')
             })
           ], {
@@ -4161,7 +4161,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'missing' }, { type: 'variable' })
           })
         ]);
@@ -4196,11 +4196,11 @@ describe('reference', () => {
             value: any('red')
           }),
           vardecl({
-            name: any('x'),
+            name: 'x',
             value: any('blue')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4231,7 +4231,7 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
-            name: any('x'),
+            name: 'x',
             value: any('blue')
           }),
           vardecl({
@@ -4242,7 +4242,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4267,7 +4267,7 @@ describe('reference', () => {
           value: any('red')
         }),
         vardecl({
-          name: any('x'),
+          name: 'x',
           value: any('blue')
         })
       ]);
@@ -4314,7 +4314,7 @@ describe('reference', () => {
       try {
         let node = rules([
           vardecl({
-            name: any('suffix'),
+            name: 'suffix',
             value: any('x')
           }),
           vardecl({
@@ -4325,7 +4325,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4347,7 +4347,7 @@ describe('reference', () => {
     it('resolves dynamic declaration names that depend on earlier dynamic names', async () => {
       const node = rules([
         vardecl({
-          name: any('first'),
+          name: 'first',
           value: any('second')
         }),
         vardecl({
@@ -4365,7 +4365,7 @@ describe('reference', () => {
           value: any('red')
         }),
         decl({
-          name: any('color'),
+          name: 'color',
           value: ref({ key: 'final' }, { type: 'variable' })
         })
       ]);
@@ -4405,13 +4405,13 @@ describe('reference', () => {
 
       const node = rules([
         vardecl({
-          name: any('first'),
+          name: 'first',
           value: any('second')
         }),
         dependent,
         provider,
         decl({
-          name: any('color'),
+          name: 'color',
           value: ref({ key: 'final' }, { type: 'variable' })
         })
       ]);
@@ -4427,7 +4427,7 @@ describe('reference', () => {
     it('routes direct Rules.evalNode through registration prep', async () => {
       const node = rules([
         vardecl({
-          name: any('first'),
+          name: 'first',
           value: any('second')
         }),
         vardecl({
@@ -4438,7 +4438,7 @@ describe('reference', () => {
           value: any('final')
         }),
         decl({
-          name: any('color'),
+          name: 'color',
           value: ref({ key: 'second' }, { type: 'variable' })
         })
       ]);
@@ -4467,7 +4467,7 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
-            name: any('suffix'),
+            name: 'suffix',
             value: any('x')
           }),
           vardecl({
@@ -4478,7 +4478,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4528,7 +4528,7 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
-            name: any('suffix'),
+            name: 'suffix',
             value: any('x')
           }),
           vardecl({
@@ -4539,7 +4539,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4579,7 +4579,7 @@ describe('reference', () => {
             value: any('red')
           }),
           decl({
-            name: any('bar'),
+            name: 'bar',
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
@@ -4605,7 +4605,7 @@ describe('reference', () => {
     it('should resolve quoted index property access on mixin-returned rules', async () => {
       const node = rules([
         mixin({
-          name: any('.mk-map'),
+          name: '.mk-map',
           rules: [
             decl({ name: 'text', value: any('white') }),
             decl({ name: 'background', value: any('black') })
@@ -4750,7 +4750,7 @@ describe('reference', () => {
                   selector: el('.navbar'),
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('red') })
                       ]
@@ -4812,7 +4812,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -4863,7 +4863,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -4902,16 +4902,16 @@ describe('reference', () => {
     it('should prefer a compound-prefix ruleset when a longer string array can continue inside it', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -4926,7 +4926,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -4966,16 +4966,16 @@ describe('reference', () => {
     it('fast-paths compound-prefix callable ruleset precedence', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -4990,7 +4990,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -5030,7 +5030,7 @@ describe('reference', () => {
     it('should resolve a mixin-ruleset call keyed by BasicSelector', async () => {
       const node = rules([
         mixin({
-          name: any('.mixin-with-directives'),
+          name: '.mixin-with-directives',
           params: list([any('keyframeName', { role: 'property' })]),
           rules: [
             atrule({
@@ -5245,7 +5245,7 @@ describe('reference', () => {
     it('ordinary simple callable references prepare frame lookup instead of broad callable crawl', async () => {
       const node = rules([
         mixin({
-          name: any('.paint'),
+          name: '.paint',
           rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
@@ -5420,7 +5420,7 @@ describe('reference', () => {
         vardecl({ name: 'tone-var', value: any('purple') }),
         decl({ name: 'tone-prop', value: any('orange') }),
         mixin({
-          name: any('.tone-mixin'),
+          name: '.tone-mixin',
           rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
@@ -5752,7 +5752,7 @@ describe('reference', () => {
 
     it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
       const callable = mixin({
-        name: any('.paint'),
+        name: '.paint',
         rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
@@ -5779,7 +5779,7 @@ describe('reference', () => {
     it('static callable handles stay cold while searchScope disqualifies lookup', async () => {
       const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
       const callable = mixin({
-        name: any('.paint'),
+        name: '.paint',
         rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([ignoredDeclaration, callable]);
@@ -5919,7 +5919,7 @@ describe('reference', () => {
       const node = rules([
         ignoredDeclaration,
         mixin({
-          name: any('.paint-mixin'),
+          name: '.paint-mixin',
           rules: [decl({ name: 'color', value: any('blue') })]
         }),
         ruleset({
@@ -6253,7 +6253,7 @@ describe('reference', () => {
     it('reference handle rejects stale lookup types in one node slot', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
-        decl({ name: any('color'), value: any('blue') })
+        decl({ name: 'color', value: any('blue') })
       ]);
       setRulesContext(await node.eval(context));
       const lookupRef = ref({ key: 'color' }, { type: 'property' });
@@ -6287,7 +6287,7 @@ describe('reference', () => {
             rules: [decl({ name: 'color', value: any('ruleset') })]
           }),
           mixin({
-            name: any('.parameterized-handle'),
+            name: '.parameterized-handle',
             params: list([any('color', { role: 'property' })]),
             rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
           })
@@ -6339,7 +6339,7 @@ describe('reference', () => {
       try {
         const node = rules([
           mixin({
-            name: any('.callable-handle'),
+            name: '.callable-handle',
             rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
@@ -6463,7 +6463,7 @@ describe('reference', () => {
       try {
         const node = rules([
           mixin({
-            name: any('.callable-handle'),
+            name: '.callable-handle',
             rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
@@ -6475,7 +6475,7 @@ describe('reference', () => {
         expect(callableLookups).toBe(1);
 
         node.push(mixin({
-          name: any('.other-callable'),
+          name: '.other-callable',
           rules: [decl({ name: 'color', value: any('red') })]
         }));
         const second = lookupRef.eval(context);
@@ -6612,16 +6612,16 @@ describe('reference', () => {
       // nested mixin namespace and resolve primary: cyan.
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -6636,7 +6636,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -6682,16 +6682,16 @@ describe('reference', () => {
     it('fast-paths pure nested no-arg mixin namespace array paths', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -6735,16 +6735,16 @@ describe('reference', () => {
     it('does not fall back for unrelated rulesets that only share the first namespace segment', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -6759,7 +6759,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.warning')]),
           rules: [
             mixin({
-              name: any('.palette'),
+              name: '.palette',
               rules: [
                 decl({ name: 'primary', value: any('orange') })
               ]
@@ -6799,13 +6799,13 @@ describe('reference', () => {
     it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     ruleset({
                       selector: el('.colors'),
@@ -6852,17 +6852,17 @@ describe('reference', () => {
     it('fast-paths compound-prefix precedence even when a competing namespace hop requires args', async () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               params: list([any('mode', { role: 'property' })]),
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -6877,7 +6877,7 @@ describe('reference', () => {
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
           rules: [
             mixin({
-              name: any('.colors'),
+              name: '.colors',
               rules: [
                 decl({ name: 'primary', value: any('red') })
               ]
@@ -6917,17 +6917,17 @@ describe('reference', () => {
     it('treats required-arg intermediate namespace hops as definite misses when no compound-prefix ruleset is involved', () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               params: list([any('mode', { role: 'property' })]),
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]
@@ -6953,16 +6953,16 @@ describe('reference', () => {
     it('fast-paths definite namespace array-path misses', () => {
       const node = rules([
         mixin({
-          name: any('#theme'),
+          name: '#theme',
           rules: [
             mixin({
-              name: any('.dark'),
+              name: '.dark',
               rules: [
                 mixin({
-                  name: any('.navbar'),
+                  name: '.navbar',
                   rules: [
                     mixin({
-                      name: any('.colors'),
+                      name: '.colors',
                       rules: [
                         decl({ name: 'primary', value: any('cyan') })
                       ]

@@ -12,7 +12,7 @@ describe('callable candidate state helper', () => {
     const definitionParent = rules([]);
     const callSiteRules = rules([]);
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
       rules: [
         decl({ name: 'color', value: any('red') })

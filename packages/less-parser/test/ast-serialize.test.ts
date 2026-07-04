@@ -138,10 +138,7 @@ describe('serializeTypes coverage', () => {
       (CustomDeclaration
         name: '--custom'
         value:
-          (Sequence
-            value:
-              [
-                (Call
+          (Call
     `);
   });
 
@@ -167,7 +164,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Mixin
         name:
-          (Any [role=name] '.mixin')
+          '.mixin'
         params:
           (List
             value:
@@ -200,7 +197,7 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString(`
       (Mixin
         name:
-          (Any [role=name] '.mixin')
+          '.mixin'
         rules:
           [
             (Comment '/**/')
@@ -428,7 +425,7 @@ test('rest parameter in mixin', () => {
   expect(out).toContainString(`
     (Mixin
       name:
-        (Any [role=name] '.mixin')
+        '.mixin'
       params:
         (List
           value:

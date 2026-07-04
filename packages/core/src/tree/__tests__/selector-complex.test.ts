@@ -93,7 +93,7 @@ describe('Complex selector', () => {
     test('renders resolved complex selector values through render(context)', async () => {
       const node = rules([
         vardecl({
-          name: any('attr-name'),
+          name: 'attr-name',
           value: any('foo')
         })
       ]);
@@ -118,7 +118,7 @@ describe('Complex selector', () => {
     test('writes resolved complex selector output into segmented buffers', async () => {
       const node = rules([
         vardecl({
-          name: any('attr-name'),
+          name: 'attr-name',
           value: any('foo')
         })
       ]);
@@ -175,7 +175,7 @@ describe('Complex selector', () => {
     test('resolves complex selector values without touching render state', async () => {
       const node = rules([
         vardecl({
-          name: any('attr-name'),
+          name: 'attr-name',
           value: any('foo')
         })
       ]);
@@ -228,7 +228,7 @@ describe('Complex selector', () => {
     test('keeps source complex selector values canonical after resolve(context)', async () => {
       const node = rules([
         vardecl({
-          name: any('attr-name'),
+          name: 'attr-name',
           value: any('foo')
         })
       ]);

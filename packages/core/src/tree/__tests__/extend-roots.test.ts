@@ -963,7 +963,7 @@ describe('Extend Roots Registry', () => {
           selector: sellist([sel([el('.base')])]),
           rules: [
             decl({
-              name: any('color'),
+              name: 'color',
               value: any('red')
             })
           ]
@@ -975,7 +975,7 @@ describe('Extend Roots Registry', () => {
               target: el('.base')
             }),
             decl({
-              name: any('background'),
+              name: 'background',
               value: any('blue')
             })
           ]
@@ -1003,7 +1003,7 @@ describe('Extend Roots Registry', () => {
           selector: sellist([sel([el('.base')])]),
           rules: [
             decl({
-              name: any('color'),
+              name: 'color',
               value: any('red')
             })
           ]
@@ -1024,7 +1024,7 @@ describe('Extend Roots Registry', () => {
               target: el('.base')
             }),
             decl({
-              name: any('background'),
+              name: 'background',
               value: any('blue')
             })
           ]

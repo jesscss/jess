@@ -92,7 +92,7 @@ describe('Comment', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
       rules: [
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]
     });
     visible._location = [120, 8, 1, 136, 10, 1];
@@ -121,7 +121,7 @@ describe('Comment', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
       rules: [
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]
     });
     visible._location = [100, 8, 1, 116, 10, 1];
@@ -145,7 +145,7 @@ describe('Comment', () => {
   it('keeps block trivia from hidden nodes on its own line', () => {
     const hidden = vardecl({ name: 'void-result', value: any('') });
     hidden._location = [100, 1, 1, 110, 1, 11];
-    const visible = decl({ name: any('color'), value: any('green') });
+    const visible = decl({ name: 'color', value: any('green') });
     visible._location = [140, 4, 3, 152, 4, 15];
     const container = ruleset({
       selector: sel([el('.a')]),
@@ -172,7 +172,7 @@ describe('Comment', () => {
   it('uses context-owned trivia for cloned nodes with source offsets', async () => {
     const empty = rules([]);
     empty._location = [100, 1, 1, 100, 1, 1];
-    const visible = decl({ name: any('color'), value: any('red') });
+    const visible = decl({ name: 'color', value: any('red') });
     visible._location = [120, 2, 3, 130, 2, 13];
     const container = ruleset({
       selector: sel([el('.a')]),
@@ -197,7 +197,7 @@ describe('Comment', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
       rules: [
-        decl({ name: any('color'), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ]
     });
     visible._location = [100, 8, 1, 116, 10, 1];

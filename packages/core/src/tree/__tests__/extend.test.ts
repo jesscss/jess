@@ -70,7 +70,7 @@ describe('Extend render', () => {
     const node = rules([
       ruleset({
         selector: el('.base'),
-        rules: [decl({ name: any('color'), value: any('red') })]
+        rules: [decl({ name: 'color', value: any('red') })]
       }),
       ruleset({
         selector: el('.child'),
@@ -155,7 +155,7 @@ describe('Extend render', () => {
       const root = rules([
         ruleset({
           selector: el('.target'),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         ruleset({
           selector: parentSelector,

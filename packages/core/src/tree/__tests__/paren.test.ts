@@ -117,7 +117,7 @@ describe('Paren', () => {
   it('renders resolved paren values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -139,7 +139,7 @@ describe('Paren', () => {
   it('writes resolved paren render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -162,7 +162,7 @@ describe('Paren', () => {
   it('writes resolved wrapped paren output to explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -178,7 +178,7 @@ describe('Paren', () => {
   it('renders resolved Any paren values without child render transport', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -198,7 +198,7 @@ describe('Paren', () => {
   it('keeps resolved wrapped paren buffer output out of explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -216,7 +216,7 @@ describe('Paren', () => {
   it('streams resolved wrapped child output into render buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: list([num(1), num(2)])
       })
     ]);
@@ -275,7 +275,7 @@ describe('Paren', () => {
   it('renders dynamic paren values without materializing a replacement paren', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -388,7 +388,7 @@ describe('Paren', () => {
   it('resolves paren values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -422,7 +422,7 @@ describe('Paren', () => {
   it('keeps source paren child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

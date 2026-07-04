@@ -232,7 +232,7 @@ export function createStyleImport(importPath = any('x.less')) {
 export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) {
   return rules([
     mixin({
-      name: any('mixin'),
+      name: 'mixin',
       rules: [bodyDecl]
     })
   ]);

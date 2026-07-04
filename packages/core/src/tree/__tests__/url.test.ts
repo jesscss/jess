@@ -49,7 +49,7 @@ describe('url', () => {
   it('renders a resolved url value through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -72,7 +72,7 @@ describe('url', () => {
   it('writes resolved url render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -96,7 +96,7 @@ describe('url', () => {
   it('renders resolved url values without materializing a replacement url', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -157,7 +157,7 @@ describe('url', () => {
   it('resolves url values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -187,7 +187,7 @@ describe('url', () => {
   it('keeps source url values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);

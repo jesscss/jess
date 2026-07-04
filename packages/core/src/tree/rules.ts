@@ -1615,8 +1615,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const node = value[i]!;
       if (isNode(node, N.Mixin)) {
         const name = node.name;
-        if (name && name.type !== 'Interpolated') {
-          this.addCallableEntry(lookupKey, String(name.valueOf()), node, [], bucket);
+        if (typeof name === 'string') {
+          this.addCallableEntry(lookupKey, name, node, [], bucket);
         }
         continue;
       }
@@ -4148,7 +4148,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
     const value = this.evalForRender(context, sourceWasRoot);
     if (isThenable(value)) {
-      return value.then(state => {
+      return value.then((state) => {
         checkValidNodes(state.output?.rules, context);
         return isRenderBuffer(bufferOrOptions)
           ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)

@@ -367,7 +367,7 @@ export class ScssGrammar extends LessGrammar {
   /** A `$name` loop-binding with no value (`paramVar` — prints as `$name`). */
   private _scssParamVar(varName: string, loc: LocationInfo): VarDeclaration {
     return new VarDeclaration(
-      { name: new Any(varName, { role: 'property' }, loc), value: new Nil() },
+      { name: varName, value: new Nil() },
       { paramVar: true },
       loc
     );
@@ -492,7 +492,7 @@ export class ScssGrammar extends LessGrammar {
       const name = varLeaf.value.slice(1);
       const value = nodes.find(n => n !== undefined && !ls.includes(n as any)) ?? nodes[0] ?? new Nil();
       return new VarDeclaration(
-        { name: new Any(name, { role: 'property' }, loc), value: value as Node },
+        { name, value: value as Node },
         {},
         loc
       ) as unknown as JessNode;
@@ -526,7 +526,7 @@ export class ScssGrammar extends LessGrammar {
     const hasColon = ls.some(l => l.value === ':');
     if (hasColon && nodes[0]) {
       return new VarDeclaration(
-        { name: new Any(varName, { role: 'property' }, loc), value: nodes[0] as Node },
+        { name: varName, value: nodes[0] as Node },
         { paramVar: true },
         loc
       ) as unknown as JessNode;
@@ -546,11 +546,11 @@ export class ScssGrammar extends LessGrammar {
     const interpName = nodes.find(n => isNode(n, N.Interpolated));
     const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
       && l.value !== '{' && l.value !== '}' && l.value !== ',');
-    const name = interpName ?? new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const name = interpName ?? (nameLeaf?.value ?? '');
     const params = nodes.find(n => n.type === 'List') as List | undefined;
     const body = nodes.find((n): n is Rules => n instanceof Rules)!;
     return new Mixin(
-      { name: name as Any<'name'>, params, rules: body.rules },
+      { name, params, rules: body.rules },
       undefined,
       loc
     ) as unknown as JessNode;
@@ -639,7 +639,7 @@ export class ScssGrammar extends LessGrammar {
       idx > 0 && i.comp !== '@return' && (semiIdx < 0 || idx < semiIdx)
     );
     const { value } = this._assembleValue(valueItems, loc);
-    const name = new Any('result', { role: 'property' }, loc);
+    const name = 'result';
     return new VarDeclaration({ name, value: value as Node }, undefined, loc) as unknown as JessNode;
   }
 
@@ -703,13 +703,11 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _scssInterpDeclName(name: unknown, loc: LocationInfo): unknown {
-    const str = typeof name === 'string'
-      ? name
-      : isNode(name as Node, N.Any)
-        ? String((name as Any).valueOf())
-        : undefined;
-    if (str && str.includes('#{')) {
-      return buildScssInterpolatedFromString(str, loc, 'property');
+    if (typeof name !== 'string') {
+      return name;
+    }
+    if (name.includes('#{')) {
+      return buildScssInterpolatedFromString(name, loc, 'property');
     }
     return name;
   }
@@ -772,7 +770,7 @@ export class ScssGrammar extends LessGrammar {
     const valueNode = nodes[1] ?? new Any('', {}, loc);
     const keyStr = toDeclKey(keyNode as Node);
     return new Declaration(
-      { name: new Any(keyStr, { role: 'property' }, loc), value: valueNode as Node },
+      { name: keyStr, value: valueNode as Node },
       undefined,
       loc
     ) as unknown as JessNode;
@@ -976,7 +974,7 @@ export class ScssGrammar extends LessGrammar {
     const sawDefault = items.slice(end).some(i => i.comp === '!default');
     const sawGlobal = items.slice(end).some(i => i.comp === '!global');
     return new VarDeclaration(
-      { name: new Any(name, { role: 'property' }, loc) as unknown as Node, value: value as Node },
+      { name, value: value as Node },
       {
         assign: (sawDefault ? '?:' : ':') as AssignmentType,
         setDefined: sawGlobal

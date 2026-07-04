@@ -4,7 +4,6 @@ import {
   Mixin,
   For,
   Nil,
-  Any,
   VarDeclaration,
   defineFunction,
   type FunctionThis
@@ -48,15 +47,15 @@ export async function eachImplementation(_this: FunctionThis, list: Node, mixin:
   }
   const vars: [VarDeclaration, VarDeclaration, VarDeclaration] = [
     new VarDeclaration({
-      name: new Any(keys[0], { role: 'property' }),
+      name: keys[0],
       value: new Nil()
     }, { paramVar: true }),
     new VarDeclaration({
-      name: new Any(keys[1], { role: 'property' }),
+      name: keys[1],
       value: new Nil()
     }, { paramVar: true }),
     new VarDeclaration({
-      name: new Any(keys[2], { role: 'property' }),
+      name: keys[2],
       value: new Nil()
     }, { paramVar: true })
   ];

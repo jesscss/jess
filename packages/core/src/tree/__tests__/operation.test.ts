@@ -106,7 +106,7 @@ describe('Operation', () => {
   it('renders resolved operation values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -126,7 +126,7 @@ describe('Operation', () => {
   it('writes resolved operation render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -153,7 +153,7 @@ describe('Operation', () => {
   it('renders resolved operation values directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -175,7 +175,7 @@ describe('Operation', () => {
   it('renders unresolved operation syntax without materializing replacement operands', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -206,7 +206,7 @@ describe('Operation', () => {
   it('keeps preserved operation buffer output out of explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -228,7 +228,7 @@ describe('Operation', () => {
   it('writes preserved operation render output to explicit writers once', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -249,7 +249,7 @@ describe('Operation', () => {
   it('resolves operation values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -270,7 +270,7 @@ describe('Operation', () => {
   it('keeps source operation child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('foo')
       })
     ]);
@@ -297,7 +297,7 @@ describe('Operation', () => {
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -333,7 +333,7 @@ describe('Operation', () => {
   it('owns unchanged source operands when materializing preserved operations', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -405,15 +405,15 @@ describe('Operation', () => {
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
     const node = rules([
       vardecl({
-        name: any('val'),
+        name: 'val',
         value: dimension([10, 'px'])
       }),
       vardecl({
-        name: any('sum'),
+        name: 'sum',
         value: op([dimension([10, 'px']), '+', dimension([20, 'px'])])
       }),
       vardecl({
-        name: any('offset'),
+        name: 'offset',
         value: paren(op([
           ref('val', { type: 'variable' }),
           '+',
@@ -421,7 +421,7 @@ describe('Operation', () => {
         ]))
       }),
       vardecl({
-        name: any('var'),
+        name: 'var',
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       })
     ]);
@@ -474,11 +474,11 @@ describe('Operation', () => {
   it('reduces calc arithmetic on the evaluated tree output path', async () => {
     const root = rules([
       vardecl({
-        name: any('sum'),
+        name: 'sum',
         value: op([dimension([10, 'px']), '+', dimension([20, 'px'])])
       }),
       vardecl({
-        name: any('var'),
+        name: 'var',
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       }),
       ruleset({

@@ -87,7 +87,7 @@ describe('Style import', () => {
     it('style import Rules promotion preserves unrelated direct declaration cache entries', async () => {
       const importedPath = resolve(process.cwd(), 'imported-direct-declaration-cache.jess');
       context.sourceTrees.set(importedPath, rules([
-        decl({ name: any('imported-color'), value: any('green') })
+        decl({ name: 'imported-color', value: any('green') })
       ]));
       const node = rules([
         style({
@@ -95,7 +95,7 @@ describe('Style import', () => {
         }, {
           type: 'import'
         }),
-        decl({ name: any('color'), value: any('blue') })
+        decl({ name: 'color', value: any('blue') })
       ]);
 
       await node.prepareRegistration(context);
@@ -137,7 +137,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.tracked')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -172,7 +172,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: ref('parentVar', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('parentVar', { type: 'variable' }) })
           ]
         })
       ]));
@@ -205,7 +205,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.composed')])]),
           rules: [
-            decl({ name: any('color'), value: ref('parentVar', { type: 'variable', fallbackValue: any('blue') }) })
+            decl({ name: 'color', value: ref('parentVar', { type: 'variable', fallbackValue: any('blue') }) })
           ]
         })
       ]));
@@ -261,7 +261,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.composed')])]),
           rules: [
-            decl({ name: any('color'), value: ref('parentVar', { type: 'variable', fallbackValue: any('blue') }) })
+            decl({ name: 'color', value: ref('parentVar', { type: 'variable', fallbackValue: any('blue') }) })
           ]
         })
       ]));
@@ -302,7 +302,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: [
-            decl({ name: any('color'), value: ref('importedVar', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('importedVar', { type: 'variable' }) })
           ]
         })
       ]);
@@ -339,7 +339,7 @@ describe('Style import', () => {
           ruleset({
             selector: sellist([sel([el('.parent')])]),
             rules: [
-              decl({ name: any('color'), value: ref('importedVar', { type: 'variable' }) })
+              decl({ name: 'color', value: ref('importedVar', { type: 'variable' }) })
             ]
           })
         ]);
@@ -371,7 +371,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.parent')])]),
           rules: [
-            decl({ name: any('color'), value: ref('composedVar', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('composedVar', { type: 'variable' }) })
           ]
         })
       ]);
@@ -411,7 +411,7 @@ describe('Style import', () => {
           ruleset({
             selector: sellist([sel([el('.parent')])]),
             rules: [
-              decl({ name: any('color'), value: ref('composedVar', { type: 'variable' }) })
+              decl({ name: 'color', value: ref('composedVar', { type: 'variable' }) })
             ]
           })
         ]);
@@ -432,9 +432,9 @@ describe('Style import', () => {
     it('import type mixins are visible to parent', async () => {
       context.sourceTrees.set('imported.jess', rules([
         mixin({
-          name: any('importedMixin'),
+          name: 'importedMixin',
           rules: [
-            decl({ name: any('color'), value: any('blue') })
+            decl({ name: 'color', value: any('blue') })
           ]
         })
       ]));
@@ -464,9 +464,9 @@ describe('Style import', () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         mixin({
-          name: any('composedMixin'),
+          name: 'composedMixin',
           rules: [
-            decl({ name: any('color'), value: any('yellow') })
+            decl({ name: 'color', value: any('yellow') })
           ]
         })
       ]));
@@ -497,9 +497,9 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'referenced.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('referencedMixin'),
+          name: 'referencedMixin',
           rules: [
-            decl({ name: any('color'), value: any('white') })
+            decl({ name: 'color', value: any('white') })
           ]
         })
       ]));
@@ -534,7 +534,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -560,7 +560,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.referenced')])]),
           rules: [
-            decl({ name: any('color'), value: any('blue') })
+            decl({ name: 'color', value: any('blue') })
           ]
         })
       ]));
@@ -723,7 +723,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.box')])]),
           rules: [
-            decl({ name: any('color'), value: ref('primaryColor', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('primaryColor', { type: 'variable' }) })
           ]
         })
       ]));
@@ -771,7 +771,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.box')])]),
           rules: [
-            decl({ name: any('color'), value: ref('primaryColor', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('primaryColor', { type: 'variable' }) })
           ]
         })
       ]));
@@ -984,12 +984,12 @@ describe('Style import', () => {
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
         mixin({
-          name: any('.use-accent'),
+          name: '.use-accent',
           rules: [
             vardecl({
               name: 'accent-content',
               value: rules([
-                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+                decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -1036,7 +1036,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.box')])]),
           rules: [
-            decl({ name: any('color'), value: any('black') })
+            decl({ name: 'color', value: any('black') })
           ]
         })
       ]);
@@ -1075,7 +1075,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('color'), value: ref('derivedColor', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('derivedColor', { type: 'variable' }) })
           ]
         })
       ]));
@@ -1088,8 +1088,8 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('color'), value: any('red') }),
-                  decl({ name: any('configuredProp'), value: any('configured') })
+                  decl({ name: 'color', value: any('red') }),
+                  decl({ name: 'configuredProp', value: any('configured') })
                 ]
               })
             ]),
@@ -1102,7 +1102,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.use-configured')])]),
           rules: [
-            decl({ name: any('prop-hit'), value: ref('configuredProp', { type: 'property' }) })
+            decl({ name: 'prop-hit', value: ref('configuredProp', { type: 'property' }) })
           ]
         })
       ]);
@@ -1140,7 +1140,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('color'), value: ref('accentColor', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('accentColor', { type: 'variable' }) })
           ]
         })
       ]));
@@ -1183,7 +1183,7 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
-          name: any('.configured-guarded'),
+          name: '.configured-guarded',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -1201,8 +1201,8 @@ describe('Style import', () => {
             ])
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
-            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
           ]
         })
       ]));
@@ -1270,7 +1270,7 @@ describe('Style import', () => {
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
         mixin({
-          name: any('.configured-guarded-set'),
+          name: '.configured-guarded-set',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -1288,8 +1288,8 @@ describe('Style import', () => {
             ])
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
-            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
           ]
         })
       ]));
@@ -1355,12 +1355,12 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library-detached-closure-configured.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
-          name: any('.use-accent'),
+          name: '.use-accent',
           rules: [
             vardecl({
               name: 'accent-content',
               value: rules([
-                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+                decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -1419,7 +1419,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('color'), value: ref('derivedColor', { type: 'variable' }) })
+            decl({ name: 'color', value: ref('derivedColor', { type: 'variable' }) })
           ]
         })
       ]));
@@ -1433,7 +1433,7 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('border-color'), value: any('teal') })
+                  decl({ name: 'border-color', value: any('teal') })
                 ]
               })
             ]),
@@ -1475,12 +1475,12 @@ describe('Style import', () => {
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
         mixin({
-          name: any('.use-accent'),
+          name: '.use-accent',
           rules: [
             vardecl({
               name: 'accent-content',
               value: rules([
-                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+                decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -1491,7 +1491,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('display'), value: any('block') })
+            decl({ name: 'display', value: any('block') })
           ]
         })
       ]));
@@ -1505,8 +1505,8 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('visibility'), value: any('visible') }),
-                  decl({ name: any('setConfiguredProp'), value: any('set-configured') })
+                  decl({ name: 'visibility', value: any('visible') }),
+                  decl({ name: 'setConfiguredProp', value: any('set-configured') })
                 ]
               })
             ]),
@@ -1520,7 +1520,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.consumer'),
           rules: [
-            decl({ name: any('prop-hit'), value: ref('setConfiguredProp', { type: 'property' }) }),
+            decl({ name: 'prop-hit', value: ref('setConfiguredProp', { type: 'property' }) }),
             call({
               name: ref({ key: '.use-accent' }, { type: 'mixin-ruleset' }),
               args: list([])
@@ -1565,7 +1565,7 @@ describe('Style import', () => {
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
         mixin({
-          name: any('.guarded-child-surface-set'),
+          name: '.guarded-child-surface-set',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -1583,14 +1583,14 @@ describe('Style import', () => {
             ])
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
-            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
           ]
         }),
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('display'), value: any('block') })
+            decl({ name: 'display', value: any('block') })
           ]
         })
       ]));
@@ -1604,7 +1604,7 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('visibility'), value: any('visible') })
+                  decl({ name: 'visibility', value: any('visible') })
                 ]
               })
             ]),
@@ -1672,15 +1672,15 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library-child-surface-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
-          name: any('.use-accent'),
+          name: '.use-accent',
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
           ]
         }),
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: [
-            decl({ name: any('background'), value: any('white') })
+            decl({ name: 'background', value: any('white') })
           ]
         })
       ]));
@@ -1694,7 +1694,7 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('border-color'), value: any('purple') })
+                  decl({ name: 'border-color', value: any('purple') })
                 ]
               })
             ]),
@@ -1732,7 +1732,7 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
-          name: any('.guarded-child-surface'),
+          name: '.guarded-child-surface',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -1750,8 +1750,8 @@ describe('Style import', () => {
             ])
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
-            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
           ]
         })
       ]));
@@ -1765,7 +1765,7 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('border-color'), value: any('purple') })
+                  decl({ name: 'border-color', value: any('purple') })
                 ]
               })
             ]),
@@ -1823,12 +1823,12 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library-child-surface-detached-closure.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
-          name: any('.use-accent'),
+          name: '.use-accent',
           rules: [
             vardecl({
               name: 'accent-content',
               value: rules([
-                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+                decl({ name: 'border-color', value: ref({ key: 'accentColor' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -1847,7 +1847,7 @@ describe('Style import', () => {
               ruleset({
                 selector: sellist([sel([el('.addon')])]),
                 rules: [
-                  decl({ name: any('display'), value: any('block') })
+                  decl({ name: 'display', value: any('block') })
                 ]
               })
             ]),
@@ -1982,7 +1982,7 @@ describe('Style import', () => {
           ruleset({
             selector: sellist([sel([el('.imported')])]),
             rules: [
-              decl({ name: any('color'), value: any('red') })
+              decl({ name: 'color', value: any('red') })
             ]
           })
         ]));
@@ -2021,7 +2021,7 @@ describe('Style import', () => {
           ruleset({
             selector: sellist([sel([el('.imported-root')])]),
             rules: [
-              decl({ name: any('color'), value: any('red') })
+              decl({ name: 'color', value: any('red') })
             ]
           })
         ]));
@@ -2047,7 +2047,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.shared-import-child')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]);
@@ -2074,7 +2074,7 @@ describe('Style import', () => {
 
     it('keeps first-use source-free scalar declaration imports placement-owned while reusing the scalar leaf', async () => {
       const red = any('red');
-      const sourceDecl = decl({ name: any('color'), value: red });
+      const sourceDecl = decl({ name: 'color', value: red });
       const importedRules = rules([sourceDecl]);
       context.sourceTrees.set('shared-import-scalar-decl.jess', importedRules);
 
@@ -2105,7 +2105,7 @@ describe('Style import', () => {
 
     it('keeps nested source-free scalar import placement owned while reusing scalar leaves', async () => {
       const red = any('red');
-      const sourceDecl = decl({ name: any('color'), value: red });
+      const sourceDecl = decl({ name: 'color', value: red });
       const sourceRuleset = ruleset({
         selector: sellist([sel([el('.nested-import')])]),
         rules: [sourceDecl]
@@ -2163,7 +2163,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.cached-reference')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]);
@@ -2215,7 +2215,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -2260,7 +2260,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -2471,7 +2471,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -2544,7 +2544,7 @@ describe('Style import', () => {
         style({ path: quoted(interpolatedPath) }, { type: 'import', importOptions: { optional: false } }),
         ruleset({
           selector: sellist([sel([el('.after')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
 
@@ -2569,7 +2569,7 @@ describe('Style import', () => {
       context.sourceTrees.set(oncePath, rules([
         ruleset({
           selector: sellist([sel([el('.once')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
 
@@ -2586,7 +2586,7 @@ describe('Style import', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.hidden')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
       const node = rules([
@@ -2604,7 +2604,7 @@ describe('Style import', () => {
       ]));
       const node = rules([
         style({ path: quoted(any('reference.jess')) }, { type: 'import', importOptions: { reference: true } }),
-        decl({ name: any('value'), value: ref('fromRef', { type: 'variable' }) })
+        decl({ name: 'value', value: ref('fromRef', { type: 'variable' }) })
       ]);
       const evald = await node.eval(context);
       const declaration = evald.at(1) as any;
@@ -2622,7 +2622,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.test')])]),
           rules: [
-            decl({ name: any('value'), value: ref('fromRef', { type: 'variable' }) })
+            decl({ name: 'value', value: ref('fromRef', { type: 'variable' }) })
           ]
         })
       ]);
@@ -2640,15 +2640,15 @@ describe('Style import', () => {
       const fallbackValue = any('fallback');
       context.sourceTrees.set(referencedPath, rules([
         vardecl({ name: 'fromRef', value: sourceValue }),
-        decl({ name: any('fromRefProp'), value: propertySourceValue }),
+        decl({ name: 'fromRefProp', value: propertySourceValue }),
         ruleset({
           selector: sellist([sel([el('.ref-prop-a')]), sel([el('.ref-prop-b')])]),
           rules: [
-            decl({ name: any('fromSelectorListProp'), value: any('36') }),
+            decl({ name: 'fromSelectorListProp', value: any('36') }),
             ruleset({
               selector: sellist([sel([el('.nested-ref-prop')])]),
               rules: [
-                decl({ name: any('fromNestedImportedProp'), value: any('48') })
+                decl({ name: 'fromNestedImportedProp', value: any('48') })
               ]
             })
           ]
@@ -2659,15 +2659,15 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.test')])]),
           rules: [
-            decl({ name: any('hit'), value: ref('fromRef', { type: 'variable' }) }),
-            decl({ name: any('miss'), value: ref('missingFromRef', {
+            decl({ name: 'hit', value: ref('fromRef', { type: 'variable' }) }),
+            decl({ name: 'miss', value: ref('missingFromRef', {
               type: 'variable',
               fallbackValue
             }) }),
-            decl({ name: any('prop-hit'), value: ref('fromRefProp', { type: 'property' }) }),
-            decl({ name: any('selector-list-prop-hit'), value: ref('fromSelectorListProp', { type: 'property' }) }),
-            decl({ name: any('nested-imported-prop-hit'), value: ref('fromNestedImportedProp', { type: 'property' }) }),
-            decl({ name: any('prop-miss'), value: ref('missingFromRefProp', {
+            decl({ name: 'prop-hit', value: ref('fromRefProp', { type: 'property' }) }),
+            decl({ name: 'selector-list-prop-hit', value: ref('fromSelectorListProp', { type: 'property' }) }),
+            decl({ name: 'nested-imported-prop-hit', value: ref('fromNestedImportedProp', { type: 'property' }) }),
+            decl({ name: 'prop-miss', value: ref('missingFromRefProp', {
               type: 'property',
               fallbackValue
             }) })
@@ -2740,10 +2740,10 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.mixin-with-directives'),
+          name: '.mixin-with-directives',
           params: list([any('name', { role: 'property' })]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -2773,9 +2773,9 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-callable-miss.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.actual-reference-mixin'),
+          name: '.actual-reference-mixin',
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -2785,7 +2785,7 @@ describe('Style import', () => {
           selector: el('.out'),
           rules: [
             decl({
-              name: any('missing'),
+              name: 'missing',
               value: ref({ key: '.missing-reference-mixin' }, {
                 type: 'mixin',
                 fallbackValue: true
@@ -2823,7 +2823,7 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-detached-closure.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.use-theme'),
+          name: '.use-theme',
           params: list([
             any('background', { role: 'property' })
           ]),
@@ -2832,7 +2832,7 @@ describe('Style import', () => {
             vardecl({
               name: 'hover-content',
               value: rules([
-                decl({ name: any('background-color'), value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+                decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -2865,7 +2865,7 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-detached-shadowing.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.use-theme'),
+          name: '.use-theme',
           params: list([
             any('background', { role: 'property' })
           ]),
@@ -2874,7 +2874,7 @@ describe('Style import', () => {
             vardecl({
               name: 'hover-content',
               value: rules([
-                decl({ name: any('background-color'), value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+                decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
               ])
             }),
             call({
@@ -2911,7 +2911,7 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.guarded-ref'),
+          name: '.guarded-ref',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -2929,7 +2929,7 @@ describe('Style import', () => {
             ])
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
           ]
         })
       ]));
@@ -2955,7 +2955,7 @@ describe('Style import', () => {
               args: list([any('red')])
             }),
             decl({
-              name: any('missing'),
+              name: 'missing',
               value: ref({ key: '.guarded-ref' }, {
                 type: 'mixin',
                 fallbackValue: true
@@ -2992,7 +2992,7 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin-default-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.guarded-default-ref'),
+          name: '.guarded-default-ref',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -3006,11 +3006,11 @@ describe('Style import', () => {
             defaultguard()
           ]),
           rules: [
-            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
           ]
         }),
         mixin({
-          name: any('.guarded-default-ref'),
+          name: '.guarded-default-ref',
           params: list([
             any('color', { role: 'property' })
           ]),
@@ -3024,7 +3024,7 @@ describe('Style import', () => {
             defaultguard()
           ]),
           rules: [
-            decl({ name: any('background'), value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) })
           ]
         })
       ]));
@@ -3040,7 +3040,7 @@ describe('Style import', () => {
               name: ref({ key: '.guarded-default-ref' }, { type: 'mixin-ruleset' }),
               args: list([any('red')])
             }),
-            decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
           ]
         }),
         ruleset({
@@ -3053,13 +3053,13 @@ describe('Style import', () => {
               args: list([any('blue')])
             }),
             decl({
-              name: any('missing'),
+              name: 'missing',
               value: ref({ key: '.guarded-default-ref' }, {
                 type: 'mixin',
                 fallbackValue: true
               })
             }),
-            decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
           ]
         })
       ]);
@@ -3094,20 +3094,20 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin-directives.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.mixin-with-directives'),
+          name: '.mixin-with-directives',
           params: list([any('keyframeName', { role: 'property' })]),
           rules: [
             atrule({
               name: any('@keyframes'),
               prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
               rules: [
-                decl({ name: any('property'), value: any('value') })
+                decl({ name: 'property', value: any('value') })
               ]
             }),
             vardecl({
               name: 'rules1',
               value: rules([
-                decl({ name: any('property'), value: any('value') })
+                decl({ name: 'property', value: any('value') })
               ])
             })
           ]
@@ -3136,16 +3136,16 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin-media.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.mixin-with-mediaq'),
+          name: '.mixin-with-mediaq',
           params: list([any('num', { role: 'property' })]),
           rules: [
-            decl({ name: any('color'), value: any('green') }),
-            decl({ name: any('test'), value: ref({ key: 'num' }, { type: 'variable' }) }),
+            decl({ name: 'color', value: any('green') }),
+            decl({ name: 'test', value: ref({ key: 'num' }, { type: 'variable' }) }),
             atrule({
               name: any('@media'),
               prelude: any('(max-size: 450px)'),
               rules: [
-                decl({ name: any('color'), value: any('red') })
+                decl({ name: 'color', value: any('red') })
               ]
             })
           ]
@@ -3166,7 +3166,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.after'),
           rules: [
-            decl({ name: any('color'), value: any('blue') })
+            decl({ name: 'color', value: any('blue') })
           ]
         })
       ]);
@@ -3195,15 +3195,15 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.hidden-from-inner-reference')])]),
           rules: [
-            decl({ name: any('display'), value: any('none') })
+            decl({ name: 'display', value: any('none') })
           ]
         })
       ]));
       context.sourceTrees.set(outerReferencedPath, rules([
         mixin({
-          name: any('.outer-reference-mixin'),
+          name: '.outer-reference-mixin',
           rules: [
-            decl({ name: any('color'), value: any('red') }),
+            decl({ name: 'color', value: any('red') }),
             style({
               path: quoted(any('reference-mixin-inner-reference.jess'))
             }, {
@@ -3241,7 +3241,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.mixin'),
           rules: [
-            decl({ name: any('was'), value: any('included') })
+            decl({ name: 'was', value: any('included') })
           ]
         })
       ]));
@@ -3280,7 +3280,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.mixin'),
           rules: [
-            decl({ name: any('was'), value: any('included') })
+            decl({ name: 'was', value: any('included') })
           ]
         })
       ]));
@@ -3316,7 +3316,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.mixin'),
           rules: [
-            decl({ name: any('was'), value: any('included') })
+            decl({ name: 'was', value: any('included') })
           ]
         })
       ]));
@@ -3397,7 +3397,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.mixin'),
           rules: [
-            decl({ name: any('was'), value: any('included') })
+            decl({ name: 'was', value: any('included') })
           ]
         })
       ]));
@@ -3447,13 +3447,13 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('should')])]),
           rules: [
-            decl({ name: any('be'), value: any('invisible') })
+            decl({ name: 'be', value: any('invisible') })
           ]
         }),
         ruleset({
           selector: sellist([sel([el('.something')])]),
           rules: [
-            decl({ name: any('invisible'), value: any('suppress warning') })
+            decl({ name: 'invisible', value: any('suppress warning') })
           ]
         }),
         ruleset({
@@ -3468,7 +3468,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.fix')])]),
           rules: [
-            decl({ name: any('fix'), value: any('fix') })
+            decl({ name: 'fix', value: any('fix') })
           ]
         }),
         ruleset({
@@ -3480,7 +3480,7 @@ describe('Style import', () => {
               type: 'import',
               importOptions: { reference: true }
             }),
-            decl({ name: any('inside'), value: any('something') })
+            decl({ name: 'inside', value: any('something') })
           ]
         })
       ]));
@@ -3535,16 +3535,16 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('ruleset')])]),
           rules: [
-            decl({ name: any('shall-be-invisible'), value: any('less') })
+            decl({ name: 'shall-be-invisible', value: any('less') })
           ]
         })
       ]));
 
       const node = rules([
         mixin({
-          name: any('.mixin-with-import-by-reference-inside'),
+          name: '.mixin-with-import-by-reference-inside',
           rules: [
-            decl({ name: any('the-only-property'), value: any('nothing-below-this') }),
+            decl({ name: 'the-only-property', value: any('nothing-below-this') }),
             style({
               path: quoted(any('import-reference-issues/simple-ruleset-2162.jess'))
             }, {
@@ -3577,12 +3577,12 @@ describe('Style import', () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const referencedPath = resolve(process.cwd(), 'reference-namespace-mixin-callable.jess');
       const leaf = mixin({
-        name: any('.reference-leaf'),
-        rules: [decl({ name: any('color'), value: any('green') })]
+        name: '.reference-leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       localContext.sourceTrees.set(referencedPath, rules([leaf]));
       const namespaceBody = mixin({
-        name: any('#parent-namespace'),
+        name: '#parent-namespace',
         rules: [
           style({
             path: quoted(any('reference-namespace-mixin-callable.jess'))
@@ -3629,12 +3629,12 @@ describe('Style import', () => {
       const referencedPath = resolve(process.cwd(), 'reference-uncalled-namespace-mixin-callable.jess');
       localContext.sourceTrees.set(referencedPath, rules([
         mixin({
-          name: any('.reference-leaf'),
-          rules: [decl({ name: any('color'), value: any('green') })]
+          name: '.reference-leaf',
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]));
       const namespaceBody = mixin({
-        name: any('#parent-namespace'),
+        name: '#parent-namespace',
         rules: [
           style({
             path: quoted(any('reference-uncalled-namespace-mixin-callable.jess'))
@@ -3675,11 +3675,11 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.z')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') }),
+            decl({ name: 'color', value: any('red') }),
             ruleset({
               selector: sellist([sel([el('.c')])]),
               rules: [
-                decl({ name: any('color'), value: any('green') })
+                decl({ name: 'color', value: any('green') })
               ]
             })
           ]
@@ -3687,21 +3687,21 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
           rules: [
-            decl({ name: any('color'), value: any('green') }),
+            decl({ name: 'color', value: any('green') }),
             ruleset({
               selector: sellist([sel([amp(), pseudo({ name: ':hover' })])]),
               rules: [
-                decl({ name: any('color'), value: any('green') })
+                decl({ name: 'color', value: any('green') })
               ]
             }),
             ruleset({
               selector: sellist([sel([amp(), co('+'), amp()])]),
               rules: [
-                decl({ name: any('color'), value: any('green') }),
+                decl({ name: 'color', value: any('green') }),
                 ruleset({
                   selector: sellist([sel([el('.sub')])]),
                   rules: [
-                    decl({ name: any('color'), value: any('green') })
+                    decl({ name: 'color', value: any('green') })
                   ]
                 })
               ]
@@ -3758,7 +3758,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.mixin')]), sel([el('.alias')])]),
           rules: [
-            decl({ name: any('was'), value: any('included') })
+            decl({ name: 'was', value: any('included') })
           ]
         })
       ]));
@@ -3823,12 +3823,12 @@ describe('Style import', () => {
       const node = rules([
         rules([
           mixin({
-            name: any('#ImportedNamespace'),
+            name: '#ImportedNamespace',
             rules: [
               mixin({
-                name: any('.other'),
+                name: '.other',
                 rules: [
-                  decl({ name: any('was'), value: any('not-used') })
+                  decl({ name: 'was', value: any('not-used') })
                 ]
               })
             ]
@@ -3903,7 +3903,7 @@ describe('Style import', () => {
 
       const node = rules([
         style({ path: quoted(any(remoteUrl)) }, { type: 'import', importOptions: { reference: true } }),
-        decl({ name: any('value'), value: ref('fromRemote', { type: 'variable' }) })
+        decl({ name: 'value', value: ref('fromRemote', { type: 'variable' }) })
       ]);
 
       const evald = await node.eval(remoteContext);
@@ -3944,7 +3944,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.buffered'),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -3983,7 +3983,7 @@ describe('Style import', () => {
         ruleset({
           selector: el('.directed'),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -4014,7 +4014,7 @@ describe('Style import', () => {
       context.sourceTrees.set('repeat.jess', rules([
         ruleset({
           selector: sellist([sel([el('.repeat')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
       const node = rules([
@@ -4029,7 +4029,7 @@ describe('Style import', () => {
       context.sourceTrees.set('mix-order.jess', rules([
         ruleset({
           selector: sellist([sel([el('.mix-order')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
       const node = rules([
@@ -4047,7 +4047,7 @@ describe('Style import', () => {
       context.sourceTrees.set('mix-order-rev.jess', rules([
         ruleset({
           selector: sellist([sel([el('.mix-order-rev')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
       const node = rules([
@@ -4065,7 +4065,7 @@ describe('Style import', () => {
       context.sourceTrees.set('compose-repeat.jess', rules([
         ruleset({
           selector: sellist([sel([el('.compose-repeat')])]),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]));
       const node = rules([
@@ -4089,7 +4089,7 @@ describe('Style import', () => {
         ruleset({
           selector: sellist([sel([el('.imported')])]),
           rules: [
-            decl({ name: any('color'), value: any('red') })
+            decl({ name: 'color', value: any('red') })
           ]
         })
       ]));
@@ -4122,7 +4122,7 @@ describe('Style import', () => {
           ruleset({
             selector: sellist([sel([el('.imported')])]),
             rules: [
-              decl({ name: any('color'), value: any('red') })
+              decl({ name: 'color', value: any('red') })
             ]
           })
         ]));

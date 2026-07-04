@@ -25,7 +25,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  name?: Any<Name> | Interpolated<Name>;
+  name?: string | Interpolated<Name>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -128,8 +128,11 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
+    if (typeof value === 'string') {
+      return value;
+    }
     const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
-    if (owned instanceof Interpolated || owned instanceof Any) {
+    if (owned instanceof Interpolated) {
       return owned;
     }
     throw new TypeError('Expected mixin name copy');
@@ -226,7 +229,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
       if (!name) {
         return (this._keySet = new Set());
       }
-      keySet = this._keySet = new Set([name.valueOf()]);
+      keySet = this._keySet = new Set([typeof name === 'string' ? name : name.valueOf()]);
     }
     return keySet;
   }
@@ -243,7 +246,11 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     const w = options.writer;
     const { name, params, guard } = this;
     if (name) {
-      name.writeSyntax(options);
+      if (typeof name === 'string') {
+        w.add(name, this);
+      } else {
+        name.writeSyntax(options);
+      }
     } else {
       w.add('@', this);
     }
@@ -320,18 +327,18 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          return this.createPreparedNameMixin(node, key as Any<'name'>);
+          return this.createPreparedNameMixin(node, String(key.valueOf()));
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      return this.createPreparedNameMixin(node, maybeKey as Any<'name'>);
+      return this.createPreparedNameMixin(node, String(maybeKey.valueOf()));
     }
     return node;
   }
 
-  private createPreparedNameMixin(node: Mixin, key: Any<'name'>): Mixin {
+  private createPreparedNameMixin(node: Mixin, key: string): Mixin {
     const value: MixinValue = {
       name: key,
       rules: node.rules

@@ -1511,7 +1511,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules: rules.rules, guard },
+                    { name: selector.valueOf(), params: args, rules: rules.rules, guard },
                     guard && hasDefault ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context

@@ -199,7 +199,7 @@ describe('Node Flags', () => {
 
     it('Declaration with expr value gets F_NON_STATIC from Expression', () => {
       const d = decl({
-        name: any('color', { role: 'property' }),
+        name: 'color',
         value: expr(any('red'))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
@@ -209,7 +209,7 @@ describe('Node Flags', () => {
 
     it('Declaration with direct static value (no expr) should be F_STATIC', () => {
       const d = decl({
-        name: any('color', { role: 'property' }),
+        name: 'color',
         value: any('red')
       });
       expect(d.hasFlag(F_STATIC)).toBe(true);
@@ -231,7 +231,7 @@ describe('Node Flags', () => {
 
     it('Declaration with non-static value should be F_NON_STATIC', () => {
       const d = decl({
-        name: any('color', { role: 'property' }),
+        name: 'color',
         value: expr(ref({ key: any('main-color') }))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
@@ -378,7 +378,7 @@ describe('Node Flags', () => {
 
     it('Declaration wrapping expr(ref()) gets F_NON_STATIC and F_MAY_ASYNC', () => {
       const d = decl({
-        name: any('color', { role: 'property' }),
+        name: 'color',
         value: expr(ref({ key: any('main-color') }))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
@@ -387,7 +387,7 @@ describe('Node Flags', () => {
 
     it('Declaration with static name and value (no expr wrapper) is F_STATIC', () => {
       const d = decl({
-        name: any('color', { role: 'property' }),
+        name: 'color',
         value: any('red')
       });
       expect(d.hasFlag(F_STATIC)).toBe(true);

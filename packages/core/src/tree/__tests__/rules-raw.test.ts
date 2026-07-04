@@ -6,7 +6,7 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 describe('RawRules', () => {
   it('serializes raw rules children without parent formatting', () => {
     const node = rawrules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
 
     expect(node.toBraced()).toBe('{color: red}');
@@ -15,7 +15,7 @@ describe('RawRules', () => {
   it('resolves raw rules as source-owned containers without eval stamping', () => {
     const context = new Context();
     const node = rawrules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
 
     const resolved = node.resolve(context);
@@ -29,7 +29,7 @@ describe('RawRules', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const node = rawrules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     let resolveCalls = 0;
     node.resolve = () => {
@@ -46,7 +46,7 @@ describe('RawRules', () => {
   it('renders raw child output directly without public resolve', () => {
     const context = new Context();
     const node = rawrules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     node.resolve = () => {
       throw new Error('RawRules direct render should serialize source syntax');

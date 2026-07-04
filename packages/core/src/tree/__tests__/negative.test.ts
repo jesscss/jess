@@ -88,7 +88,7 @@ describe('Negative', () => {
   it('renders negative values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -110,7 +110,7 @@ describe('Negative', () => {
   it('writes resolved negative render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -142,7 +142,7 @@ describe('Negative', () => {
   it('renders resolved dimensions without creating an operated result node', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -165,7 +165,7 @@ describe('Negative', () => {
   it('renders resolved Any values without child render or operation transport', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: any('token')
       })
     ]);
@@ -240,7 +240,7 @@ describe('Negative', () => {
   it('resolves negative values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -257,7 +257,7 @@ describe('Negative', () => {
   it('resolves negative Any values as scalar output nodes', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: any('token')
       })
     ]);

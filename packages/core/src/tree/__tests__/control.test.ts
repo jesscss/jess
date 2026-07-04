@@ -60,7 +60,7 @@ class WholeBufferCountingWriter extends OutputWriter {
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
-    name: new Any(name, { role: 'property' }),
+    name,
     value: new Nil()
   }, { paramVar: true }));
   if (kind === 'single') {
@@ -132,7 +132,7 @@ describe('Control Nodes', () => {
       condition: bool(true), rules: branchRules.rules
     }, undefined, undefined, treeContext);
     const forRule = new For({
-      pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
+      pattern: { kind: 'single', value: vardecl({ name: 'item', value: any('') }, { paramVar: true }) },
       iterable: { kind: 'node', value: list([any('a')]) },
       rules: []
     }, undefined, undefined, treeContext);
@@ -389,8 +389,8 @@ describe('Control Nodes', () => {
   });
 
   it('writes $for source header children without public toString transport', () => {
-    const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
-    const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
+    const firstPattern = vardecl({ name: 'first', value: new Nil() }, { paramVar: true });
+    const secondPattern = vardecl({ name: 'second', value: new Nil() }, { paramVar: true });
     const start = any('1');
     const end = any('5');
     const step = any('2');
@@ -906,7 +906,7 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([
-      vardecl({ name: any('tick'), value: call({
+      vardecl({ name: 'tick', value: call({
         name: new JsFunction({
           name: 'next-tick',
           fn: () => any(String(calls))
@@ -1764,7 +1764,7 @@ describe('Control Nodes', () => {
     ]);
 
     const loopMixin = mixin({
-      name: any('.loop'),
+      name: '.loop',
       params: list([
         any('prefix', { role: 'property' })
       ]),
@@ -1774,15 +1774,15 @@ describe('Control Nodes', () => {
             kind: 'tuple',
             values: [
               new VarDeclaration({
-                name: new Any('value', { role: 'property' }),
+                name: 'value',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('key', { role: 'property' }),
+                name: 'key',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('index', { role: 'property' }),
+                name: 'index',
                 value: new Nil()
               }, { paramVar: true })
             ]
