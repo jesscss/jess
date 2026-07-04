@@ -79,6 +79,22 @@ through `getReferenceNotFoundError` / `finalizeFallbackReferenceResult`. Single-
 lookup isn't resolving bindings that should exist. Deeper than Focus D (scope-frame
 resolution, not mechanical).
 
+## Focus D — strings-not-nodes render (progress: 85 → 69 stable, zero regressions)
+
+The **mechanical** string-serialization cluster is cleared (commits after 47a6ca6df):
+- [x] All on-string render **crashes** gone — `ensureSelectorVisible`/`needsVisibleSelectorClone`
+  array-hoist, `clone(true)→clone()` (old deep-clone API), `String(atRule.name)`.
+- [x] **Stale materialize-at-registration tests deleted** (string→node SelectorList/
+  ComplexSelector chain was proven dead + removed) — 10 blocks from string-backed-nodes.
+- [x] **serializeTypes snapshots** updated to compact single-element arrays;
+  string-backed-nodes.test.ts fully green.
+
+Remaining string failures are **genuine bugs**, not mechanical, and overlap deferred work:
+- [ ] **Trivia loss** — a string-name declaration drops name-boundary comments
+  (`color/* c */: grey` → `color: grey`). fieldSpans-anchored trivia emission (task #18).
+- [ ] **Eval-output diffs** — recursive-mixin / merge-chain / extend output differs;
+  these are eval correctness, coupled to Focus E lookup (deferred), not serialization.
+
 ## Focus D.1 — `F_VISIBLE` is a by-type property (major project; scoped)
 
 **Principle (owner):** `F_VISIBLE` marks whether a node *type* is CSS output. It is set at
