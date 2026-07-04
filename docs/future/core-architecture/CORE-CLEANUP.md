@@ -170,7 +170,16 @@ the render list?* (merge decided) — no overloaded mutable flag.
      needs render-despite-visibility yet. It also couples with the by-type source render
      (stage 2, since a bare `!F_VISIBLE` gate would still block it). Build it when language
      conversion (its real consumer) lands; the comment-test TODO tracks the one gap.
-2. **Static-by-type → no-op `writeSyntax` dispatch.**
+2. **Static-by-type → no-op dispatch** (split in two once the enumeration was done):
+   - [x] **2a — static render gate removed** (merged cleanup/fvisible-stage2): only
+     function/mixin/nil reached the base `render()` gate while invisible — all static-by-type.
+     Gave each a no-op `render()` override and DELETED the base `render()` gate (node-base.ts:1471).
+     Also removed 4 DEAD value-type render gates (dimension/bool/combinator/color — never invisible).
+     Output-neutral (66→66), tsc unchanged. The common render hot path no longer reads F_VISIBLE.
+   - [ ] **2b — dynamic toString/render gates** (deferred, pairs with stage 4): base `toString()`
+     gate (node-base:1441) + at-rule.ts:834 + comment.ts:56 + declaration-var render are genuine
+     **per-instance dynamic** visibility (line `//` comments, false-guard at-rules, paramVar) — not
+     by-type. These need the reference-mode/per-instance mechanism, not a type no-op.
 3. **Dedup/override → list-exclusion** in the `rules.ts` merge engine (largest legibility win).
 4. **Leave reference-mode as the sole runtime filter.**
 Guardrail throughout: stable 85-failure core set must not move; string selectors emit.
