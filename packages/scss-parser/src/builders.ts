@@ -39,7 +39,11 @@ import {
   Rules,
   Condition, type ConditionOperator,
   Paren,
-  If
+  If,
+  For,
+  While,
+  Nil,
+  Sequence
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -109,6 +113,9 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssCondOr':        return this._buildScssCondJoin(children, loc, 'or');
       case 'ScssRules':         return this._buildScssRules(children, loc);
       case 'ScssIf':            return this._buildScssIf(children, loc);
+      case 'ScssEach':          return this._buildScssEach(children, loc);
+      case 'ScssFor':           return this._buildScssFor(children, loc);
+      case 'ScssWhile':         return this._buildScssWhile(children, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -249,6 +256,97 @@ export class ScssGrammar extends LessGrammar {
       );
     }
     return (elseNode ?? new Any('', {}, loc)) as unknown as JessNode;
+  }
+
+  // ── @each / @for / @while loops ───────────────────────────────────────────
+
+  /** A `$name` loop-binding with no value (`paramVar` — prints as `$name`). */
+  private _scssParamVar(varName: string, loc: LocationInfo): VarDeclaration {
+    return new VarDeclaration(
+      { name: new Any(varName, { role: 'property' }, loc), value: new Nil() },
+      { paramVar: true },
+      loc
+    );
+  }
+
+  /**
+   * `@each $a[, $b …] in <expr> { … }` → `For` with a node iterable.
+   * Normalizes to Jess `$for ($a of …)` / `$for ([$a, $b] of …)`.
+   */
+  private _buildScssEach(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+
+    const vars: string[] = [];
+    let pastEach = false;
+    for (const l of ls) {
+      if (/^@each/i.test(l.value)) {
+        pastEach = true;
+        continue;
+      }
+      if (pastEach && l.value === 'in') {
+        break;
+      }
+      if (pastEach && l.value.startsWith('$')) {
+        vars.push(l.value.slice(1));
+      }
+    }
+
+    const iterableNodes = nodes.filter(n => n !== body);
+    let iterable: Node = iterableNodes.length === 1
+      ? iterableNodes[0]!
+      : new Sequence(iterableNodes as any, undefined, loc);
+    if ((iterable as any).type === 'Expression') {
+      iterable = (iterable as any).value;
+    }
+
+    const decls = vars.map(v => this._scssParamVar(v, loc));
+    const pattern = decls.length === 1
+      ? { kind: 'single' as const, value: decls[0]! }
+      : { kind: 'tuple' as const, values: decls as [VarDeclaration, ...VarDeclaration[]] };
+
+    return new For(
+      { pattern, iterable: { kind: 'node', value: iterable }, rules: body.rules },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * `@for $i from <start> (to|through) <end> { … }` → `For` with a range iterable.
+   * `through` is inclusive end; `to` is exclusive (`includeEnd: false`).
+   */
+  private _buildScssFor(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const includeEnd = ls.some(l => l.value === 'through');
+
+    const varLeaf = ls.find(l => l.value.startsWith('$'));
+    const varDecl = this._scssParamVar(varLeaf?.value.slice(1) ?? '', loc);
+
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    const exprNodes = nodes.filter(n => n !== body);
+    const startExpr = exprNodes[0] ?? new Any('', {}, loc);
+    const endExpr = exprNodes[1] ?? new Any('', {}, loc);
+
+    return new For(
+      {
+        pattern: { kind: 'single', value: varDecl },
+        iterable: { kind: 'range', start: startExpr, end: endExpr, includeStart: true, includeEnd },
+        rules: body.rules
+      },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** `@while <cond> { … }` → `While`. */
+  private _buildScssWhile(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    const condition = nodes.find(n => n !== body) ?? new Any('', {}, loc);
+    return new While({ condition, rules: body.rules }, undefined, loc) as unknown as JessNode;
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */

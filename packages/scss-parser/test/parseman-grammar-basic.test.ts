@@ -85,3 +85,50 @@ describe('ScssParserParseman — @if / @else', () => {
     }
   });
 });
+
+describe('ScssParserParseman — @each / @for / @while', () => {
+  it('parses @each $a in $list as For', () => {
+    const { tree } = parseOk('@each $a in $list { .x { y: $a; } }');
+    const loop = tree.rules[0]!;
+    expect(isNode(loop, N.For)).toBe(true);
+    if (isNode(loop, N.For)) {
+      expect(loop.toTrimmedString()).toContain('$for ($a of $list)');
+    }
+  });
+
+  it('parses @each destructuring as For with tuple pattern', () => {
+    const { tree } = parseOk('@each $a, $b in $list { .x { y: $a; z: $b; } }');
+    const loop = tree.rules[0]!;
+    expect(isNode(loop, N.For)).toBe(true);
+    if (isNode(loop, N.For)) {
+      expect(loop.toTrimmedString()).toContain('$for ([$a, $b] of $list)');
+    }
+  });
+
+  it('parses @for ... through ... as inclusive range', () => {
+    const { tree } = parseOk('@for $i from 1 through 3 { .x { y: $i; } }');
+    const loop = tree.rules[0]!;
+    expect(isNode(loop, N.For)).toBe(true);
+    if (isNode(loop, N.For)) {
+      expect(loop.toTrimmedString()).toContain('$for ($i of 1 to 3)');
+    }
+  });
+
+  it('parses @for ... to ... as exclusive range', () => {
+    const { tree } = parseOk('@for $i from 1 to 3 { .x { y: $i; } }');
+    const loop = tree.rules[0]!;
+    expect(isNode(loop, N.For)).toBe(true);
+    if (isNode(loop, N.For)) {
+      expect(loop.toTrimmedString()).toContain('$for ($i of 1 to <3)');
+    }
+  });
+
+  it('parses @while with a condition', () => {
+    const { tree } = parseOk('@while $x { .a { b: 1; } }');
+    const loop = tree.rules[0]!;
+    expect(isNode(loop, N.While)).toBe(true);
+    if (isNode(loop, N.While)) {
+      expect(loop.toTrimmedString()).toContain('$while');
+    }
+  });
+});

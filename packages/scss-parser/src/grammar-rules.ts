@@ -9,7 +9,7 @@
  * Macro-neutral: imports `'parseman'` without `with { type: 'macro' }`.
  * Self-contained: terminals are block-local inside the factory.
  */
-import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect } from 'parseman';
+import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect, sepBy } from 'parseman';
 
 export type ScssGrammarDeps = { build: (type: string, c: any, r: any, s: any) => any };
 
@@ -92,10 +92,47 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     )),
     (c: any, r: any, s: any) => build('ScssIf', c, r, s));
 
+  // ── Control flow: @each / @for / @while ────────────────────────────────────
+  // Faithful ports of scssEachAtRule / scssForAtRule / scssWhileAtRule
+  // (productions/atRules.ts). All normalize to Jess `For` / `While` nodes.
+  const inKw = regex(/\bin\b/);
+  const fromKw = regex(/\bfrom\b/);
+  const forThrough = regex(/\bthrough\b/);
+  const forTo = regex(/\bto\b/);
+  const eachKw = regex(/@each(?![-\w])/i);
+  const forKw = regex(/@for(?![-\w])/i);
+  const whileKw = regex(/@while(?![-\w])/i);
+
+  const ScssEach = node('ScssEach',
+    parser({ trivia: rw }, sequence(
+      eachKw,
+      sepBy(scssVar, literal(',')),
+      inKw,
+      g.valueSequence,
+      g.ScssRules
+    )),
+    (c: any, r: any, s: any) => build('ScssEach', c, r, s));
+
+  const ScssFor = node('ScssFor',
+    parser({ trivia: rw }, sequence(
+      forKw,
+      scssVar,
+      fromKw,
+      g.topSum,
+      choice(forThrough, forTo),
+      g.topSum,
+      g.ScssRules
+    )),
+    (c: any, r: any, s: any) => build('ScssFor', c, r, s));
+
+  const ScssWhile = node('ScssWhile',
+    parser({ trivia: rw }, sequence(whileKw, g.ScssCondOr, g.ScssRules)),
+    (c: any, r: any, s: any) => build('ScssWhile', c, r, s));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
-  const scssStatement = choice(g.ScssIf);
+  const scssStatement = choice(g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile);
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(scssStatement, g.stylesheetItem))),
     (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
@@ -105,6 +142,7 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
   return {
     VarDeclaration, Reference,
     ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
+    ScssEach, ScssFor, ScssWhile,
     Stylesheet, declarationList, atRuleBody
   };
 };
