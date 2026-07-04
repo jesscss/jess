@@ -71,7 +71,7 @@ describe('placement cloning', () => {
       op: '=',
       value: quoted('foo')
     });
-    const cloned = node.clone(true);
+    const cloned = node.clone();
 
     expect(cloned).not.toBe(node);
     expect(cloned.value.value).not.toBe(node.value.value);

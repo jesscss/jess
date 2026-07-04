@@ -60,7 +60,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const root = rules([
       ruleset({
-        selector: sellist([sel([parentIs, ' ', el('.replace')]), sel([parentIs.clone(true), ' ', el('.c')])]),
+        selector: sellist([sel([parentIs, ' ', el('.replace')]), sel([parentIs.clone(), ' ', el('.c')])]),
         rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
       }),
       ruleset({
