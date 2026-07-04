@@ -192,8 +192,8 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssUse':           return this._buildScssUse(children, loc);
       case 'ScssForward':       return this._buildScssForward(children, _rawChildren, loc);
       case 'ScssPlaceholderSelector': return this._buildScssPlaceholderSelector(children, loc);
-      case 'ScssExtendTarget':  return this._buildScssExtendTarget(children, loc);
-      case 'ScssExtend':        return this._buildScssExtend(children, loc);
+      case 'ScssExtendTarget':  return this._buildScssExtendTarget(children, _rawChildren, loc);
+      case 'ScssExtend':        return this._buildScssExtend(children, _rawChildren, loc);
       case 'ScssImportItem':    return this._buildScssImportItem(children, _rawChildren, loc);
       case 'ScssImportAtRule':  return this._buildScssImportAtRule(children, loc);
       case 'Call':              return this._buildCall(_rawChildren, loc);
@@ -927,24 +927,79 @@ export class ScssGrammar extends LessGrammar {
     return this._makeBasicSelector(name, loc);
   }
 
-  private _buildScssExtendTarget(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  private _buildScssExtendTarget(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    for (const c of children) {
+      if (typeof c === 'string') {
+        return c as unknown as JessNode;
+      }
+    }
+    const placeholderLeaf = children.find((c): c is CSTLeaf =>
+      c?._tag === 'leaf' && typeof (c as CSTLeaf).value === 'string' && (c as CSTLeaf).value.startsWith('%')
+    );
+    if (placeholderLeaf) {
+      return `\\${placeholderLeaf.value.slice(1)}` as unknown as JessNode;
+    }
     const items = nodeChildren(children);
     if (items.length === 1) {
       return items[0]!;
     }
-    return this._makeSelectorList(items, loc);
+    if (items.length > 1) {
+      return this._makeSelectorList(items, loc);
+    }
+    const spanItems = spannedComponents(raw).filter(i => i.comp !== ',');
+    if (spanItems.length === 1 && typeof spanItems[0]!.comp === 'string') {
+      const sel = spanItems[0]!.comp as string;
+      return (sel.startsWith('%') ? `\\${sel.slice(1)}` : sel) as unknown as JessNode;
+    }
+    return items[0] as unknown as JessNode;
   }
 
-  private _buildScssExtend(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const target = nodeChildren(children).find(n =>
-      ['SelectorList', 'BasicSelector', 'CompoundSelector', 'ComplexSelector'].includes(n.type)
-    )!;
+  private _scssExtendTargetFrom(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    _loc: LocationInfo
+  ): Selector | string {
+    for (const c of children) {
+      if (typeof c === 'string') {
+        return c;
+      }
+      if (c != null && typeof c === 'object' && '_tag' in c && (c as { _tag: string })._tag === 'node') {
+        const n = c as JessNode;
+        if (['SelectorList', 'BasicSelector', 'CompoundSelector', 'ComplexSelector'].includes(n.type)) {
+          return n as unknown as Selector;
+        }
+      }
+    }
+    const items = spannedComponents(raw).filter(i => i.comp !== '@extend' && i.comp !== ';' && i.comp !== '!optional');
+    if (items.length === 1 && typeof items[0]!.comp === 'string') {
+      const sel = items[0]!.comp as string;
+      if (sel.startsWith('%')) {
+        return `\\${sel.slice(1)}`;
+      }
+      return sel;
+    }
+    return nodeChildren(children)[0] as unknown as Selector;
+  }
+
+  private _buildScssExtend(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    const target = this._scssExtendTargetFrom(children, raw, loc);
     validateExtendTarget(
       target as Node,
       this._parseContext?.opts?.allowExtendSelectors,
       msg => this._error(msg, loc[0])
     );
-    const namespace = isPlaceholderExtendTarget(target as Node) ? '*' : undefined;
+    const prelude = this._source.slice(loc[0], loc[3]);
+    const namespace = /@extend\s+%/.test(prelude) || isPlaceholderExtendTarget(target)
+      ? '*'
+      : undefined;
     return new Extend(
       { target: target as unknown as Selector, flag: ExtendFlag.All, namespace },
       undefined,

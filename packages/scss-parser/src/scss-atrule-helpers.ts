@@ -131,7 +131,10 @@ export function checkForwardPreludeErrors(
   }
 }
 
-export function isPlaceholderExtendTarget(target: Node): boolean {
+export function isPlaceholderExtendTarget(target: Node | string): boolean {
+  if (typeof target === 'string') {
+    return target.startsWith('\\');
+  }
   if (isNode(target, N.BasicSelector)) {
     return target.value.startsWith('\\');
   }

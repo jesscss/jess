@@ -5,12 +5,15 @@
  */
 import { rules } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import type { TriviaMap, JessError, Rules, TreeContext } from '@jesscss/core';
+import type { TriviaMap, JessError, Rules, TreeContext, IParseResult } from '@jesscss/core';
+import type { ILexingResult } from 'chevrotain';
 import { runFunctionalParse } from '@jesscss/css-parser';
 import { lessGrammarRules } from '@jesscss/less-parser/grammar-rules';
 import { scssGrammarRules } from './grammar-rules.js';
 import { ScssGrammar } from './builders.js';
 import { setParseScssFnForInterp } from './interp.js';
+import type { ScssParserConfig, ScssRules } from './scssRecursiveParser.js';
+import type { SyntacticContentAssistSuggestion } from './scssParser.js';
 // Macro resolves nested spreads by name against the consumer's import bindings.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { numericRules, parenRules, queryRules, stringRules } from '@jesscss/css-parser/shared-value-rules';
@@ -100,7 +103,43 @@ export function parseScssFn(
 
 setParseScssFnForInterp(parseScssFn);
 
-/** Functional SCSS parser — call `.parse(text)` for a Jess AST. */
-export class ScssParserParseman {
-  parse = (text: string, rule = 'stylesheet'): ScssFnParseResult => parseScssFn(text, rule);
+const EMPTY_LEXER_RESULT: ILexingResult = { tokens: [], errors: [], groups: {} };
+
+function toParseResult(result: ScssFnParseResult): IParseResult<Rules> {
+  return {
+    tree: result.tree,
+    // JessError is the normalized error shape; compatible with IParseResult consumers.
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion */
+    errors: result.errors as IParseResult['errors'],
+    warnings: result.warnings,
+    trivia: result.trivia,
+    lexerResult: EMPTY_LEXER_RESULT
+  };
 }
+
+/**
+ * Functional SCSS parser — the default `Parser` export. Wraps `parseScssFn` and
+ * returns the same `IParseResult` shape as the legacy Chevrotain parser (with an
+ * empty `lexerResult`; the functional grammar does not tokenize separately).
+ */
+export class ScssParser {
+  constructor(_config: ScssParserConfig = {}) {
+    // Config accepted for API compatibility with ScssParserChevrotain; not yet
+    // wired through the functional driver.
+  }
+
+  parse(text: string): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet', options: { context?: TreeContext }): IParseResult<Rules>;
+  parse(text: string, rule?: ScssRules, options?: { context?: TreeContext }): IParseResult;
+  parse(text: string, rule: ScssRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
+    return toParseResult(parseScssFn(text, rule, { context: options?.context }));
+  }
+
+  suggest(_text: string, _init?: { offset: number; rule?: ScssRules }): SyntacticContentAssistSuggestion[] {
+    return [];
+  }
+}
+
+/** @deprecated Use {@link ScssParser}. */
+export { ScssParser as ScssParserParseman };

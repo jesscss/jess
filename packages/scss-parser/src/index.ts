@@ -3,13 +3,14 @@ export * from './scssRecursiveParser.js';
 export * from './scssParser.js';
 export { value as scssValueProduction } from './productions/values.js';
 
-// Parséman-based SCSS grammar — migration in progress. NOT yet the default
-// Parser: the scss test suite still targets the Chevrotain node model (parent
-// pointers, BasicSelector nodes, lexerResult), so switching the default requires
-// adapting those tests to the strings-not-nodes model first (as done for css/less).
 export { ScssGrammar } from './builders.js';
 export { scssGrammarRules } from './grammar-rules.js';
-export { scssRules, ScssParserParseman, parseScssFn, build, type ScssFnParseResult } from './grammar.js';
 
-import { ScssParser } from './scssParser.js';
-export { ScssParser as Parser };
+import { ScssParser, parseScssFn, scssRules, build, type ScssFnParseResult, type ScssFnParseOptions } from './grammar.js';
+export { ScssParser, ScssParserParseman, parseScssFn, scssRules, build, type ScssFnParseResult, type ScssFnParseOptions };
+
+// Chevrotain parser — kept for lexer/token tests and gradual migration.
+export type { ScssRules, SyntacticContentAssistSuggestion } from './scssParser.js';
+export { ScssParser as ScssParserChevrotain } from './scssParser.js';
+
+export const Parser = ScssParser;
