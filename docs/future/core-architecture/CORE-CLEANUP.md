@@ -148,13 +148,17 @@ the render list?* (merge decided) — no overloaded mutable flag.
    - [x] **1a — `fullRender` deleted** (commit 47a6ca6df): field + all gate-branches +
      serialize-helper reads + dead test toggles. The real `F_VISIBLE` check stays; prod
      byte-identical. `fullRender` was test-only (always false in prod) → dead branching.
-   - [ ] **1b — render-ignoring-visibility walker** (`renderNodeFull`): the separate,
-     off-hot-path replacement for the deleted test toggle + future language conversion.
-     Needs the by-type source render (couples with stage 2), so deferred with it.
-   - [ ] **1c — the `writeHeaderSelector` mutate/clone dance**
-     (`ensureSelectorVisible`/`needsVisibleSelectorClone`/`copySelectorForRulesetMetadata`/
-     save-force-restore). This forces selector `F_VISIBLE` for reference/extend emission,
-     so it couples with the (deferred) reference-mode filter — moves to that stage.
+   - [x] **1c — the `writeHeaderSelector` mutate/clone dance DELETED**: `ensureSelectorVisible`
+     + `needsVisibleSelectorClone` (both static methods) + the save/force/restore removed.
+     It was **redundant**, not coupled — normal render selectors are already visible, and
+     reference emission is driven by `referenceFilteredLocal`. Zero new failures.
+     `copySelectorForRulesetMetadata` stays: a shared non-mutating copy for reference-filter
+     + `ownSelector`, not the dance. **The render path no longer mutates `F_VISIBLE`.**
+   - [ ] **1b — render-ignoring-visibility walker** (`renderNodeFull`): has **no current
+     consumer** — the tests were migrated off `fullRender` to plain suppression, so nothing
+     needs render-despite-visibility yet. It also couples with the by-type source render
+     (stage 2, since a bare `!F_VISIBLE` gate would still block it). Build it when language
+     conversion (its real consumer) lands; the comment-test TODO tracks the one gap.
 2. **Static-by-type → no-op `writeSyntax` dispatch.**
 3. **Dedup/override → list-exclusion** in the `rules.ts` merge engine (largest legibility win).
 4. **Leave reference-mode as the sole runtime filter.**
