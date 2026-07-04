@@ -925,7 +925,7 @@ describe('Declaration', () => {
     const src = 'color/* survive */ /* me too */: grey';
     const name = 'color';
     const node = decl({ name, value: any('grey') });
-    setFieldSpans(node, [0, 5, 0]); // name slot end = 5
+    setFieldSpans(node, [{ start: 0, end: 5 }]); // name slot [0,5], end = 5
     const shared = makeTrivia(src, 5, 31); // "/* survive */ /* me too */"
     const trivia = createTriviaMap({
       before: new Map([[31, shared]]),
@@ -1635,7 +1635,7 @@ describe('Declaration', () => {
     setSourceSpan(value, { start: 8, end: 12 });
     const node = decl({ name, value });
     setSourceSpan(node, { start: 0, end: 12 });
-    setFieldSpans(node, [0, 5, 0]); // name slot [0,5] (bare string carries no own span)
+    setFieldSpans(node, [{ start: 0, end: 5 }]); // name slot [0,5] (bare string carries no own span)
     const trivia = createTriviaMap({
       before: new Map([[sourceSpanOf(value)?.start, run('\n')]])
     }) satisfies TriviaMap;

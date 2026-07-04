@@ -1715,7 +1715,7 @@ describe('AtRule', () => {
       ]
     });
     // The name's source span lives on the AtRule's fieldSpans (name slot [0,18]).
-    setFieldSpans(node, [0, 18, 0]);
+    setFieldSpans(node, [{ start: 0, end: 18 }]);
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });
