@@ -210,12 +210,27 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     parser({ trivia: rw }, sequence(contentKw, optionalCallParens, optional(literal(';')))),
     (c: any, r: any, s: any) => build('ScssContent', c, r, s));
 
+  // ── @function / @return ─────────────────────────────────────────────────────
+  const functionKw = regex(/@function(?![-\w])/i);
+  const returnKw = regex(/@return(?![-\w])/i);
+
+  const ScssFunction = node('ScssFunction',
+    parser({ trivia: rw }, sequence(
+      functionKw, plainIdent, optional(g.ScssMixinParams), g.ScssDeclBody
+    )),
+    (c: any, r: any, s: any) => build('ScssFunction', c, r, s));
+
+  const ScssReturn = node('ScssReturn',
+    parser({ trivia: rw }, sequence(returnKw, g.valueList, expect(literal(';'), ';'))),
+    (c: any, r: any, s: any) => build('ScssReturn', c, r, s));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
   const scssStatement = choice(
     g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile,
-    g.ScssMixin, g.ScssInclude, g.ScssContent
+    g.ScssMixin, g.ScssInclude, g.ScssContent,
+    g.ScssFunction, g.ScssReturn
   );
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(scssStatement, g.stylesheetItem))),
@@ -229,6 +244,7 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     ScssEach, ScssFor, ScssWhile,
     ScssCallArg, ScssCallArgsInner, ScssMixinParam, ScssMixinParams, ScssMixinName,
     ScssDeclBody, ScssMixin, ScssIncludeUsing, ScssInclude, ScssContent,
+    ScssFunction, ScssReturn,
     Stylesheet, declarationList, atRuleBody
   };
 };

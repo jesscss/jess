@@ -48,7 +48,8 @@ import {
   Call,
   Rest,
   List,
-  F_VISIBLE
+  F_VISIBLE,
+  Func
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -131,6 +132,8 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssIncludeUsing':  return this._buildScssIncludeUsing(children, loc);
       case 'ScssInclude':       return this._buildScssInclude(children, loc);
       case 'ScssContent':       return this._buildScssContent(children, loc);
+      case 'ScssFunction':      return this._buildScssFunction(children, loc);
+      case 'ScssReturn':        return this._buildScssReturn(children, _rawChildren, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -513,6 +516,38 @@ export class ScssGrammar extends LessGrammar {
     const args = nodes.find(n => n.type === 'List') as List | undefined;
     const ref = new Reference({ key: 'content' }, { type: 'mixin', role: 'name' }, loc);
     return new Call({ name: ref, args }, undefined, loc) as unknown as JessNode;
+  }
+
+  /** `@function name($params) { … }` → `Func` with `returnName: 'result'`. */
+  private _buildScssFunction(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
+      && l.value !== '{' && l.value !== '}' && l.value !== ',');
+    const name = new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const params = nodes.find(n => n.type === 'List') as List | undefined;
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    return new Func(
+      { name: name as Any<'name'>, params, body },
+      { returnName: 'result' },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** `@return <value>;` → `$result: <value>;` */
+  private _buildScssReturn(
+    children: ReadonlyArray<Child>,
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    const items = spannedComponents(rawChildren);
+    const semiIdx = items.findIndex(i => i.comp === ';');
+    const valueItems = items.filter((i, idx) =>
+      idx > 0 && i.comp !== '@return' && (semiIdx < 0 || idx < semiIdx)
+    );
+    const { value } = this._assembleValue(valueItems, loc);
+    const name = new Any('result', { role: 'property' }, loc);
+    return new VarDeclaration({ name, value: value as Node }, undefined, loc) as unknown as JessNode;
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */

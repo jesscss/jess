@@ -195,3 +195,13 @@ describe('ScssParserParseman — @mixin / @include / @content', () => {
     }
   });
 });
+
+describe('ScssParserParseman — @function / @return', () => {
+  it('parses @function definition with @return', () => {
+    const { tree } = parseOk('@function add($a, $b: 2) { @return $a; }');
+    expect(isNode(tree.rules[0], N.Func)).toBe(true);
+    if (isNode(tree.rules[0], N.Func)) {
+      expect(tree.rules[0].toTrimmedString()).toContain('$function add');
+    }
+  });
+});
