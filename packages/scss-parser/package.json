@@ -14,10 +14,17 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./grammar-rules": {
+      "types": "./lib/index.d.ts",
+      "source": "./src/parseman/grammar-rules.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",

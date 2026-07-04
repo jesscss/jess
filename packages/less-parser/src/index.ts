@@ -10,5 +10,6 @@ export { LessGrammar } from './builders.js';
 import { LessParser } from './grammar.js';
 export { LessParser };
 export { parseLessFn, type LessFnParseResult } from './grammar.js';
+export { lessGrammarRules, type LessGrammarDeps } from './grammar-rules.js';
 
 export const Parser = LessParser;
