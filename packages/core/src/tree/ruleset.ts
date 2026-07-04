@@ -974,111 +974,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       : node.evalNode(context);
   }
 
-  /**
-   * Make authored selector nodes printable while keeping implicit ampersands
-   * invisible so nested output stays short.
-   */
-  private static ensureSelectorVisible(sel: SelectorLike | Nil): void {
-    if (typeof sel === 'string') {
-      return;
-    }
-    if (!sel || sel instanceof Nil) {
-      return;
-    }
-    // A bare array is a selector list with no flags of its own — recurse members
-    // (before the flag ops below, which arrays don't have).
-    if (Array.isArray(sel)) {
-      for (const item of sel) {
-        Ruleset.ensureSelectorVisible(item);
-      }
-      return;
-    }
-    if (isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      return;
-    }
-    if (!sel.hasFlag(F_VISIBLE)) {
-      sel.addFlag(F_VISIBLE);
-    }
-    if (isNode(sel, N.SelectorList)) {
-      for (const item of sel.value) {
-        Ruleset.ensureSelectorVisible(item);
-      }
-      return;
-    }
-    if (isNode(sel, N.ComplexSelector)) {
-      for (const c of sel.value) {
-        if (typeof c === 'string') {
-          continue;
-        }
-        Ruleset.ensureSelectorVisible(c);
-      }
-      return;
-    }
-    if (isNode(sel, N.CompoundSelector)) {
-      for (const c of sel.value) {
-        if (typeof c === 'string') {
-          continue;
-        }
-        Ruleset.ensureSelectorVisible(c);
-      }
-    }
-  }
-
-  private static needsVisibleSelectorClone(sel: SelectorLike | Nil): boolean {
-    if (typeof sel === 'string') {
-      return false;
-    }
-    if (!sel || sel instanceof Nil) {
-      return false;
-    }
-    // A bare array is a selector list with no visibility flags of its own — the
-    // answer is whether any member needs cloning. Handle before the flag check
-    // below (arrays have no `hasFlag`).
-    if (Array.isArray(sel)) {
-      for (let i = 0; i < sel.length; i++) {
-        if (Ruleset.needsVisibleSelectorClone(sel[i]!)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (!(isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) && !sel.hasFlag(F_VISIBLE)) {
-      return true;
-    }
-    if (isNode(sel, N.SelectorList)) {
-      const items = sel.value;
-      for (let i = 0; i < items.length; i++) {
-        if (Ruleset.needsVisibleSelectorClone(items[i]!)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (isNode(sel, N.ComplexSelector)) {
-      for (let i = 0; i < sel.value.length; i++) {
-        if (typeof sel.value[i] === 'string') {
-          continue;
-        }
-        if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (!isNode(sel, N.CompoundSelector)) {
-      return false;
-    }
-    for (let i = 0; i < sel.value.length; i++) {
-      if (typeof sel.value[i] === 'string') {
-        continue;
-      }
-      if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   static isBareAmpersandSelector(sel: string | Selector | Nil): boolean {
     if (typeof sel === 'string') {
       return false;
@@ -1719,23 +1614,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     ) {
       options.referenceFilterTargets = true;
     }
-    const renderSelectorSourceRef = renderSelector;
-    if (!(renderSelector instanceof Nil)) {
-      const needsVisibleSelectorClone = Ruleset.needsVisibleSelectorClone(renderSelector);
-      if (options.referenceFilterTargets || needsVisibleSelectorClone) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        renderSelector = copySelectorForRulesetMetadata(renderSelector) as Selector;
-      }
+    // Reference mode filters extend targets from the list — work on a copy so the
+    // shared source selector is untouched. (Reference emission is the deferred lane.)
+    if (!(renderSelector instanceof Nil) && options.referenceFilterTargets) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      renderSelector = copySelectorForRulesetMetadata(renderSelector) as Selector;
     }
-    // For reusable-leaf selectors, copySelectorForRulesetMetadata returns the source node
-    // unchanged. Ensure we restore visibility after writing so the source is not mutated.
-    // A bare-string/array selector (strings-not-nodes) carries no visibility
-    // flags and emits verbatim through the selector-like writer.
+    // A selector emits its authored form; visibility is not a render-time mutation.
     const renderSelectorIsSurface = typeof renderSelector === 'string' || Array.isArray(renderSelector);
-    const renderSelectorWasVisible = renderSelectorIsSurface
-      || renderSelector instanceof Nil
-      || renderSelector.hasFlag(F_VISIBLE);
-    Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
     const position = options.writer.position();
     if (withoutComments) {
@@ -1751,11 +1637,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     } finally {
       options.trivia = savedTrivia;
       restorePrintState(options, saved);
-      // Restore source selector visibility if renderSelector is the same as the source
-      // (happens when the selector is a reusable leaf and no copy was made).
-      if (!renderSelectorWasVisible && renderSelector === renderSelectorSourceRef && !(renderSelector instanceof Nil)) {
-        renderSelector.removeFlag(F_VISIBLE);
-      }
     }
     return options.writer.position() !== position;
   }
