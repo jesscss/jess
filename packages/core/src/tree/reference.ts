@@ -3385,45 +3385,14 @@ function resolveRawReferenceLookupTarget(
 
 /**
  * True for a PLAIN variable reference (`@foo` / `$foo`): variable type, no
- * `target` accessor, no `filter`, not `preserveRulesLike`. Such a reference has
- * nothing to resolve beyond the value itself, so {@link evaluateReferenceNode}
- * can take the direct fast-path below instead of the general accessor machinery.
+ * `target` accessor, no `filter`, not `preserveRulesLike` — nothing to resolve
+ * beyond the value itself, so it can be rendered from its direct lookup value.
  */
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
   return (referenceNode.options.type ?? 'variable') === 'variable'
     && referenceNode.target === undefined
     && referenceNode.options.filter === undefined
     && referenceNode.options.preserveRulesLike !== true;
-}
-
-/**
- * Fast-path used throughout {@link evaluateReferenceNode}: for a plain `@foo`
- * reference, take the single-frame lookup result, unwrap it to its value node via
- * {@link finalizeRawReferenceLookupTarget}, and return it directly (popping the
- * reference) — short-circuiting the general accessor/filter path. Current
- * single-frame code, NOT a legacy island: `returnVal` is a scope-frame binding
- * result and the unwrap peels scope-frame binding handles. Returns `undefined`
- * (fall through to the general path) when the ref isn't plain or the value isn't
- * directly returnable.
- */
-function finalizeDirectRawRenderValue(
-  referenceNode: Reference,
-  returnVal: unknown,
-  context: Context
-): Node | undefined {
-  if (!canRenderRawVariableReferenceDirectly(referenceNode)) {
-    return undefined;
-  }
-  const target = finalizeRawReferenceLookupTarget(returnVal);
-  if (
-    target === RAW_REFERENCE_TARGET_NOT_FOUND
-    || !isNode(target)
-    || !canReturnReferenceValue(target)
-  ) {
-    return undefined;
-  }
-  context.popReference();
-  return target;
 }
 
 function emitReferenceSyntaxKey(
@@ -3458,7 +3427,6 @@ function evaluateReferenceNode(args: {
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
   textOnly?: boolean;
-  directStaticRender?: boolean;
 }): MaybePromise<Node> {
   const {
     referenceNode,
@@ -3468,8 +3436,7 @@ function evaluateReferenceNode(args: {
     fallbackValue,
     originalFilter,
     context,
-    textOnly,
-    directStaticRender
+    textOnly
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
@@ -3483,12 +3450,6 @@ function evaluateReferenceNode(args: {
   });
   if (initialHandleLookup !== undefined) {
     const { returnVal, valueKey } = initialHandleLookup;
-    const directRenderValue = directStaticRender === true
-      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-      : undefined;
-    if (directRenderValue) {
-      return directRenderValue;
-    }
     return finalizeReferenceLookupResult(
       referenceNode,
       returnVal,
@@ -3519,12 +3480,6 @@ function evaluateReferenceNode(args: {
         context
       }))
       .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
         return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
@@ -3555,12 +3510,6 @@ function evaluateReferenceNode(args: {
         context
       }))
       .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
         return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
@@ -3590,12 +3539,6 @@ function evaluateReferenceNode(args: {
         context
       }))
       .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
         return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
@@ -3619,12 +3562,6 @@ function evaluateReferenceNode(args: {
   if (isThenable(lookup)) {
     return Promise.resolve(lookup)
       .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
         return finalizeReferenceLookupResult(
           referenceNode,
           returnVal,
@@ -3637,12 +3574,6 @@ function evaluateReferenceNode(args: {
       });
   }
 
-  const directRenderValue = directStaticRender === true
-    ? finalizeDirectRawRenderValue(referenceNode, lookup.returnVal, context)
-    : undefined;
-  if (directRenderValue) {
-    return directRenderValue;
-  }
   return finalizeReferenceLookupResult(
     referenceNode,
     lookup.returnVal,
@@ -3790,8 +3721,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             fallbackValue: this.options.fallbackValue,
             originalFilter: this.options.filter,
             context,
-            textOnly: true,
-            directStaticRender: true
+            textOnly: true
           });
           return isThenable(evaluated)
             ? Promise.resolve(evaluated).then((node) => {
@@ -3822,8 +3752,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       fallbackValue: this.options.fallbackValue,
       originalFilter: this.options.filter,
       context,
-      textOnly: true,
-      directStaticRender: true
+      textOnly: true
     });
     return isThenable(evaluated)
       ? Promise.resolve(evaluated).then((node) => {
