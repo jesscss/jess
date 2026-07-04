@@ -215,6 +215,31 @@ export function emitCommentTriviaAfterNode(
   emitTriviaTokens(run, options);
 }
 
+/**
+ * Like `emitCommentTriviaAfterNode`, but keyed by an explicit source offset —
+ * for a string component (e.g. a bare declaration/at-rule name) that carries no
+ * own node span; the offset comes from the owning node's `fieldSpans` slot.
+ */
+export function emitCommentTriviaAfterOffset(
+  trivia: TriviaMap | undefined,
+  offset: number | undefined,
+  options: TriviaEmitOptions
+): void {
+  if (!trivia || offset === undefined) {
+    return;
+  }
+  const run = trivia.lookup(offset, 'after');
+  if (!run?.hasComment) {
+    return;
+  }
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  if (emittedTrivia.has(run)) {
+    return;
+  }
+  emittedTrivia.add(run);
+  emitTriviaTokens(run, options);
+}
+
 export function consumeTrivia(
   trivia: TriviaMap,
   offset: number | undefined,

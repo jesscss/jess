@@ -73,7 +73,10 @@ describe('Declaration', () => {
     expect(node.value).toBe(value);
     expect(node.important).toBe(important);
     expect(node.value).not.toHaveProperty('name');
-    expect([...node.walk()]).toEqual([name, value, important]);
+    // The name is a bare string, not a walkable child node, so walk() yields only
+    // the node-valued fields (value, important). The string name stays the direct
+    // `node.name` field asserted above.
+    expect([...node.walk()]).toEqual([value, important]);
   });
 
   it('does not allocate options when serializing a default declaration', () => {
@@ -916,13 +919,16 @@ describe('Declaration', () => {
   });
 
   it('serializes comment trivia between declaration names and separators', () => {
+    // "color/* survive */ /* me too */: grey" — the name is a bare STRING; its
+    // source span comes from the declaration's fieldSpans (name slot [0,5]).
+    const src = 'color/* survive */ /* me too */: grey';
     const name = 'color';
-    name._location = [4, 1, 5, 8, 1, 9];
     const node = decl({ name, value: any('grey') });
-    const shared = run('/* survive */ /* me too */');
+    node.fieldSpans = [0, 5, 0]; // name slot end = 5
+    const shared = makeTrivia(src, 5, 31); // "/* survive */ /* me too */"
     const trivia = createTriviaMap({
-      before: new Map([[35, shared]]),
-      after: new Map([[name.location[3], shared]])
+      before: new Map([[31, shared]]),
+      after: new Map([[5, shared]])
     }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
@@ -1624,11 +1630,11 @@ describe('Declaration', () => {
 
   it('does not treat boundary trivia before a value as authored multiline value text', () => {
     const name = 'color';
-    name._location = [0, 1, 1, 5, 1, 6];
     const value = any('white');
     value._location = [8, 2, 1, 12, 2, 6];
     const node = decl({ name, value });
     node._location = [0, 1, 1, 12, 2, 6];
+    node.fieldSpans = [0, 5, 0]; // name slot [0,5] (bare string carries no own span)
     const trivia = createTriviaMap({
       before: new Map([[value.location[0], run('\n')]])
     }) satisfies TriviaMap;

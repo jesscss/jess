@@ -30,7 +30,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitTriviaTokens } from './util/trivia.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -551,6 +551,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   name: DeclarationValue['name'];
   important: DeclarationValue['important'];
 
+  /**
+   * Source end offset of the (string) `name` slot, from `fieldSpans` (childKeys
+   * order: name=slot 0 → `[start, end, flags]` at indices 0..2). Used to place
+   * name-boundary trivia when the name is a bare string with no own span.
+   */
+  private _nameSlotEnd(): number | undefined {
+    const fs = this.fieldSpans;
+    return fs && fs.length >= 2 ? fs[1] : undefined;
+  }
+
   constructor(
     value: DeclarationValue,
     options?: Opts,
@@ -872,6 +882,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     if (name instanceof Node) {
       emitCommentTriviaAfterNode(name, options);
+    } else {
+      // String name: after-name trivia (between the name and the `:`/assign) is
+      // keyed at the name slot's end offset from fieldSpans (name = childKey 0).
+      emitCommentTriviaAfterOffset(options.trivia, this._nameSlotEnd(), options);
     }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
