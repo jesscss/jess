@@ -392,28 +392,26 @@ direction.
   - `allowRuleRoot` does **not exist in Less 4.x** — pure Jess invention. Keep deleted.
   - Jess's `allowRoot` was **write-only**: it copied the field-setting but never ported
     `checkValidNodes`, so it threw nothing. Deleting the bare fields removed zero behavior.
-  - v5 gap + better-than-4.x plan: the missing piece is `checkValidNodes` itself (a real
-    error-reporting feature Jess lacks). When implementing it, do NOT reintroduce per-node
-    fields — Less needs them only because its nodes are dynamically typed. Jess has the
-    `nodeType` bitmask: express statement-legality as one constant `N_STATEMENT_LEGAL =
-    AtRule | Comment | Declaration | Extend | StyleImport | Ruleset | Mixin | Call | …` and
-    check `(node.nodeType & N_STATEMENT_LEGAL)` in the Rules render/eval pass, plus the
-    Declaration-at-root and unresolved-Call throws. Zero per-node fields. (Edge: 4.x
-    `Quoted.allowRoot = escaped` — handle the escaped-quoted-at-statement case explicitly.)
-  Decision: **keep both deleted.** The feature to build later is `checkValidNodes` as a
-  bitmask predicate, tracked as a v5 error-reporting item, not a field restore.
-  - **Demand is real but latent (~10 fixtures):** Less ships
-    `packages/test-data/tests-error/eval/functions-{1,3-assignment,4-call,10-keyword,
-    11-operation,12-quoted,13-selector,14-url,15-value}.txt` and `detached-ruleset-3.txt`,
-    each asserting one of the three throws. None are wired into Jess's harness yet → no
-    currently-failing target. So the demand activates when the eval-error corpus is ported.
-  - **Sequencing (recommended):** do it test-driven — enable those fixtures first (or add a
-    core unit test constructing a Rules with a bare value node), then implement to turn them
-    green, build-gated. NOT blind: the `jess` package does not build in this worktree
-    (rolldown-dts/ts-rc), and the message uses Less type names (Keyword/Operation/Quoted/
-    Url/Value/Assignment) that must be mapped to Jess types (Any/Dimension/…). Placement is
-    the render/eval Rules-body pass — currently being edited by the owner
-    (`serialize-helper.ts`), so land after that to avoid collision.
+  - **IMPLEMENTED (v1) — `7f3353d6a`.** `checkValidNodes` now ports the Less feature.
+    Correcting two mistakes recorded above: it is NOT a `nodeType` bitmask (that mask is
+    the type-identity mask — wrong axis) and NOT a value denylist. `allowRoot` is a
+    **node flag**, exactly as in Less (a per-instance boolean) but folded into the `flags`
+    bitmask as `F_ALLOW_ROOT`, set in the constructor of each statement-legal type.
+    `checkValidNodes` throws `eval/invalid-statement` for any node in an evaluated body
+    without `F_ALLOW_ROOT` (allowlist, faithful to Less's `!ruleNode.allowRoot`), wired at
+    `Rules.render` on the evaluated output body. Statement-legal set (name kept: allowRoot):
+    `Rules` + its container subclasses (Ruleset/AtRule/Mixin/If/For/While/Stylesheet/
+    Collection/RawRules via `super`), `Declaration` + Var/Custom via `super`,
+    `AtRuleStatement`, `Comment`, `Nil`, `ExtendList`, `Log`. Verified: unit test 4/4;
+    error fires zero times across the full suite (no false positives); neutralize-vs-active
+    suite totals equal.
+  - **Deferred (v1 scope):** the bare-`Declaration`-at-document-root throw — it needs a
+    reliable root signal that `sourceWasRoot` does not give (reads true for bare-fragment
+    test renders, causing false throws). Also deferred: unresolved-`Call` throw, and
+    message parity with Less type names. Demand for the full set: Less ships ~10 fixtures
+    (`packages/test-data/tests-error/eval/functions-{1,3-assignment,4-call,10-keyword,
+    11-operation,12-quoted,13-selector,14-url,15-value}.txt`, `detached-ruleset-3.txt`) —
+    wire those into the harness to drive the remaining cases.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
@@ -540,12 +538,14 @@ progress tracker — statuses in the sections above are detail, not the index.
       hoistToRoot → 2 flag bits. Getter/setter over flag (like `visible`) keeps
       all call sites unchanged — single-file node-base edits. Low risk, gate like
       the deletion passes. (frozen removed — see E11; allowRoot removed — see E12)
-- [x] **E12 (resolved via 4.x source audit)** keep `allowRoot`/`allowRuleRoot`
-      deleted. `allowRuleRoot` isn't in Less 4.x (Jess invention); `allowRoot` was
-      write-only (never ported `checkValidNodes`, threw nothing). The real gap is
-      `checkValidNodes` error-reporting → implement later as a `nodeType` bitmask
-      predicate (`N_STATEMENT_LEGAL`) + 3 throws in the render pass, zero per-node
-      fields. Tracked as a v5 error-reporting item, not a field restore.
+- [x] **E12 (resolved + `checkValidNodes` v1 IMPLEMENTED — `7f3353d6a`)**
+      `allowRuleRoot` isn't in Less 4.x (Jess invention, stays deleted). `allowRoot`
+      is reintroduced correctly — as the `F_ALLOW_ROOT` node flag (NOT a nodeType bit,
+      NOT a denylist), set in statement-legal constructors — WITH the `checkValidNodes`
+      enforcement it always lacked. v1 covers the value-node-in-statement-position case
+      (zero false positives across the suite). Deferred: Declaration-at-root throw
+      (needs a real root signal), unresolved-Call throw, Less message parity — driven by
+      the ~10 `tests-error/eval` fixtures when the harness ports them.
 - [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
       base per-node probe + 5 casts); selector flags → `Selector.inherit`.
       Binding-lane, benchmark + full-suite gated
