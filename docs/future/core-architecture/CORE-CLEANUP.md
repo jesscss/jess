@@ -96,8 +96,12 @@ calls node methods on bare strings, and the header emitter is unified:
 
 Remaining string failures are **NOT selector serialization** — genuine eval bugs, out of
 this goal's scope, overlapping deferred work:
-- [ ] **Trivia loss** — a string-name declaration drops name-boundary comments
-  (`color/* c */: grey` → `color: grey`). fieldSpans-anchored trivia emission (task #18).
+- [x] **Trivia loss (task #18) — was stale test fixtures, no source bug** (merged
+  cleanup/decl-trivia). The `501abdb8c` provenance refactor migrated `fieldSpans` from a
+  flat `[start,end,flags]` encoding to `(SourceSpan|undefined)[]` objects + reader `.[0]?.end`,
+  but left unit fixtures on the dead flat shape (`[0,5,0]`), so `[0]?.end` was `undefined`
+  and name-boundary trivia was dropped. Fix = align fixtures to `{start,end}`. Cleared both
+  the declaration and at-rule trivia tests. Baseline 68 → 66.
 - [ ] **Eval-output / collapse diffs** — recursive-mixin / merge-chain / extend / nesting-
   collapse output differs (e.g. a hoisted `.parent` wrapper ruleset dropped under `@media`);
   eval correctness coupled to Focus E lookup + the deferred F_VISIBLE eval stomps, not render.
