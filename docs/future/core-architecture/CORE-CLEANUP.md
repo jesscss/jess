@@ -128,9 +128,17 @@ the render list?* (merge decided) — no overloaded mutable flag.
 
 ### Sequencing (perf-first, each stage verified against the stable 85-set)
 1. **Rip the mutate/clone dance + `fullRender`** — biggest speed win, no eval semantics to
-   preserve. Delete `fullRender` field + 8 gates + serialize-helper reads; delete
-   `needsVisibleSelectorClone`/`ensureSelectorVisible`/`copySelectorForRulesetMetadata`/
-   `renderSelectorWasVisible` + the header save/restore; add the render-all walker.
+   preserve.
+   - [x] **1a — `fullRender` deleted** (commit 47a6ca6df): field + all gate-branches +
+     serialize-helper reads + dead test toggles. The real `F_VISIBLE` check stays; prod
+     byte-identical. `fullRender` was test-only (always false in prod) → dead branching.
+   - [ ] **1b — render-ignoring-visibility walker** (`renderNodeFull`): the separate,
+     off-hot-path replacement for the deleted test toggle + future language conversion.
+     Needs the by-type source render (couples with stage 2), so deferred with it.
+   - [ ] **1c — the `writeHeaderSelector` mutate/clone dance**
+     (`ensureSelectorVisible`/`needsVisibleSelectorClone`/`copySelectorForRulesetMetadata`/
+     save-force-restore). This forces selector `F_VISIBLE` for reference/extend emission,
+     so it couples with the (deferred) reference-mode filter — moves to that stage.
 2. **Static-by-type → no-op `writeSyntax` dispatch.**
 3. **Dedup/override → list-exclusion** in the `rules.ts` merge engine (largest legibility win).
 4. **Leave reference-mode as the sole runtime filter.**
