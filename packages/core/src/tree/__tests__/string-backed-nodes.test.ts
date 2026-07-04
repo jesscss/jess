@@ -32,9 +32,7 @@ describe('string-backed scanner-first proof nodes', () => {
       (Declaration
         name: 'color'
         value:
-          [
-            'blue'
-          ]
+          ['blue']
       )
     `);
   });
@@ -128,9 +126,7 @@ describe('string-backed scanner-first proof nodes', () => {
             (Declaration
               name: 'color'
               value:
-                [
-                  'blue'
-                ]
+                ['blue']
             )
           ]
       )
@@ -179,9 +175,7 @@ describe('string-backed scanner-first proof nodes', () => {
                   (Declaration
                     name: 'color'
                     value:
-                      [
-                        'blue'
-                      ]
+                      ['blue']
                   )
                 ]
             )
