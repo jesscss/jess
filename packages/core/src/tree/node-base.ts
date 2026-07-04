@@ -249,6 +249,13 @@ export const F_EXTENDED = 0b1000000;
 export const F_EXTEND_TARGET = 0b10000000;
 /** Node value owns at least one child node. */
 export const F_HAS_NODE_CHILD = 0b100000000;
+/**
+ * This node type is valid as a statement in a rules body (Less `allowRoot`).
+ * Set in the constructor of each statement-legal node type. `checkValidNodes`
+ * throws for any node in an evaluated body without it — the realistic cause
+ * being a function/mixin/detached-ruleset that evaluated to a bare value.
+ */
+export const F_ALLOW_ROOT = 0b1000000000;
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A

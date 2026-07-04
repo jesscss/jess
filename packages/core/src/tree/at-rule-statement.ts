@@ -2,6 +2,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { type Context } from '../context.js';
 import {
   defineType,
+  F_ALLOW_ROOT,
   F_STATIC,
   Node,
   type LocationInfo,
@@ -46,6 +47,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     this.name = value.name;
     this.prelude = value.prelude;
     this._treeContext = treeContext;
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   override clone(cloneFn?: (n: Node) => Node): this {

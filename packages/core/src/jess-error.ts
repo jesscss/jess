@@ -25,6 +25,7 @@ export type JessErrorCode =
   | 'import/circular-compose'
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
+  | 'eval/invalid-statement'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -193,6 +194,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Type mismatch',
     reason: '${callee} expects ${expected}, got ${got}.',
     fix: 'Pass a ${expected}; convert or choose a compatible value.'
+  }],
+  ['eval/invalid-statement', {
+    summary: 'Value node is not valid as a statement',
+    reason: '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
+    fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
   }],
 
   // Extend

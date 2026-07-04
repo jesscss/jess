@@ -4,6 +4,7 @@ import {
   type NodeOptions,
   type LocationInfo,
   type TreeContext,
+  F_ALLOW_ROOT,
   F_STATIC,
   F_VISIBLE
 } from './node.js';
@@ -83,6 +84,7 @@ import {
   findWritableSetDefinedDeclarationOccurrence,
   type DirectDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
+import { checkValidNodes } from './util/check-valid-nodes.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -3750,6 +3752,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.rules = value ?? [];
     this._sourceRoot = this;
     this._treeContext = treeContext;
+    // Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
+    // Stylesheet, Collection, RawRules) are valid statements in a rules body.
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   /**
@@ -4142,14 +4147,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
     const value = this.evalForRender(context, sourceWasRoot);
-    if (isRenderBuffer(bufferOrOptions)) {
-      return isThenable(value)
-        ? value.then(state => writeRulesStateRenderOutput(bufferOrOptions, state, context, options))
-        : writeRulesStateRenderOutput(bufferOrOptions, value, context, options);
+    if (isThenable(value)) {
+      return value.then(state => {
+        checkValidNodes(state.output?.rules, context);
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
+          : renderRulesStateToString(state, context, bufferOrOptions);
+      });
     }
-    return isThenable(value)
-      ? value.then(state => renderRulesStateToString(state, context, bufferOrOptions))
-      : renderRulesStateToString(value, context, bufferOrOptions);
+    checkValidNodes(value.output?.rules, context);
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRulesStateRenderOutput(bufferOrOptions, value, context, options);
+    }
+    return renderRulesStateToString(value, context, bufferOrOptions);
   }
 
   /** All rules, with nested rules flattened */

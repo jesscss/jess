@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
@@ -29,6 +29,7 @@ export class Comment extends Node<string, CommentOptions> {
     this._treeContext = treeContext;
     this.lineComment = options?.lineComment === true || value.startsWith('//');
     this.addFlag(F_STATIC);
+    this.addFlag(F_ALLOW_ROOT);
     if (this.lineComment) {
       this.removeFlag(F_VISIBLE);
     }

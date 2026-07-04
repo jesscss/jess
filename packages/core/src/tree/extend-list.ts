@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
@@ -29,6 +29,7 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
     this.value = value;
     this._treeContext = treeContext;
     this.removeFlag(F_VISIBLE);
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   /** @internal */

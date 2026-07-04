@@ -1,5 +1,6 @@
 import {
   Node,
+  F_ALLOW_ROOT,
   F_STATIC,
   defineType,
   type LocationInfo
@@ -559,6 +560,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     this.value = value.value;
     this.important = value.important;
     this._treeContext = treeContext;
+    // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {

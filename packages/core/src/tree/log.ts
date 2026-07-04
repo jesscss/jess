@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -42,6 +42,7 @@ export class Log extends Node<LogValue, NodeOptions> {
     this._treeContext = treeContext;
     // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   override toTrimmedString() {

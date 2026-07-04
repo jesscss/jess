@@ -4,6 +4,7 @@
  */
 import {
   Node,
+  F_ALLOW_ROOT,
   F_VISIBLE,
   F_STATIC,
   defineType,
@@ -42,6 +43,7 @@ export class Nil extends Node<''> {
     super('', options, location);
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
+    this.addFlag(F_ALLOW_ROOT);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;
