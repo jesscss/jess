@@ -35,7 +35,11 @@ import {
   type LocationInfo,
   Any,
   VarDeclaration, type VarDeclarationOptions,
-  Reference
+  Reference,
+  Rules,
+  Condition, type ConditionOperator,
+  Paren,
+  If
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -96,9 +100,16 @@ export class ScssGrammar extends LessGrammar {
   ): JessNode {
     const loc = spanToLocation(span);
     switch (type) {
-      case 'VarDeclaration': return this._buildScssVarDeclaration(_rawChildren, loc);
-      case 'Reference':      return this._buildScssReference(children, loc);
-      default:               return super.buildNode(type, span, children, _state, _rawChildren);
+      case 'VarDeclaration':    return this._buildScssVarDeclaration(_rawChildren, loc);
+      case 'Reference':         return this._buildScssReference(children, loc);
+      case 'ScssComparison':    return this._buildScssComparison(children, loc);
+      case 'ScssCondInParens':  return this._buildScssCondInParens(children, loc);
+      case 'ScssCondTerm':      return this._buildScssCondTerm(children, loc);
+      case 'ScssCondAnd':       return this._buildScssCondJoin(children, loc, 'and');
+      case 'ScssCondOr':        return this._buildScssCondJoin(children, loc, 'or');
+      case 'ScssRules':         return this._buildScssRules(children, loc);
+      case 'ScssIf':            return this._buildScssIf(children, loc);
+      default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
 
@@ -136,6 +147,108 @@ export class ScssGrammar extends LessGrammar {
     const varName = ls[0]?.value ?? '';
     const key = varName.startsWith('$') ? varName.slice(1) : varName;
     return new Reference(key, { type: 'variable' }, loc);
+  }
+
+  // ── @if / @else conditions ─────────────────────────────────────────────────
+
+  /**
+   * `left [op right]` → Condition, or a bare operand when there is no operator.
+   * `!=` desugars to `=` + negate (matches the Chevrotain scssComparison).
+   */
+  private _buildScssComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const left = nodes[0] ?? new Any('', {}, loc);
+    const opLeaf = ls.find(l => /^(?:==|!=|>=|<=|=|>|<)$/.test(l.value));
+    if (!opLeaf || !nodes[1]) {
+      return left as unknown as JessNode;
+    }
+    let op: string = opLeaf.value;
+    let negate = false;
+    if (op === '!=') {
+      op = '=';
+      negate = true;
+    } else if (op === '==') {
+      op = '=';
+    }
+    return new Condition(
+      [left, op as ConditionOperator, nodes[1]],
+      negate ? { negate: true } : {},
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * Every condition term is wrapped in a Paren, matching the Chevrotain
+   * `scssConditionInParens` production (both the `( … )` group and the bare
+   * comparison / value branch wrap their result in a single Paren).
+   */
+  private _buildScssCondInParens(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const inner = nodeChildren(children)[0] ?? new Any('', {}, loc);
+    return new Paren(inner as any, {}, loc) as unknown as JessNode;
+  }
+
+  /** Optional leading `not` negates the term. */
+  private _buildScssCondTerm(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const inner = nodeChildren(children)[0] ?? new Any('', {}, loc);
+    if (ls.some(l => /^not$/i.test(l.value))) {
+      return new Condition([inner as any], { negate: true }, loc) as unknown as JessNode;
+    }
+    return inner as unknown as JessNode;
+  }
+
+  /** Fold a left-associative `and` / `or` chain of terms into Conditions. */
+  private _buildScssCondJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator) {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return new Any('', {}, loc) as unknown as JessNode;
+    }
+    let left = nodes[0]!;
+    for (let i = 1; i < nodes.length; i++) {
+      left = new Condition([left, op, nodes[i]!], {}, loc) as unknown as Node;
+    }
+    return left as unknown as JessNode;
+  }
+
+  /** A `{ … }` control-block body → Rules. */
+  private _buildScssRules(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    return new Rules(nodeChildren(children) as any, undefined, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `@if cond { … } (@else if cond { … })* (@else { … })?` → nested `If` chain.
+   * Children arrive as alternating condition / Rules nodes, with an optional
+   * trailing bare Rules (the final `@else`). Fold from the last branch inward.
+   */
+  private _buildScssIf(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const conditions: Node[] = [];
+    const bodies: Rules[] = [];
+    let elseBranch: Rules | undefined;
+    let pendingCond: Node | undefined;
+    for (const n of nodes) {
+      if (n instanceof Rules) {
+        if (pendingCond !== undefined) {
+          conditions.push(pendingCond);
+          bodies.push(n);
+          pendingCond = undefined;
+        } else {
+          elseBranch = n;
+        }
+      } else {
+        pendingCond = n;
+      }
+    }
+    let elseNode: If | Rules | undefined = elseBranch;
+    for (let i = conditions.length - 1; i >= 0; i--) {
+      elseNode = new If(
+        { condition: conditions[i]!, rules: bodies[i]!.rules, else: elseNode },
+        undefined,
+        loc
+      );
+    }
+    return (elseNode ?? new Any('', {}, loc)) as unknown as JessNode;
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */

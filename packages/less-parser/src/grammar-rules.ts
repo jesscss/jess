@@ -100,11 +100,16 @@ export const lessGrammarRules = (g: any, { build }: LessGrammarDeps) => {
   // ── Root (Less: + VarDeclaration, MixinCall, detached Call) ─────────────────
   // No catch-all: unmatched input stops `many`; the driver reports the unconsumed
   // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
+  // The per-statement choice used by the root `many(...)`. Exposed as a named
+  // rule so grammars that EXTEND Less (e.g. SCSS) can inject their own
+  // statements ahead of it — `many(choice(g.ScssIf, …, g.stylesheetItem))` —
+  // without re-listing the whole set. Keeps the extension seam in one place.
+  const stylesheetItem = choice(
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
+    sequence(g.Call, optional(literal(';'))), literal(';')
+  );
   const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
-      sequence(g.Call, optional(literal(';'))), literal(';')
-    ))),
+    parser({ trivia: rw }, many(g.stylesheetItem)),
     (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
 
   // Plain helper consts referenced before their section must be defined up-front
@@ -391,12 +396,17 @@ export const lessGrammarRules = (g: any, { build }: LessGrammarDeps) => {
   const NestedMixinDefinition = node('MixinOrQualifiedRule',
     parser({ trivia: rw }, sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}'))),
     (c: any, r: any, s: any) => build('MixinOrQualifiedRule', c, r, s));
-  const declarationList = parser({ trivia: rw }, many(choice(
+  // The per-statement choice for a `{ … }` body (ruleset body + at-rule body).
+  // Exposed as a named rule so extending grammars (SCSS) can inject their own
+  // block statements ahead of it — `many(choice(g.ScssIf, …, g.blockItem))`.
+  // `NestedMixinDefinition` stays a local const referenced here (Less-only).
+  const blockItem = choice(
     g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
-  )));
+  );
+  const declarationList = parser({ trivia: rw }, many(g.blockItem));
   // Property name may itself be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
   // Chevrotain lexes the name as a single Ident/InterpolatedIdent token whose image
   // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
@@ -681,10 +691,8 @@ export const lessGrammarRules = (g: any, { build }: LessGrammarDeps) => {
   // An at-rule body (@media / @supports / @starting-style / …) holds the SAME
   // statements as a ruleset body — nested rules, mixin calls, each(), extends,
   // var calls — not just declarations. Mirror declarationList's choice set.
-  const atRuleBody = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
-    sequence(g.Call, optional(literal(';'))), literal(';')
-  )));
+  // Same statement set as a ruleset body (shares `blockItem`).
+  const atRuleBody = parser({ trivia: rw }, many(g.blockItem));
 
   return {
     ...numericRules(g, { build }),
@@ -692,6 +700,7 @@ export const lessGrammarRules = (g: any, { build }: LessGrammarDeps) => {
     ...parenRules(g, { build }),
     ...queryRules(g, { build }),
     rw,
+    stylesheetItem, blockItem,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
