@@ -42,7 +42,8 @@ export type SelectorValue = Selector | string;
 
 /**
  * Anything accepted where a selector is expected: a single selector value, or an
- * array of them. An array stands in for a `SelectorList` — no wrapper node needed.
+ * array of them. An array IS a selector list — stored and consumed as-is, never
+ * materialized into a `SelectorList` wrapper node.
  */
 export type SelectorLike = SelectorValue | SelectorValue[];
 
