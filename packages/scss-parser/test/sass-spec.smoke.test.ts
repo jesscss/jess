@@ -215,8 +215,20 @@ describe('sass-spec smoke (parse-only)', () => {
       const probeParser = new Parser();
       const probed = casesLimited.map((c) => {
         const r = probeParser.parse(c.contents, 'stylesheet');
+        const errMsg = r.errors[0]?.message ?? '';
+        const isErrorFixture = /\/error\//i.test(c.sectionPath) || /\/error\./i.test(c.hrxPath);
+        const isIntentionalUnsupported =
+          errMsg.includes('not yet supported') || errMsg.includes('will never be');
         const ok = r.lexerResult.errors.length === 0 && r.errors.length === 0;
-        return { ...c, ok };
+        const enforce = ok || (enforceAll && !isErrorFixture && !isIntentionalUnsupported);
+        return { ...c, ok, enforce, isErrorFixture, isIntentionalUnsupported, errMsg };
+      });
+
+      it('reports parse coverage', () => {
+        const valid = probed.filter(c => !c.isErrorFixture && !c.isIntentionalUnsupported);
+        const passing = valid.filter(c => c.ok);
+        // eslint-disable-next-line no-console -- diagnostic for coverage triage
+        console.log(`[${feature.name}] valid ${passing.length}/${valid.length} parse clean`);
       });
 
       // Keep Vitest update traffic low: one test per feature bucket.
@@ -232,9 +244,9 @@ describe('sass-spec smoke (parse-only)', () => {
             // Even for non-enforced cases, ensure we never create an invalid AST.
           }
 
-          // If this case currently parses cleanly, enforce it stays clean.
-          // Otherwise, allow failures unless explicitly enforcing all cases.
-          if (c.ok || enforceAll) {
+          // Enforce cases that parse cleanly today, or (with SASS_SPEC_ENFORCE_ALL)
+          // every non-error, supported fixture.
+          if (c.enforce) {
             expect(result.lexerResult.errors, name).toEqual([]);
             expect(result.errors.map(e => e.message), name).toEqual([]);
             expect(okNow, name).toBe(true);
