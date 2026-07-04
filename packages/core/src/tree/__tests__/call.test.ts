@@ -2,12 +2,6 @@ import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
 import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
-import {
-  getCallRawArgDiagnosticMessageSource,
-  getCallRawArgDiagnosticSource,
-  getCallRawArgSourceNode,
-  getCallRawArgsPlacement
-} from '../call.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -2337,50 +2331,6 @@ describe('Call', () => {
     expect(originalArgs.parent).toBe(rule);
   });
 
-  it('records metadata rawArgs placement beside the owned argument surface', async () => {
-    let rawArgsDuringCall: List | undefined;
-    const root = rules([]);
-    root.setFunctionBinding('inspect-raw', new JsFunction({
-      name: 'inspect-raw',
-      fn: defineFunction(
-        'inspect-raw',
-        async function(this: { rawArgs: List }) {
-          rawArgsDuringCall = this.rawArgs;
-          return any('ok');
-        },
-        { params: [{ name: 'value', type: Sequence }] }
-      )
-    }));
-    context.root = root;
-    context.rulesContext = root;
-
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
-    const originalArgs = list([originalValue]);
-    const rule = call({
-      name: ref({ key: 'inspect-raw' }, { type: 'function' }),
-      args: originalArgs
-    });
-
-    const result = await rule.eval(context);
-
-    expect(result.toTrimmedString()).toBe('ok');
-    expect(rawArgsDuringCall).toBeDefined();
-    if (!rawArgsDuringCall) {
-      throw new Error('Expected metadata rawArgs');
-    }
-    expect(rawArgsDuringCall).not.toBe(originalArgs);
-    expect(getCallRawArgsPlacement(rawArgsDuringCall)).toEqual({
-      source: rule,
-      sourceArgs: originalArgs
-    });
-    expect(getCallRawArgSourceNode(rawArgsDuringCall, 0)).toBe(originalValue);
-    expect(getCallRawArgDiagnosticSource(rawArgsDuringCall, 0)).toEqual({
-      source: rule,
-      sourceArg: originalValue,
-      index: 0
-    });
-    expect(getCallRawArgDiagnosticMessageSource(rawArgsDuringCall, 0)).toBe('argument 1 from $red 10');
-  });
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
     const seenRawArgs: List[] = [];

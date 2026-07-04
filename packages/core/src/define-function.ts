@@ -44,21 +44,6 @@ export type FunctionThis = {
   rawArgs: List;
 };
 
-export type RawArgsPlacementState = {
-  source: unknown;
-  sourceArgs: List;
-};
-
-const rawArgsPlacements = new WeakMap<List, RawArgsPlacementState>();
-
-export function setRawArgsPlacement(rawArgs: List, placement: RawArgsPlacementState): void {
-  rawArgsPlacements.set(rawArgs, placement);
-}
-
-export function getRawArgsPlacement(rawArgs: List): RawArgsPlacementState | undefined {
-  return rawArgsPlacements.get(rawArgs);
-}
-
 export type ParamDefinition = {
   name: string;
   type: ArgType | readonly ArgType[];
@@ -408,10 +393,6 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       throw new TypeError('Copied function arguments must remain a List');
     }
     originalArgsList = copiedListArg;
-    const placement = getRawArgsPlacement(listArg);
-    if (placement) {
-      setRawArgsPlacement(originalArgsList, placement);
-    }
   } else {
     const copiedArgs = new Array(args.length);
     for (let i = 0; i < args.length; i++) {

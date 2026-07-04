@@ -4,7 +4,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
-import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
+import { callWithContext } from '../define-function.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -192,17 +192,6 @@ type CallEvalState = {
   args?: List<Node>;
   contentNode?: Node;
   preservesRulesLikeVariableTarget: boolean;
-};
-
-type CallRawArgsPlacementState = {
-  source: Call;
-  sourceArgs: List<Node>;
-};
-
-export type CallRawArgDiagnosticSource = {
-  source: Call;
-  sourceArg: Node;
-  index: number;
 };
 
 type OptionalFallbackRenderOutput = Node | string;
@@ -484,45 +473,6 @@ function getKnownSourceCallText(node: Node): string | undefined {
 
 function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
   return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
-}
-
-export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
-  const placement = getRawArgsPlacement(rawArgs);
-  if (!placement || !(placement.source instanceof Call) || !isNode(placement.sourceArgs, N.List)) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArgs: placement.sourceArgs
-  };
-}
-
-export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.value[index];
-}
-
-export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.value[index];
-  if (!placement || !sourceArg) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArg,
-    index
-  };
-}
-
-export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index: number): string | undefined {
-  const diagnosticSource = getCallRawArgDiagnosticSource(rawArgs, index);
-  if (!diagnosticSource) {
-    return undefined;
-  }
-  const sourceText = getKnownSourceCallText(diagnosticSource.sourceArg) ?? diagnosticSource.sourceArg.toTrimmedString();
-  const sourceArgText = sourceText.startsWith('$') ? sourceText : `$${sourceText}`;
-  return `argument ${diagnosticSource.index + 1} from ${sourceArgText}`;
 }
 
 /**
@@ -1900,12 +1850,6 @@ export class Call extends Node<CallValue, CallOptions> {
         try {
           const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
           let callArgs = args;
-          if (shouldPassListArgs && callArgs && state.args) {
-            setRawArgsPlacement(callArgs, {
-              source: state.source,
-              sourceArgs: state.args
-            });
-          }
           const result = await (
             callArgs
               ? (
