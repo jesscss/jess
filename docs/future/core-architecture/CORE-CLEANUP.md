@@ -79,6 +79,63 @@ through `getReferenceNotFoundError` / `finalizeFallbackReferenceResult`. Single-
 lookup isn't resolving bindings that should exist. Deeper than Focus D (scope-frame
 resolution, not mechanical).
 
+## Focus D.1 — `F_VISIBLE` is a by-type property (major project; scoped)
+
+**Principle (owner):** `F_VISIBLE` marks whether a node *type* is CSS output. It is set at
+construction, by type, and **never mutated at runtime.** Every eval/render-time
+`addFlag/removeFlag(F_VISIBLE)` is abuse — an LLM reaching for the nearest flag to force a
+particular output instead of building the right mechanism. Rip them all out.
+
+### What it currently conflates (three unrelated jobs on one flag)
+1. **Static-by-type** (legit): `function`/`nil`/`mixin`/`log`/`extend`/`extend-list`/
+   `declaration-var`/`comment` are born invisible because of *what they are*. ✅ keep.
+2. **Dynamic reference/extend suppression** — reference imports not reached by extend.
+3. **Dedup / override / already-rendered suppression** — `rules.ts` merge chains
+   (last-wins declarations) + render-time "already emitted this" markers. The worst abuser.
+
+### The ~14 runtime stomps to excise (all abuse), by subsystem
+- **render dance**: `ruleset.ts:992/1750` force-visible→restore + clone during header render.
+- **dedup/merge**: `rules.ts:3665-68` (comment already rendered), `3713/5803/5805` (suppress
+  overridden decls).
+- **extend**: `extend.ts:167`, `extend-roots:831/841/845`, `util/extend:871`.
+- **reference/forward**: `import-style:1005`.
+- **at-rule conditional**: `at-rule:438/440/608/609`.
+- **filtered ruleset**: `ruleset:1999`. **clone**: `node-base:1366`.
+- **callable**: `callable-live-slots:28`, `callable-surface:74`.
+
+### Where the cost actually is (perf = #1)
+- `hasFlag(F_VISIBLE)` — a bitmask `&`; cheap, but paid per-node-per-render.
+- `this.fullRender` — a **prototype** read (chain walk), paid on every node render for a
+  value that is `false` 100% of the time in production. Pure waste.
+- **mutate-during-render dance** — a selector-subtree walk **+ a heap-allocated clone per
+  ruleset header**. The genuinely expensive one.
+
+### End-state (most performant + best DX): visibility is structural, branch-free on the hot path
+1. **Static-by-type → method dispatch, no flag.** Non-CSS types override `writeSyntax` to a
+   no-op; V8 monomorphically inlines it — zero flag read, zero prototype walk. Kills the 8
+   gates + `fullRender` reads. The node's *type* is its CSS-ness.
+2. **Dedup/override → exclude from the render list** at the merge/prepare pass (drop the
+   superseded node) instead of flag-hiding it. The render loop never sees it.
+3. **Reference/extend → the reference-mode render context** (`referenceMode` + filter) which
+   already exists and is paid only in reference mode (a rare special path, off the common one).
+4. **Render-despite-visibility (tests now, language conversion later) → a separate walker**
+   that traverses everything; never on the common path. Replaces `Node.prototype.fullRender
+   = true` and the header-selector force-visible.
+
+Net: **common render path = zero visibility branches, zero `fullRender` reads, no per-header
+clone/walk.** "Does it emit?" collapses to *is this type CSS?* (its `writeSyntax`) + *is it in
+the render list?* (merge decided) — no overloaded mutable flag.
+
+### Sequencing (perf-first, each stage verified against the stable 85-set)
+1. **Rip the mutate/clone dance + `fullRender`** — biggest speed win, no eval semantics to
+   preserve. Delete `fullRender` field + 8 gates + serialize-helper reads; delete
+   `needsVisibleSelectorClone`/`ensureSelectorVisible`/`copySelectorForRulesetMetadata`/
+   `renderSelectorWasVisible` + the header save/restore; add the render-all walker.
+2. **Static-by-type → no-op `writeSyntax` dispatch.**
+3. **Dedup/override → list-exclusion** in the `rules.ts` merge engine (largest legibility win).
+4. **Leave reference-mode as the sole runtime filter.**
+Guardrail throughout: stable 85-failure core set must not move; string selectors emit.
+
 ## Focus F — node method/field sprawl (NEW; requested)
 
 Past LLM passes accreted many narrow methods/fields on `Ruleset` / `Rules` / `AtRule`
