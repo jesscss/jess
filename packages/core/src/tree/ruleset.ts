@@ -17,7 +17,7 @@ import {
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { BasicSelector } from './selector-basic.js';
-import { SelectorList, selectorListValueOf, type SelectorListItem } from './selector-list.js';
+import { SelectorList, selectorListValueOf, emitSelectorListLike, type SelectorListItem } from './selector-list.js';
 import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import {
@@ -1024,11 +1024,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!sel || sel instanceof Nil) {
       return false;
     }
+    // A bare array is a selector list with no visibility flags of its own — the
+    // answer is whether any member needs cloning. Handle before the flag check
+    // below (arrays have no `hasFlag`).
+    if (Array.isArray(sel)) {
+      for (let i = 0; i < sel.length; i++) {
+        if (Ruleset.needsVisibleSelectorClone(sel[i]!)) {
+          return true;
+        }
+      }
+      return false;
+    }
     if (!(isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) && !sel.hasFlag(F_VISIBLE)) {
       return true;
     }
-    if (isNode(sel, N.SelectorList) || Array.isArray(sel)) {
-      const items = Array.isArray(sel) ? sel : sel.value;
+    if (isNode(sel, N.SelectorList)) {
+      const items = sel.value;
       for (let i = 0; i < items.length; i++) {
         if (Ruleset.needsVisibleSelectorClone(items[i]!)) {
           return true;
@@ -1711,7 +1722,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     // For reusable-leaf selectors, copySelectorForRulesetMetadata returns the source node
     // unchanged. Ensure we restore visibility after writing so the source is not mutated.
-    const renderSelectorWasVisible = renderSelector instanceof Nil || renderSelector.hasFlag(F_VISIBLE);
+    // A bare-string/array selector (strings-not-nodes) carries no visibility
+    // flags and emits verbatim through the selector-like writer.
+    const renderSelectorIsSurface = typeof renderSelector === 'string' || Array.isArray(renderSelector);
+    const renderSelectorWasVisible = renderSelectorIsSurface
+      || renderSelector instanceof Nil
+      || renderSelector.hasFlag(F_VISIBLE);
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
     const position = options.writer.position();
@@ -1719,7 +1735,11 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       options.trivia = createTriviaMap();
     }
     try {
-      renderSelector.writeSyntax(options);
+      if (renderSelectorIsSurface) {
+        emitSelectorListLike(renderSelector, options);
+      } else {
+        renderSelector.writeSyntax(options);
+      }
       options.writer.trimEndSince(position);
     } finally {
       options.trivia = savedTrivia;
