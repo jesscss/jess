@@ -209,9 +209,9 @@ export class LessPlugin extends AbstractPlugin {
         }
       }
 
-      // Convert all parser/lexer errors to normalized diagnostics
-      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
-        // Convert each parser error to a diagnostic
+      // Convert parser errors to normalized diagnostics. The functional parser
+      // has no separate lexer phase, so there are no lexer errors to convert.
+      if (parseResult.errors.length) {
         for (const error of parseResult.errors) {
           const line = error.token?.startLine ?? 1;
           const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
@@ -224,23 +224,6 @@ export class LessPlugin extends AbstractPlugin {
             errors.push(diagnostic);
           } else {
             warnings.push(diagnostic);
-          }
-        }
-        // Convert lexer errors
-        if (parseResult.lexerResult?.errors) {
-          for (const lexError of parseResult.lexerResult.errors) {
-            const line = typeof lexError.line === 'number' ? lexError.line : 1;
-            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
-            const diagnostic = toDiagnostic(jessError);
-            // Ensure lines are extracted
-            if (!diagnostic.lines) {
-              diagnostic.lines = extractRelevantLines(source, line);
-            }
-            if ('errors' in diagnostic) {
-              errors.push(diagnostic);
-            } else {
-              warnings.push(diagnostic);
-            }
           }
         }
       }

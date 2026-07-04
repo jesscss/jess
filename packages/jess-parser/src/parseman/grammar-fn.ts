@@ -76,7 +76,6 @@ export type JessFnParseResult = {
   errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
-  lexerResult: { errors: Array<unknown> };
 };
 
 export function parseJessFn(input: string, rule = 'stylesheet'): JessFnParseResult {
@@ -108,8 +107,7 @@ export function parseJessFn(input: string, rule = 'stylesheet'): JessFnParseResu
     tree,
     errors,
     warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap([], input),
-    lexerResult: { errors: [] }
+    trivia: buildLazyTriviaMap([], input)
   };
 }
 

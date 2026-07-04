@@ -1152,9 +1152,8 @@ describe('extend cases', () => {
   });
 
   test('multiple selectors with different targets - root-level extends', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x), .b:extend(.y) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x), .b:extend(.y) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.x', 1, '.a');
@@ -1178,41 +1177,29 @@ describe('extend cases', () => {
   });
 
   test('ampersand extend with all flag', () => {
-    const { tree, errors, lexerResult } = parser.parse('&:extend(.x all);');
+    const { tree, errors } = parser.parse('&:extend(.x all);');
     if (errors.length > 0) {
       console.error('Parse errors:', errors.map(e => e.message));
     }
-    if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
-    }
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     expectExtend(tree.rules[0], '.x', 0);
   });
 
   test('ampersand extend with !all flag', () => {
-    const { tree, errors, lexerResult } = parser.parse('&:extend(.x !all);');
+    const { tree, errors } = parser.parse('&:extend(.x !all);');
     if (errors.length > 0) {
       console.error('Parse errors:', errors.map(e => e.message));
     }
-    if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
-    }
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     expectExtend(tree.rules[0], '.x', 0);
   });
 
   test('extend with all flag - ExtendFlag.All', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x all) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x all) { color: blue; }');
     if (errors.length > 0) {
       console.error('Parse errors:', errors.map(e => e.message));
     }
-    if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
-    }
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expectExtend(ruleset.rules[0], '.x', 0);
@@ -1250,15 +1237,11 @@ describe('extend cases', () => {
   });
 
   test('extend with !all flag - ExtendFlag.All', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x !all) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x !all) { color: blue; }');
     if (errors.length > 0) {
       console.error('Parse errors:', errors.map(e => e.message));
     }
-    if (lexerResult.errors.length > 0) {
-      console.error('Lexer errors:', lexerResult.errors.map((e: any) => e.message || e));
-    }
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expectExtend(ruleset.rules[0], '.x', 0);
@@ -1281,19 +1264,17 @@ describe('extend cases', () => {
   });
 
   test('multiple selectors with same target and !all flag - extend as first rule', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x !all), .b:extend(.x !all) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x !all), .b:extend(.x !all) { color: blue; }');
 
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 0);
   });
 
   test('extend with selector list target', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x, .y) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
     expect(ruleset.rules[0]!.target.value.map((node: any) => node.valueOf())).toEqual(['.x', '.y']);
@@ -1301,7 +1282,7 @@ describe('extend cases', () => {
   });
 
   test('extend attached to selector - check selector value', () => {
-    const { tree, errors, lexerResult } = parser.parse(`
+    const { tree, errors } = parser.parse(`
 .a, .b {
   .c:extend(.ext all) {
     test: 3;
@@ -1349,7 +1330,7 @@ describe('extend cases', () => {
   });
 
   test('selector list with multiple ampersand extends - different targets', () => {
-    const { tree, errors, lexerResult } = parser.parse(`
+    const { tree, errors } = parser.parse(`
 .ext3,
 .ext4 {
   &:extend(.foo all);
@@ -1358,7 +1339,6 @@ describe('extend cases', () => {
 }
 `);
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
     // Should have 2 Extend nodes (one for .foo, one for .bar)
     const extendMatches = sExpr.match(/\(Extend/g);
@@ -1376,9 +1356,8 @@ describe('extend cases', () => {
   });
 
   test('extend with selector list target and all flag', () => {
-    const { tree, errors, lexerResult } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
+    const { tree, errors } = parser.parse('.a:extend(.x, .y all) { color: blue; }');
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expectExtend(ruleset.rules[0], '.x', 1);
     expectExtend(ruleset.rules[1], '.y', 0);
@@ -1386,9 +1365,8 @@ describe('extend cases', () => {
 
   test('extend with mixed all/exact per target: .ee:extend(.dd all,.bb) {}', () => {
     // Less: .dd gets "all", .bb gets no "all" (exact only). Two separate Extend nodes.
-    const { tree, errors, lexerResult } = parser.parse('.ee:extend(.dd all,.bb) {}');
+    const { tree, errors } = parser.parse('.ee:extend(.dd all,.bb) {}');
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
     const extendNodes = nodesOfType(tree, 'Extend');
     expect(extendNodes).toHaveLength(2);
@@ -1398,13 +1376,12 @@ describe('extend cases', () => {
   });
 
   test('selector list with extend on one selector and all flag - extend should bubble', () => {
-    const { tree, errors, lexerResult } = parser.parse(`
+    const { tree, errors } = parser.parse(`
 .should-not-exist-in-output,
 .ext7:extend(.ext5 all) {
 }
 `);
     expect(errors.length).toBe(0);
-    expect(lexerResult.errors.length).toBe(0);
     const sExpr = serializeTypes(tree);
     const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');

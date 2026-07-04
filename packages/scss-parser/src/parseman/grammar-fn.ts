@@ -76,7 +76,6 @@ export type ScssFnParseResult = {
   errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
-  lexerResult: { errors: Array<unknown> };
 };
 
 function firstUnparsedOffset(input: string, from: number): number | null {
@@ -121,8 +120,7 @@ export function parseScssFn(input: string, rule = 'stylesheet'): ScssFnParseResu
     tree,
     errors,
     warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap([], input),
-    lexerResult: { errors: [] }
+    trivia: buildLazyTriviaMap([], input)
   };
 }
 

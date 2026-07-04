@@ -91,7 +91,6 @@ export type LessFnParseResult = {
   errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
-  lexerResult: { errors: Array<unknown> };
 };
 
 /**
@@ -190,7 +189,7 @@ export function parseLessFn(
     );
   }
 
-  return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input), lexerResult: { errors: [] } };
+  return { tree, errors, warnings: host.getWarnings(), trivia: buildLazyTriviaMap(triviaLog, input) };
 }
 
 /** Functional Less parser — call .parse(text) to get a Jess AST. */
@@ -212,8 +211,7 @@ export class LessParser {
         tree: nil() as unknown as Rules,
         errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
         warnings: [],
-        trivia: buildLazyTriviaMap([], text),
-        lexerResult: { errors: [] }
+        trivia: buildLazyTriviaMap([], text)
       };
     }
     return parseLessFn(text, rule, this._mathMode);
