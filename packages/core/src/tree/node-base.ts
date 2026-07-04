@@ -256,6 +256,17 @@ export const F_HAS_NODE_CHILD = 0b100000000;
  * being a function/mixin/detached-ruleset that evaluated to a bare value.
  */
 export const F_ALLOW_ROOT = 0b1000000000;
+/** Node was produced by eval/derivation, not authored source (was the `generated` field). */
+export const F_GENERATED = 0b10000000000;
+/** Node has completed registration identity prep (was the `registrationPrepared` field). */
+export const F_REG_PREPARED = 0b100000000000;
+/**
+ * `hoistToRoot` is a tri-state (`undefined` | `true` | `false`) — `?? ` callers
+ * distinguish unset from `false` — so it folds into TWO bits: `F_HOIST_SET`
+ * marks "a value was assigned", `F_HOIST_VALUE` carries that value.
+ */
+export const F_HOIST_SET = 0b1000000000000;
+export const F_HOIST_VALUE = 0b10000000000000;
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
@@ -481,8 +492,18 @@ export abstract class Node<
     };
   }
 
-  /** Runtime tracking: has this node completed registration identity prep? */
-  registrationPrepared = false;
+  /** Runtime tracking: has this node completed registration identity prep? Backed by `F_REG_PREPARED`. */
+  get registrationPrepared(): boolean {
+    return (this.flags & F_REG_PREPARED) !== 0;
+  }
+
+  set registrationPrepared(value: boolean) {
+    if (value) {
+      this.flags |= F_REG_PREPARED;
+    } else {
+      this.flags &= ~F_REG_PREPARED;
+    }
+  }
 
   /** Runtime tracking: has eval been run on this node? */
 
@@ -508,17 +529,43 @@ export abstract class Node<
   declare fullRender: boolean;
 
   /**
-   * @todo - Move some to _meta?
-   * Should do if some fields are not on the hot path
-   * (not read very often)
+   * Tri-state hoist directive, backed by `F_HOIST_SET` + `F_HOIST_VALUE`:
+   * `undefined` (never assigned), `true`, or `false`. Callers use `?? ` to tell
+   * unset apart from an explicit `false`, so both bits are load-bearing.
    */
-  hoistToRoot: boolean | undefined = undefined;
+  get hoistToRoot(): boolean | undefined {
+    if ((this.flags & F_HOIST_SET) === 0) {
+      return undefined;
+    }
+    return (this.flags & F_HOIST_VALUE) !== 0;
+  }
+
+  set hoistToRoot(value: boolean | undefined) {
+    if (value === undefined) {
+      this.flags &= ~(F_HOIST_SET | F_HOIST_VALUE);
+    } else if (value) {
+      this.flags |= F_HOIST_SET | F_HOIST_VALUE;
+    } else {
+      this.flags = (this.flags | F_HOIST_SET) & ~F_HOIST_VALUE;
+    }
+  }
 
   /**
-   * Code internally should call .create() when making new
+   * True when produced by eval/derivation rather than authored source. Backed by
+   * `F_GENERATED`. Code internally should call `.create()` when making new
    * nodes, which will automatically mark the node as generated.
    */
-  generated = false;
+  get generated(): boolean {
+    return (this.flags & F_GENERATED) !== 0;
+  }
+
+  set generated(value: boolean) {
+    if (value) {
+      this.flags |= F_GENERATED;
+    } else {
+      this.flags &= ~F_GENERATED;
+    }
+  }
 
   /**
    * If the node must have a semi separator before
@@ -1389,7 +1436,7 @@ export abstract class Node<
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
-    this.generated = this.generated || node.generated;
+    this.flags |= node.flags & F_GENERATED;
     /**
      * If it's replacing a node that's evaluated, it should inherit the same index.
      * Otherwise, it should be settable after cloning / copying.
