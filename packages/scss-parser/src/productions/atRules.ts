@@ -904,7 +904,7 @@ export function scssWithConfig(this: P, T: TokenMap): ProductionRule {
               }
             }
           }
-          const name = new Any(dv.image.slice(1), { role: 'property' });
+          const name = dv.image.slice(1);
           decls.push(
             new VarDeclaration(
               { name, value },
@@ -981,7 +981,7 @@ export function scssIncludeUsingParams(this: P, T: TokenMap): ProductionRule {
           SEP: $.T.Comma,
           DEF: () => {
             const dv = $.CONSUME($.T.DollarVariable);
-            const paramName = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+            const paramName = dv.image.slice(1);
             p.push(
               new VarDeclaration(
                 { name: paramName, value: new Nil() },
@@ -1377,7 +1377,7 @@ export function scssForAtRule(this: P, T: TokenMap): ProductionRule {
       }
     });
 
-    const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+    const name = dv.image.slice(1);
     const varDecl = new VarDeclaration({ name, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context);
 
     const startExpr = startNodes.length === 1
@@ -1424,7 +1424,7 @@ export function scssEachAtRule(this: P, T: TokenMap): ProductionRule {
     // One or more `$var` separated by commas.
     do {
       const dv = $.CONSUME($.T.DollarVariable);
-      const varName = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+      const varName = dv.image.slice(1);
       // Param-like var decl (prints `$name` with no `: <value>`).
       vars.push(new VarDeclaration({ name: varName, value: new Nil() }, { paramVar: true }, $.getLocationInfo(dv), $.context));
       if ($.LA(1).tokenType === $.T.Comma) {
@@ -1558,12 +1558,11 @@ export function scssMixinAtRule(this: P, T: TokenMap): ProductionRule {
     rules.options.rulesVisibility ??= {};
     rules.options.rulesVisibility.VarDeclaration ??= 'private';
     rules.options.rulesVisibility.Mixin ??= 'private';
-    const finalNameNode = nameNode ?? (() => {
-      const mixinName = ($.matchToken(nameTok as any, $.T.FunctionStart) || $.matchToken(nameTok as any, $.T.GenericFunctionStart))
-        ? String(nameTok!.image).slice(0, -1)
-        : String(nameTok!.image);
-      return new Any(mixinName, { role: 'name' }, $.getLocationInfo(nameTok!), $.context);
-    })();
+    const finalNameNode: string | Interpolated<'name'> = nameNode
+      ? (nameNode instanceof Any ? String(nameNode.valueOf()) : nameNode)
+      : ($.matchToken(nameTok as any, $.T.FunctionStart) || $.matchToken(nameTok as any, $.T.GenericFunctionStart))
+          ? String(nameTok!.image).slice(0, -1)
+          : String(nameTok!.image);
 
     return new Mixin(
       { name: finalNameNode, params, rules: rules.rules },
@@ -1665,7 +1664,7 @@ export function scssMixinParam(this: P, T: TokenMap): ProductionRule {
             defaultValue = $.SUBRULE($.valueSequence, { ARGS: [ctx] });
           });
           if (defaultValue) {
-            const paramName = new Any(dv.image.slice(1), { role: 'property' });
+            const paramName = dv.image.slice(1);
             node = new VarDeclaration(
               { name: paramName, value: defaultValue },
               { paramVar: true },
@@ -1981,7 +1980,7 @@ export function scssReturnAtRule(this: P, T: TokenMap): ProductionRule {
     if ($.RECORDING_PHASE) {
       return;
     }
-    const name = new Any('result', { role: 'property' }, loc, $.context);
+    const name = 'result';
     return new VarDeclaration({ name, value: value }, undefined, loc, $.context);
   };
 }

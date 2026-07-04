@@ -265,7 +265,7 @@ export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARI
 export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'), [decl({ name: 'color', value: DEFAULT_COLOR })])) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
       rules: atRuleContent.rules
     })
@@ -275,7 +275,7 @@ export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'),
 export function createAtRuleVariable(atRuleContent = createVariableReference('color', DEFAULT_VARIABLE)) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
       rules: atRuleContent.rules
     })

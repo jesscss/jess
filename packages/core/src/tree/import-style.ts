@@ -643,7 +643,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
     const wrappedAtRule = new AtRule({
-      name: new Any(name, { role: 'atkeyword' }),
+      name,
       prelude,
       rules: rules.rules
     });
@@ -862,7 +862,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const location = this.location && this.location.length === 6 ? this.location : undefined;
     // @import has no block body — it is a semicolon at-rule statement.
     return new AtRuleStatement({
-      name: new Any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude
     }, undefined, location);
   }

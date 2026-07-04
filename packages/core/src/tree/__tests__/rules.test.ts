@@ -423,7 +423,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -453,7 +453,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -474,7 +474,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -493,7 +493,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -599,7 +599,7 @@ describe('Rules', () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     let charsetSawActiveWriter = false;
     const importRule = atrule({
-      name: any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude: quoted(any('theme.css')),
       rules: []
     });

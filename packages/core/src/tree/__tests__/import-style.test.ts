@@ -3098,7 +3098,7 @@ describe('Style import', () => {
           params: list([any('keyframeName', { role: 'property' })]),
           rules: [
             atrule({
-              name: any('@keyframes'),
+              name: '@keyframes',
               prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
               rules: [
                 decl({ name: 'property', value: any('value') })
@@ -3142,7 +3142,7 @@ describe('Style import', () => {
             decl({ name: 'color', value: any('green') }),
             decl({ name: 'test', value: ref({ key: 'num' }, { type: 'variable' }) }),
             atrule({
-              name: any('@media'),
+              name: '@media',
               prelude: any('(max-size: 450px)'),
               rules: [
                 decl({ name: 'color', value: any('red') })

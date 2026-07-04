@@ -65,7 +65,7 @@ function registerEvaluatedRulesetsForRoot(root: Rules, rules: Rules): void {
 export type AtRulePrelude = string | Node;
 
 export type AtRuleValue = {
-  name: string | Any | Interpolated;
+  name: string | Interpolated;
   /** The prelude */
   prelude?: AtRulePrelude;
   rules: Node[];
@@ -652,23 +652,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     this.prelude = value.prelude;
   }
 
-  private materializeHeaderForSemantics(): { name: AtRuleValue['name']; prelude: AtRuleValue['prelude'] } {
-    if (typeof this.name === 'string') {
-      const name = new Any(this.name, { role: 'atkeyword' }, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
-        .inherit(this);
-      this.adopt(name);
-      this.name = name;
-    }
-    if (typeof this.prelude === 'string') {
-      const prelude = new Any(this.prelude, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
-        .inherit(this);
-      this.adopt(prelude);
-      this.prelude = prelude;
-    }
-    this._valueOf = undefined;
-    return { name: this.name, prelude: this.prelude };
-  }
-
   private atRuleNameText(): string {
     return typeof this.name === 'string' ? this.name : this.name.valueOf();
   }
@@ -678,7 +661,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return name;
     }
     const owned = canReuseLeaf(name) ? reuseLeaf(name) : copyWithReusableLeaves(name);
-    if (!(owned instanceof Any) && !(owned instanceof Interpolated)) {
+    if (!(owned instanceof Interpolated)) {
       throw new TypeError('Expected at-rule name copy');
     }
     return owned;
@@ -1104,11 +1087,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       rules: this.rules
     });
     const finish = (key: Node): AtRule => {
-      if (!(key instanceof Any)) {
-        throw new TypeError('Expected interpolated at-rule name to resolve to Any');
-      }
-      node.adopt(key);
-      node.name = key;
+      node.name = String(key.valueOf());
       node._valueOf = undefined;
       node.registrationPrepared = true;
       return node;
@@ -1377,10 +1356,10 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
     }
 
-    // When we reach here, name is Any|Interpolated (string case was handled by early return, or
-    // atRuleHeaderNode===this which implies a Node name at runtime). Prelude is Node|undefined.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch (see comment above)
-    const nameOut = renderAtRuleHeaderNodeSyntax(name as Node, options, true);
+    // Reached when name is Interpolated, or a string with atRuleHeaderNode===this (prelude-only override).
+    const nameOut = typeof name === 'string'
+      ? name
+      : renderAtRuleHeaderNodeSyntax(name, options, true);
     const preludeTrivia = createTriviaMap();
     const preludePrintOptions: FinalPrintOptions = options.context && prelude
       ? {
@@ -1441,12 +1420,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       w.add(idt);
     }
 
-    // When we reach here, name is Any|Interpolated (string+no-override case handled above).
-    // Prelude is Node|undefined (string case handled in the early return block).
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch
-    const nameNode = name as Node;
-    const nameOut = renderAtRuleHeaderNodeSyntax(nameNode, options, withoutComments);
-    w.add(nameOut, nameNode);
+    // Reached when name is Interpolated, or a string with atRuleHeaderNode===this (prelude-only override).
+    const nameOut = typeof name === 'string'
+      ? name
+      : renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
+    w.add(nameOut, typeof name === 'string' ? this : name);
     if (prelude) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- prelude is Node here
       const preludeNode = prelude as Node;
@@ -1493,10 +1471,14 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
           ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
           : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
-        if (!endsWithAtRuleWhitespace(this.name) && !startsWithAtRuleWhitespace(preludeOut)) {
+        // Collapse the name/prelude boundary to a single space: the prelude may
+        // carry leading whitespace of its own, so trim it and re-add exactly one
+        // space unless the name already ends with whitespace.
+        const normalizedPrelude = trimAtRuleLeadingWhitespace(preludeOut);
+        if (!endsWithAtRuleWhitespace(this.name)) {
           out += ' ';
         }
-        out += preludeOut;
+        out += normalizedPrelude;
       }
       return rules
         ? normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n'
@@ -1521,11 +1503,10 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
     }
 
-    // When we reach here, name is Any|Interpolated (string+no-override case handled above).
-    // Prelude is Node|undefined (string case handled in the early return block).
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- name/prelude are Nodes in this branch
-    const nameNode = name as Node;
-    const nameOut = renderAtRuleHeaderNodeSyntax(nameNode, options, withoutComments);
+    // Reached when name is Interpolated, or a string with atRuleHeaderNode===this (prelude-only override).
+    const nameOut = typeof name === 'string'
+      ? name
+      : renderAtRuleHeaderNodeSyntax(name, options, withoutComments);
     if (prelude) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- prelude is Node here
       const preludeNode = prelude as Node;
@@ -1552,9 +1533,9 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       const nameEndsWithSpace = endsWithAtRuleWhitespace(nameOut);
       const preludeStartsWithSpace = startsWithAtRuleWhitespace(preludeOut);
-      const interstitialTrivia = withoutComments
+      const interstitialTrivia = withoutComments || typeof name === 'string'
         ? ''
-        : renderAtRuleBetweenNameAndPreludeTrivia(nameNode, preludeNode, options);
+        : renderAtRuleBetweenNameAndPreludeTrivia(name, preludeNode, options);
 
       out += nameOut;
       if (interstitialTrivia) {

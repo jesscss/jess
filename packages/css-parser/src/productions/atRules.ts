@@ -120,7 +120,7 @@ export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: prelude,
         rules: rules.rules
       }, { nestable: true }, location, this.context);
@@ -494,7 +494,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 if (!RECORDING_PHASE) {
                   let location = $.endRule();
                   return new Declaration({
-                    name: new Any(ident.image, { role: 'property' }),
+                    name: ident.image,
                     value: value
                   }, undefined, location, this.context);
                 }
@@ -766,7 +766,7 @@ export function pageAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: selector.length ? new List(selector, undefined, $.getLocationFromNodes(selector), this.context) : undefined,
         rules: rules.rules
       }, undefined, location, this.context);
@@ -814,7 +814,7 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         rules: rules.rules
       }, undefined, location, this.context);
     }
@@ -840,7 +840,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+        name: atTok.image,
         prelude: preludeNode ? preludeNode : undefined,
         // Include isolated comments inside the keyframes body
         rules: rules.rules
@@ -951,7 +951,7 @@ export function containerAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule)
           : undefined;
       }
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude,
         rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
@@ -1494,7 +1494,7 @@ export function scopeAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude,
         rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
@@ -1515,7 +1515,7 @@ export function documentAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
         rules: rules.rules
       }, undefined, $.endRule(), this.context);

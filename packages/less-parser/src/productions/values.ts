@@ -181,7 +181,7 @@ function createEachPattern(
 } {
   const defaultVars = ['value', 'key', 'index'].map((name) => {
     return new VarDeclaration({
-      name: new Any(name, { role: 'property' }),
+      name,
       value: new Any('', { role: 'any' })
     }, { paramVar: true }, location, context);
   });
@@ -200,7 +200,7 @@ function createEachPattern(
       }
       if (isNode(param, N.Any) && param.role === 'property') {
         return new VarDeclaration({
-          name: new Any(param.value, { role: 'property' }, param._location?.length ? param._location : undefined, param.sourceRoot?._treeContext),
+          name: String(param.value),
           value: new Any('', { role: 'any' })
         }, { paramVar: true }, param.location, context);
       }

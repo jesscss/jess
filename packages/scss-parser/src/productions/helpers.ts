@@ -166,7 +166,7 @@ type OptionalLocation = LocationInfo | undefined;
 export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
     {
-      name: new Any(name, { role: 'property' }, location, parser.context),
+      name: name,
       value
     },
     undefined,

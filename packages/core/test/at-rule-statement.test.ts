@@ -20,7 +20,7 @@ describe('AtRuleStatement', () => {
   test('renders as a root rules child', () => {
     const root = rules([
       atrulestatement({
-        name: any('@charset'),
+        name: '@charset',
         prelude: '"utf-8"'
       })
     ]);
@@ -30,7 +30,7 @@ describe('AtRuleStatement', () => {
 
   test('serializes node fields as syntax, not valueOf text', () => {
     const statement = atrulestatement({
-      name: any('@import'),
+      name: '@import',
       prelude: quoted('x.css')
     });
 

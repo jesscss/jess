@@ -543,7 +543,7 @@ export class ScssGrammar extends LessGrammar {
   private _buildScssMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
-    const interpName = nodes.find(n => isNode(n, N.Interpolated));
+    const interpName = nodes.find(n => isNode(n, N.Interpolated)) as Interpolated<'name'> | undefined;
     const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
       && l.value !== '{' && l.value !== '}' && l.value !== ',');
     const name = interpName ?? (nameLeaf?.value ?? '');
@@ -614,14 +614,14 @@ export class ScssGrammar extends LessGrammar {
   private _buildScssFunction(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const nodes = nodeChildren(children);
-    const interpName = nodes.find(n => isNode(n, N.Interpolated));
+    const interpName = nodes.find(n => isNode(n, N.Interpolated)) as Interpolated<'name'> | undefined;
     const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
       && l.value !== '{' && l.value !== '}' && l.value !== ',');
-    const name = interpName ?? new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const name = interpName ?? (nameLeaf?.value ?? '');
     const params = nodes.find(n => n.type === 'List') as List | undefined;
     const body = nodes.find((n): n is Rules => n instanceof Rules)!;
     return new Func(
-      { name: name as Any<'name'>, params, body },
+      { name, params, body },
       { returnName: 'result' },
       loc
     ) as unknown as JessNode;

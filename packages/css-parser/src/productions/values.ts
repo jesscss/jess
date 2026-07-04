@@ -38,8 +38,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         if ($.RECORDING_PHASE) {
           return;
         }
-        let nameNode = new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context);
-        return [nameNode, assign, value, important];
+        return [name!.image, assign, value, important];
       }
     },
     {
@@ -68,9 +67,8 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
           return;
         }
         let location = $.endRule();
-        let nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context);
         let value = new Sequence(nodes!, undefined, location, this.context);
-        return [nameNode, assign, value];
+        return [name.image, assign, value];
       }
     }
   ];
@@ -81,7 +79,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let name: Any<'property'> | undefined;
+    let name: string | undefined;
     let assign: IToken | undefined;
     let value: Node | undefined;
     let important: IToken | undefined;
@@ -93,7 +91,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      const isCustom = name!.valueOf().startsWith('--');
+      const isCustom = name!.startsWith('--');
       const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
       return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,

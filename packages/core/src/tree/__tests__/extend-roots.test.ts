@@ -573,7 +573,7 @@ describe('Extend Roots Registry', () => {
           ]
         }),
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('(min-width: 600px)'),
           rules: [
             ruleset({
@@ -619,7 +619,7 @@ describe('Extend Roots Registry', () => {
           ]
         }),
         atrule({
-          name: any('@container'),
+          name: '@container',
           prelude: any('(min-width: 600px)'),
           rules: [
             ruleset({
@@ -664,7 +664,7 @@ describe('Extend Roots Registry', () => {
           ]
         }),
         atrule({
-          name: any('@supports'),
+          name: '@supports',
           prelude: any('(display: grid)'),
           rules: [
             ruleset({
@@ -703,7 +703,7 @@ describe('Extend Roots Registry', () => {
     it('extends from outside at-rule can extend into at-rule', async () => {
       const node = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('(min-width: 600px)'),
           rules: [
             ruleset({
@@ -744,11 +744,11 @@ describe('Extend Roots Registry', () => {
     it('extends from inside at-rule can extend into nested at-rules', async () => {
       const node = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('(min-width: 600px)'),
           rules: [
             atrule({
-              name: any('@supports'),
+              name: '@supports',
               prelude: any('(display: grid)'),
               rules: [
                 ruleset({
@@ -798,7 +798,7 @@ describe('Extend Roots Registry', () => {
     it('layers with same name share extend roots', async () => {
       const node = rules([
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           prelude: any('one'),
           rules: [
             ruleset({
@@ -811,7 +811,7 @@ describe('Extend Roots Registry', () => {
         }),
         comment('/* second layer */'),
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           prelude: any('one'),
           rules: [
             ruleset({
@@ -851,7 +851,7 @@ describe('Extend Roots Registry', () => {
     it.skip('anonymous layers do not share extend roots', async () => {
       const node = rules([
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           // No prelude = anonymous
           rules: [
             ruleset({
@@ -864,7 +864,7 @@ describe('Extend Roots Registry', () => {
         }),
         comment('/* second anonymous layer */'),
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           // No prelude = anonymous
           rules: [
             ruleset({
@@ -897,11 +897,11 @@ describe('Extend Roots Registry', () => {
     it('nested layers concatenate names', async () => {
       const node = rules([
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           prelude: any('one'),
           rules: [
             atrule({
-              name: any('@layer'),
+              name: '@layer',
               prelude: any('two'),
               rules: [
                 ruleset({
@@ -918,7 +918,7 @@ describe('Extend Roots Registry', () => {
         }),
         comment('/* second layer with same name */'),
         atrule({
-          name: any('@layer'),
+          name: '@layer',
           prelude: any('one.two'),
           rules: [
             ruleset({

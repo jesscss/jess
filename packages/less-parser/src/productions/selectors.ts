@@ -1053,7 +1053,7 @@ export function importAtRule(this: P, T: TokenMap) {
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
         const atRule = new AtRuleStatement({
-          name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+          name: name.image,
           prelude: prelude
         }, undefined, location, $.context);
         return atRule;
@@ -1189,7 +1189,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: nameNode,
+      name: nameNode instanceof Any ? String(nameNode.valueOf()) : nameNode,
       value: value,
       important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);

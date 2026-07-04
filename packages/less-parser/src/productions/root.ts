@@ -962,8 +962,9 @@ export function mediaFeature(this: P, T: TokenMap) {
                 const value = $.SUBRULE($.mfValue, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   const location = $.endRule();
+                  const featureName = createFeatureIdentNode(ident, 'property');
                   return new Declaration({
-                    name: createFeatureIdentNode(ident, 'property'),
+                    name: featureName instanceof Any ? String(featureName.valueOf()) : featureName,
                     value: value
                   }, undefined, location, $.context);
                 }
@@ -1356,10 +1357,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
         if (isNode(node, N.Any) && node.role === 'name') {
-          // Create a new Any node with role 'property' for the name
-          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location.length ? node.location : undefined, $.context);
           const replacement = new VarDeclaration({
-            name: nameNode,
+            name: String(node.valueOf()),
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context);
           args.adopt(replacement);

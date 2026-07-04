@@ -56,7 +56,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.CONSUME(T.RCurly);
           if (!RECORDING_PHASE) {
             return new AtRule({
-              name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+              name: atTok.image,
               prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
               rules: rules.rules
             }, { nestable: true }, $.endRule(), this.context);
@@ -76,7 +76,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
             return new AtRuleStatement({
-              name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+              name: atTok.image,
               prelude: preludeNodes.length ? new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined
             }, undefined, $.endRule(), this.context);
           }
@@ -147,7 +147,7 @@ export function supportsAtRule(this: C, T: TokenMap, preludeRule?: Rule | string
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: prelude,
         rules: rules.rules
       }, { nestable: true }, location, this.context);
@@ -496,7 +496,7 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRuleStatement({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
       }, undefined, location, this.context);
     }
@@ -618,7 +618,7 @@ export function nestedAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       const atRuleValue = {
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined
       };
       return rules
@@ -641,7 +641,7 @@ export function nonNestedAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRuleStatement({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)
       }, undefined, $.endRule(), this.context);
     }
@@ -774,7 +774,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
         }
       }
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
         rules: rules?.rules ?? []
       }, undefined, $.endRule(), this.context);

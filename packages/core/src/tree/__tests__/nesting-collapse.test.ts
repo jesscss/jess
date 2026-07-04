@@ -422,7 +422,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               ruleset({
@@ -463,7 +463,7 @@ describe('CSS Nesting Collapse', () => {
         selector: parentSelector,
         rules: [
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'color', value: spaced([el('red')]) })
@@ -496,7 +496,7 @@ describe('CSS Nesting Collapse', () => {
         selector: sel([el('.parent')]),
         rules: [
           atrulestatement({
-            name: any('@property'),
+            name: '@property',
             prelude: any('--brand-color')
           })
         ]
@@ -649,7 +649,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: grid)'),
             rules: [
               ruleset({
@@ -685,12 +685,12 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
               atrule({
-                name: any('@media'),
+                name: '@media',
                 prelude: any('(max-width: 480px)'),
                 rules: [
                   ruleset({
@@ -733,7 +733,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
@@ -782,7 +782,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               ruleset({
@@ -794,7 +794,7 @@ describe('CSS Nesting Collapse', () => {
             ]
           }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: flex)'),
             rules: [
               ruleset({
@@ -835,12 +835,12 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'padding', value: spaced([el('20px')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'padding', value: spaced([el('10px')]) }),
               atrule({
-                name: any('@supports'),
+                name: '@supports',
                 prelude: any('(display: grid)'),
                 rules: [
                   ruleset({

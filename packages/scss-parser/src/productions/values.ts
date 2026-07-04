@@ -583,7 +583,7 @@ export function functionCallArgs(this: P, T: TokenMap): ProductionRule {
       if ($.RECORDING_PHASE) {
         return;
       }
-      const name = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+      const name = dv.image.slice(1);
       return new VarDeclaration({ name, value }, undefined, location, $.context);
     }
 
@@ -962,7 +962,7 @@ export function scssMapLiteral(this: P, T: TokenMap): ProductionRule {
             const value = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
 
             const keyStr = toDeclKey(keyNode);
-            const declName = new Any(keyStr, { role: 'property' });
+            const declName = keyStr;
             const decl = new Declaration(
               { name: declName, value: value },
               undefined,
@@ -1020,7 +1020,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext): ProductionR
       return;
     }
 
-    const nameNode = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
+    const nameNode = dv.image.slice(1);
 
     return new VarDeclaration(
       { name: nameNode, value: value },
@@ -1163,7 +1163,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext): ProductionR
       return;
     }
 
-    const nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
+    const nameNode = name.image;
     return new Declaration({
       name: nameNode,
       value: value,
@@ -1196,7 +1196,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext): ProductionR
       return;
     }
 
-    const nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
+    const nameNode = name.image;
     const value = new Sequence(nodes!, undefined, valueLocation, $.context);
     return new CustomDeclaration({
       name: nameNode,

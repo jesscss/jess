@@ -248,7 +248,7 @@ describe('renderNodeToBuffer', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrulestatement({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css'))
       })
     ];
@@ -357,7 +357,7 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'AtRule',
         node: atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: any('screen'),
           rules: [decl({ name: 'color', value: any('red') })]
         }),

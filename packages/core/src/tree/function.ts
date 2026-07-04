@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, F_VISIBLE, Node, type LocationInfo } from './node.js';
-import type { Any, AnyRole } from './any.js';
+import type { AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
@@ -20,7 +20,7 @@ import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js
  * - Then look up a declaration by name (default: `return`) and return its value.
  */
 export type FuncValue<Name extends AnyRole = 'name'> = {
-  name?: Any<Name> | Interpolated<Name>;
+  name?: string | Interpolated<Name>;
   params?: List<Node>;
   body: Rules;
 };
@@ -70,10 +70,12 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     w.add('$function', this);
     w.add(' ');
-    if (name) {
-      name.writeSyntax(options);
-    } else {
+    if (name === undefined) {
       w.add('@', this);
+    } else if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.writeSyntax(options);
     }
     w.add('(');
     params?.writeSyntax(options);

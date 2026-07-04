@@ -1,5 +1,6 @@
 import {
   Any,
+  Interpolated,
   Block,
   Call,
   Condition,
@@ -1758,7 +1759,7 @@ describe('Control Nodes', () => {
             ref({ key: 'prefix' }, { type: 'variable' }),
             ref({ key: 'index' }, { type: 'variable' })
           ]
-        }, { role: 'property' as const }) as unknown as Any<'property'>,
+        }, { role: 'property' as const }) as unknown as Interpolated<'property'>,
         value: ref({ key: 'value' }, { type: 'variable' })
       })
     ]);

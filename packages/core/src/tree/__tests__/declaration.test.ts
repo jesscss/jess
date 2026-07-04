@@ -1,6 +1,6 @@
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
-import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -64,7 +64,7 @@ describe('Declaration', () => {
   });
 
   it('uses direct fields as the declaration source of truth', () => {
-    const name = any('color');
+    const name = 'color';
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const node = decl({ name, value, important });
@@ -97,15 +97,13 @@ describe('Declaration', () => {
   });
 
   it('writes non-custom declaration children without public string transport', () => {
-    const name = any('color');
+    const name = 'color';
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const rule = decl({ name, value, important });
     let publicStringCalls = 0;
-    name.toTrimmedString = () => {
-      publicStringCalls++;
-      return 'wrong-name';
-    };
+    // The name is a bare string, so there is no name node whose public
+    // toTrimmedString could be invoked — only the value/important nodes are spied.
     value.toTrimmedString = () => {
       publicStringCalls++;
       return 'wrong-value';
@@ -431,7 +429,7 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const sourceName = any('color');
+    const sourceName = 'color';
     const sourceValue = ref({ key: 'tone' }, { type: 'variable' });
     const node = decl({
       name: sourceName,
@@ -452,7 +450,6 @@ describe('Declaration', () => {
     expect(output.toTrimmedString()).toBe('color: red');
     expect(output).not.toBe(node);
     expect(deriveCalls).toBe(0);
-    expect(sourceName.parent).toBe(node);
     expect(sourceValue.parent).toBe(node);
   });
 
@@ -522,13 +519,15 @@ describe('Declaration', () => {
     try {
       const sourceNameLeaf = any('color');
       const node = decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `border-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [sourceNameLeaf]
-        }),
+        }) as Interpolated<'property'>,
         value: ref({ key: 'tone' }, { type: 'variable' })
       });
-      const sourceName = node.name;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceName = node.name as Interpolated;
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('border-color: red');
@@ -917,7 +916,7 @@ describe('Declaration', () => {
   });
 
   it('serializes comment trivia between declaration names and separators', () => {
-    const name = any('color', { role: 'property' });
+    const name = 'color';
     name._location = [4, 1, 5, 8, 1, 9];
     const node = decl({ name, value: any('grey') });
     const shared = run('/* survive */ /* me too */');
@@ -1624,7 +1623,7 @@ describe('Declaration', () => {
   });
 
   it('does not treat boundary trivia before a value as authored multiline value text', () => {
-    const name = any('color', { role: 'property' });
+    const name = 'color';
     name._location = [0, 1, 1, 5, 1, 6];
     const value = any('white');
     value._location = [8, 2, 1, 12, 2, 6];
@@ -1644,7 +1643,7 @@ describe('Declaration', () => {
         selector: el('nav'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
               decl({ name: 'padding', value: any('10px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: 'padding', value: any('8px') }, { assign: AssignmentType.MergeSequence }),
@@ -1672,7 +1671,7 @@ describe('Declaration', () => {
         selector: el('aside'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
               forNode({
                 pattern: {
@@ -1717,7 +1716,7 @@ describe('Declaration', () => {
         selector: el('aside'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
               forNode({
                 pattern: {

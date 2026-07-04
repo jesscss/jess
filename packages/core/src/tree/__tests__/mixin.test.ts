@@ -4313,7 +4313,7 @@ describe('Mixin', () => {
       const parentRetryHits: string[] = [];
       const missingKey = '.parent-only-after-child-miss';
       const parentMixin = mixin({
-        name: any(missingKey),
+        name: missingKey,
         rules: [decl({ name: 'color', value: any('red') })]
       });
       const childSurface = rules([
@@ -7937,7 +7937,7 @@ describe('Mixin', () => {
           params: list([any('mode', { role: 'property' })]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: ref({ key: 'mode' }, { type: 'variable' }),
               rules: [
                 decl({

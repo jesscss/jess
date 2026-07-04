@@ -868,7 +868,7 @@ export function mixinArg(this: P, T: TokenMap) {
         return;
       }
       return new VarDeclaration({
-        name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+        name: name.image.slice(1),
         value
       }, { paramVar: true }, location, $.context);
     }
@@ -882,7 +882,7 @@ export function mixinArg(this: P, T: TokenMap) {
       const location = $.endRule();
       if (ctx.isDefinition) {
         return new VarDeclaration({
-          name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+          name: name.image.slice(1),
           value: new Nil(undefined, undefined, location, $.context)
         }, { paramVar: true }, location, $.context);
       }
@@ -994,7 +994,7 @@ export function useAtRule(this: P, T: TokenMap) {
     }
     return new AtRuleStatement(
       {
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        name: name.image,
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
       },
       undefined,

@@ -483,7 +483,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'background', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -498,7 +498,7 @@ describe('extend integration (eval -> toString)', () => {
             ]
           }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(hires)'),
             rules: [
               ruleset({
@@ -556,7 +556,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -614,7 +614,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -674,7 +674,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -864,7 +864,7 @@ describe('extend integration (eval -> toString)', () => {
       }),
       comment('// media queries - don\'t extend outside, do extend inside'),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: paren(query([keyword('tv')])),
         rules: [
           ruleset({
@@ -879,7 +879,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: [decl({ name: 'color', value: any('inherit') })]
           }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: paren(query([keyword('plasma')])),
             rules: [
               // Parsed structure: inner Rules wrapping Extend then Ruleset (same as snapshot)
@@ -950,7 +950,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -1008,7 +1008,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -1073,7 +1073,7 @@ describe('extend integration (eval -> toString)', () => {
           rules: [decl({ name: 'color', value: spaced([any('red')]) })]
         }),
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({
@@ -1107,7 +1107,7 @@ describe('extend integration (eval -> toString)', () => {
     it('B: .a:extend(.b) at root can reach in - .a merged with .b inside @media', async () => {
       const root = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({
@@ -1145,7 +1145,7 @@ describe('extend integration (eval -> toString)', () => {
     it('C: .c:extend(.b) inside @media extends sibling .b - same extend root', async () => {
       const root = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({

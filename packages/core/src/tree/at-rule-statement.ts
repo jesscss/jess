@@ -10,11 +10,14 @@ import {
 } from './node.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import { type RenderBuffer } from './util/render-buffer.js';
+import { Interpolated } from './interpolated.js';
 
 export type AtRuleStatementField = string | Node;
 
+export type AtRuleStatementName = string | Interpolated;
+
 export type AtRuleStatementValue = {
-  name: AtRuleStatementField;
+  name: AtRuleStatementName;
   prelude?: AtRuleStatementField;
 };
 
@@ -31,7 +34,7 @@ function trimLeadingHeaderWhitespace(text: string): string {
 export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
   static override childKeys = ['name', 'prelude'] as const;
 
-  name: AtRuleStatementField;
+  name: AtRuleStatementName;
   prelude: AtRuleStatementField | undefined;
 
   constructor(
@@ -51,7 +54,10 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
   }
 
   override clone(cloneFn?: (n: Node) => Node): this {
-    const name = cloneFn && this.name instanceof Node ? cloneFn(this.name) : this.name;
+    const name = cloneFn && this.name instanceof Interpolated
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the Interpolated name type
+      ? cloneFn(this.name) as Interpolated
+      : this.name;
     const prelude = cloneFn && this.prelude instanceof Node ? cloneFn(this.prelude) : this.prelude;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return new AtRuleStatement(
@@ -78,7 +84,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
       field instanceof Node ? field.eval(context) : field
     );
     const finish = (
-      name: AtRuleStatementField,
+      name: AtRuleStatementName,
       prelude: AtRuleStatementField | undefined
     ): AtRuleStatement => {
       if (name === this.name && prelude === this.prelude) {
@@ -94,7 +100,15 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
         this._treeContext
       ).inherit(this);
     };
-    const name = evalField(this.name);
+    // Interpolated names resolve to a plain string; the stored name stays string | Interpolated.
+    const name: MaybePromise<AtRuleStatementName> = this.name instanceof Interpolated
+      ? (() => {
+          const resolved = this.name.eval(context);
+          return isThenable(resolved)
+            ? resolved.then(value => String(value.valueOf()))
+            : String(resolved.valueOf());
+        })()
+      : this.name;
     if (isThenable(name)) {
       return name.then((evaluatedName) => {
         const prelude = this.prelude === undefined ? undefined : evalField(this.prelude);
@@ -144,14 +158,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     if (typeof this.name === 'string') {
       writer.add(this.name, this);
     } else {
-      const type = this.name.type;
-      if (type === 'Any' || type === 'Anonymous' || type === 'Keyword') {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const v = (this.name as { value?: unknown }).value;
-        writer.add(typeof v === 'string' ? v : String(this.name.valueOf()), this.name);
-      } else {
-        this.name.writeSyntax(options);
-      }
+      this.name.writeSyntax(options);
     }
     if (this.prelude !== undefined && this.prelude !== '') {
       writer.add(' ');

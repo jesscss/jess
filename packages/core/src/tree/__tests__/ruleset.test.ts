@@ -370,7 +370,7 @@ describe('Rule', () => {
   it('renders static rulesets with leaf at-rules from source without preparing output', async () => {
     const selector = sellist([sel([el('foo')])]);
     const leaf = atrule({
-      name: any('@custom-media', { role: 'atkeyword' }),
+      name: '@custom-media',
       prelude: spaced([any('--narrow'), any('(max-width: 30em)')]),
       rules: []
     });
@@ -414,7 +414,7 @@ describe('Rule', () => {
   it('renders ruleset leaf at-rules without public string preview transport', () => {
     const writer = new CountingWriter();
     const leaf = atrule({
-      name: any('@property', { role: 'atkeyword' }),
+      name: '@property',
       prelude: any('--brand-color'),
       rules: []
     });
@@ -489,7 +489,7 @@ describe('Rule', () => {
   it('source-direct renders static rulesets with root-only body at-rules when hoist is inactive', async () => {
     const selector = sellist([sel([el('foo')])]);
     const bodyAtRule = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [
         decl({ name: 'font-family', value: any('Body') })
       ]
@@ -533,7 +533,7 @@ describe('Rule', () => {
     context.frames = [parentFrame];
     const selector = sellist([sel([el('foo')])]);
     const bodyAtRule = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [
         decl({ name: 'font-family', value: any('Body') })
       ]
@@ -560,7 +560,7 @@ describe('Rule', () => {
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
     context = new Context({ bubbleRootAtRules: true });
     const bodyAtRule = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [
         decl({ name: 'font-family', value: any('Body') })
       ]

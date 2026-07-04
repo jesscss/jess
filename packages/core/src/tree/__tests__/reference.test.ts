@@ -5034,7 +5034,7 @@ describe('reference', () => {
           params: list([any('keyframeName', { role: 'property' })]),
           rules: [
             atrule({
-              name: any('@keyframes'),
+              name: '@keyframes',
               prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
               rules: [
                 decl({ name: 'property', value: any('value') })
