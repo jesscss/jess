@@ -6,6 +6,7 @@ import {
   Nil,
   Ruleset,
   SelectorList,
+  sourceSpanOf,
   type LocationInfo,
   type Node,
   type Rules,
@@ -14,7 +15,7 @@ import {
 } from '@jesscss/core';
 
 export function createNullParentAmpersand(context?: TreeContext, selector?: Selector): Ampersand {
-  const location = selector?.location.length === 6 ? selector.location : undefined;
+  const location = selector ? sourceSpanOf(selector) : undefined;
   const nil = new Nil(undefined, undefined, location, context);
   const amp = new Ampersand(
     { selectorContainer: { selector: nil } },
@@ -27,7 +28,7 @@ export function createNullParentAmpersand(context?: TreeContext, selector?: Sele
 }
 
 function getNodeLocation(node: Node): LocationInfo | undefined {
-  return node.location.length === 6 ? node.location : undefined;
+  return sourceSpanOf(node);
 }
 
 export function prefixAtRootSelector(selector: Selector, context?: TreeContext): Selector {
@@ -67,7 +68,7 @@ export function lowerPlainAtRootRules(rules: Rules, context?: TreeContext): void
           ...(rs.selectorBeforeExtend !== undefined && {
             selectorBeforeExtend: rs.selectorBeforeExtend
           })
-        }, rs.options, rs.location, context);
+        }, rs.options, sourceSpanOf(rs), context);
       }
       return node;
     }

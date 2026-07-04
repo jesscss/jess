@@ -2,7 +2,7 @@
 // Value-related production rules for ScssRecursiveParser
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from 'chevrotain';
 import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {

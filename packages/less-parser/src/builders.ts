@@ -63,7 +63,7 @@ type Child = JessNode | CSTLeaf | CSTError;
 const KNOWN_AT_RULE_VAR_NAME_RE = /^(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)$/i;
 
 function spanToLocation(span: Span): LocationInfo {
-  return [span.start, 0, 0, span.end, 0, 0];
+  return { start: span.start, end: span.end };
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
@@ -562,7 +562,7 @@ export class LessGrammar extends CssParser {
     const dvIsArray = Array.isArray(dv);
     const dvHasNode = dvIsArray && (dv as unknown[]).some(p => !!p && typeof p === 'object' && 'type' in (p as object));
     if (dvIsArray && dvHasNode) {
-      const src = this._source.slice(loc[0], loc[3]);
+      const src = this._source.slice(loc.start, loc.end);
       const colonPos = src.indexOf(':');
       const rawVal = colonPos >= 0 ? src.slice(colonPos + 1).trim().replace(/;\s*$/, '').trim() : src;
       if (/^progid:/i.test(rawVal)) {
@@ -673,12 +673,10 @@ export class LessGrammar extends CssParser {
    * returned in a List. Mirrors mergeExtends' target-and-flag grouping.
    */
   private _buildExtendPseudo(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    // Grammar guarantees ≥1 target: `extendBody = sepBy(ExtendTarget, ',')`.
     const targets = nodeChildren(children).filter(n => n.type === 'Extend') as unknown as Array<{
       target: Selector; flag: number;
     }>;
-    if (targets.length === 0) {
-      return new Extend({ target: '&', flag: ExtendFlag.Exact }, {}, loc) as unknown as JessNode;
-    }
     const firstFlag = targets[0]!.flag;
     const allSameFlag = targets.every(t => t.flag === firstFlag);
     if (allSameFlag) {
@@ -701,8 +699,9 @@ export class LessGrammar extends CssParser {
   private _buildExtendStatement(
     children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
   ): JessNode {
-    const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List');
-    return (built ?? new Extend({ target: '&', flag: ExtendFlag.Exact }, {}, loc)) as unknown as JessNode;
+    // ExtendPseudo always yields the grouped Extend (or List of Extends).
+    const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List')!;
+    return built as unknown as JessNode;
   }
 
   /**
@@ -991,7 +990,7 @@ export class LessGrammar extends CssParser {
     if (argsList === undefined) {
       this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
     } else {
-      const src = this._source.slice(loc[0], loc[3]);
+      const src = this._source.slice(loc.start, loc.end);
       if (/^\S+\s+\(/.test(src)) {
         this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
       }
@@ -1100,7 +1099,7 @@ export class LessGrammar extends CssParser {
         continue;
       }
       if (chunks.filter(isParam).length >= 2) {
-        this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc[0]);
+        this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc.start);
       }
       if (chunks.length === 1) {
         items.push(this._mixinParamPart(chunks[0]!, loc));
@@ -1362,10 +1361,10 @@ export class LessGrammar extends CssParser {
       const rawRuleNodes = nodes.filter(n => n !== argsList && n !== guard);
       // Lift standalone comments in the body (the Mixin/qualified-rule body is built
       // inline here, bypassing _buildRuleset's own comment lift).
-      const braceIdx = this._source.indexOf('{', loc[0]);
-      const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
-      const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
-      const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
+      const braceIdx = this._source.indexOf('{', loc.start);
+      const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
+      const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
+      const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
       const ruleNodes = this._liftStandaloneComments(rawRuleNodes as any, bodyStart, bodyEnd, loc);
       if (hasExplicitParens) {
         // Has explicit parens -- it's a Mixin definition
@@ -1414,7 +1413,7 @@ export class LessGrammar extends CssParser {
     if (hasSemi && !hasExplicitParens) {
       this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
     } else if (hasSemi && hasExplicitParens) {
-      const src = this._source.slice(loc[0], loc[3]);
+      const src = this._source.slice(loc.start, loc.end);
       if (/^\S+\s+\(/.test(src)) {
         this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
       }
@@ -1475,7 +1474,7 @@ export class LessGrammar extends CssParser {
       return base;
     }
     if (this._selectorHasNestedExtend(selector as unknown as JessNode)) {
-      this._error(':extend() is not allowed inside a pseudo-class selector', loc[0]);
+      this._error(':extend() is not allowed inside a pseudo-class selector', loc.start);
     }
     const baseRules = Array.isArray(base.rules) ? base.rules as JessNode[] : [];
 
@@ -1682,7 +1681,7 @@ export class LessGrammar extends CssParser {
     loc: LocationInfo,
     name: string
   ): JessNode {
-    const preludeText = this._source.slice(loc[0], loc[3]);
+    const preludeText = this._source.slice(loc.start, loc.end);
     const optMatch = /^\s*\(([^)]+)\)/.exec(preludeText.replace(/^@import\s*/, ''));
     const opts: string[] = optMatch ? optMatch[1]!.split(',').map(s => s.trim()) : [];
     const builtNodes = nodeChildren(children);
@@ -1825,9 +1824,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
     const comps = spannedComponents(raw);
-    const keywordEnd = comps[0]?.span.end ?? loc[0];
+    const keywordEnd = comps[0]?.span.end ?? loc.start;
     const braceComp = comps.find(c => c.comp === '{');
-    const braceStart = braceComp?.span.start ?? loc[3];
+    const braceStart = braceComp?.span.start ?? loc.end;
     const preludeText = this._source.slice(keywordEnd, braceStart).trim();
     return this._buildAtRuleFromParts(name, preludeText || undefined, nodeChildren(children), loc);
   }
@@ -2061,7 +2060,7 @@ export class LessGrammar extends CssParser {
     loc: LocationInfo,
     name: string
   ): JessNode {
-    const preludeText = this._source.slice(loc[0], loc[3]);
+    const preludeText = this._source.slice(loc.start, loc.end);
     const builtNodes = nodeChildren(children);
     const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
     let rawPath = '';

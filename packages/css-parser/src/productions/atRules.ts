@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { IOrAlt, IToken } from 'chevrotain';
@@ -509,7 +514,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 if (!RECORDING_PHASE) {
                   let [startOffset, startLine, startColumn] = $.endRule();
                   seq.value.unshift(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context));
-                  seq.location[0] = startOffset;
+                  seq.location.start = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
                   return new QueryCondition(seq.value, undefined, seq.location, this.context);
@@ -581,7 +586,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
               if (!RECORDING_PHASE) {
                 let [startOffset, startLine, startColumn] = $.endRule();
                 seq.value.unshift(rule1);
-                seq.location[0] = startOffset;
+                seq.location.start = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
                 return new QueryCondition(seq.value, undefined, seq.location, this.context);

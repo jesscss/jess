@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
@@ -783,7 +788,7 @@ export function varFunction(this: C, T: TokenMap) {
       let { startOffset, startLine, startColumn } = prop;
       args.adopt(propNode);
       args.value.unshift(propNode);
-      args.location[0] = startOffset;
+      args.location.start = startOffset;
       args.location[1] = startLine!;
       args.location[2] = startColumn!;
     }

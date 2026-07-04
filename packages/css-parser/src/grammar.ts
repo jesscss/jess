@@ -190,7 +190,11 @@ export const {
    */
   const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, optional(important), optional(literal(';')))),
+    // A value immediately followed by `{` is not a declaration but a nested
+    // ruleset whose selector looks declaration-like (`a:hover { … }`) — CSS
+    // Nesting's declaration-vs-rule ambiguity. The `not('{')` guard rejects the
+    // declaration parse so the enclosing choice falls through to `Ruleset`.
+    parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, not(literal('{')), optional(important), optional(literal(';')))),
     (c: any, r: any, s: any) => build('Declaration', c, r, s));
   /**
    * Custom property (`--foo: …`). Its value is a near-arbitrary declaration-value

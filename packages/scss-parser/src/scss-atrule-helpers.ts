@@ -7,6 +7,7 @@ import {
   Quoted,
   isNode,
   N,
+  sourceSpanOf,
   type Node,
   type LocationInfo,
   type ExtendSelectorKind,
@@ -33,10 +34,7 @@ export function defaultNamespaceFromPath(path: string): string | undefined {
 export function quotedLike(original: Quoted, nextValue: string, loc?: LocationInfo): Quoted {
   const quote = original.options?.quote ?? '"';
   const escaped = original.options?.escaped;
-  const nodeLoc: LocationInfo | undefined = loc
-    ?? (Array.isArray(original.location) && original.location.length === 6
-      ? (original.location as LocationInfo)
-      : undefined);
+  const nodeLoc: LocationInfo | undefined = loc ?? sourceSpanOf(original);
   return new Quoted(new Any(nextValue, { role: 'any' }), { quote, escaped }, nodeLoc);
 }
 

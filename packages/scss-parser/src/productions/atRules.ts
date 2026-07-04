@@ -2,7 +2,7 @@
 // SCSS at-rule production rules for ScssRecursiveParser
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from 'chevrotain';
 import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
@@ -279,7 +279,7 @@ function createNullParentAmpersand(context: any, selector?: Selector): Ampersand
 }
 
 function getNodeLocation(node: Node): LocationInfo | undefined {
-  return node.location.length === 6 ? node.location : undefined;
+  return node.location;
 }
 
 function prefixAtRootSelector(selector: Selector, context: any): Selector {

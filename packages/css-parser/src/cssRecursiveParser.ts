@@ -1,3 +1,7 @@
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 /**
  * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
@@ -567,7 +571,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
     let previous: Node | undefined;
     for (const rule of existingRules) {
-      rules.push(...collect(this.triviaMap.lookup(rule.location[0], 'before'), previous, rule));
+      rules.push(...collect(this.triviaMap.lookup(rule.location.start, 'before'), previous, rule));
       rules.push(rule);
       previous = rule;
     }

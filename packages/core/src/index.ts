@@ -26,6 +26,24 @@ export {
 export { type PrintOptions } from './tree/util/print.js';
 export { makeTrivia, createTriviaMap } from './tree/util/trivia.js';
 export {
+  sourceSpanOf,
+  spanStartOf,
+  spanEndOf,
+  setSourceSpan,
+  copySourceSpan,
+  isSourceFree,
+  fieldSpansOf,
+  setFieldSpans,
+  valueSpansOf,
+  setValueSpans,
+  cstStateOf,
+  setCstState,
+  cstChildrenOf,
+  setCstChildren,
+  type SourceSpan,
+  type Provenance
+} from './tree/util/provenance.js';
+export {
   coerceListItems,
   getListSeparator,
   isBracketedList,

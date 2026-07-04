@@ -70,8 +70,8 @@ import {
   AtRule,
   Log,
   Ruleset,
-  Log,
   SelectorCapture,
+  sourceSpanOf,
   type Selector
 } from '@jesscss/core';
 import {
@@ -111,7 +111,7 @@ type Child = JessNode | CSTLeaf | CSTError;
 // ---------------------------------------------------------------------------
 
 function spanToLocation(span: Span): LocationInfo {
-  return [span.start, 0, 0, span.end, 0, 0];
+  return { start: span.start, end: span.end };
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
@@ -880,7 +880,7 @@ export class ScssGrammar extends LessGrammar {
 
   protected override _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = this._flattenScssImportLists(nodeChildren(children));
-    const lifted = this._liftStandaloneComments(nodes, loc[0], loc[3], loc);
+    const lifted = this._liftStandaloneComments(nodes, loc.start, loc.end, loc);
     return new Rules(lifted, undefined, loc);
   }
 
@@ -919,7 +919,7 @@ export class ScssGrammar extends LessGrammar {
     const name = new Any('@at-root', { role: 'atkeyword' }, loc);
     this._error(
       '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
-      loc[0]
+      loc.start
     );
     return new AtRule(
       { name, prelude: prelude as Node, rules: body.rules },
@@ -1041,13 +1041,13 @@ export class ScssGrammar extends LessGrammar {
   ) {
     const pathNode = nodeChildren(children).find(n => isNode(n, N.Quoted)) as Quoted | undefined;
     const withConfig = nodeChildren(children).find(n => isNode(n, N.Collection)) as Collection | undefined;
-    const preludeText = this._source.slice(loc[0], loc[3]);
+    const preludeText = this._source.slice(loc.start, loc.end);
     const pathMatch = /(['"])([^'"]+)\1/.exec(preludeText);
     const afterPath = pathMatch
       ? preludeText.slice(preludeText.indexOf(pathMatch[0]) + pathMatch[0].length)
       : '';
     const preludeExtra = afterPath.replace(/\bwith\s*\([^)]*\)\s*;?\s*$/, '').replace(/;\s*$/, '').trim();
-    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc[0]));
+    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc.start));
 
     return new StyleImport(
       {
@@ -1198,9 +1198,9 @@ export class ScssGrammar extends LessGrammar {
     validateExtendTarget(
       target as Node,
       this._parseContext?.opts?.allowExtendSelectors,
-      msg => this._error(msg, loc[0])
+      msg => this._error(msg, loc.start)
     );
-    const prelude = this._source.slice(loc[0], loc[3]);
+    const prelude = this._source.slice(loc.start, loc.end);
     const namespace = /@extend\s+%/.test(prelude) || isPlaceholderExtendTarget(target)
       ? '*'
       : undefined;
@@ -1250,7 +1250,7 @@ export class ScssGrammar extends LessGrammar {
       const prelude = seq.value[0];
       const extra = seq.value[1];
       const extraText = extra && isNode(extra, N.Any) ? String((extra as Any).valueOf()).trim() : undefined;
-      const itemLoc = (Array.isArray(seq.location) ? seq.location : loc) as LocationInfo;
+      const itemLoc = sourceSpanOf(seq) ?? loc;
       if (!prelude) {
         continue;
       }

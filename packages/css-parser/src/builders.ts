@@ -11,11 +11,18 @@
 import type { Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
-  createPackedFieldSpans,
-  setPackedFieldSpan,
-  createPackedSegmentSpans,
-  setPackedSegmentSpan
-} from '@jesscss/parser';
+  fieldSpansOf,
+  setFieldSpans as setNodeFieldSpans,
+  valueSpansOf,
+  setValueSpans as setNodeValueSpans,
+  sourceSpanOf,
+  type SourceSpan
+} from '@jesscss/core';
+
+/** Source span of a rawChild: a jess node's provenance span, else a CST item's own `.span`. */
+function rawChildSpan(rc: unknown): Span | undefined {
+  return sourceSpanOf(rc as object) ?? (rc as { span?: Span }).span;
+}
 
 import {
   Node,
@@ -93,7 +100,7 @@ type Child = JessNode | CSTLeaf | CSTError;
 // ---------------------------------------------------------------------------
 
 function spanToLocation(span: Span): LocationInfo {
-  return [span.start, 0, 0, span.end, 0, 0];
+  return { start: span.start, end: span.end };
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
@@ -132,8 +139,11 @@ export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>):
   for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
     if (rc._tag === 'leaf' && rc.span) {
       out.push({ comp: rc.value ?? '', span: rc.span });
-    } else if (rc._tag === 'node' && (rc as unknown as JessNode).span) {
-      out.push({ comp: rc as unknown as JessNode, span: (rc as unknown as JessNode).span });
+    } else if (rc._tag === 'node') {
+      const sp = rawChildSpan(rc);
+      if (sp) {
+        out.push({ comp: rc as unknown as JessNode, span: sp });
+      }
     }
   }
   return out;
@@ -141,8 +151,11 @@ export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>):
 
 function firstRawNodeSpan(rawChildren: ReadonlyArray<{ _tag: string }>): Span | undefined {
   for (const rc of rawChildren as Array<{ _tag: string; span?: Span }>) {
-    if (rc._tag === 'node' && rc.span) {
-      return rc.span;
+    if (rc._tag === 'node') {
+      const sp = rawChildSpan(rc);
+      if (sp) {
+        return sp;
+      }
     }
   }
   return undefined;
@@ -154,7 +167,7 @@ const selectorListSpans = new WeakMap<object, Span[]>();
 function readPseudoArg(children: ReadonlyArray<Child>, pseudoName: string): {
   arg: Node | string | unknown[] | undefined;
   memberSpans?: Span[];
-  valueSpans?: number[];
+  valueSpans?: (SourceSpan | undefined)[];
 } {
   const keepStructured = SELECTOR_PSEUDOS.has(pseudoName.toLowerCase());
   for (const ch of children) {
@@ -165,12 +178,12 @@ function readPseudoArg(children: ReadonlyArray<Child>, pseudoName: string): {
       return { arg: ch, memberSpans: selectorListSpans.get(ch) };
     }
     if (ch._tag === 'node') {
-      const node = ch as unknown as JessNode & { value?: unknown; valueSpans?: number[] };
+      const node = ch as unknown as JessNode & { value?: unknown };
       if (Array.isArray(node.value) && selectorListSpans.has(node.value)) {
         return { arg: node.value, memberSpans: selectorListSpans.get(node.value) };
       }
       if (!keepStructured && Array.isArray(node.value)) {
-        return { arg: node.value, valueSpans: node.valueSpans };
+        return { arg: node.value, valueSpans: valueSpansOf(node) };
       }
       return { arg: node };
     }
@@ -185,10 +198,10 @@ function readRulesetSelector(children: ReadonlyArray<Child>): string | Selector 
   }
   // Collapsed selector-list / basic-selector builds land as bare strings or arrays.
   if (typeof first === 'string' || Array.isArray(first)) {
-    return first as string | Selector;
+    return first as unknown as string | Selector;
   }
   if (first._tag === 'node') {
-    return first as unknown as JessNode;
+    return first as unknown as string | Selector;
   }
   return (nodeChildren(children)[0] ?? '') as string | Selector;
 }
@@ -213,16 +226,14 @@ export function selectorListSpansFor(value: unknown): Span[] | undefined {
   return value && typeof value === 'object' ? selectorListSpans.get(value) : undefined;
 }
 
-export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: number, span: Span) {
-  const n = node as unknown as { fieldSpans?: number[] };
-  n.fieldSpans ??= createPackedFieldSpans(fieldCount);
-  setPackedFieldSpan(n.fieldSpans, fieldIndex, span.start, span.end);
+export function setFieldSpan(node: JessNode, fieldIndex: number, _fieldCount: number, span: Span) {
+  const spans: (SourceSpan | undefined)[] = (fieldSpansOf(node) ?? []).slice();
+  spans[fieldIndex] = { start: span.start, end: span.end };
+  setNodeFieldSpans(node, spans);
 }
 
 export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>) {
-  const packed = createPackedSegmentSpans(spans.length);
-  spans.forEach((s, i) => setPackedSegmentSpan(packed, i, s.start, s.end));
-  (node as unknown as { valueSpans?: number[] }).valueSpans = packed;
+  setNodeValueSpans(node, spans.map(s => ({ start: s.start, end: s.end })));
 }
 
 export function fieldIndexOf(node: JessNode, key: string): { index: number; count: number } {
@@ -423,11 +434,11 @@ export class CssParser {
     const out: JessNode[] = [];
     let gapStart = bodyStart;
     for (const rule of orderedRuleNodes) {
-      const nextStart = rule.location[0];
+      const nextStart = sourceSpanOf(rule)?.start;
       if (typeof nextStart === 'number' && nextStart >= gapStart) {
         const followingIsNestedRule = (rule as { type?: string }).type === 'Ruleset';
         out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
-        const nextEnd = rule.location[3];
+        const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
       }
       out.push(rule);
@@ -528,7 +539,7 @@ export class CssParser {
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
-    const lifted = this._liftStandaloneComments(nodes, loc[0], loc[3], loc);
+    const lifted = this._liftStandaloneComments(nodes, loc.start, loc.end, loc);
     return new Rules(lifted, undefined, loc);
   }
 
@@ -541,10 +552,10 @@ export class CssParser {
     const sel = spannedComponents(rawChildren)[0];
     const selectorSpan = sel?.span ?? firstRawNodeSpan(rawChildren);
     const rawRules = nodeChildren(children.slice(1));
-    const braceIdx = this._source.indexOf('{', selectorSpan ? selectorSpan.end : loc[0]);
-    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
-    const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
-    const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
+    const braceIdx = this._source.indexOf('{', selectorSpan ? selectorSpan.end : loc.start);
+    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
+    const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
+    const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
     const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
     const node = new Ruleset({ selector, rules }, undefined, loc);
     if (selectorSpan) {
@@ -635,20 +646,21 @@ export class CssParser {
 
     let prevEnd = span.start;
     for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
-      if ((rc._tag !== 'leaf' && rc._tag !== 'node') || !rc.span) {
+      const rcSpan = rawChildSpan(rc);
+      if ((rc._tag !== 'leaf' && rc._tag !== 'node') || !rcSpan) {
         continue;
       }
-      if (group.length > 0 && hasWhitespaceOutsideComments(this._source, prevEnd, rc.span.start)) {
+      if (group.length > 0 && hasWhitespaceOutsideComments(this._source, prevEnd, rcSpan.start)) {
         const prevSpanEnd = group[group.length - 1]!.span.end;
         flush();
         parts.push(' ');
-        partSpans.push({ start: prevSpanEnd, end: rc.span.start });
+        partSpans.push({ start: prevSpanEnd, end: rcSpan.start });
       }
       group.push({
         comp: rc._tag === 'leaf' ? (rc.value ?? '') : (rc as unknown as JessNode),
-        span: rc.span
+        span: rcSpan
       });
-      prevEnd = rc.span.end;
+      prevEnd = rcSpan.end;
     }
     flush();
 
@@ -697,7 +709,7 @@ export class CssParser {
     if (memberSpans) {
       setValueSpans(node as unknown as JessNode, memberSpans);
     } else if (valueSpans) {
-      (node as unknown as { valueSpans?: number[] }).valueSpans = valueSpans;
+      setNodeValueSpans(node, valueSpans);
     }
     return node;
   }
@@ -1061,24 +1073,41 @@ export class CssParser {
         undefined, preludeLoc
       )
       : undefined;
-    return new AtRule(
+    const node = new AtRule(
       { name, prelude: preludeNode, rules: nodeChildren(children) },
       undefined, loc
     );
+    // A string at-rule name has no span of its own; record it in fieldSpans (name
+    // = childKey slot 0) so name-boundary trivia can be anchored during printing.
+    this._setNameFieldSpan(node as unknown as JessNode, ls[0]?.span);
+    return node;
   }
 
   protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
     if (name.toLowerCase() === '@charset') {
-      const text = this._source.slice(loc[0], loc[3]);
+      const text = this._source.slice(loc.start, loc.end);
       return new Any(text, { role: 'charset' }, loc);
     }
     const preludeText = ls.slice(1).filter(l => l.value !== ';').map(l => l.value).join('').trim();
-    return new AtRuleStatement(
+    const node = new AtRuleStatement(
       { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
       undefined, loc
     );
+    this._setNameFieldSpan(node as unknown as JessNode, ls[0]?.span);
+    return node;
+  }
+
+  /** Record the `name` slot's source span in fieldSpans (name = childKey 0). */
+  private _setNameFieldSpan(node: JessNode, span: Span | undefined): void {
+    if (!span) {
+      return;
+    }
+    const { index, count } = fieldIndexOf(node, 'name');
+    if (index >= 0) {
+      setFieldSpan(node, index, count, span);
+    }
   }
 
   /**

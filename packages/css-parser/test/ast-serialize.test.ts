@@ -1,6 +1,5 @@
 import { parseCssFn } from '../src/grammar.js';
-import { N, isNode, serializeTypes, type Trivia } from '@jesscss/core';
-import { packedSpanStart, packedSpanEnd } from '@jesscss/parser';
+import { N, isNode, serializeTypes, type Trivia, fieldSpansOf, valueSpansOf, sourceSpanOf } from '@jesscss/core';
 
 const cssParser = { parse: (input: string) => parseCssFn(input) };
 
@@ -9,23 +8,23 @@ const triviaText = (t: Trivia | undefined): string | undefined =>
   t ? t.src.slice(t.start, t.end) : undefined;
 
 // Simple selectors, combinators, names, and plain values are plain strings (not
-// nodes), so source provenance lives in the parent node's packed fieldSpans
-// (by childKeys index) and valueSpans (by array-segment index).
+// nodes), so source provenance lives in the parent node's fieldSpans (by childKeys
+// index) and valueSpans (by array-segment index) — `{start,end}` slot spans.
 function childIndex(node: any, key: string): number {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
 }
 function fieldStart(node: any, key: string): number {
-  return packedSpanStart(node.fieldSpans, childIndex(node, key));
+  return fieldSpansOf(node)?.[childIndex(node, key)]?.start ?? -1;
 }
 function fieldEnd(node: any, key: string): number {
-  return packedSpanEnd(node.fieldSpans, childIndex(node, key));
+  return fieldSpansOf(node)?.[childIndex(node, key)]?.end ?? -1;
 }
 function valueStart(node: any, index: number): number {
-  return packedSpanStart(node.valueSpans, index);
+  return valueSpansOf(node)?.[index]?.start ?? -1;
 }
 function valueEnd(node: any, index: number): number {
-  return packedSpanEnd(node.valueSpans, index);
+  return valueSpansOf(node)?.[index]?.end ?? -1;
 }
 function selectorListMembers(selector: unknown): unknown[] {
   if (Array.isArray(selector)) {
@@ -334,10 +333,10 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(firstArg, N.Color)).toBe(true);
     expect(isNode(secondArg, N.Color)).toBe(true);
-    expect(triviaText(trivia.lookup(firstArg!.location[3], 'after'))).toBe(' /*{comment}*/');
+    expect(triviaText(trivia.lookup(sourceSpanOf(firstArg!)?.end, 'after'))).toBe(' /*{comment}*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstArg!.location[3]! && offset < secondArg!.location[0]!)
+        .filter(([offset]) => offset > sourceSpanOf(firstArg!)?.end! && offset < sourceSpanOf(secondArg!)?.start!)
         .map(([, t]) => triviaText(t))
     ).toEqual([' /*{comment}*/']);
   });
@@ -353,8 +352,8 @@ describe('serializeTypes coverage', () => {
     expect(selectorMemberValueOf(first)).toBe('#a');
     expect(selectorMemberValueOf(second)).toBe('.b');
     expect(selectorMemberValueOf(third)).toBe('.c');
-    expect(triviaText(trivia.lookup(packedSpanStart(ruleset.valueSpans, 1), 'before'))).toBe('\n/*x*//*y*/\n');
-    expect(triviaText(trivia.lookup(packedSpanStart(ruleset.valueSpans, 2), 'before'))).toBe('/*z*/');
+    expect(triviaText(trivia.lookup(valueStart(ruleset, 1), 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(valueStart(ruleset, 2), 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
@@ -367,8 +366,8 @@ describe('serializeTypes coverage', () => {
 
     expect(selectorMemberValueOf(first)).toBe('#comments');
     expect(selectorMemberValueOf(second)).toBe('.comments');
-    const firstEnd = packedSpanEnd(ruleset.valueSpans, 0);
-    const secondStart = packedSpanStart(ruleset.valueSpans, 1);
+    const firstEnd = valueEnd(ruleset, 0);
+    const secondStart = valueStart(ruleset, 1);
     expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]
@@ -473,8 +472,8 @@ describe('serializeTypes coverage', () => {
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
     expect(prelude.valueOf()).toBe('hover');
-    expect(triviaText(trivia.lookup(prelude.location[0], 'before'))).toBe(' /* Safari */ ');
-    expect(triviaText(trivia.lookup(prelude.location[3], 'after'))).toBe(' /* and Chrome */ ');
+    expect(triviaText(trivia.lookup(sourceSpanOf(prelude)?.start, 'before'))).toBe(' /* Safari */ ');
+    expect(triviaText(trivia.lookup(sourceSpanOf(prelude)?.end, 'after'))).toBe(' /* and Chrome */ ');
   });
 
   test('lists and sequences in values', () => {

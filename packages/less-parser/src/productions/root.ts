@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 // Root production rules for LessRecursiveParser
 // Converted from lines 1-1145 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../lessRecursiveParser.js';
@@ -83,7 +88,7 @@ function extendWithSelector(node: ExtendType, selector: Selector | undefined, co
     target: node.target,
     namespace: node.namespace,
     flag: node.flag
-  }, undefined, node.location.length === 6 ? node.location : undefined, context);
+  }, undefined, node.location, context);
 }
 
 function prependRules(rules: Rules, nodes: Node[], context: TreeContext): Rules {
@@ -979,7 +984,7 @@ export function mediaFeature(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   const [startOffset, startLine, startColumn] = $.endRule();
                   seq.value.unshift(createFeatureIdentNode(ident, 'ident'));
-                  seq.location[0] = startOffset;
+                  seq.location.start = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
                   return new QueryCondition(seq.value, undefined, seq.location, $.context);
@@ -1052,7 +1057,7 @@ export function mediaFeature(this: P, T: TokenMap) {
               if (!RECORDING_PHASE) {
                 const [startOffset, startLine, startColumn] = $.endRule();
                 seq.value.unshift(left);
-                seq.location[0] = startOffset;
+                seq.location.start = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
                 return new QueryCondition(seq.value, undefined, seq.location, $.context);

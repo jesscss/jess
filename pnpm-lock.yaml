@@ -312,9 +312,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -515,9 +512,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
@@ -540,9 +534,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -577,9 +568,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/style-resolver':
         specifier: workspace:*
         version: link:../style-resolver
@@ -627,9 +615,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
@@ -697,9 +682,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -722,8 +704,6 @@ importers:
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
-
-  packages/parser: {}
 
   packages/patch-css: {}
 
@@ -751,9 +731,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -6033,8 +6010,8 @@ packages:
     resolution: {integrity: sha512-xgAyonlVVS+q7Vc7qLW0UrJU7rSFcETRWsqdXZtjzRU8dF+6CkozTK4V4y1LwOX7j8r/vHphjDeMeGI4tNGeGA==}
     dev: true
 
-  /@napi-rs/wasm-runtime@1.1.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
-    resolution: {integrity: sha512-AWPoBRJ9tsnVhor4sjO7rkni+7p+2IAEFj6cx06UgP10jkQHqay/36uRV/bFkgrh18D9vb4cr8Q0Pthskgzy+Q==}
+  /@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+    resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
     requiresBuild: true
     peerDependencies:
       '@emnapi/core': ^1.7.1
@@ -6044,18 +6021,6 @@ packages:
       '@emnapi/runtime': 1.10.0
       '@tybys/wasm-util': 0.10.3
     dev: true
-    optional: true
-
-  /@napi-rs/wasm-runtime@1.1.5(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1):
-    resolution: {integrity: sha512-AWPoBRJ9tsnVhor4sjO7rkni+7p+2IAEFj6cx06UgP10jkQHqay/36uRV/bFkgrh18D9vb4cr8Q0Pthskgzy+Q==}
-    requiresBuild: true
-    peerDependencies:
-      '@emnapi/core': ^1.7.1
-      '@emnapi/runtime': ^1.7.1
-    dependencies:
-      '@emnapi/core': 1.11.1
-      '@emnapi/runtime': 1.11.1
-      '@tybys/wasm-util': 0.10.3
     optional: true
 
   /@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1):
@@ -6068,7 +6033,6 @@ packages:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
       '@tybys/wasm-util': 0.10.3
-    dev: false
     optional: true
 
   /@nearform/heap-profiler@2.0.0:
@@ -6249,7 +6213,7 @@ packages:
     dependencies:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
-      '@napi-rs/wasm-runtime': 1.1.5(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     dev: false
     optional: true
 
@@ -6904,7 +6868,7 @@ packages:
     cpu: [wasm32]
     requiresBuild: true
     dependencies:
-      '@napi-rs/wasm-runtime': 1.1.5(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -6919,7 +6883,7 @@ packages:
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@napi-rs/wasm-runtime': 1.1.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     dev: true
     optional: true
 

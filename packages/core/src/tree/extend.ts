@@ -10,7 +10,7 @@ import {
   type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
-import { attachSelectorBitLibrary, Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Rules } from './rules.js';
 import type { Ruleset } from './ruleset.js';
@@ -45,8 +45,9 @@ export enum ExtendFlag {
 export type ExtendValue = {
   /** The current selector. By default is `&`. An array stands in for a selector list. */
   selector?: Selector | SelectorListItem[];
-  /** The target to extend. An array stands in for a selector list. */
-  target: Selector | SelectorListItem[];
+  /** The target to extend. Any selector-like: a node, a bare string (e.g. `&`), or
+   * an array standing in for a selector list. */
+  target: SelectorLike;
   /**
    * Optional namespace scoping for extend targets.
    *
@@ -72,7 +73,7 @@ export class Extend extends Node<ExtendValue> {
   static override childKeys = ['selector', 'target'] as const;
 
   readonly selector: Selector | SelectorListItem[] | undefined;
-  readonly target: Selector | SelectorListItem[];
+  readonly target: SelectorLike;
   readonly namespace: string | undefined;
   readonly flag: ExtendFlag | undefined;
 
