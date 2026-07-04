@@ -1,6 +1,6 @@
 # Ponytail Audit: @jesscss/core Slimming Plan
 
-Date: 2026-07-03 · Branch context: `feature/parseman` · Status: plan only, nothing applied.
+Branch: `feature/parseman`.
 
 Method: [ponytail](https://github.com/DietrichGebert/ponytail) decision ladder — YAGNI →
 reuse → stdlib/platform → existing deps → minimal expression → full implementation last.
@@ -9,7 +9,32 @@ table. This plan complements (does not replace) the aggressive-cutting program i
 `docs/future/core-architecture/HANDOFF.md`; every item below is meant to be executed as a
 prosecutable pass under that regime.
 
-Snapshot: `packages/core/src` = 145 non-test files, ~55k LOC. Largest:
+## Re-baseline — HEAD `22b8a70f0` (SCSS functional-parser tranche 8)
+
+The 7 audit commits (`c88672538`..`c9542a1b2`) are **preserved** — they are ancestors of
+HEAD, now ~15 commits deep beneath continued parseman grammar-integration + SCSS tranche
+work. Verified applied in HEAD: E6 core-side (`spanStart`/`spanEnd`), A1/A2 explicit
+exports, C2/C5 dead-code, B2 childKeys regime, E2 `_createMinimalNil`, B5 Reflect slice.
+
+**Intervening work by the branch owner that overlaps/overtakes this audit** (do not
+re-propose): `evaluated` flag deleted and re-eval gate is now `!F_STATIC` (§2.7); selector
+key-sets extracted to a `SelectorAnalysis` service (nodes no longer own key-set
+methods/fields — subsumes the selector-duplication finding under B); combinator
+construction flipped to string leaves + dead implicit-ampersand/invisible-combinator code
+removed (advances C4); per-instance `defineProperties` replaced with plain fields + `toJSON`
+(the node-shape perf work under E1/E4); single-frame scope migration with multiple
+`_passedRulesWrapper`/wrapper eliminations (adjacent to B1); `adopt`+`inherit` collapsed
+toward never-reparent (the E11/frozen precondition — in progress).
+
+**Needs a decision (⚠):** `allowRoot`/`allowRuleRoot` are now **fully deleted** at HEAD
+(base fields + all 25 overrides — my sed swept into a later broad commit). Per the owner
+these are *unimplemented* Less-4.x root-validation scaffolding (eval-time throw for
+misplaced nodes), not true dead code. Options: (a) leave deleted and re-add the fields
+*together with* the read/throw logic when root-validation is implemented (YAGNI-correct —
+write-only fields are themselves dead weight); (b) restore now as intended API stubs. See
+E12.
+
+Snapshot (at audit start): `packages/core/src` ≈ 145 non-test files, ~55k LOC. Largest:
 `tree/rules.ts` 6,247 · `tree/util/extend.ts` 4,287 · `tree/reference.ts` 3,825 ·
 `tree/ruleset.ts` 2,437 · `tree/util/selector-match-core.ts` 2,111 · `tree/node-base.ts` 1,623.
 
@@ -283,10 +308,7 @@ direction.
   consumer-breaking:
   - `generated` → **F_GENERATED** (touches `inherit`'s `generated ||=`; becomes flag OR).
   - `registrationPrepared` → **F_REG_PREPARED**.
-  - `allowRoot` / `allowRuleRoot` → **prototype defaults** (delete the base `= false`
-    instance fields; the 25 subclass `= true` overrides become `X.prototype.allowRoot =
-    true`). Removes two own boolean properties from *every* node — the single biggest
-    per-node field win here.
+  - `allowRoot` / `allowRuleRoot` → **already deleted at HEAD** (see E12). Not a fold.
   - `hoistToRoot` (tri-state) → **two flag bits** (read in 9 files, hot).
   - `fullRender` → **delete** (see E10 — it is set `true` only in test setup; 22
     production render guards check a field no production path ever writes).
@@ -351,6 +373,19 @@ direction.
     never read, **leaf-freezing is already dead** and `reuseAsLeaf`/`reuseLeaf` can drop
     the `frozen = true` immediately, shrinking the guard's live surface to
     containers/derived only. Verify before cutting.
+  - Note: the branch owner has already collapsed `adopt`+`inherit` toward never-reparent
+    (reflog: "only parent if unparented"), which is the same precondition — coordinate so
+    this doesn't duplicate in-flight work.
+
+- **E12. `allowRoot`/`allowRuleRoot` — DECISION PENDING (⚠ deleted at HEAD).** Currently
+  removed (base fields + 25 overrides) but they are Less-4.x root-validation scaffolding
+  the owner flagged as intended-but-unimplemented (eval throws on a node placed where its
+  `allowRoot`/`allowRuleRoot` forbids). They were **write-only** in Jess — set by 25
+  classes, read nowhere. Ponytail-correct resolution: keep deleted; when root-validation is
+  actually implemented, reintroduce the fields *with* the reading/throwing eval logic in
+  the same pass, so they are never write-only. Reintroducing them now (option b) re-adds
+  dead weight. Confirm the Less-4.x semantics from `~/git/oss/less.js` before implementing.
+  Owner's call; default recommendation = leave deleted, implement-with-reads later.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
@@ -439,8 +474,11 @@ progress tracker — statuses in the sections above are detail, not the index.
       exports-set/parentScope/isRuntime, five zero-consumer conversion plugins,
       use-webpack-resolver.ts, debug-log.ts) — `9ec8b175f`
 - [ ] **C4/C6/C7** remaining dead-code candidates: vestigial node classes
-      (Combinator post-flip, selector-capture, selector-interpolated, rules-raw,
-      range, log), visitor fallbacks, duplicated `getWriterTextSincePosition` ×5
+      (selector-capture, selector-interpolated, rules-raw, range, log), visitor
+      fallbacks, duplicated `getWriterTextSincePosition` ×5. NOTE: `Combinator`
+      construction was already flipped to string leaves by the owner + dead
+      implicit-ampersand/invisible-combinator code removed — re-verify whether
+      the `Combinator` class is still constructed before proposing its deletion.
 - [x] **B2 (legacy regime)** childKeys migration is complete class-side (all 5
       undeclared classes inherit correct keys); deleted the `undefined` legacy
       arm from `parentChildren` and narrowed `static childKeys` to
@@ -469,10 +507,14 @@ progress tracker — statuses in the sections above are detail, not the index.
       changes placement/ownership semantics and belongs to the binding/lookup
       lane, not a mechanical pass. `Node.create` has 8 live internal callers.
 - [ ] **B3** type-check idiom unification (isNode everywhere hot)
-- [ ] **E3 (mechanical slice)** field→flag/prototype folds, all 0-external-read:
-      generated/registrationPrepared → flags; allowRoot/allowRuleRoot →
-      prototype; hoistToRoot → 2 flag bits. Low risk, gate like the deletion passes.
-      (frozen removed from this slice — see E11)
+- [ ] **E3 (mechanical slice)** field→flag folds, 0-external-read:
+      generated → F_GENERATED; registrationPrepared → F_REG_PREPARED;
+      hoistToRoot → 2 flag bits. Getter/setter over flag (like `visible`) keeps
+      all call sites unchanged — single-file node-base edits. Low risk, gate like
+      the deletion passes. (frozen removed — see E11; allowRoot removed — see E12)
+- [ ] **E12 (⚠ decision)** `allowRoot`/`allowRuleRoot` currently deleted at HEAD;
+      decide keep-deleted (default) vs restore-as-stubs vs implement-with-reads.
+      Owner flagged as Less-4.x root-validation scaffolding, not true dead code.
 - [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
       base per-node probe + 5 casts); selector flags → `Selector.inherit`.
       Binding-lane, benchmark + full-suite gated
