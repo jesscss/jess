@@ -402,6 +402,18 @@ direction.
     `Quoted.allowRoot = escaped` — handle the escaped-quoted-at-statement case explicitly.)
   Decision: **keep both deleted.** The feature to build later is `checkValidNodes` as a
   bitmask predicate, tracked as a v5 error-reporting item, not a field restore.
+  - **Demand is real but latent (~10 fixtures):** Less ships
+    `packages/test-data/tests-error/eval/functions-{1,3-assignment,4-call,10-keyword,
+    11-operation,12-quoted,13-selector,14-url,15-value}.txt` and `detached-ruleset-3.txt`,
+    each asserting one of the three throws. None are wired into Jess's harness yet → no
+    currently-failing target. So the demand activates when the eval-error corpus is ported.
+  - **Sequencing (recommended):** do it test-driven — enable those fixtures first (or add a
+    core unit test constructing a Rules with a bare value node), then implement to turn them
+    green, build-gated. NOT blind: the `jess` package does not build in this worktree
+    (rolldown-dts/ts-rc), and the message uses Less type names (Keyword/Operation/Quoted/
+    Url/Value/Assignment) that must be mapped to Jess types (Any/Dimension/…). Placement is
+    the render/eval Rules-body pass — currently being edited by the owner
+    (`serialize-helper.ts`), so land after that to avoid collision.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
