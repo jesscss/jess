@@ -1677,21 +1677,28 @@ describe('AtRule', () => {
   });
 
   it('serializes comment trivia between at-rule preludes and blocks', () => {
+    // Source layout ("|" = offset):
+    //   @-webkit-keyframes /* Safari */ hover /* and Chrome */ {
+    //   0                18            32    37                55
+    // The name is a bare STRING with no span of its own, so its source span is
+    // carried on the AtRule's fieldSpans (name = slot 0 → [0,18]); the prelude
+    // node carries [32,37]. Name-boundary trivia is resolved from those offsets.
+    const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
     const name = '@-webkit-keyframes';
-    // Name is a bare string (source end offset 17); its span is not a node.
-    const nameEndOffset = 17;
     const prelude = any('hover', { role: 'keyword' });
-    prelude._location = [32, 1, 33, 36, 1, 37];
-    const leading = run(' /* Safari */ ');
-    const trailing = run(' /* and Chrome */ ');
+    prelude._location = [32, 1, 33, 37, 1, 38];
+    // Runs carry their REAL source spans — the offset model validates that a
+    // between-offsets run actually sits in the [nameEnd, preludeStart) gap.
+    const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
+    const trailing = makeTrivia(src, 37, 55); // " /* and Chrome */ "
     const trivia = createTriviaMap({
       before: new Map([
-        [prelude.location[0], leading],
+        [32, interstitial],
         [55, trailing]
       ]),
       after: new Map([
-        [nameEndOffset, leading],
-        [prelude.location[3], trailing]
+        [18, interstitial],
+        [37, trailing]
       ])
     }) satisfies TriviaMap;
     const node = atrule({
@@ -1706,6 +1713,8 @@ describe('AtRule', () => {
         })
       ]
     });
+    // The name's source span lives on the AtRule's fieldSpans (name slot [0,18]).
+    node.fieldSpans = [0, 18, 0];
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });

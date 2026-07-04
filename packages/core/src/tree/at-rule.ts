@@ -15,7 +15,9 @@ import {
   createTriviaMap,
   emitCommentTriviaAfterNode,
   emitCommentTriviaBetweenNodes,
-  emitNodeSourceSyntaxWithTrivia
+  emitNodeSourceSyntaxWithTrivia,
+  consumeTriviaBetweenOffsets,
+  emitTriviaTokens
 } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
@@ -193,6 +195,30 @@ function renderAtRuleBetweenNameAndPreludeTrivia(
     ...printOptions,
     writer
   });
+  return writer.toString();
+}
+
+/**
+ * Interstitial trivia (comments) between a STRING at-rule name and its prelude.
+ * A bare string carries no `spanEnd`, so its source span comes from the AtRule's
+ * `fieldSpans` (the `name` slot); the prelude start is the following slot's start.
+ * This is the offset-anchored form of `renderAtRuleBetweenNameAndPreludeTrivia`
+ * (see docs/future/trivia-offset-inference-model.md).
+ */
+function renderAtRuleBetweenOffsetsTrivia(
+  nameEnd: number | undefined,
+  preludeStart: number | undefined,
+  printOptions: FinalPrintOptions
+): string {
+  if (nameEnd === undefined || preludeStart === undefined) {
+    return '';
+  }
+  const writer = new OutputWriter(printOptions.compress);
+  const opts = { ...printOptions, writer };
+  const run = consumeTriviaBetweenOffsets(opts.trivia, nameEnd, preludeStart, opts);
+  if (run) {
+    emitTriviaTokens(run, opts);
+  }
   return writer.toString();
 }
 
@@ -654,6 +680,26 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   private atRuleNameText(): string {
     return typeof this.name === 'string' ? this.name : this.name.valueOf();
+  }
+
+  /**
+   * Source end offset of the (string) `name` slot, from `fieldSpans` (childKeys
+   * order: name=slot 0, prelude=1, rules=2; each slot is a `[start, end, flags]`
+   * triple). Undefined when no scanner spans were captured.
+   */
+  private _nameSlotEnd(): number | undefined {
+    const fs = this.fieldSpans;
+    return fs && fs.length >= 2 ? fs[1] : undefined;
+  }
+
+  /** Source start offset of the prelude: the prelude node's span, else `fieldSpans` slot 1. */
+  private _preludeStartOffset(): number | undefined {
+    const p = this.prelude;
+    if (p !== undefined && typeof p !== 'string' && p.spanStart !== undefined) {
+      return p.spanStart;
+    }
+    const fs = this.fieldSpans;
+    return fs && fs.length >= 4 ? fs[3] : undefined;
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
@@ -1471,14 +1517,29 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
           ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
           : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
-        // Collapse the name/prelude boundary to a single space: the prelude may
-        // carry leading whitespace of its own, so trim it and re-add exactly one
-        // space unless the name already ends with whitespace.
         const normalizedPrelude = trimAtRuleLeadingWhitespace(preludeOut);
-        if (!endsWithAtRuleWhitespace(this.name)) {
-          out += ' ';
+        // Name-boundary trivia: a string name has no span, so its end offset comes
+        // from the AtRule's fieldSpans (name slot 0); the prelude start is the
+        // prelude node's span (or fieldSpans slot 1). If a comment lives in that
+        // gap, it carries its own spacing — emit it verbatim between name and
+        // prelude. Otherwise collapse the boundary to a single space.
+        const interstitial = renderAtRuleBetweenOffsetsTrivia(
+          this._nameSlotEnd(),
+          this._preludeStartOffset(),
+          options
+        );
+        if (interstitial) {
+          out += interstitial + normalizedPrelude;
+        } else {
+          if (!endsWithAtRuleWhitespace(this.name)) {
+            out += ' ';
+          }
+          out += normalizedPrelude;
         }
-        out += normalizedPrelude;
+        // Post-prelude trivia: a comment between the prelude and the block/`;`.
+        if (typeof this.prelude !== 'string' && this.prelude !== undefined) {
+          out += renderAtRulePostPreludeTrivia(this.prelude, options);
+        }
       }
       return rules
         ? normalizeIndent(trimAtRuleTrailingWhitespace(out) + ' {', idt) + '\n'
