@@ -2441,7 +2441,7 @@ describe('Style import', () => {
       if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected inline wrapped import child to be AtRule');
       }
-      expect((wrappedImport.rules[0] as any).name.toTrimmedString()).toBe('@layer');
+      expect(String((wrappedImport.rules[0] as any).name)).toBe('@layer');
       const supportsRulesArr = (wrappedImport.rules[0] as any).rules as Node[];
       expect(supportsRulesArr).toBeInstanceOf(Array);
       expect(isNode(supportsRulesArr[0], N.AtRule)).toBe(true);
