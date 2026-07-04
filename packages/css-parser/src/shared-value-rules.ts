@@ -44,18 +44,18 @@ export const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
 export const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 
 /** `Quoted` — a single- or double-quoted string value. Identical in css & less. */
-export const stringRules = (g: any, { build }: Deps) => ({
-  Quoted: node('Quoted', choice(singleStr, doubleStr), (c: any, r: any, s: any) => build('Quoted', c, r, s))
+export const stringRules = (g: any) => ({
+  Quoted: node('Quoted', choice(singleStr, doubleStr))
 });
 
 /** `Num` and `Color` — bare numeric + hex-color leaves. Identical in css & less. */
-export const numericRules = (g: any, { build }: Deps) => {
+export const numericRules = (g: any) => {
   // bare number; the not()-lookahead is folded into the regex → one match, one leaf.
   const numTok = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/);
   const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
   return {
-    Num: node('Num', numTok, (c: any, r: any, s: any) => build('Num', c, r, s)),
-    Color: node('Color', colorHex, (c: any, r: any, s: any) => build('Color', c, r, s))
+    Num: node('Num', numTok),
+    Color: node('Color', colorHex)
   };
 };
 
@@ -64,13 +64,11 @@ export const numericRules = (g: any, { build }: Deps) => {
  * `g.calcBody` (each grammar's own sub-grammar) and `g.rw` (each grammar's trivia),
  * so the one-line wrappers are shared while the bodies stay dialect-specific.
  */
-export const parenRules = (g: any, { build }: Deps) => ({
+export const parenRules = (g: any) => ({
   Paren: node('Paren',
-    parser({ trivia: g.rw }, sequence(literal('('), g.parenBody)),
-    (c: any, r: any, s: any) => build('Paren', c, r, s)),
+    parser({ trivia: g.rw }, sequence(literal('('), g.parenBody))),
   CalcCall: node('Call',
-    parser({ trivia: g.rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)),
-    (c: any, r: any, s: any) => build('Call', c, r, s))
+    parser({ trivia: g.rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)))
 });
 
 /**
@@ -80,7 +78,7 @@ export const parenRules = (g: any, { build }: Deps) => ({
  * `QueryAtRuleBlock` (which differs — Less commits its opening brace) stays in each
  * grammar and reads `g.queryPrelude` from here.
  */
-export const queryRules = (g: any, { build }: Deps) => {
+export const queryRules = (g: any) => {
   const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const mfComparison = regex(/<=|>=|[<>=]/);
   // Optional leading container name — an ident that is NOT a query keyword.
@@ -90,17 +88,14 @@ export const queryRules = (g: any, { build }: Deps) => {
       parser({ trivia: g.rw }, sequence(ident, optional(choice(
         sequence(literal(':'), g.valueList),
         sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
-      )))),
-      (c: any, r: any, s: any) => build('QueryFeature', c, r, s)),
+      ))))),
     QueryInParens: node('QueryInParens',
-      parser({ trivia: g.rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))),
-      (c: any, r: any, s: any) => build('QueryInParens', c, r, s)),
+      parser({ trivia: g.rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')')))),
     QueryCondition: node('QueryCondition',
       parser({ trivia: g.rw }, choice(
         sequence(regex(/not(?![-\w])/i), g.QueryInParens),
         sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
-      )),
-      (c: any, r: any, s: any) => build('QueryCondition', c, r, s)),
+      ))),
     queryPrelude: parser({ trivia: g.rw },
       sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))))
   };

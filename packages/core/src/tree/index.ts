@@ -60,7 +60,6 @@ export * from './range.js';
 export * from './ruleset.js';
 export * from './rules.js';
 export * from './stylesheet.js';
-export * from './rules-raw.js';
 export * from './collection.js';
 export * from './selector.js';
 export * from './selector-attr.js';

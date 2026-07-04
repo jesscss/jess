@@ -51,7 +51,6 @@ import {
   range,
   ref,
   rest,
-  rawrules,
   rules,
   ruleset,
   seq,
@@ -421,12 +420,9 @@ describe('renderNodeToBuffer', () => {
       { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
-      { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
       { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
-
-    expect(cases).toHaveLength(19);
 
     for (const item of cases) {
       const context = new Context();

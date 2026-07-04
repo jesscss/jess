@@ -10,7 +10,9 @@ export {
   type Component, type Spanned
 } from './builders.js';
 export {
+  cssGrammar,
   parseCssFn, toParseError, runFunctionalParse,
   type FunctionalParseHost, type RunFunctionalParseOptions
 } from './grammar.js';
-export { numericRules, parenRules, queryRules, stringRules, singleStr, doubleStr } from './shared-value-rules.js';
+
+export * from './grammar.js';

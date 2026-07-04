@@ -3754,7 +3754,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._sourceRoot = this;
     this._treeContext = treeContext;
     // Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
-    // Stylesheet, Collection, RawRules) are valid statements in a rules body.
+    // Stylesheet, Collection) are valid statements in a rules body.
     this.addFlag(F_ALLOW_ROOT);
   }
 

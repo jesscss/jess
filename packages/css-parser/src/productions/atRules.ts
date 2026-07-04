@@ -13,7 +13,7 @@ import {
   type LocationInfo,
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
-  Block, RawRules
+  Block
 } from '@jesscss/core';
 
 type C = CssRecursiveParser;

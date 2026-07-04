@@ -11,7 +11,7 @@ import { EMPTY_ALT } from 'chevrotain';
 import {
   type LocationInfo,
   Node, Any, AtRule, AtRuleStatement, Rules, Sequence, List,
-  QueryCondition, Keyword, Paren, Call, Block, RawRules,
+  QueryCondition, Keyword, Paren, Call, Block,
   Url
 } from '@jesscss/core';
 import type { AltContext } from './atRules.js';
@@ -774,8 +774,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
           // Create a single Sequence from all inner nodes, so serialization treats it as one unit
           const seqLoc = $.getLocationFromNodes(values!);
           const seq = new Sequence(values!, undefined, seqLoc, this.context);
-          // Use RawRules to avoid inserting newlines/indentation during serialization
-          rules = new RawRules([seq], undefined, seqLoc, this.context);
+          rules = new Rules([seq], undefined, seqLoc, this.context);
         }
       }
       return new AtRule({
