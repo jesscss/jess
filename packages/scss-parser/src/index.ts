@@ -4,10 +4,10 @@ export * from './scssParser.js';
 export { value as scssValueProduction } from './productions/values.js';
 
 export { ScssGrammar } from './builders.js';
-export { scssGrammarRules } from './grammar-rules.js';
+export { scssGrammar } from './grammar.js';
 
-import { ScssParser, parseScssFn, scssRules, build, type ScssFnParseResult, type ScssFnParseOptions } from './grammar.js';
-export { ScssParser, ScssParserParseman, parseScssFn, scssRules, build, type ScssFnParseResult, type ScssFnParseOptions };
+import { ScssParser } from './functional-parser.js';
+export { ScssParser, ScssParserParseman, parseScssFn, type ScssFnParseResult, type ScssFnParseOptions } from './functional-parser.js';
 
 // Chevrotain parser — kept for lexer/token tests and gradual migration.
 export type { ScssRules, SyntacticContentAssistSuggestion } from './scssParser.js';

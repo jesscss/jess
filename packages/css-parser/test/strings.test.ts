@@ -1,5 +1,4 @@
-import { parseCssFn } from '../src/grammar.js';
-
+import { parseCssFn } from '../src/functional-parser.js';
 
 describe('quoted strings', () => {
   it('parses double-quoted string with escaped line continuation', () => {

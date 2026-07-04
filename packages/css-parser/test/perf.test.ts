@@ -1,5 +1,5 @@
 import { describe, test } from 'vitest';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { resolveLessTestDataRoot } from './test-data.js';

@@ -1,4 +1,4 @@
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { N, isNode, serializeTypes, type Trivia, fieldSpansOf, valueSpansOf, sourceSpanOf } from '@jesscss/core';
 
 const cssParser = { parse: (input: string) => parseCssFn(input) };

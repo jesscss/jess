@@ -4,7 +4,7 @@
  * of CSS constructs. (Previously compared against the class-based CssParser;
  * that class is now builder-only, so this suite is the authoritative coverage.)
  */
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { serializeTypes, isNode, N } from '@jesscss/core';
 
 const CASES: string[] = [

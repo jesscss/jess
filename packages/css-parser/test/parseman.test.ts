@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { Ruleset, Declaration } from '@jesscss/core';
 
 describe('CssParser (Parséman)', () => {

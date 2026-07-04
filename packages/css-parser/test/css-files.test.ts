@@ -1,8 +1,7 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseCssFn } from '../src/grammar.js';
-
+import { parseCssFn } from '../src/functional-parser.js';
 
 describe('regular CSS - local fixtures', () => {
   const baseDir = path.join(__dirname, 'css');

@@ -4,7 +4,7 @@
  * features before wiring it in as the default parser.
  */
 import { describe, it, expect } from 'vitest';
-import { parseJessFn } from '../src/grammar.js';
+import { parseJessFn } from '../src/functional-parser.js';
 
 function parse(input: string, rule = 'stylesheet') {
   return parseJessFn(input, rule);

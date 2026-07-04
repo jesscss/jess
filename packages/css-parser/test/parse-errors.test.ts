@@ -11,7 +11,7 @@
 import { describe, test, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { JessError } from '@jesscss/core';
 
 const dir = path.join(__dirname, 'css', 'errors');

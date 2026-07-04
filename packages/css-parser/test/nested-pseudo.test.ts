@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 
 describe('nested pseudo-selector parsing', () => {
   test('a:hover nested in rule block should parse without errors', () => {

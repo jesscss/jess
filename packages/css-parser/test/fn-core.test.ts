@@ -1,4 +1,4 @@
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { serializeTypes } from '@jesscss/core';
 
 describe('functional CSS grammar — core', () => {

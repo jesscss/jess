@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { serializeTypes } from '@jesscss/core';
 
 // Migrated off the retired Chevrotain parser to the functional Parséman grammar.
@@ -7,7 +7,6 @@ import { serializeTypes } from '@jesscss/core';
 // nodes, `role=operator`, `style()`/`size()`/`scroll-state()` as `Call`) that the
 // functional grammar does not model yet — it scans the prelude flat. Un-skip when
 // that modeling lands. TODO(functional-parser): task #10 (at-rule prelude modeling).
-
 
 type SerializedTestNode = {
   type?: string;

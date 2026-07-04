@@ -11,7 +11,7 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseLessFn } from '../src/grammar.js';
+import { parseLessFn } from '../src/functional-parser.js';
 import { resolveLessTestDataRoot } from './test-data.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));

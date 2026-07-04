@@ -15,12 +15,6 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
-    "./shared-value-rules": {
-      "types": "./lib/index.d.ts",
-      "source": "./src/shared-value-rules.ts",
-      "import": "./lib/index.js",
-      "require": "./lib/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

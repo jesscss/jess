@@ -8,7 +8,7 @@
  * -> Keyword, `(X)` -> Paren, prelude wrapped in a Sequence.
  */
 import { describe, test, expect } from 'vitest';
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { N, isNode, serializeTypes } from '@jesscss/core';
 
 // Deliberately `any`: callers walk the prelude structurally (.value[0], etc.).

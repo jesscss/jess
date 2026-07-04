@@ -7,9 +7,9 @@ export { LessParser as LessParserChevrotain } from './lessParser.js';
 
 export { LessGrammar } from './builders.js';
 
-import { LessParser } from './grammar.js';
+import { LessParser } from './functional-parser.js';
 export { LessParser };
-export { parseLessFn, type LessFnParseResult } from './grammar.js';
-export { lessGrammarRules, type LessGrammarDeps } from './grammar-rules.js';
+export { lessGrammar } from './grammar.js';
+export { parseLessFn, type LessFnParseResult } from './functional-parser.js';
 
 export const Parser = LessParser;
