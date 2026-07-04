@@ -79,21 +79,28 @@ through `getReferenceNotFoundError` / `finalizeFallbackReferenceResult`. Single-
 lookup isn't resolving bindings that should exist. Deeper than Focus D (scope-frame
 resolution, not mechanical).
 
-## Focus D — strings-not-nodes render (progress: 85 → 69 stable, zero regressions)
+## Focus D — strings-not-nodes render (progress: 85 → 67 stable, zero regressions)
 
-The **mechanical** string-serialization cluster is cleared (commits after 47a6ca6df):
+**The selector-serialization (Theme A) cluster is GREEN.** The render path no longer
+calls node methods on bare strings, and the header emitter is unified:
 - [x] All on-string render **crashes** gone — `ensureSelectorVisible`/`needsVisibleSelectorClone`
   array-hoist, `clone(true)→clone()` (old deep-clone API), `String(atRule.name)`.
 - [x] **Stale materialize-at-registration tests deleted** (string→node SelectorList/
   ComplexSelector chain was proven dead + removed) — 10 blocks from string-backed-nodes.
 - [x] **serializeTypes snapshots** updated to compact single-element arrays;
-  string-backed-nodes.test.ts fully green.
+  string-backed-nodes.test.ts fully green (canonical Theme A test, 13 cases).
+- [x] **Unified selector-list emission** — the bare string/array header surface
+  (`emitSelectorListLike`) and the `SelectorList` node now share `emitSelectorListItems`:
+  `,\n<indent>` line breaks + `:is()` hoisting + reference filter for both. Clears the
+  collapsed-array `:is()` multi-selector header (ampersand test).
 
-Remaining string failures are **genuine bugs**, not mechanical, and overlap deferred work:
+Remaining string failures are **NOT selector serialization** — genuine eval bugs, out of
+this goal's scope, overlapping deferred work:
 - [ ] **Trivia loss** — a string-name declaration drops name-boundary comments
   (`color/* c */: grey` → `color: grey`). fieldSpans-anchored trivia emission (task #18).
-- [ ] **Eval-output diffs** — recursive-mixin / merge-chain / extend output differs;
-  these are eval correctness, coupled to Focus E lookup (deferred), not serialization.
+- [ ] **Eval-output / collapse diffs** — recursive-mixin / merge-chain / extend / nesting-
+  collapse output differs (e.g. a hoisted `.parent` wrapper ruleset dropped under `@media`);
+  eval correctness coupled to Focus E lookup + the deferred F_VISIBLE eval stomps, not render.
 
 ## Focus D.1 — `F_VISIBLE` is a by-type property (major project; scoped)
 
