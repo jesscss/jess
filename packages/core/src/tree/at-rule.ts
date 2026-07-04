@@ -831,7 +831,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     const opts = getPrintOptions(options);

@@ -77,7 +77,6 @@ function getMixinWithContext(context: Context, n: Rules, key: string, opts: Call
 
 describe('Style import', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
 
   beforeEach(() => {

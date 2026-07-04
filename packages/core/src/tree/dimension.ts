@@ -312,7 +312,7 @@ export class Dimension extends Node<DimensionValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     const out = this.serializeSyntax();

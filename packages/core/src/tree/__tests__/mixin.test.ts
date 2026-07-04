@@ -100,10 +100,8 @@ async function expectRejects<T>(
 
 describe('Mixin', () => {
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
   beforeEach(() => {
-    Node.prototype.fullRender = true;
     context = new Context({
       /** This is the default Less behavior */
       leakyRules: true
@@ -7094,7 +7092,6 @@ describe('Mixin', () => {
     });
 
     it('should call a mixin or ruleset with different nesting patterns', async () => {
-      Node.prototype.fullRender = false;
       // #theme() {
       //   .dark() {
       //     .navbar() {

@@ -91,11 +91,9 @@ class WholeBufferCountingWriter extends OutputWriter {
 
 describe('Rules', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
 
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
 
   let getProp = getPropWithContext.bind(context, context);

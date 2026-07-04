@@ -28,10 +28,8 @@ let context: Context;
 
 describe('Let', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
   beforeEach(() => {
     context = new Context();

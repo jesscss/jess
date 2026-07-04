@@ -256,7 +256,7 @@ export function flattenVisibleRulesForRender(
           for (let i = 0; i < childRules.length; i++) {
             const visibleChild = childRules[i]!;
             if (
-              (visibleChild.visible || visibleChild.fullRender)
+              (visibleChild.visible)
               && isNode(visibleChild, N.Rules | N.Ruleset | N.AtRule)
             ) {
               hasVisibleContainers = true;
@@ -266,7 +266,7 @@ export function flattenVisibleRulesForRender(
           if (!hasVisibleContainers) {
             for (let i = 0; i < childRules.length; i++) {
               const leaf = childRules[i]!;
-              if (leaf.visible || leaf.fullRender) {
+              if (leaf.visible) {
                 pushLeaf(leaf, true);
               }
             }
@@ -284,7 +284,7 @@ export function flattenVisibleRulesForRender(
         iterateRules(getContainerRules(child)!, true, true);
         continue;
       }
-      if (child.visible || child.fullRender || hasPrintableTrivia(child, options)) {
+      if (child.visible || hasPrintableTrivia(child, options)) {
         if (isNode(child, N.Ruleset | N.AtRule)) {
           pushContainer(child);
           continue;
@@ -729,7 +729,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         let n = entry.node;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
-        if (!n.visible && !n.fullRender && !hasPrintableTrivia(n, options)) {
+        if (!n.visible && !hasPrintableTrivia(n, options)) {
           continue;
         }
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
@@ -789,7 +789,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const renderedPositionBaseline = w.position();
         if (isNode(nn, N.Rules) && !isLeafAtRule) {
           const hasRenderableChild = nn.rules.some(child =>
-            child.visible || child.fullRender || hasPrintableTrivia(child, options)
+            child.visible || hasPrintableTrivia(child, options)
           );
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
             continue;
@@ -823,7 +823,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.depth = leafDepth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
+        const isHiddenStructuralNode = !nn.visible;
         const leading = captureNodeTrivia(nn, 'before', options);
         if (isNode(nn, N.Rules)) {
           if (!/^\s*$/.test(leading)) {

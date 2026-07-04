@@ -45,8 +45,6 @@ export class Nil extends Node<''> {
     this.addFlag(F_STATIC);
     this.addFlag(F_ALLOW_ROOT);
     this.removeFlag(F_VISIBLE);
-    // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
-    this.fullRender = false;
   }
 
   override toTrimmedString() {

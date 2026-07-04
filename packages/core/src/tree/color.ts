@@ -526,7 +526,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;

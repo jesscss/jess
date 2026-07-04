@@ -74,17 +74,13 @@ describe('Comment', () => {
     expect(resolveCalls).toBe(0);
   });
 
-  it('keeps source-only line comments out of render buffers unless full render is enabled', () => {
+  it('keeps source-only line comments out of render buffers', () => {
     const hiddenBuffer = createRenderBuffer('flat');
-    const fullBuffer = createRenderBuffer('flat');
     const hidden = comment('// source-only', { lineComment: true });
-    const full = comment('// source-only', { lineComment: true });
-    full.fullRender = true;
-
     expect(hidden.render(context, hiddenBuffer)).toBe('');
     expect(hiddenBuffer.parts).toEqual([]);
-    expect(full.render(context, fullBuffer)).toBe('// source-only');
-    expect(fullBuffer.parts).toEqual(['// source-only']);
+    // TODO(F_VISIBLE stage 2): the render-ignoring-visibility walker restores the
+    // "shown under full render" case — `fullRender` was deleted from the hot path.
   });
 
   it('preserves printable block trivia before invisible nodes', () => {

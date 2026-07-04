@@ -467,8 +467,6 @@ export abstract class Node<
     return this.hasFlag(F_VISIBLE);
   }
 
-  declare fullRender: boolean;
-
   /**
    * Tri-state hoist directive, backed by `F_HOIST_SET` + `F_HOIST_VALUE`:
    * `undefined` (never assigned), `true`, or `false`. Callers use `?? ` to tell
@@ -1440,7 +1438,7 @@ export abstract class Node<
    * `toTrimmedString()` should be overridden instead.
    */
   toString(options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     options = getPrintOptions(options);
@@ -1471,7 +1469,7 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): MaybePromise<string> {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     return this.renderSource(context, bufferOrOptions, options);
@@ -1578,5 +1576,3 @@ export abstract class Node<
   }
 }
 
-/** When converting Less/Sass to Jess, we'll switch this flag temporarily */
-Node.prototype.fullRender = false;

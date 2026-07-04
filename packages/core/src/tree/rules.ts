@@ -3604,14 +3604,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     return this._toDocumentString(options);
   }
 
   _toDocumentString(rawOptions?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     const options = getPrintOptions(rawOptions);
@@ -3916,7 +3916,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return;
       }
-      if (!n.visible && !n.fullRender) {
+      if (!n.visible) {
         emitLeadingBlockCommentForNode(n);
         return;
       }
@@ -3940,7 +3940,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const child = n.rules[i]!;
           if (
             child.visible
-            || child.fullRender
             || hasPrintableTriviaAt(child, 'before', options)
             || hasPrintableTriviaAt(child, 'after', options)
           ) {
@@ -4089,14 +4088,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return;
     }
     this._emitSourceRulesBody(options);
   }
 
   toRenderString(rawOptions?: PrintOptions): MaybePromise<string> {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     const options = getPrintOptions(rawOptions);
@@ -4172,7 +4171,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           iterateRules(n);
           continue;
         }
-        if (!visibleOnly || n.visible || n.fullRender) {
+        if (!visibleOnly || n.visible) {
           finalRules.push(n);
         }
       }
