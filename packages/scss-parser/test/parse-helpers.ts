@@ -47,13 +47,8 @@ export function trimmedStylesheet(tree: Rules): string {
   return tree.rules.map(rule => rule.toTrimmedString()).join('\n');
 }
 
-/** Remaining functional-parser gaps — SCSS slash-division in parens. */
-export const PENDING_FUNCTIONAL = new Set([
-  'isolated parenthesized slash division',
-  'paren list with slash separator remains a list',
-  'serializes isolated parenthesized slash division as Expression(Operation)',
-  'keeps paren list slash forms as grouped values, not arithmetic expressions'
-]);
+/** Remaining functional-parser gaps — none currently. */
+export const PENDING_FUNCTIONAL = new Set<string>();
 
 export function functionalIt(name: string, fn: () => void) {
   (PENDING_FUNCTIONAL.has(name) ? vitestIt.skip : vitestIt)(name, fn);

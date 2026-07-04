@@ -61,10 +61,17 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
   const ScssMapPair = node('ScssMapPair',
     parser({ trivia: rw }, sequence(g.value, literal(':'), g.valueSequence)),
     (c: any, r: any, s: any) => build('ScssMapPair', c, r, s));
+  // A Sass map literal REQUIRES at least one `key: value` pair. `expect(')')`
+  // recovers in place (zero-width success), so if this rule matched an empty or
+  // pairless `(…)` it would swallow every parenthesized value before the value
+  // paren rule is tried. Requiring a real pair (the `:` is a soft `literal`) lets a
+  // non-map paren like `(15px/30px)` or `(1 + 2)` fail here and fall through.
   const ScssMapLiteral = node('ScssMapLiteral',
     parser({ trivia: rw }, sequence(
       literal('('),
-      optional(sepBy(ScssMapPair, literal(','))),
+      ScssMapPair,
+      many(sequence(literal(','), ScssMapPair)),
+      optional(literal(',')),
       expect(literal(')'), ')')
     )),
     (c: any, r: any, s: any) => build('ScssMapLiteral', c, r, s));
@@ -83,10 +90,19 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     )),
     (c: any, r: any, s: any) => build('ScssIdentValue', c, r, s));
 
+  // Value-position paren. Unlike Less's strict single-expression `Paren`, SCSS
+  // allows space/comma-separated value lists inside parens (e.g.
+  // `(bold 15px/30px sans-serif)`). We parse permissively and let `_buildScssParen`
+  // decide: an isolated arithmetic form (`(15px/30px)`, `(1 + 2)`) becomes an
+  // `Expression(Operation)`; anything else stays a grouped `Paren`.
+  const ScssValueParen = node('Paren',
+    parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)),
+    (c: any, r: any, s: any) => build('Paren', c, r, s));
+
   const value = choice(
     ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
     g.Url, g.CalcCall, g.Call, ScssIdentValue, g.EscapedValue, g.GluedParen, ScssMapLiteral,
-    g.Paren, g.SquareParen, g.Quoted, g.anyValue
+    ScssValueParen, g.SquareParen, g.Quoted, g.anyValue
   );
 
   const staticSeg = regex(/[-_a-zA-Z0-9]+/);
