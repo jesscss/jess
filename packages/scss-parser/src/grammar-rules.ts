@@ -56,12 +56,6 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     parser({ trivia: rw }, scssInterpKey),
     (c: any, r: any, s: any) => build('InterpValue', c, r, s));
 
-  const value = choice(
-    ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
-    g.Url, g.CalcCall, ScssIdentValue, g.Call, g.EscapedValue, g.GluedParen, ScssMapLiteral,
-    g.Paren, g.SquareParen, g.Quoted, g.anyValue
-  );
-
   // ── Sass map literals + module-qualified idents ────────────────────────────
   const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssMapPair = node('ScssMapPair',
@@ -83,6 +77,12 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
       ))
     )),
     (c: any, r: any, s: any) => build('ScssIdentValue', c, r, s));
+
+  const value = choice(
+    ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
+    g.Url, g.CalcCall, ScssIdentValue, g.Call, g.EscapedValue, g.GluedParen, ScssMapLiteral,
+    g.Paren, g.SquareParen, g.Quoted, g.anyValue
+  );
 
   const staticSeg = regex(/[-_a-zA-Z0-9]+/);
   const nameSegment = choice(staticSeg, ScssInterpBare);

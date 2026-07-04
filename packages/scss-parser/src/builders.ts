@@ -68,7 +68,6 @@ import {
 import {
   desugarMapLookup,
   desugarNamespacedCall,
-  makeNamespacedReference,
   toDeclKey
 } from './scss-value-helpers.js';
 
@@ -166,8 +165,8 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssMapPair':       return this._buildScssMapPair(children, loc);
       case 'ScssMapLiteral':    return this._buildScssMapLiteral(children, loc);
       case 'ScssIdentValue':    return this._buildScssIdentValue(children, _rawChildren, loc);
-      case 'Call':              return this._buildScssCall(_rawChildren, loc);
-      case 'SquareParen':       return this._buildScssSquareParen(_rawChildren, loc);
+      case 'Call':              return this._buildCall(_rawChildren, loc);
+      case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -698,6 +697,90 @@ export class ScssGrammar extends LessGrammar {
       return new Quoted(value, { quote }, loc) as unknown as JessNode;
     }
     return super._buildQuoted(children, loc);
+  }
+
+  /** `("k": v, …)` pair inside a map literal. */
+  private _buildScssMapPair(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const keyNode = nodes[0] ?? new Any('', { role: 'property' }, loc);
+    const valueNode = nodes[1] ?? new Any('', {}, loc);
+    const keyStr = toDeclKey(keyNode as Node);
+    return new Declaration(
+      { name: new Any(keyStr, { role: 'property' }, loc), value: valueNode as Node },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssMapLiteral(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const decls = nodeChildren(children) as Declaration[];
+    return new Collection(decls as any, undefined, loc) as unknown as JessNode;
+  }
+
+  /** `ns.$var`, `ns.fn(…)`, or a plain ident. */
+  private _buildScssIdentValue(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const identLeaf = ls.find(l => !l.value.startsWith('.') && l.value !== '(' && l.value !== ')');
+    const ident = identLeaf?.value ?? '';
+    const varLeaf = ls.find(l => l.value.startsWith('$'));
+    const dotLeaf = ls.find(l => l.value.startsWith('.') && !l.value.startsWith('$'));
+    const hasCall = ls.some(l => l.value === '(');
+
+    if (varLeaf && dotLeaf) {
+      const nsRef = new Reference(ident, { type: 'variable' }, loc);
+      const key = varLeaf.value.slice(1);
+      return new Reference({ target: nsRef, key }, { type: 'variable' }, loc) as unknown as JessNode;
+    }
+
+    if (dotLeaf && hasCall) {
+      const fnName = dotLeaf.value.slice(1);
+      const items = spannedComponents(raw);
+      const open = items.findIndex(i => i.comp === '(');
+      let close = items.length;
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i]!.comp === ')') {
+          close = i;
+          break;
+        }
+      }
+      const { value: argValue } = this._assembleValue(items.slice(open + 1, close), loc);
+      let args: List | undefined;
+      if (argValue !== undefined) {
+        args = isNode(argValue as Node, N.List)
+          ? argValue as List
+          : new List([argValue as Node], undefined, loc);
+      }
+      const call = new Call({ name: `${ident}.${fnName}`, args }, undefined, loc);
+      const mapped = desugarMapLookup(call, loc);
+      if (isNode(mapped, N.Reference)) {
+        return new Expression(mapped, undefined, loc) as unknown as JessNode;
+      }
+      return new Expression(desugarNamespacedCall(mapped as Call, loc), undefined, loc) as unknown as JessNode;
+    }
+
+    return new Any(ident, { role: 'ident' }, loc) as unknown as JessNode;
+  }
+
+  protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const call = super._buildCall(rawChildren, loc) as Call;
+    const mapped = desugarMapLookup(call, loc);
+    if (isNode(mapped, N.Reference)) {
+      return mapped as unknown as JessNode;
+    }
+    return desugarNamespacedCall(mapped as Call, loc) as unknown as JessNode;
+  }
+
+  protected override _buildSquareParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const paren = super._buildSquareParen(rawChildren, loc) as Paren;
+    const inner = (paren as unknown as { value?: Node }).value;
+    const delimiter = isNode(inner as Node, N.Any) && (inner as Any).options?.role === 'ident'
+      ? 'square'
+      : 'paren';
+    return new Paren(inner as Node, { delimiter }, loc) as unknown as JessNode;
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
