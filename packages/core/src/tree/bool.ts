@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
@@ -49,9 +49,6 @@ export class Bool extends Node<boolean> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE)) {
-      return '';
-    }
     const out = this.value ? 'true' : 'false';
     if (isRenderBuffer(bufferOrOptions)) {
       return writeRenderText(bufferOrOptions, out);

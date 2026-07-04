@@ -1,4 +1,4 @@
-import { Node, F_STATIC, F_VISIBLE, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -526,9 +526,6 @@ export class Color extends Node<ColorData, ColorOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE)) {
-      return '';
-    }
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const scalar = this.serializeScalarSyntax(Boolean(printOptions?.compress));
     if (scalar === undefined) {
