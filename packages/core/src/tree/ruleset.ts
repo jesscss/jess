@@ -985,15 +985,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!sel || sel instanceof Nil) {
       return;
     }
+    // A bare array is a selector list with no flags of its own — recurse members
+    // (before the flag ops below, which arrays don't have).
+    if (Array.isArray(sel)) {
+      for (const item of sel) {
+        Ruleset.ensureSelectorVisible(item);
+      }
+      return;
+    }
     if (isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return;
     }
     if (!sel.hasFlag(F_VISIBLE)) {
       sel.addFlag(F_VISIBLE);
     }
-    if (isNode(sel, N.SelectorList) || Array.isArray(sel)) {
-      const items = Array.isArray(sel) ? sel : sel.value;
-      for (const item of items) {
+    if (isNode(sel, N.SelectorList)) {
+      for (const item of sel.value) {
         Ruleset.ensureSelectorVisible(item);
       }
       return;
