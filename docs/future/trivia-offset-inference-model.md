@@ -1,9 +1,28 @@
 # Trivia & spans: the positioned tree is the index
 
-Branch: `feature/parseman`. Status: **consolidated design — preferred direction** (from a
-design discussion, 2026-07-03). Related: [`whitespace-token-proposal.md`](whitespace-token-proposal.md)
+Branch: `feature/parseman`. Status: **core landed + proven; parser-population is the
+remaining wiring** (2026-07-04). Related: [`whitespace-token-proposal.md`](whitespace-token-proposal.md)
 (token-side capture). This note is the storage / reconstruction / indexing side, and
 supersedes the earlier flyweight and per-gap-record sketches.
+
+## Implementation status
+
+- **Parséman (landed, `release/0.13.0`)** — `src/cst/offset-model.ts` (`OffsetIndex`,
+  gap queries, reconstruction algebra, `buildOffsetIndex`/`collectLeafSlots`) and
+  `src/cst/relative-spans.ts` (`relativize`/`absolutize`/`absoluteSpanAt`/`applyEdit`
+  with structural sharing). Proven: 40-seed fuzz exact round-trip, 30-seed incremental
+  edit correctness + locality, 12 parity cases on real parser output vs `buildTriviaIndex`
+  (97 tests). This is the general, reusable realization of everything below.
+- **`@jesscss/core` (landed, `feature/parseman`)** — the offset model powers
+  `fieldSpans`-anchored **name-boundary trivia**: a bare string at-rule/declaration name
+  has no span, so its source span is read from the parent's `fieldSpans` (name = childKey
+  slot 0) and the gap trivia is emitted via `consumeTriviaBetweenOffsets` /
+  `emitCommentTriviaAfterOffset`. Restores comment round-trip around string-named headers
+  and `name: value` — the concrete "supports core" proof.
+- **Remaining wiring (parser-side)** — parsers must *populate* `fieldSpans` for at-rule /
+  declaration name slots on real parses (the serializer already *consumes* them; today only
+  a few css-parser builders emit spans). Until then the capability is exercised by the
+  span-carrying unit tests, not yet by end-to-end parses.
 
 ## Thesis
 
