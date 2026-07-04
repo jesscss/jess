@@ -74,6 +74,20 @@ import {
  */
 export type ReferenceValue = {
   target?: Reference | Call | undefined;
+  /**
+   * The lookup name in its ORIGINAL, un-flattened form — kept alongside the
+   * normalized `key`. NOT related to hydration/materialization; this is a
+   * source-form-vs-lookup-form distinction.
+   *
+   * A complex reference (`.a > .b`, `#ns.mixin`, `.foo.bar`, `@map[a]`) is
+   * flattened into `key` — a `string[]` path the registry walk consumes — which
+   * DISCARDS combinators, node structure and spans. `rawKey` retains the original
+   * `Selector`/node so the reference can still be:
+   *   - rendered back with its authored spelling (`printableKey = rawKey ?? key`), and
+   *   - re-used structurally when the looked-up result is injected into a selector
+   *     or `:extend()` target (where the flattened `key` strings are insufficient).
+   * `undefined` for simple references, where `key` alone suffices.
+   */
   rawKey?:
     string
     | string[]
@@ -3242,6 +3256,14 @@ function finalizeReferenceLookupResult(
   return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }
 
+/**
+ * Unwrap a variable-lookup result down to its value node. "Raw" = the DIRECT,
+ * un-unwrapped return of the lookup (a scope binding handle, a declaration
+ * occurrence, a `Declaration`/`VarDeclaration`, or already a value); this peels
+ * whichever wrapper it is to the underlying value. Returns `RAW_REFERENCE_TARGET_NOT_FOUND`
+ * when the lookup produced nothing. Not related to hydration/materialization —
+ * "raw" here is "the lookup's direct result before unwrapping".
+ */
 function finalizeRawReferenceLookupTarget(
   returnVal: ReferenceLookupReturnValue | unknown
 ): unknown {
@@ -3361,6 +3383,12 @@ function resolveRawReferenceLookupTarget(
   return finalizeRawReferenceLookupTarget(lookup.returnVal);
 }
 
+/**
+ * True for a PLAIN variable reference (`@foo` / `$foo`): variable type, no
+ * `target` accessor, no `filter`, not `preserveRulesLike`. Such a reference has
+ * nothing to resolve beyond the value itself, so {@link evaluateReferenceNode}
+ * can take the direct fast-path below instead of the general accessor machinery.
+ */
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
   return (referenceNode.options.type ?? 'variable') === 'variable'
     && referenceNode.target === undefined
@@ -3368,6 +3396,16 @@ function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolea
     && referenceNode.options.preserveRulesLike !== true;
 }
 
+/**
+ * Fast-path used throughout {@link evaluateReferenceNode}: for a plain `@foo`
+ * reference, take the single-frame lookup result, unwrap it to its value node via
+ * {@link finalizeRawReferenceLookupTarget}, and return it directly (popping the
+ * reference) — short-circuiting the general accessor/filter path. Current
+ * single-frame code, NOT a legacy island: `returnVal` is a scope-frame binding
+ * result and the unwrap peels scope-frame binding handles. Returns `undefined`
+ * (fall through to the general path) when the ref isn't plain or the value isn't
+ * directly returnable.
+ */
 function finalizeDirectRawRenderValue(
   referenceNode: Reference,
   returnVal: unknown,
@@ -3627,6 +3665,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
   readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
+  /** Original un-flattened lookup name; see {@link ReferenceValue.rawKey}. */
   readonly rawKey: ReferenceValue['rawKey'];
   readonly role: AnyRole | undefined;
 
