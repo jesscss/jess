@@ -16,7 +16,7 @@
     },
     "./grammar-rules": {
       "types": "./lib/index.d.ts",
-      "source": "./src/parseman/grammar-rules.ts",
+      "source": "./src/grammar-rules.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },

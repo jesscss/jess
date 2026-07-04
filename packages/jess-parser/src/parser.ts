@@ -5,7 +5,7 @@
  * without changing call sites.
  */
 import type { Node } from '@jesscss/core';
-import { JessGrammar } from './grammar.js';
+import { JessGrammar } from './builders.js';
 
 export type JessParserConfig = Record<string, never>;
 

@@ -4,13 +4,10 @@
  * features before wiring it in as the default parser.
  */
 import { describe, it, expect } from 'vitest';
-import { JessGrammar } from '../src/parseman/grammar.js';
+import { parseJessFn } from '../src/grammar.js';
 
-const g = new JessGrammar();
-
-function parse(input: string, rule: string = 'Stylesheet') {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return g.parse(rule as any, input);
+function parse(input: string, rule = 'stylesheet') {
+  return parseJessFn(input, rule);
 }
 
 describe('JessGrammar (Parséman) — basic smoke tests', () => {

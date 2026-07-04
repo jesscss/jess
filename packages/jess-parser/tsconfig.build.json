@@ -11,6 +11,6 @@
       "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
     }
   },
-  "include": ["src/parseman/**/*", "src/jessTokens.ts"],
+  "include": ["src/grammar.ts", "src/grammar-rules.ts", "src/builders.ts", "src/parser.ts", "src/index.ts", "src/jessTokens.ts"],
   "exclude": ["node_modules", "lib"]
 }

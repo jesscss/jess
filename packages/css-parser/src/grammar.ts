@@ -16,7 +16,7 @@ import {
   not, scanTo, balanced, parser, trivia, rules, expect
 } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, type Rules, type TriviaMap, nil, makeJessError, type JessError } from '@jesscss/core';
+import { Node, Rules, type TriviaMap, nil, makeJessError, type JessError } from '@jesscss/core';
 import { CssParser, buildLazyTriviaMap } from './builders.js';
 // Shared rules (Num/Color, value-position Paren/calc(), and the @media/@container/
 // @supports condition sub-grammar), spread into the map below. Imported from another
@@ -367,10 +367,12 @@ export function toParseError(message: string, offset: number | undefined, source
 
 /**
  * First offset at/after `from` holding real (non-trivia) input, or null if only
- * whitespace/comments remain. Used to detect input the grammar could not consume
- * — a syntax error the parser stopped short on. Mirrors the css `rw` trivia.
+ * trivia remains. Used to detect input the grammar could not consume — a syntax
+ * error the parser stopped short on. Always skips whitespace + block comments;
+ * `lineComments` additionally skips `//` line comments (Less/SCSS/Jess trivia;
+ * CSS has none, so a trailing `//…` is real leftover there).
  */
-function firstUnparsedOffset(input: string, from: number): number | null {
+function firstUnparsedOffset(input: string, from: number, lineComments = false): number | null {
   let i = from;
   while (i < input.length) {
     const c = input[i]!;
@@ -386,35 +388,83 @@ function firstUnparsedOffset(input: string, from: number): number | null {
       i = end + 2;
       continue;
     }
+    if (lineComments && c === '/' && input[i + 1] === '/') {
+      const nl = input.indexOf('\n', i + 2);
+      if (nl === -1) {
+        return null;
+      }
+      i = nl + 1;
+      continue;
+    }
     return i;
   }
   return null;
 }
 
-export function parseCssFn(input: string): CssParseResult {
+/**
+ * Minimal builder-host contract the functional parse driver needs. Every
+ * functional grammar (css/less/scss/jess) defines a `BuilderHost` that reuses
+ * its class builders and satisfies this shape.
+ */
+export interface FunctionalParseHost {
+  setSource(src: string): void;
+  resetWarnings(): void;
+  getWarnings(): Array<{ message: string; deprecation?: string }>;
+  getErrors(): Array<{ message: string; offset?: number }>;
+}
+
+export interface RunFunctionalParseOptions {
+  /**
+   * Treat `//` as a line comment when scanning for unconsumed input. Less/SCSS/
+   * Jess add `//` to their trivia; CSS does not (a trailing `//…` is leftover).
+   */
+  lineComments?: boolean;
+}
+
+/**
+ * Shared functional-parse driver. Runs a resolved entry rule against `input`,
+ * shapes the result into a `Rules` tree, and collapses parseman's furthest-fail
+ * diagnostics + any unconsumed input + host-recorded errors into a single
+ * earliest-position `JessError` (report one, stop). Reused by every functional
+ * grammar so their `{ tree, errors, warnings, trivia }` output is identical in
+ * shape and semantics — the only per-language knob is `lineComments`.
+ *
+ * `entry` is the macro-compiled function or interpreted Combinator for the rule.
+ */
+export function runFunctionalParse(
+  input: string,
+  entry: unknown,
+  host: FunctionalParseHost,
+  options: RunFunctionalParseOptions = {}
+): CssParseResult {
   host.setSource(input);
   host.resetWarnings();
 
   const triviaLog: number[] = [];
-
-  // Macro build → Stylesheet is a compiled fn; interpreter → a Combinator.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const sheet = Stylesheet as unknown as
-    | ((i: string, p: number, c: any) => any)
-    | { parse(i: string, p: number, c: any): any };
   // _errors collects parseman's recover()/expect() ParseErrors (e.g. a missing
   // closing brace) rather than the old hand-rolled BadStatement net.
   const parseErrors: Array<{ span: { start: number }; expected: string[] }> = [];
   const ctx = { trackLines: false, _triviaLog: triviaLog, _errors: parseErrors };
-  const r = typeof sheet === 'function'
-    ? sheet(input, 0, ctx)
-    : sheet.parse(input, 0, ctx);
+  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+  const r = typeof entry === 'function'
+    ? (entry as (i: string, p: number, c: any) => any)(input, 0, ctx)
+    : (entry as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const tree = (r.ok && r.value instanceof Node ? r.value : nil()) as unknown as Rules;
+  // A single-node rule yields that node; a `many(...)` entry rule (e.g. a
+  // declarationList fragment) yields an array — wrap it in a Rules so callers
+  // get a `.rules` body rather than a bare Nil.
+  const tree = (
+    r.ok && r.value instanceof Node
+      ? r.value
+      : r.ok && Array.isArray(r.value)
+        ? new Rules(r.value as Node[], undefined, undefined)
+        : nil()
+  ) as unknown as Rules;
+  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
-  // Three diagnostic sources, all position-tagged: a required token expect()
-  // missed, a hard top-level failure, and input the grammar stopped short of.
+  // Diagnostic sources, all position-tagged: a required token expect() missed,
+  // a hard top-level failure, input the grammar stopped short of, and any error
+  // the host builders recorded.
   const collected: Array<{ message: string; offset?: number }> = [];
   for (const e of parseErrors) {
     const exp = e.expected.filter(x => x !== 'sentinel');
@@ -423,10 +473,11 @@ export function parseCssFn(input: string): CssParseResult {
   if (!r.ok) {
     collected.push({ message: (r.expected ?? []).join(', ') || 'Parse error', offset: r.span?.start });
   }
-  const leftoverAt = r.ok ? firstUnparsedOffset(input, r.span?.end ?? 0) : null;
+  const leftoverAt = r.ok ? firstUnparsedOffset(input, r.span?.end ?? 0, options.lineComments === true) : null;
   if (leftoverAt !== null) {
     collected.push({ message: 'Unexpected input', offset: leftoverAt });
   }
+  collected.push(...host.getErrors());
   // Default: report ONE error and stop — the earliest by position.
   collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
   const errors: JessError[] = collected.length > 0
@@ -439,4 +490,9 @@ export function parseCssFn(input: string): CssParseResult {
     warnings: host.getWarnings(),
     trivia: buildLazyTriviaMap(triviaLog, input)
   };
+}
+
+export function parseCssFn(input: string): CssParseResult {
+  // CSS has no `//` line comments — a trailing `//…` is real leftover input.
+  return runFunctionalParse(input, Stylesheet, host);
 }

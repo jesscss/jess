@@ -8,12 +8,12 @@
  */
 import { rules } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, Rules, type TriviaMap, nil, type JessError } from '@jesscss/core';
-import { buildLazyTriviaMap, toParseError } from '@jesscss/css-parser';
+import type { TriviaMap, JessError, Rules } from '@jesscss/core';
+import { runFunctionalParse } from '@jesscss/css-parser';
 import { lessGrammarRules } from '@jesscss/less-parser/grammar-rules';
 import { scssGrammarRules } from '@jesscss/scss-parser/grammar-rules';
 import { jessGrammarRules } from './grammar-rules.js';
-import { JessGrammar } from './grammar.js';
+import { JessGrammar } from './builders.js';
 // Macro resolves nested spreads by name against the consumer's import bindings.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { numericRules, parenRules, queryRules, stringRules } from '@jesscss/css-parser/shared-value-rules';
@@ -79,36 +79,9 @@ export type JessFnParseResult = {
 };
 
 export function parseJessFn(input: string, rule = 'stylesheet'): JessFnParseResult {
-  const key = ALIASES[rule] ?? rule;
-  host.setSource(input);
-  host.resetWarnings();
-  const fn = (jessRules as Record<string, unknown>)[key];
-  const ctx = { trackLines: false };
-  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-  const r = typeof fn === 'function'
-    ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
-    : (fn as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
-
-  const tree = (
-    r.ok && r.value instanceof Node
-      ? r.value
-      : r.ok && Array.isArray(r.value)
-        ? new Rules(r.value as Node[], undefined, undefined)
-        : nil()
-  ) as unknown as Rules;
-
-  const errors: JessError[] = [];
-  if (!r.ok) {
-    errors.push(toParseError((r.expected ?? []).join(', ') || 'Parse error', r.span?.start, input));
-  }
-  errors.push(...host.getErrors());
-
-  return {
-    tree,
-    errors,
-    warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap([], input)
-  };
+  const ruleName = ALIASES[rule] ?? rule;
+  const fn = (jessRules as Record<string, unknown>)[ruleName];
+  return runFunctionalParse(input, fn, host, { lineComments: true });
 }
 
 /** Functional Jess parser — macro-composed Less + SCSS + Jess fragments. */

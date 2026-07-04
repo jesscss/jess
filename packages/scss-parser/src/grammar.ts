@@ -5,11 +5,11 @@
  */
 import { rules } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import { Node, Rules, type TriviaMap, nil, type JessError } from '@jesscss/core';
-import { buildLazyTriviaMap, toParseError } from '@jesscss/css-parser';
+import type { TriviaMap, JessError, Rules } from '@jesscss/core';
+import { runFunctionalParse } from '@jesscss/css-parser';
 import { lessGrammarRules } from '@jesscss/less-parser/grammar-rules';
 import { scssGrammarRules } from './grammar-rules.js';
-import { ScssGrammar } from './grammar.js';
+import { ScssGrammar } from './builders.js';
 // Macro resolves nested spreads by name against the consumer's import bindings.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { numericRules, parenRules, queryRules, stringRules } from '@jesscss/css-parser/shared-value-rules';
@@ -58,7 +58,7 @@ export const scssRules = rules((g: any) => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Parser — thin wrapper; full driver parity with LessParser is future work.
+// Parser — thin wrapper over the shared css-parser functional-parse driver.
 // ---------------------------------------------------------------------------
 
 const ALIASES: Record<string, string> = {
@@ -78,50 +78,10 @@ export type ScssFnParseResult = {
   trivia: TriviaMap;
 };
 
-function firstUnparsedOffset(input: string, from: number): number | null {
-  for (let i = from; i < input.length; i++) {
-    const c = input[i]!;
-    if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r' && c !== '\f') {
-      return i;
-    }
-  }
-  return null;
-}
-
 export function parseScssFn(input: string, rule = 'stylesheet'): ScssFnParseResult {
-  const key = ALIASES[rule] ?? rule;
-  host.setSource(input);
-  host.resetWarnings();
-  const fn = (scssRules as Record<string, unknown>)[key];
-  const ctx = { trackLines: false };
-  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-  const r = typeof fn === 'function'
-    ? (fn as (i: string, p: number, c: any) => any)(input, 0, ctx)
-    : (fn as { parse(i: string, p: number, c: any): any }).parse(input, 0, ctx);
-  const tree = (
-    r.ok && r.value instanceof Node
-      ? r.value
-      : r.ok && Array.isArray(r.value)
-        ? new Rules(r.value as Node[], undefined, undefined)
-        : nil()
-  ) as unknown as Rules;
-
-  const errors: JessError[] = [];
-  if (!r.ok) {
-    errors.push(toParseError((r.expected ?? []).join(', ') || 'Parse error', r.span?.start, input));
-  }
-  const leftoverAt = r.ok ? firstUnparsedOffset(input, r.span?.end ?? 0) : null;
-  if (leftoverAt !== null) {
-    errors.push(toParseError('Unexpected input', leftoverAt, input));
-  }
-  errors.push(...host.getErrors());
-
-  return {
-    tree,
-    errors,
-    warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap([], input)
-  };
+  const ruleName = ALIASES[rule] ?? rule;
+  const fn = (scssRules as Record<string, unknown>)[ruleName];
+  return runFunctionalParse(input, fn, host, { lineComments: true });
 }
 
 /** Functional SCSS parser — call `.parse(text)` for a Jess AST. */
