@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Parser } from '../src/index.js';
 import { TreeContext } from '@jesscss/core';
+import { PENDING_FUNCTIONAL } from './parse-helpers.js';
 
 type ParseCase = {
   name: string;
@@ -125,20 +126,6 @@ const errorCases: ErrorCase[] = [
     message: '@at-root prelude/filter forms are not yet supported in Jess'
   }
 ];
-
-const PENDING_FUNCTIONAL = new Set([
-  'isolated parenthesized slash division',
-  'paren list with slash separator remains a list',
-  'nested property declarations',
-  'nested property declarations with base value',
-  'interpolation inside @media prelude',
-  'interpolation inside @supports prelude',
-  'interpolation inside @container prelude',
-  'interpolation inside @scope prelude',
-  'interpolation inside @layer names',
-  'placeholder ruleset',
-  '@at-root filter rejection'
-]);
 
 describe('scss-parser (parse only)', () => {
   for (const testCase of positiveCases) {

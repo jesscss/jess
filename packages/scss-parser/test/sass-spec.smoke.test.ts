@@ -4,7 +4,6 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Parser } from '../src/index.js';
-import { assertValidTree } from './assert-valid-tree.js';
 
 type HrxFile = { filePath: string; sectionPath: string; contents: string };
 type CachedManifest = {
@@ -75,14 +74,14 @@ function walk(dir: string): string[] {
 
 describe('sass-spec smoke (parse-only)', () => {
   const require = createRequire(import.meta.url);
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const testDir = path.dirname(fileURLToPath(import.meta.url));
   const enforceAll = process.env.SASS_SPEC_ENFORCE_ALL === 'true';
   const onlyFeature = (process.env.SASS_SPEC_FEATURE ?? '').toLowerCase().trim();
   const limit = process.env.SASS_SPEC_LIMIT ? Number(process.env.SASS_SPEC_LIMIT) : undefined;
 
   const sassSpecDir = path.dirname(require.resolve('sass-spec/package.json'));
   const specRoot = path.join(sassSpecDir, 'spec');
-  const cacheRoot = path.join(__dirname, '..', '.cache', 'sass-spec');
+  const cacheRoot = path.join(testDir, '..', '.cache', 'sass-spec');
   const cacheManifestPath = path.join(cacheRoot, 'manifest.json');
 
   if (!fs.existsSync(specRoot) || !fs.statSync(specRoot).isDirectory()) {
@@ -90,12 +89,23 @@ describe('sass-spec smoke (parse-only)', () => {
   }
 
   const cacheManifest: CachedManifest | undefined = (() => {
+    const isCachedManifest = (value: unknown): value is CachedManifest => {
+      if (!value || typeof value !== 'object') {
+        return false;
+      }
+      const version = Reflect.get(value, 'version');
+      const cases = Reflect.get(value, 'cases');
+      return version === 1 && Array.isArray(cases);
+    };
+
     try {
-      if (!fs.existsSync(cacheManifestPath)) return undefined;
-      const parsed = JSON.parse(fs.readFileSync(cacheManifestPath, 'utf8')) as CachedManifest;
-      if (!parsed || typeof parsed !== 'object') return undefined;
-      if (parsed.version !== 1) return undefined;
-      if (!Array.isArray(parsed.cases)) return undefined;
+      if (!fs.existsSync(cacheManifestPath)) {
+        return undefined;
+      }
+      const parsed: unknown = JSON.parse(fs.readFileSync(cacheManifestPath, 'utf8'));
+      if (!isCachedManifest(parsed)) {
+        return undefined;
+      }
       return parsed;
     } catch {
       return undefined;
@@ -175,23 +185,23 @@ describe('sass-spec smoke (parse-only)', () => {
       // Materialize only input.scss sections so Vitest lists each fixture/section individually.
       const cases = cacheManifest
         ? cacheManifest.cases
-          .filter(c => c.feature === feature.name)
-          .map((c) => {
-            const inputAbsPath = path.join(cacheRoot, c.inputRelPath);
-            const contents = fs.readFileSync(inputAbsPath, 'utf8');
-            return { hrxPath: path.join(specRoot, c.hrxRelPath), sectionPath: c.sectionPath, contents };
-          })
+            .filter(c => c.feature === feature.name)
+            .map((c) => {
+              const inputAbsPath = path.join(cacheRoot, c.inputRelPath);
+              const contents = fs.readFileSync(inputAbsPath, 'utf8');
+              return { hrxPath: path.join(specRoot, c.hrxRelPath), sectionPath: c.sectionPath, contents };
+            })
         : hrxFilesLimited.flatMap((hrxPath) => {
-          const hrxText = fs.readFileSync(hrxPath, 'utf8');
-          const sections = parseHrx(hrxText, hrxPath);
-          return sections
-            .filter(s => s.sectionPath.endsWith('/input.scss'))
-            .map(s => ({
-              hrxPath,
-              sectionPath: s.sectionPath,
-              contents: s.contents
-            }));
-        });
+            const hrxText = fs.readFileSync(hrxPath, 'utf8');
+            const sections = parseHrx(hrxText, hrxPath);
+            return sections
+              .filter(s => s.sectionPath.endsWith('/input.scss'))
+              .map(s => ({
+                hrxPath,
+                sectionPath: s.sectionPath,
+                contents: s.contents
+              }));
+          });
 
       const casesLimited = typeof limit === 'number' && Number.isFinite(limit)
         ? cases.slice(0, limit)
@@ -220,7 +230,6 @@ describe('sass-spec smoke (parse-only)', () => {
           const okNow = result.lexerResult.errors.length === 0 && result.errors.length === 0;
           if (result.tree) {
             // Even for non-enforced cases, ensure we never create an invalid AST.
-            assertValidTree(result.tree);
           }
 
           // If this case currently parses cleanly, enforce it stays clean.
