@@ -1469,9 +1469,11 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): MaybePromise<string> {
-    if (!this.hasFlag(F_VISIBLE)) {
-      return '';
-    }
+    // Static-by-type invisibility is dispatched on the node type: the
+    // unconditionally-non-CSS types (function/mixin/nil/log/extend-list/...)
+    // override render() to a no-op, so the common hot path pays no F_VISIBLE
+    // branch here. Dynamic per-instance suppression stays on toString()'s gate
+    // and the render loop's `n.visible` check (Focus D.1 stage 2).
     return this.renderSource(context, bufferOrOptions, options);
   }
 

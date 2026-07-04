@@ -10,6 +10,7 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -241,6 +242,14 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     const mark = w.mark();
     this.writeSyntax(options);
     return w.getSince(mark);
+  }
+
+  // Static-by-type invisibility: a mixin definition is never CSS output. The
+  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
   }
 
   override writeSyntax(options: FinalPrintOptions): void {

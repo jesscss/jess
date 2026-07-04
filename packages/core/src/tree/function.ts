@@ -8,6 +8,7 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { callableRulesEntry } from './util/callable-entry.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -89,6 +90,14 @@ export class Func extends Node<FuncValue, FuncOptions> {
     const position = w.position();
     this.writeSyntax(options);
     return w.getSince(position);
+  }
+
+  // Static-by-type invisibility: a function definition is never CSS output. The
+  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
   }
 
   override resolve(_context: Context): this {
