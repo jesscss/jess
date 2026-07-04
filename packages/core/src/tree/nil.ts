@@ -12,7 +12,8 @@ import {
   type NodeOptions
 } from './node-base.js';
 import type { Context } from '../context.js';
-import type { FinalPrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -57,6 +58,14 @@ export class Nil extends Node<''> {
 
   /** @internal */
   override writeSyntax(_options: FinalPrintOptions): void {}
+
+  // Static-by-type invisibility: Nil is never CSS output. The no-op render
+  // keeps the base render() gate off the common hot path (Focus D.1 stage 2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+  }
 
   override resolve(_context: Context): this {
     return this;
