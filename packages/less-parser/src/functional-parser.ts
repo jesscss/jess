@@ -60,7 +60,7 @@ export function parseLessFn(
   host.mathMode = mathMode;
   const g = lessGrammar as Record<string, unknown>;
   // Less trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
 }
 
 /** Functional Less parser — call .parse(text) to get a Jess AST. */

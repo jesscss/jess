@@ -50,5 +50,5 @@ export function parseCssFn(input: string): FunctionalParseResult {
   // The grammar's own trivia (`rw`) decides what trailing input is leftover:
   // CSS has no `//` line comments, so a trailing `//…` is real leftover here.
   const g = cssGrammar as Record<string, unknown>;
-  return runFunctionalParse(input, g.Stylesheet, host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g.Stylesheet, host, { trivia: g.rw });
 }

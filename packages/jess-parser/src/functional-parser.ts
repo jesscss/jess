@@ -56,7 +56,7 @@ export type JessFnParseResult = {
 export function parseJessFn(input: string, rule = 'Stylesheet'): JessFnParseResult {
   const g = jessGrammar as Record<string, unknown>;
   // Jess trivia (inherited from SCSS/Less) includes `//` line comments.
-  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
 }
 
 /** Functional Jess parser — macro-composed Less + SCSS + Jess. */

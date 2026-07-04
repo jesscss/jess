@@ -73,7 +73,7 @@ export function parseScssFn(
   const g = scssGrammar as Record<string, unknown>;
   host.setContext(options.context);
   // SCSS trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
 }
 
 setParseScssFnForInterp(parseScssFn);

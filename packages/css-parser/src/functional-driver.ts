@@ -45,7 +45,7 @@ export interface RunFunctionalParseOptions {
    * comment rules are honored for free (CSS trivia → a trailing `//` is leftover;
    * Less trivia → it isn't). Omit to treat any trailing input as leftover.
    */
-  trailingTrivia?: unknown;
+  trivia?: unknown;
 }
 
 // A compiled rule OR interpreter combinator, loosely typed so a grammar map cast
@@ -91,13 +91,13 @@ export function runFunctionalParse(
   host.setSource(input);
   host.resetWarnings();
 
-  // `entry`/`trailingTrivia` cross the compiled-grammar boundary as `unknown`
+  // `entry`/`trivia` cross the compiled-grammar boundary as `unknown`
   // (a rule fn or combinator); loosely typing them keeps the call sites a plain
   // widening cast rather than an unsafe one here.
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
   const res = run(entry as Entry, input, {
     build: host.build.bind(host),
-    trailingTrivia: options.trailingTrivia ? (options.trailingTrivia as Entry) : undefined
+    trivia: options.trivia ? (options.trivia as Entry) : undefined
   });
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
 
@@ -123,8 +123,8 @@ export function runFunctionalParse(
   if (!res.ok) {
     collected.push({ message: res.expected.join(', ') || 'Parse error', offset: res.span.start });
   }
-  if (res.leftoverAt !== null) {
-    collected.push({ message: 'Unexpected input', offset: res.leftoverAt });
+  if (res.unconsumedFrom !== null) {
+    collected.push({ message: 'Unexpected input', offset: res.unconsumedFrom });
   }
   collected.push(...host.getErrors());
   // Default: report ONE error and stop — the earliest by position.
