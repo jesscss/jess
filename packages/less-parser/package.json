@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
+    "less": "^4.6.3",
     "parseman": "workspace:*",
     "@types/node": "^18.19.31",
     "tsx": "~4.21.0"

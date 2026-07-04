@@ -16,7 +16,6 @@ import {
   type CompoundSelectorComponent
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
-import { BasicSelector } from './selector-basic.js';
 import { SelectorList, normalizeSelectorLike, type SelectorListItem } from './selector-list.js';
 import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -584,6 +583,37 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return owned;
   }
 
+  /**
+   * Resolve the parser-delivered selector into the Selector node the semantic
+   * (registration / eval / extend / compose) pipeline structurally requires.
+   *
+   * The parser may deliver a bare-string selector (e.g. `div`, produced by the
+   * single-part compound/complex short-circuit, or a keyframe stop like `0%`).
+   * The eval and extend pipelines operate on Selector nodes (`eval`, `hasFlag`,
+   * `keySetLibrary`, `adopt`), so a string selector is resolved once, here, via
+   * the scanner-native `createRawSelectorNode` classifier. A string that is not a
+   * recognized selector shape is held verbatim inside a `CompoundSelector` (never
+   * a `BasicSelector`, which is deprecated). Selector/Nil are passed through.
+   */
+  private resolveSemanticSelector(): Selector | Nil {
+    const selector = this.selector;
+    if (selector instanceof Selector || selector instanceof Nil) {
+      return selector;
+    }
+    if (typeof selector === 'string') {
+      const rawSelector = selector.trim();
+      const location = this.location.length ? this.location : undefined;
+      const treeContext = this.sourceRoot?._treeContext;
+      const resolved = createRawSelectorNode(rawSelector, location, treeContext)
+        ?? createRawSelectorBranchNode(rawSelector, location, treeContext)
+        ?? markStaticSelector(new CompoundSelector([rawSelector], undefined, location, treeContext));
+      this.adopt(resolved);
+      this.selector = resolved;
+      return resolved;
+    }
+    throw new TypeError('Ruleset requires a selector before semantic evaluation.');
+  }
+
   private attachSelectorBits(selector: RulesetValue['selector'], selectorBits: Context['selectorBits']): void {
     if (selector instanceof Nil) {
       return;
@@ -622,47 +652,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.attachSelectorBitsToValue(value[key], selectorBits);
       }
     }
-  }
-
-  private materializeRawSelectorForSemantics(): Selector | Nil {
-    const selector = this.selector;
-    if (selector instanceof Selector || selector instanceof Nil) {
-      return selector;
-    }
-    if (typeof selector === 'string') {
-      const rawSelector = selector.trim();
-      const materialized = createRawSelectorNode(
-        rawSelector,
-        this.location.length ? this.location : undefined,
-        this.sourceRoot?._treeContext
-      ) ?? this.materializeRawSelectorBranch(rawSelector);
-      this.adopt(materialized);
-      this.selector = materialized;
-      return materialized;
-    }
-    throw new TypeError('Ruleset requires a selector before semantic materialization.');
-  }
-
-  private materializeRawSelectorBranch(rawSelector: string): SimpleSelector | CompoundSelector {
-    const pseudoName = readRawAmpersandPseudoSelector(rawSelector);
-    if (pseudoName) {
-      return new CompoundSelector([
-        new Ampersand(undefined, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext),
-        new PseudoSelector({ name: pseudoName }, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext)
-      ], undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
-    }
-    const parts = splitRawCompoundSelector(rawSelector);
-    if (!parts || parts.length < 1) {
-      // Not a recognized compound (e.g. a keyframe selector like `0%`): hold it
-      // verbatim as a basic selector rather than rejecting parser output.
-      return markStaticSelector(new BasicSelector(
-        rawSelector,
-        undefined,
-        this.location.length ? this.location : undefined,
-        this.sourceRoot?._treeContext
-      ));
-    }
-    return new CompoundSelector(parts, undefined, this.location.length ? this.location : undefined, this.sourceRoot?._treeContext);
   }
 
   private withParts(
@@ -2159,7 +2148,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     context: Context,
     options: { ownRules?: boolean } = {}
   ): MaybePromise<Ruleset> {
-    const sourceSelector = this.materializeRawSelectorForSemantics();
+    const sourceSelector = this.resolveSemanticSelector();
     this.attachSelectorBits(sourceSelector, context.selectorBits);
     const sourceParts: RulesetValue = {
       selector: sourceSelector,
@@ -2172,7 +2161,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const node = this.withParts(sourceParts, sourceParts, options);
     node._selectorCacheOwner = this;
     node.registrationPrepared = true;
-    const selector = node.materializeRawSelectorForSemantics();
+    const selector = node.resolveSemanticSelector();
     const { selectorBits } = context;
     this._prepareRulesVisibility(node, context);
     this._storeOwnSelector(node, selector, selectorBits);
@@ -2355,7 +2344,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       if (guardResult instanceof Nil) {
         return finishEvaluatedRules(guardResult);
       }
-      let selector = this.materializeRawSelectorForSemantics();
+      let selector = this.resolveSemanticSelector();
 
       if (selector instanceof Nil) {
         // If selector evaluates to Nil, return the rules body directly instead of the ruleset.

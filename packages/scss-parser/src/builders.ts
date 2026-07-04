@@ -56,12 +56,21 @@ import {
   Quoted,
   INTERPOLATION_PLACEHOLDER,
   isNode,
-  N
+  N,
+  Collection,
+  Declaration,
+  Expression
 } from '@jesscss/core';
 import {
   buildScssInterpolatedFromString,
   toInterpReplacement
 } from './interp.js';
+import {
+  desugarMapLookup,
+  desugarNamespacedCall,
+  makeNamespacedReference,
+  toDeclKey
+} from './scss-value-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -154,6 +163,11 @@ export class ScssGrammar extends LessGrammar {
       case 'CustomDeclaration': return this._buildScssCustomDeclaration(children, loc, () =>
         super.buildNode(type, span, children, _state, _rawChildren));
       case 'Quoted':            return this._buildQuoted(children, loc);
+      case 'ScssMapPair':       return this._buildScssMapPair(children, loc);
+      case 'ScssMapLiteral':    return this._buildScssMapLiteral(children, loc);
+      case 'ScssIdentValue':    return this._buildScssIdentValue(children, _rawChildren, loc);
+      case 'Call':              return this._buildScssCall(_rawChildren, loc);
+      case 'SquareParen':       return this._buildScssSquareParen(_rawChildren, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }

@@ -58,8 +58,31 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   const value = choice(
     ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
-    g.Url, g.CalcCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue
+    g.Url, g.CalcCall, ScssIdentValue, g.Call, g.EscapedValue, g.GluedParen, ScssMapLiteral,
+    g.Paren, g.SquareParen, g.Quoted, g.anyValue
   );
+
+  // ── Sass map literals + module-qualified idents ────────────────────────────
+  const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const ScssMapPair = node('ScssMapPair',
+    parser({ trivia: rw }, sequence(g.value, literal(':'), g.valueSequence)),
+    (c: any, r: any, s: any) => build('ScssMapPair', c, r, s));
+  const ScssMapLiteral = node('ScssMapLiteral',
+    parser({ trivia: rw }, sequence(
+      literal('('),
+      optional(sepBy(ScssMapPair, literal(','))),
+      expect(literal(')'), ')')
+    )),
+    (c: any, r: any, s: any) => build('ScssMapLiteral', c, r, s));
+  const ScssIdentValue = node('ScssIdentValue',
+    parser({ trivia: rw }, sequence(
+      plainIdent,
+      optional(choice(
+        sequence(literal('.'), scssVar),
+        sequence(dotName, literal('('), g.functionCallArgs)
+      ))
+    )),
+    (c: any, r: any, s: any) => build('ScssIdentValue', c, r, s));
 
   const staticSeg = regex(/[-_a-zA-Z0-9]+/);
   const nameSegment = choice(staticSeg, ScssInterpBare);
@@ -296,7 +319,8 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   return {
     VarDeclaration, Reference,
-    ScssInterpBare, InterpValue, value, ScssInterpolatedName, InterpolatedSelector,
+    ScssInterpBare, InterpValue, value, ScssMapLiteral, ScssIdentValue,
+    ScssInterpolatedName, InterpolatedSelector,
     Declaration, CustomDeclaration,
     ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
     ScssEach, ScssFor, ScssWhile,

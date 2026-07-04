@@ -8,7 +8,7 @@ import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
-import { Any, any, type AnyRole } from './any.js';
+import { Any, any, keyword, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
 import { Sequence, spaced } from './sequence.js';
@@ -97,7 +97,7 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 type DeclarationEvalState = {
   output: Node;
   name?: DeclarationValue['name'];
-  value?: Node;
+  value?: DeclarationValue['value'];
   important?: Any<'flag'>;
   nil: boolean;
 };
@@ -220,7 +220,7 @@ export function createDeclarationMergeAdapterState(
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
-  value: Node;
+  value: DeclarationValue['value'];
   important?: Any<'flag'>;
   changed: boolean;
 };
@@ -630,21 +630,29 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : node.cloneForPlacement();
   }
 
-  private materializeValueForSemantics(value: DeclarationValue['value']): Node {
+  /**
+   * Coerce a parser-delivered value (Node | string | array) into a single Node
+   * for the assignment-composition machinery (List/Sequence/Operation/Reference
+   * inputs), which is structurally node-only. Bare idents become Keyword (never
+   * Any); a space-separated array becomes a Sequence, matching the surrounding
+   * merge composition. Plain declarations never reach here — only explicit Less
+   * assignment operators (`+:`, `?:`, `+_:`, `+,:`).
+   */
+  private toAssignmentInputNode(value: DeclarationValue['value']): Node {
     if (value instanceof Node) {
       return value;
     }
     if (typeof value === 'string') {
-      return any(value);
+      return keyword(value);
     }
     if (value.length === 1) {
       const only = value[0]!;
-      return typeof only === 'string' ? any(only) : only;
+      return typeof only === 'string' ? keyword(only) : only;
     }
     const nodes = new Array<Node>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
-      nodes[i] = typeof item === 'string' ? any(item) : item;
+      nodes[i] = typeof item === 'string' ? keyword(item) : item;
     }
     return spaced(nodes);
   }
@@ -1101,8 +1109,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
-    if (state.nil) {
-      const output = state.output ?? this.materializeValueForSemantics(state.value);
+    if (state.nil && state.output) {
+      const output = state.output;
       return isRenderBuffer(bufferOrOptions)
         ? output.render(context, bufferOrOptions, options)
         : output.render(context, bufferOrOptions);
@@ -1214,7 +1222,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           ? this.evalCustomInterpolatedRenderValue(context, customInterpolatedValue)
           : state.renderAssignment
             ? evaluateRenderAssignment()
-            : this.materializeValueForSemantics(state.value).eval(context);
+            : state.value instanceof Node
+              ? state.value.eval(context)
+              : state.value;
       } finally {
         if (!isThenable(maybeValue!)) {
           context.inCustom = previousInCustom;
@@ -1385,7 +1395,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         output,
         name: declOutput?.name,
-        value: declOutput?.value instanceof Node ? declOutput.value : undefined,
+        value: declOutput?.value,
         important: declOutput?.important instanceof Any ? declOutput.important : undefined,
         nil: output instanceof Nil
       };
@@ -1488,9 +1498,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     state: DeclarationRegistrationState,
     name: Any<'property'>
   ): DeclarationRegistrationState {
-    if (!state.renderOnly) {
-      state.value = this.materializeValueForSemantics(state.value);
-    }
+    // Value is consumed as delivered by the parser (Node | string | array); no
+    // lazy string->node materialization. Only assignment composition (below)
+    // coerces to a Node where structurally required.
     this._normalizeAssignmentValue(state, name);
     return state;
   }
@@ -1517,8 +1527,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
       const inputValue = state.renderOnly
-        ? this.ownRenderAssignmentInput(this.materializeValueForSemantics(value))
-        : this.materializeValueForSemantics(value);
+        ? this.ownRenderAssignmentInput(this.toAssignmentInputNode(value))
+        : this.toAssignmentInputNode(value);
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'VarDeclaration' ? 'variable' : 'declaration';
@@ -1685,20 +1695,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    if (typeof this.value === 'string' || Array.isArray(this.value)) {
-      throw new TypeError('String-backed declaration values must be hydrated before evaluation');
-    }
     if (this.hasFlag(F_STATIC)) {
       return {
         source: this,
-        value: this.value instanceof Node ? this.value : this.materializeValueForSemantics(this.value),
+        value: this.value,
         important: this.important instanceof Any ? this.important : undefined,
         changed: false
       };
     }
     {
       let node = this;
-      const nodeValue = node.value instanceof Node ? node.value : this.materializeValueForSemantics(node.value);
+      const nodeValue = node.value;
       const state: DeclarationValueState<this> = {
         source: node,
         value: nodeValue,

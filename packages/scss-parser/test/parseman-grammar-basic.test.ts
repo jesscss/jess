@@ -283,3 +283,53 @@ describe('ScssParserParseman — interpolation (#{…})', () => {
     }
   });
 });
+
+describe('ScssParserParseman — maps / lists / module refs', () => {
+  it('parses a Sass map literal as Collection', () => {
+    const { tree } = parseOk('.a { x: ("regular": 400, "medium": 500); }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Collection)) {
+        expect(decl.value.toTrimmedString()).toContain('regular: 400');
+        expect(decl.value.toTrimmedString()).toContain('medium: 500');
+      }
+    }
+  });
+
+  it('desugars map.get() into a Reference lookup chain', () => {
+    const { tree } = parseOk('.a { x: map.get($font-weights, "medium"); }');
+    const serialized = serializeTypes(tree);
+    expect(serialized).toContain('font-weights');
+    expect(serialized).toContain('medium');
+    expect(serialized).not.toContain('map.get');
+  });
+
+  it('parses bracketed list literals with square delimiter metadata', () => {
+    const { tree } = parseOk('.a { x: [foo]; y: [1, 2]; }');
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain(`delimiter: 'square'`);
+    expect(serialized).toContain(`delimiter: 'paren'`);
+  });
+
+  it('parses module-member variable references (ns.$var)', () => {
+    const { tree } = parseOk('.a { color: ns.$c; }');
+    expect(serializeTypes(tree)).toContainString(`
+      (Reference
+        target:
+          (Reference
+            key: 'ns'
+          )
+        key: 'c'
+      )
+    `);
+  });
+
+  it('parses module-qualified function calls (ns.fn(...))', () => {
+    const { tree } = parseOk('.a { color: ns.fn($x); }');
+    const serialized = serializeTypes(tree);
+    expect(serialized).toContain('(Expression');
+    expect(serialized).toContain('(Call');
+    expect(serialized).toContain('(Reference');
+  });
+});
