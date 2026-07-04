@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -79,7 +80,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     return new SelectorList(
       ownedValue,
       this._options ? { ...this._options } : undefined,
-      this.location
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -172,7 +173,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
       w.add(`,\n${space}`);
       if (printOptions.trivia && typeof item !== 'string') {
         emitTriviaTokens(
-          consumeTrivia(printOptions.trivia, item.spanStart, 'before', printOptions),
+          consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions),
           printOptions,
           { skipLeadingWhitespace: true }
         );

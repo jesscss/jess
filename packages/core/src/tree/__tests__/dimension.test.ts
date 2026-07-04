@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { color, dimension, num } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -169,25 +170,25 @@ describe('Dimension', () => {
     it('keeps inherited source metadata on public arithmetic results', () => {
       const left = dimension([10, 'px']);
       const right = dimension([20, 'px']);
-      left._location = [10, 1, 11, 14, 1, 15];
+      setSourceSpan(left, { start: 10, end: 14 });
 
       const result = left.operate(right, '+', context);
 
       expect(result).not.toBe(left);
-      expect(result.location).toEqual(left.location);
+      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
       expect(result.sourceNode).toBe(result);
     });
 
     it('keeps inherited source metadata on dimension-to-color operation results', () => {
       const left = dimension(10);
       const right = color('#010203');
-      left._location = [20, 1, 21, 24, 1, 25];
+      setSourceSpan(left, { start: 20, end: 24 });
 
       const result = left.operate(right, '+', context);
 
       expect(result).not.toBe(left);
       expect(result).not.toBe(right);
-      expect(result.location).toEqual(left.location);
+      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
       expect(result.sourceNode).toBe(result);
     });
   });
@@ -305,12 +306,12 @@ describe('Dimension', () => {
     it('keeps preserve-mode compound dimension results as public node surfaces', async () => {
       const left = dimension([10, 'px']);
       const right = dimension([2, 'rem']);
-      left._location = [20, 2, 1, 24, 2, 5];
+      setSourceSpan(left, { start: 20, end: 24 });
 
       const result = left.operate(right, '+', context);
 
       expect(result).not.toBe(left);
-      expect(result.location).toEqual(left.location);
+      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
       expect(result.sourceNode).toBe(result);
       expect(await result.render(context)).toContain('calc');
     });

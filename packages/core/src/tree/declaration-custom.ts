@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Declaration } from './declaration.js';
 import { defineType } from './node.js';
 import type { Context } from '../context.js';
@@ -41,7 +42,7 @@ export class CustomDeclaration extends Declaration {
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   this.name.toCSS(context, out)
   //   /**
   //    * Don't insert a space after the colon;
@@ -55,7 +56,7 @@ export class CustomDeclaration extends Declaration {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.custom({\n', loc)
   //   out.add(`  name: `)
   //   this.name.toModule(context, out)

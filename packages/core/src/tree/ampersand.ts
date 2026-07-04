@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node, type PlacementCloneOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
@@ -307,7 +308,7 @@ function createAmpersandWithSelectorContainer(
       selectorContainer
     },
     source.options,
-    source.location.length === 0 ? undefined : source.location
+    sourceSpanOf(source)
   ).inherit(source);
 }
 
@@ -353,7 +354,7 @@ function createBasicSelectorLike(selector: SimpleSelector, value: string): Basic
   const node = new BasicSelector(
     value,
     { ...selector.options },
-    selector.location.length === 0 ? undefined : selector.location
+    sourceSpanOf(selector)
   );
   return node.inherit(selector);
 }
@@ -635,8 +636,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
           filePath: file?.fullPath,
-          line: amp.location?.[1],
-          column: amp.location?.[2],
+
           meta: { selector: selectorText }
         })));
       }
@@ -663,7 +663,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         selectorContainer: this._selectorContainer
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length === 0 ? undefined : this.location
+      sourceSpanOf(this)
     ).inherit(this);
     if (this._storedSelector) {
       node._storedSelector = this._storedSelector;
@@ -679,7 +679,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   /** @todo - move to ToModuleVisitor */
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.amp()', this.location)
+  //   out.add('$J.amp()', sourceSpanOf(this))
   // }
 }
 

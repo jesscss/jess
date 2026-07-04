@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -94,7 +95,7 @@ function emitCallArgSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, arg, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, arg.spanStart, 'before', options)
+    ? consumeTrivia(options.trivia, spanStartOf(arg), 'before', options)
     : undefined;
   const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
@@ -118,8 +119,8 @@ function emitCommentTriviaBetweenCallArgs(
   options: FinalPrintOptions
 ): string {
   const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
-  const prevEnd = prev.spanEnd;
-  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
+  const prevEnd = spanEndOf(prev);
+  if (!trivia || prevEnd === undefined || spanStartOf(next) === undefined) {
     return '';
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -150,7 +151,7 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         ...name.options,
         mixinRulesetCallHasArgs: true
       },
-      name.location.length === 0 ? undefined : name.location,
+      sourceSpanOf(name),
       name.sourceRoot?._treeContext
     );
   }
@@ -584,7 +585,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        name.location.length === 0 ? undefined : name.location,
+        sourceSpanOf(name),
         name.sourceRoot?._treeContext
       );
     }
@@ -1973,7 +1974,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        this.location,
+        sourceSpanOf(this),
         this.sourceRoot?._treeContext
       );
       return this.markCallOutput(node);

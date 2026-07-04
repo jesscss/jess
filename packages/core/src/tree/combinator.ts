@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
 import { defineType, F_STATIC, F_VISIBLE, type Node } from './node.js';
 import { Selector } from './selector.js';
@@ -61,7 +62,7 @@ export class Combinator extends Selector<Combinators> {
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {
   //   const val = this.value
-  //   out.add(val === ' ' ? val : ` ${val} `, this.location)
+  //   out.add(val === ' ' ? val : ` ${val} `, sourceSpanOf(this))
   // }
 
   /** @todo move to visitor */

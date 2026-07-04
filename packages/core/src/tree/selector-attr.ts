@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { defineType, Node, type LocationInfo } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -191,7 +192,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       undefined,
       // NodeLocation (LocationInfo | []) is compatible with LocationInfo; [] case won't match LocationInfo | 0
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      this.location as LocationInfo | 0
+      sourceSpanOf(this) as LocationInfo | 0
     );
     node.inherit(this);
     return node;

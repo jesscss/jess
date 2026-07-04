@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { defineType, F_MAY_ASYNC, F_STATIC, Node, type NodeLocation } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -122,7 +123,7 @@ export function renderListValueSyntax<T extends Node>(
     item = value[i]!;
     emitCommentTriviaBetweenNodes(prev, item, printOptions);
     const leadingTrivia = printOptions.trivia
-      ? consumeTrivia(printOptions.trivia, item.spanStart, 'before', printOptions)
+      ? consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions)
       : undefined;
     const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
     if (sep === '/') {
@@ -150,7 +151,7 @@ function emitListSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, item, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, item.spanStart, 'before', options)
+    ? consumeTrivia(options.trivia, spanStartOf(item), 'before', options)
     : undefined;
   const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
@@ -282,7 +283,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return new List<Node>(
       values,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -460,7 +461,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('', this.location)
+  //   out.add('', sourceSpanOf(this))
   //   const length = this.value.length - 1
   //   const cast = context.cast
   //   this.value.forEach((node, i) => {
@@ -479,7 +480,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   /** @todo move to ToModuleVisitor */
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.list([\n', this.location)
+  //   out.add('$J.list([\n', sourceSpanOf(this))
   //   context.indent++
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {

@@ -23,6 +23,13 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
+import {
+  setSourceSpan,
+  sourceSpanOf,
+  spanStartOf,
+  isSourceFree,
+  F_HAS_SPAN
+} from './util/provenance.js';
 
 const { isArray } = Array;
 
@@ -72,15 +79,9 @@ type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
 
-export type LocationInfo = [
-  startOffset: number,
-  startLine: number,
-  startColumn: number,
-  endOffset: number,
-  endLine: number,
-  endColumn: number
-];
-export type NodeLocation = LocationInfo | [];
+/** A source span: `{start, end}` offsets. The only source-position shape. */
+export type LocationInfo = { start: number; end: number };
+export type NodeLocation = LocationInfo | undefined;
 
 function createNodeOptions() {
   return Object.create(null);
@@ -267,6 +268,9 @@ export const F_REG_PREPARED = 0b100000000000;
  */
 export const F_HOIST_SET = 0b1000000000000;
 export const F_HOIST_VALUE = 0b10000000000000;
+// F_HAS_SPAN lives in util/provenance.ts (the side table owns the span concern);
+// re-exported here so the flag bit stays discoverable alongside the others.
+export { F_HAS_SPAN };
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
@@ -400,36 +404,10 @@ export abstract class Node<
    */
   static childKeys: readonly string[] | null = null;
 
-  private _loc: NodeLocation | undefined = undefined;
-
-  /**
-   * Start/end source offsets, denormalized from the location tuple so hot
-   * paths (trivia, serialization) read plain SMI fields instead of chasing the
-   * tuple. `undefined` = no source location. Synced by the `_location` setter;
-   * line/col slots ([1],[2],[4],[5]) may still be mutated in place on the
-   * tuple, but offsets must be set by assigning the whole tuple.
-   */
-  spanStart: number | undefined = undefined;
-  spanEnd: number | undefined = undefined;
-
-  get _location(): NodeLocation | undefined {
-    return this._loc;
-  }
-
-  set _location(location: NodeLocation | undefined) {
-    this._loc = location;
-    if (location !== undefined && location.length > 0) {
-      this.spanStart = location[0];
-      this.spanEnd = location[3];
-    } else {
-      this.spanStart = undefined;
-      this.spanEnd = undefined;
-    }
-  }
-
-  get location() {
-    return (this._location ??= []);
-  }
+  // Source spans / CST provenance are NOT node fields — they live in the
+  // provenance side-table (`util/provenance.ts`) and are read/written via free
+  // functions (`sourceSpanOf`, `setSourceSpan`, `fieldSpansOf`, …). The one hot
+  // check is the `F_HAS_SPAN` flag; see `provenance-side-table-only` memory.
 
   _sourceRoot: Rules | undefined;
   get sourceRoot(): Rules | undefined {
@@ -464,32 +442,9 @@ export abstract class Node<
   /** Bitmask of runtime flags (F_VISIBLE, F_STATIC, etc.). Renamed from `state` to free that name for Parséman. */
   flags = F_DEFAULT;
 
-  /** Parséman parse-context snapshot stored per node for incremental re-parsing. */
-  state: unknown = undefined;
-
-  /** Discriminant required by Parséman's NodeLike interface. */
-  readonly _tag = 'node' as const;
-
-  /**
-   * Parséman structural children (Node | CSTLeaf | CSTError items in parse order).
-   * Set by buildNode during grammar-driven construction; empty for directly constructed nodes.
-   */
-  private _cstChildren: ReadonlyArray<{ _tag: string }> = [];
-  get children(): ReadonlyArray<{ _tag: string }> {
-    return this._cstChildren;
-  }
-
-  /** @internal — called by JessParser.buildNode only */
-  _setCstChildren(children: ReadonlyArray<{ _tag: string }>) {
-    this._cstChildren = children;
-  }
-
-  /** Source byte-offset span for Parséman's NodeLike interface. */
-  get span(): { start: number; end: number } {
-    return {
-      start: this.spanStart ?? 0,
-      end: this.spanEnd ?? 0
-    };
+  /** Discriminant required by Parséman's NodeLike interface (constant — prototype getter). */
+  get _tag(): 'node' {
+    return 'node';
   }
 
   /** Runtime tracking: has this node completed registration identity prep? Backed by `F_REG_PREPARED`. */
@@ -507,20 +462,6 @@ export abstract class Node<
 
   /** Runtime tracking: has eval been run on this node? */
 
-  /**
-   * Optional scanner-first direct-field spans, packed by this node's static
-   * `childKeys` order as `[start, end, flags]` triples. This is offset-only
-   * source provenance, not legacy `LocationInfo`.
-   */
-  declare fieldSpans: number[] | undefined;
-
-  /**
-   * Optional scanner-first spans for array-backed `value` entries, also packed
-   * as `[start, end, flags]` triples. Keep this separate from `fieldSpans` so
-   * a direct `value` field range is not confused with individual value
-   * segments.
-   */
-  declare valueSpans: number[] | undefined;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -756,7 +697,7 @@ export abstract class Node<
     // lowercase factory then calls `parentChildren()` to parent one level.
     // `new Foo()` shares its children by default.
     void value;
-    this._location = location;
+    setSourceSpan(this, location);
     this._options = options;
   }
 
@@ -1151,7 +1092,7 @@ export abstract class Node<
     const newNode = new Ctor(
       cloned,
       this._options ? { ...this._options } : undefined,
-      this._location
+      sourceSpanOf(this)
     );
     newNode.inherit(this);
     // Faithful copy: a clone shares/maps the SAME children as its source, so it
@@ -1169,7 +1110,9 @@ export abstract class Node<
    * replace their children for a specific placement.
    */
   canReuseAsLeaf(): boolean {
-    return this.spanStart === undefined
+    // Source-free (no span) is the hot condition — read the flag, not the
+    // provenance table. Equivalent to `spanStart === undefined`.
+    return isSourceFree(this)
       && !this.hasFlag(F_NON_STATIC)
       && !this.hasFlag(F_HAS_NODE_CHILD);
   }
@@ -1267,7 +1210,7 @@ export abstract class Node<
     if (isRulesNode(this)) {
       this._treeContext = undefined;
     }
-    this._location = undefined;
+    setSourceSpan(this, undefined);
     if (deep) {
       const childKeys = childKeysOf(this);
       if (childKeys) {
@@ -1412,7 +1355,7 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    this._location = node._location;
+    setSourceSpan(this, sourceSpanOf(node));
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
       this._treeContext ??= node.sourceRoot?._treeContext;
@@ -1511,7 +1454,7 @@ export abstract class Node<
     const suppressPre = options.suppressBoundaryTrivia === 'pre'
       || options.suppressBoundaryTrivia === 'both';
     if (!suppressPre && trivia) {
-      emitTrivia(trivia, 'before', this.spanStart, options);
+      emitTrivia(trivia, 'before', spanStartOf(this), options);
     }
     this.toTrimmedString(options);
     return w.getSince(mark);

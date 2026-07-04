@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
@@ -36,7 +37,7 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
 function writeParenValue(value: Node, options: FinalPrintOptions): void {
   if (options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, value.spanStart, 'before', options),
+      consumeTrivia(options.trivia, spanStartOf(value), 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );
@@ -97,7 +98,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return new Paren(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -381,7 +382,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.paren(', loc)
   //   this.value.toModule(context, out)
   //   out.add(')')

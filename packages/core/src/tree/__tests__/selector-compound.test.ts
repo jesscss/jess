@@ -1,3 +1,4 @@
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from '../util/provenance.js';
 import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
@@ -92,11 +93,11 @@ describe('Compound Selector', () => {
     test('streams compound selector parts without capture scaffolding', () => {
       const writer = new CountingWriter();
       const first = el('.sel');
-      first._location = [0, 1, 1, 3, 1, 4];
+      setSourceSpan(first, { start: 0, end: 3 });
       const second = el('.a');
-      second._location = [16, 1, 17, 17, 1, 18];
+      setSourceSpan(second, { start: 16, end: 17 });
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], run('/*comment*/')]]),
+        before: new Map([[sourceSpanOf(second)?.start, run('/*comment*/')]]),
         after: new Map<number, Trivia>()
       }) satisfies TriviaMap;
 
@@ -243,13 +244,15 @@ describe('Compound Selector', () => {
     ]);
     const sourceChild = selector.value[1]!;
     const sourceParent = sourceChild.parent;
-    const sourceLocation = sourceChild.location;
+    const sourceSpanStart = spanStartOf(sourceChild);
+    const sourceSpanEnd = spanEndOf(sourceChild);
     const resolved = await selector.eval(context);
 
     expect(resolved.toTrimmedString()).toBe('.keep');
     expect(resolved).not.toBe(sourceChild);
     expect(sourceChild.parent).toBe(sourceParent);
-    expect(sourceChild.location).toBe(sourceLocation);
+    expect(spanStartOf(sourceChild)).toBe(sourceSpanStart);
+    expect(spanEndOf(sourceChild)).toBe(sourceSpanEnd);
     expect(selector.toTrimmedString()).toBe('&.keep');
   });
 

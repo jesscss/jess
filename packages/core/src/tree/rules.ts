@@ -1,3 +1,4 @@
+import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -569,7 +570,7 @@ function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
-  const offset = node.spanStart;
+  const offset = spanStartOf(node);
   return trivia ? consumeTriviaText(trivia, offset, 'before', options) : '';
 }
 
@@ -962,7 +963,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   derive(value: Node[] = [...this.rules]): Rules {
-    const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    const sourceLocation = sourceSpanOf(this);
     // Thin surface: construct EMPTY (so the constructor parents nothing) and
     // SHARE the children — push without adopting, so a shared canonical child's
     // parent is never overwritten. `sourceNode` is the surface's only link back
@@ -3744,7 +3745,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super();
-    this._location = location;
+    setSourceSpan(this, location);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     this._options = mergedOptions as unknown as typeof this._options;
     // Invariant 7: store, don't adopt. `parentChildren()` (called by the factory)
@@ -4785,7 +4786,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          sourceSpanOf(node)
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -4801,7 +4802,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          sourceSpanOf(node)
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;

@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
@@ -66,17 +67,17 @@ describe('Selector', () => {
 
     it('serializes comment trivia between selector list members after separators', () => {
       const first = el('#a');
-      first._location = [0, 1, 1, 1, 1, 2];
+      setSourceSpan(first, { start: 0, end: 1 });
       const second = el('.b');
-      second._location = [17, 3, 1, 18, 3, 2];
+      setSourceSpan(second, { start: 17, end: 18 });
       const third = el('.c');
-      third._location = [25, 3, 9, 26, 3, 10];
+      setSourceSpan(third, { start: 25, end: 26 });
       const firstRun = run('\n/*x*//*y*/\n');
       const secondRun = run('/*z*/');
       const trivia = createTriviaMap({
         before: new Map([
-          [second.location[0], firstRun],
-          [third.location[0], secondRun]
+          [sourceSpanOf(second)?.start, firstRun],
+          [sourceSpanOf(third)?.start, secondRun]
         ]),
         after: new Map()
       }) satisfies TriviaMap;
@@ -87,11 +88,11 @@ describe('Selector', () => {
     it('streams selector list items without capture scaffolding', () => {
       const writer = new CountingWriter();
       const first = el('#a');
-      first._location = [0, 1, 1, 1, 1, 2];
+      setSourceSpan(first, { start: 0, end: 1 });
       const second = el('.b');
-      second._location = [17, 3, 1, 18, 3, 2];
+      setSourceSpan(second, { start: 17, end: 18 });
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], run('\n/*x*/\n')]]),
+        before: new Map([[sourceSpanOf(second)?.start, run('\n/*x*/\n')]]),
         after: new Map()
       }) satisfies TriviaMap;
 
@@ -122,14 +123,14 @@ describe('Selector', () => {
 
     it('serializes comment trivia between selector list members before separators', () => {
       const first = el('#comments');
-      first._location = [0, 1, 1, 8, 1, 9];
+      setSourceSpan(first, { start: 0, end: 8 });
       const second = el('.comments');
-      second._location = [35, 1, 36, 43, 1, 44];
+      setSourceSpan(second, { start: 35, end: 43 });
       // The SAME run object indexed from both sides — emitted once by identity.
       const shared = run(' /* boo *//* boo again*/');
       const trivia = createTriviaMap({
         before: new Map([[33, shared]]),
-        after: new Map([[first.location[3], shared]])
+        after: new Map([[sourceSpanOf(first)?.end, shared]])
       }) satisfies TriviaMap;
 
       expect(sellist([first, second]).toString({ trivia })).toBe('#comments /* boo *//* boo again*/,\n.comments');

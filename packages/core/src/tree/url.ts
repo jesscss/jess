@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Node, F_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
@@ -31,7 +32,7 @@ export class Url extends Node<Node> {
     return new Url(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }

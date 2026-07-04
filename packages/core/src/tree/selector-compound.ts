@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf, valueSpansOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -45,7 +46,7 @@ function emitCompoundPart(
   }
   if (emitLeadingTrivia && options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, part.spanStart, 'before', options),
+      consumeTrivia(options.trivia, spanStartOf(part), 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );
@@ -110,7 +111,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     const node = new CompoundSelector(
       ownedValue,
       this._options ? { ...this._options } : undefined,
-      this.location
+      sourceSpanOf(this)
     ).inherit(this) as this;
     if (hoistToRoot) {
       node.hoistToRoot = true;
@@ -147,11 +148,11 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
-    const spans = this.valueSpans;  // packed [start,end,flags] per component
+    const spans = valueSpansOf(this);  // {start,end} per component
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
-      const stringPartStart = spans ? spans[i * 3] : undefined;
+      const stringPartStart = spans ? spans[i]?.start : undefined;
       emitCompoundPart(value[i]!, printOptions, i > 0, stringPartStart);
     }
     restorePrintState(printOptions, saved);
@@ -351,7 +352,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
+  //   out.add('$J.sel([', sourceSpanOf(this))
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     node.toModule(context, out)

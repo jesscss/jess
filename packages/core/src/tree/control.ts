@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Rules } from './rules.js';
@@ -115,9 +116,7 @@ function createDerivedIterationRulesSurface(
   shareChildren = false
 ): Rules {
   const sourceOptions = sourceRules.options;
-  const sourceLocation = sourceRules.location.length === 0
-    ? undefined
-    : sourceRules.location;
+  const sourceLocation = sourceSpanOf(sourceRules);
   const output = new Rules(
     [],
     {
@@ -668,7 +667,7 @@ export class For extends Rules<StructuredLoopValue> {
         rules
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this) as this;
   }
@@ -681,7 +680,7 @@ export class For extends Rules<StructuredLoopValue> {
         rules: value
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }

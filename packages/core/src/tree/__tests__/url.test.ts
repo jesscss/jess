@@ -127,8 +127,8 @@ describe('url', () => {
       after: new Map()
     });
     const treeContext = new TreeContext({ trivia });
-    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
-    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+    const value = quoted('image.png', undefined, { start: 4, end: 14 }, treeContext);
+    const node = url(value, undefined, { start: 0, end: 15 }, treeContext);
 
     expect(node.render(context)).toBe('url("image.png")');
   });

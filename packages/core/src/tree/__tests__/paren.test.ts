@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
@@ -364,9 +365,9 @@ describe('Paren', () => {
   it('streams paren values without capture scaffolding', () => {
     const writer = new CountingWriter();
     const value = any('foo');
-    value._location = [4, 1, 5, 6, 1, 7];
+    setSourceSpan(value, { start: 4, end: 6 });
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], run(' /*x*/')]])
+      before: new Map([[sourceSpanOf(value)?.start, run(' /*x*/')]])
     }) satisfies TriviaMap;
 
     expect(paren(value).toTrimmedString({ trivia, writer })).toBe('(/*x*/foo)');

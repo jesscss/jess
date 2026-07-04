@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
@@ -82,10 +83,10 @@ describe('Block', () => {
   });
 
   it('emits source trivia before the closing delimiter', () => {
-    const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
-    const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
+    const value = any('foo', undefined, { start: 1, end: 3 });
+    const node = block(value, undefined, { start: 0, end: 7 });
     const trivia = createTriviaMap({
-      before: new Map([[node.location[3], run('\n  ')]]),
+      before: new Map([[sourceSpanOf(node)?.end, run('\n  ')]]),
       after: new Map()
     }) satisfies TriviaMap;
 

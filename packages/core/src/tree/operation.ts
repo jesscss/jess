@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
@@ -52,7 +53,7 @@ export class Operation extends Node<OperationValue> {
     const node = new Operation(
       [finalLeft, this.operator, finalRight],
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this._treeContext
     );
     return node.inherit(this);
@@ -91,7 +92,7 @@ export class Operation extends Node<OperationValue> {
     const node = new Operation(
       [left, this.operator, right],
       this._options ? { ...this._options } : undefined,
-      this._location,
+      sourceSpanOf(this),
       this._treeContext
     );
     node.inherit(this);
@@ -109,7 +110,7 @@ export class Operation extends Node<OperationValue> {
     w.add(` ${op} `, this);
     if (options.trivia) {
       emitTriviaTokens(
-        consumeTrivia(options.trivia, right.spanStart, 'before', options),
+        consumeTrivia(options.trivia, spanStartOf(right), 'before', options),
         options,
         { skipLeadingWhitespace: true }
       );

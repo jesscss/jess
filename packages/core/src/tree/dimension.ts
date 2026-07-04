@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { Color, ColorFormat } from './color.js';
 import {
@@ -78,7 +79,7 @@ export class Dimension extends Node<DimensionValue> {
     const newNode = new Dimension(
       { number: this.number, unit: this.unit },
       this._options ? { ...this._options } : undefined,
-      this._location,
+      sourceSpanOf(this),
       this._treeContext
     );
     newNode.inherit(this);
@@ -386,7 +387,7 @@ export class Dimension extends Node<DimensionValue> {
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   out.add(this.toString(), this.location)
+  //   out.add(this.toString(), sourceSpanOf(this))
   // }
 
   // toModule(context: Context, out: OutputCollector) {
@@ -394,7 +395,7 @@ export class Dimension extends Node<DimensionValue> {
   //     `  value: ${this.value},\n` +
   //     `  unit: "${this.unit ?? ''}"\n` +
   //     `})`
-  //   , this.location)
+  //   , sourceSpanOf(this))
   // }
 }
 

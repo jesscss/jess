@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
@@ -1971,7 +1972,7 @@ describe('Style import', () => {
         this: Any,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value === 'red' && this.location.length === 0) {
+        if (this.value === 'red' && sourceSpanOf(this).length === 0) {
           clonedRedLeaves++;
         }
         return originalClone.apply(this, args);

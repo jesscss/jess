@@ -1,9 +1,10 @@
+import { sourceSpanOf } from './provenance.js';
 import { F_HAS_NODE_CHILD, F_STATIC, Node } from '../node.js';
 import { Sequence } from '../sequence.js';
 
 function canReuseStaticScalarLeaf(value: Node): boolean {
   return value.hasFlag(F_STATIC)
-    && value.location.length === 0
+    && (sourceSpanOf(value) === undefined)
     && !value.hasFlag(F_HAS_NODE_CHILD);
 }
 

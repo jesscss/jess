@@ -1,3 +1,4 @@
+import { spanStartOf } from './provenance.js';
 import type { Context } from '../../context.js';
 import type { TriviaMap, Trivia } from '../../types/index.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
@@ -155,6 +156,7 @@ type SourceMapTreeContext = {
     fullPath?: string;
     path?: string;
     name?: string;
+    source?: string;
   };
 };
 
@@ -163,7 +165,6 @@ type SourceMapSourceRoot = {
 };
 
 type SourceMapOrigin = {
-  location?: unknown;
   sourceRoot?: SourceMapSourceRoot;
 };
 
@@ -171,22 +172,39 @@ const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
   return typeof value === 'object' && value !== null;
 };
 
+/** 0-based line/column at a source offset (line/col are derived, not stored). */
+export function offsetToLineCol(source: string, offset: number): { line: number; column: number } {
+  let line = 0;
+  let lineStart = 0;
+  const end = Math.min(offset, source.length);
+  for (let i = 0; i < end; i++) {
+    if (source.charCodeAt(i) === 10 /* \n */) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, column: end - lineStart };
+}
+
 function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: number): SourceSegment | undefined {
   const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
-  const loc = origin?.location;
-  if (!loc || !Array.isArray(loc) || loc.length !== 6) {
+  const offset = origin ? spanStartOf(origin) : undefined;
+  if (typeof offset !== 'number') {
     return undefined;
   }
-  const startLine = (loc[1] ?? 1) - 1;
-  const startColumn = (loc[2] ?? 1) - 1;
   const treeContext = origin?.sourceRoot?._treeContext;
   const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
+  // Original line/col derive from the source offset + source text (cold path).
+  const source = treeContext?.file?.source;
+  const { line, column } = source !== undefined
+    ? offsetToLineCol(source, offset)
+    : { line: 0, column: 0 };
   return {
     genLine,
     genColumn,
     source: file,
-    origLine: startLine,
-    origColumn: startColumn
+    origLine: line,
+    origColumn: column
   };
 }
 

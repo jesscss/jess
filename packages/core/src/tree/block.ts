@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -28,9 +29,7 @@ export class Block extends Node<Node, BlockOptions> {
   readonly value: Node;
 
   private withValue(value: Node): Block {
-    const location = this._location && this._location.length === 6
-      ? this._location
-      : undefined;
+    const location = sourceSpanOf(this);
     return new Block(
       value,
       this._options ? { ...this._options } : undefined,
@@ -61,11 +60,11 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(start);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
-      w.add(consumeTriviaText(trivia, value.spanStart, 'before', options));
+      w.add(consumeTriviaText(trivia, spanStartOf(value), 'before', options));
     }
     value.writeSyntax(options);
     if (trivia) {
-      w.add(consumeTriviaText(trivia, this.spanEnd, 'before', options));
+      w.add(consumeTriviaText(trivia, spanEndOf(this), 'before', options));
     }
     w.add(end);
     return w.getSince(position);

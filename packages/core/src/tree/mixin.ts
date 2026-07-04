@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
 import { Condition } from './condition.js';
 import { List } from './list.js';
@@ -193,7 +194,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     return new Mixin(
       derived,
       this._options ? { ...this._options } : undefined,
-      this.location.length === 6 ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -352,7 +353,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     const out = new Mixin(
       value,
       node.options,
-      node.location.length ? node.location : undefined,
+      sourceSpanOf(node),
       node.sourceRoot?._treeContext
     ).inherit(node);
     out.registrationPrepared = node.registrationPrepared;
@@ -385,7 +386,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   //   const { name, args, value } = this
   //   const nm = name.value
   //   if (context.depth === 0) {
-  //     out.add(`export let ${nm}`, this.location)
+  //     out.add(`export let ${nm}`, sourceSpanOf(this))
   //     context.exports.add(nm)
   //   } else {
   //     if (context.depth !== 1) {

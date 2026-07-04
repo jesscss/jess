@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import {
   defineType,
   Node,
@@ -434,7 +435,7 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   if (!rs) {
     return context.extends.length;
   }
-  const loc = rs.location;
+  const loc = sourceSpanOf(rs);
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
   if (fromLoc !== undefined) {
     return fromLoc;

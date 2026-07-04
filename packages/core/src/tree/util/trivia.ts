@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf } from './provenance.js';
 import type { FinalPrintOptions, PrintOptions } from './print.js';
 import type { TriviaLookup, TriviaMap, Trivia } from '../../types/index.js';
 import type { Node } from '../node.js';
@@ -139,7 +140,7 @@ export function emitNodeSourceSyntaxWithTrivia(
   const suppressPre = options.suppressBoundaryTrivia === 'pre'
     || options.suppressBoundaryTrivia === 'both';
   if (!suppressPre && trivia) {
-    emitTriviaTokens(consumeTrivia(trivia, node.spanStart, 'before', options), options);
+    emitTriviaTokens(consumeTrivia(trivia, spanStartOf(node), 'before', options), options);
   }
   node.writeSyntax(options);
 }
@@ -154,8 +155,8 @@ export function emitCommentTriviaBetweenNodes(
     ?? treeTrivia(prev)
     ?? treeTrivia(next)
   );
-  const prevEnd = prev.spanEnd;
-  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
+  const prevEnd = spanEndOf(prev);
+  if (!trivia || prevEnd === undefined || spanStartOf(next) === undefined) {
     return false;
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -180,8 +181,8 @@ export function emitCommentTriviaBeforeDelimiter(
     ?? treeTrivia(prev)
     ?? treeTrivia(next)
   );
-  const prevEnd = prev.spanEnd;
-  if (!trivia || prevEnd === undefined || next.spanStart === undefined) {
+  const prevEnd = spanEndOf(prev);
+  if (!trivia || prevEnd === undefined || spanStartOf(next) === undefined) {
     return;
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -199,7 +200,7 @@ export function emitCommentTriviaAfterNode(
     options.trivia
     ?? treeTrivia(node)
   );
-  const offset = node.spanEnd;
+  const offset = spanEndOf(node);
   if (!trivia || offset === undefined) {
     return;
   }
@@ -276,8 +277,8 @@ export function consumeTriviaBetween(
   next: Node,
   options: TriviaEmitOptions
 ): Trivia | undefined {
-  const prevEnd = prev.spanEnd;
-  const nextStart = next.spanStart;
+  const prevEnd = spanEndOf(prev);
+  const nextStart = spanStartOf(next);
   if (!trivia || prevEnd === undefined || nextStart === undefined || prevEnd > nextStart) {
     return undefined;
   }

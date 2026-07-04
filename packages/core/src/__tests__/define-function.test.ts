@@ -525,7 +525,7 @@ describe('defineFunction', () => {
         }
       }
 
-      const value = new CopyBomb('red', undefined, [0, 1, 1, 2, 1, 3]);
+      const value = new CopyBomb('red', undefined, { start: 0, end: 2 });
       CopyBomb.copyShouldThrow = true;
       try {
         const ctx = new Context();

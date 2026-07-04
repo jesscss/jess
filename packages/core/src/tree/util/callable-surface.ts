@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './provenance.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { F_VISIBLE, Node } from '../node.js';
 import { N } from '../node-type.js';
@@ -60,9 +61,7 @@ function createDerivedRulesSurface(
   options?: DerivedRulesSurfaceOptions
 ): Rules {
   const sourceOptions = sourceRules.options;
-  const sourceLocation = sourceRules.location.length === 0
-    ? undefined
-    : sourceRules.location;
+  const sourceLocation = sourceSpanOf(sourceRules);
   const output = new Rules(
     [],
     {

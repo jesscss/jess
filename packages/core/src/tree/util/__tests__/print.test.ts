@@ -73,7 +73,7 @@ describe('TriviaMap serialization', () => {
   });
 
   it('serializes trivia looked up before a node offset', () => {
-    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const node = new Any('test', undefined, { start: 10, end: 13 });
     const trivia = createTriviaMap({
       before: new Map([[10, run('\n  /* keep */')]]),
       after: new Map()
@@ -84,7 +84,7 @@ describe('TriviaMap serialization', () => {
 
   it('serializes generic node boundary trivia without capture scaffolding', () => {
     const writer = new CountingWriter();
-    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const node = new Any('test', undefined, { start: 10, end: 13 });
     const trivia = createTriviaMap({
       before: new Map([[10, run('\n  /* keep */')]]),
       after: new Map()
@@ -96,7 +96,7 @@ describe('TriviaMap serialization', () => {
   });
 
   it('does not serialize trailing trivia from generic node output', () => {
-    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const node = new Any('test', undefined, { start: 10, end: 13 });
     const trivia = createTriviaMap({
       before: new Map(),
       after: new Map([[13, run('\n  ')]])

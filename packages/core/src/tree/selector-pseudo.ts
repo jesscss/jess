@@ -1,3 +1,4 @@
+import { sourceSpanOf, valueSpansOf } from './util/provenance.js';
 import {
   defineType,
   type Node
@@ -48,7 +49,7 @@ function createEvaluatedPseudoSelector(
       generatedPseudoPlacementOverride: source.generatedPseudoPlacementOverride
     },
     source.options ? { ...source.options } : undefined,
-    source.location.length === 6 ? source.location : undefined,
+    sourceSpanOf(source),
     source.sourceRoot?._treeContext
   ).inherit(source);
   node.generated = source.generated;
@@ -123,12 +124,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         // trivia (whitespace + comments) spans from the previous part's end to
         // the next part's start, so recover it across the combinator rather than
         // emitting a bare space (mirrors ComplexSelector.toString).
-        const spans = this.valueSpans;
+        const spans = valueSpansOf(this);
         for (let i = 0; i < arg.length; i++) {
           const part = arg[i];
           if (part === ' ') {
             const run = (options.trivia && spans)
-              ? consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[i - 1]?.end, spans[i + 1]?.start, options)
               : undefined;
             if (run) {
               emitTriviaTokens(run, options);
@@ -141,7 +142,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           // combinator, which already consumed the trivia up to this part's start.
           if (i > 0 && arg[i - 1] !== ' ' && options.trivia && spans) {
             emitTriviaTokens(
-              consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[i * 3], options),
+              consumeTriviaBetweenOffsets(options.trivia, spans[i - 1]?.end, spans[i]?.start, options),
               options
             );
           }
@@ -157,7 +158,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         // Unknown-pseudo arg stored as Sequence for AST serialization.
         // Render each Any item inline (no separators), using valueSpans for trivia.
         const seqItems = arg.value;
-        const spans = this.valueSpans;
+        const spans = valueSpansOf(this);
         let srcIdx = 0;
         let prevWasSpace = false;
         for (let i = 0; i < seqItems.length; i++) {
@@ -166,7 +167,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           const itemStr = (item as unknown as { value?: unknown }).value;
           if (itemStr === ' ') {
             const run = (options.trivia && spans)
-              ? consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[(srcIdx + 1) * 3], options)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[srcIdx - 1]?.end, spans[srcIdx + 1]?.start, options)
               : undefined;
             if (run) {
               emitTriviaTokens(run, options);
@@ -179,7 +180,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           }
           if (srcIdx > 0 && !prevWasSpace && options.trivia && spans) {
             emitTriviaTokens(
-              consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[srcIdx * 3], options),
+              consumeTriviaBetweenOffsets(options.trivia, spans[srcIdx - 1]?.end, spans[srcIdx]?.start, options),
               options
             );
           }
@@ -240,7 +241,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
       },
       this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
+      sourceSpanOf(this),
       this._treeContext
     ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;

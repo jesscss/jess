@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
@@ -36,7 +37,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return new Quoted(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }

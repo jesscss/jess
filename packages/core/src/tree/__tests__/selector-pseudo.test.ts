@@ -60,7 +60,7 @@ describe('PseudoSelector', () => {
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const inner = sel([
-      el('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),
+      el('.a', undefined, { start: 10, end: 12 }, treeContext),
       co(' '),
       el('.b')
     ]);

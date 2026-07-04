@@ -1,3 +1,4 @@
+import { setSourceSpan } from '../util/provenance.js';
 import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
@@ -683,7 +684,7 @@ describe('reference', () => {
 
     it('renders source-backed runtime-binding containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
-      sourceValue._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(sourceValue, { start: 10, end: 20 });
       const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
       runtimeScope.scopeFrame = buildScopeFrame(
@@ -742,10 +743,10 @@ describe('reference', () => {
     it('renders source-backed variable sequences with source-backed children without copies or frozen state', async () => {
       const first = dimension([1, 'px']);
       const second = dimension([2, 'px']);
-      first._location = [10, 1, 11, 13, 1, 14];
-      second._location = [14, 1, 15, 16, 1, 17];
+      setSourceSpan(first, { start: 10, end: 13 });
+      setSourceSpan(second, { start: 14, end: 16 });
       const sourceValue = spaced([first, second]);
-      sourceValue._location = [10, 1, 11, 16, 1, 17];
+      setSourceSpan(sourceValue, { start: 10, end: 16 });
       const node = rules([
         vardecl({
           name: 'space',
@@ -1153,7 +1154,7 @@ describe('reference', () => {
 
     it('renders source-backed static declaration reference containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
-      sourceValue._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(sourceValue, { start: 10, end: 20 });
       const node = rules([
         decl({
           name: 'src',
@@ -1649,7 +1650,7 @@ describe('reference', () => {
 
     it('renders source-backed direct index container hits without container copies', async () => {
       const sourceList = list([any('alpha'), any('beta')]);
-      sourceList._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(sourceList, { start: 10, end: 20 });
       const targetArray = jsarray([sourceList]);
       const node = rules([
         vardecl({ name: 'targetArray', value: targetArray })
@@ -1696,7 +1697,7 @@ describe('reference', () => {
 
     it('renders source-backed direct index object container hits without container copies', async () => {
       const sourceList = list([any('alpha'), any('beta')]);
-      sourceList._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(sourceList, { start: 10, end: 20 });
       const targetObject = jsobj({ tones: sourceList });
       const node = rules([
         vardecl({ name: 'targetObject', value: targetObject })
@@ -2073,7 +2074,7 @@ describe('reference', () => {
 
     it('renders source-backed static fallback containers as text without container copies', async () => {
       const fallback = list([any('red'), any('blue')]);
-      fallback._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(fallback, { start: 10, end: 20 });
       const fallbackParent = fallback.parent;
       const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
@@ -2120,7 +2121,7 @@ describe('reference', () => {
 
     it('renders dynamic fallback containers as text without pre-copying the source container', async () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
-      fallback._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(fallback, { start: 10, end: 20 });
       const fallbackParent = fallback.parent;
       const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
@@ -2172,7 +2173,7 @@ describe('reference', () => {
 
     it('resolves dynamic fallback containers without pre-copying the source container', async () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
-      fallback._location = [10, 1, 11, 20, 1, 21];
+      setSourceSpan(fallback, { start: 10, end: 20 });
       const fallbackParent = fallback.parent;
       const originalCopy = List.prototype.cloneForPlacement;
       let fallbackCopies = 0;

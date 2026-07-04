@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
@@ -499,7 +500,7 @@ export class Interpolated<
         replacements: evaluatedReplacements
       },
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }

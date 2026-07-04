@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { Node, F_MAY_ASYNC, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
@@ -119,7 +120,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return new Sequence(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -131,7 +132,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return new Sequence(
       values,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -243,12 +244,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         const hasTrivia = Boolean(
           trivia
           && (
-            hasNonWhitespaceTrivia(trivia.lookup(prev.spanEnd, 'after'))
-            || hasNonWhitespaceTrivia(trivia.lookup(node.spanStart, 'before'))
+            hasNonWhitespaceTrivia(trivia.lookup(spanEndOf(prev), 'after'))
+            || hasNonWhitespaceTrivia(trivia.lookup(spanStartOf(node), 'before'))
           )
         );
-        const prevEnd = prev.spanEnd;
-        const nodeStart = node.spanStart;
+        const prevEnd = spanEndOf(prev);
+        const nodeStart = spanStartOf(node);
         const noSep = Boolean(
           sourceTrivia
           && prevEnd !== undefined
@@ -363,7 +364,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     emitCommentTriviaBetweenNodes(prev, node, printOptions);
     const emittedBetween = (printOptions.emittedTrivia?.size ?? 0) !== emittedBefore;
     const leadingTrivia = sourceTrivia
-      ? consumeTrivia(sourceTrivia, node.spanStart, 'before', printOptions)
+      ? consumeTrivia(sourceTrivia, spanStartOf(node), 'before', printOptions)
       : undefined;
     if (leadingTrivia) {
       emitTriviaTokens(leadingTrivia, printOptions);
@@ -374,8 +375,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const prevLastChar = w.lastChar();
     const prevEndsWithSpace = prevLastChar === ' ';
-    const prevEnd = prev.spanEnd;
-    const nodeStart = node.spanStart;
+    const prevEnd = spanEndOf(prev);
+    const nodeStart = spanStartOf(node);
     const noSep = Boolean(
       sourceTrivia
       && prevEnd !== undefined
@@ -512,7 +513,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return new Sequence(
         values,
         newSequence._options ? { ...newSequence._options } : undefined,
-        newSequence.location.length ? newSequence.location : undefined
+        sourceSpanOf(newSequence)
       ).inherit(newSequence);
     } else {
       b = b.cloneForPlacement();
@@ -524,7 +525,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return new Sequence(
         values,
         newSequence._options ? { ...newSequence._options } : undefined,
-        newSequence.location.length ? newSequence.location : undefined
+        sourceSpanOf(newSequence)
       ).inherit(newSequence);
     }
   }
@@ -569,7 +570,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.expr([', loc)
   //   const length = this.value.length - 1
   //   this.value.forEach((n, i) => {

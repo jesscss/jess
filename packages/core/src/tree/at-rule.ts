@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf, fieldSpansOf } from './util/provenance.js';
 import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Anonymous, Any, Keyword } from './any.js';
@@ -684,22 +685,19 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   /**
    * Source end offset of the (string) `name` slot, from `fieldSpans` (childKeys
-   * order: name=slot 0, prelude=1, rules=2; each slot is a `[start, end, flags]`
-   * triple). Undefined when no scanner spans were captured.
+   * order: name=slot 0, prelude=1, rules=2). Undefined when no spans were captured.
    */
   private _nameSlotEnd(): number | undefined {
-    const fs = this.fieldSpans;
-    return fs && fs.length >= 2 ? fs[1] : undefined;
+    return fieldSpansOf(this)?.[0]?.end;
   }
 
   /** Source start offset of the prelude: the prelude node's span, else `fieldSpans` slot 1. */
   private _preludeStartOffset(): number | undefined {
     const p = this.prelude;
-    if (p !== undefined && typeof p !== 'string' && p.spanStart !== undefined) {
-      return p.spanStart;
+    if (p !== undefined && typeof p !== 'string' && spanStartOf(p) !== undefined) {
+      return spanStartOf(p);
     }
-    const fs = this.fieldSpans;
-    return fs && fs.length >= 4 ? fs[3] : undefined;
+    return fieldSpansOf(this)?.[1]?.start;
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
@@ -751,7 +749,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         rules: parts.rules && parts.rules === sourceParts.rules ? this.ownRules(parts.rules) : parts.rules
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
     return this.applyDerivedMetadata(node);
@@ -772,7 +770,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         rules
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1164,7 +1162,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const surface = new Rules(
       node.rules,
       { rulesVisibility: { ...node.options.rulesVisibility } },
-      node.location.length ? node.location : undefined,
+      sourceSpanOf(node),
       node.sourceRoot?._treeContext
     );
     surface.parent = node;
@@ -1840,7 +1838,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   out.add(`${this.name}`, this.location)
+  //   out.add(`${this.name}`, sourceSpanOf(this))
   //   /** Prelude expression includes white space */
   //   const value = this.value
   //   if (value) {
@@ -1854,7 +1852,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.atrule({\n', this.location)
+  //   out.add('$J.atrule({\n', sourceSpanOf(this))
   //   context.indent++
   //   out.add(`  name: ${JSON.stringify(this.name)}`)
   //   const value = this.value
@@ -1868,7 +1866,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   //     rules.toModule(context, out)
   //   }
   //   context.indent--
-  //   out.add(`\n},${JSON.stringify(this.location)})`)
+  //   out.add(`\n},${JSON.stringify(sourceSpanOf(this))})`)
   // }
 }
 

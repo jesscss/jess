@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../provenance.js';
 import { describe, expect, it } from 'vitest';
 import { any, attr, comment, decl, quoted, rules, Any, Node } from '../../index.js';
 
@@ -5,9 +6,9 @@ describe('placement cloning', () => {
   it('checks reusable leaves without allocating empty location arrays', () => {
     const leaf = any('red');
 
-    expect(leaf._location).toBeUndefined();
+    expect(sourceSpanOf(leaf)).toBeUndefined();
     expect(leaf.cloneForPlacement({ stripComments: false })).toBe(leaf);
-    expect(leaf._location).toBeUndefined();
+    expect(sourceSpanOf(leaf)).toBeUndefined();
   });
 
   it('copies optionless containers without allocating source options', () => {
@@ -28,8 +29,8 @@ describe('placement cloning', () => {
 
     target.inherit(source);
 
-    expect(source._location).toBeUndefined();
-    expect(target._location).toBeUndefined();
+    expect(sourceSpanOf(source)).toBeUndefined();
+    expect(sourceSpanOf(target)).toBeUndefined();
   });
 
   it('clones containers and comments while reusing source-free scalar leaves', () => {

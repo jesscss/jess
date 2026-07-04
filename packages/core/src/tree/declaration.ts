@@ -1,3 +1,4 @@
+import { setSourceSpan, spanStartOf, sourceSpanOf, fieldSpansOf } from './util/provenance.js';
 import {
   Node,
   F_ALLOW_ROOT,
@@ -125,16 +126,12 @@ type DeclarationRenderState = {
   nil: boolean;
 };
 
-function sameConcreteLocation(left: readonly unknown[], right: readonly unknown[] | undefined): boolean {
-  if (!right || left.length === 0 || left.length !== right.length) {
-    return false;
-  }
-  for (let i = 0; i < left.length; i++) {
-    if (left[i] !== right[i]) {
-      return false;
-    }
-  }
-  return true;
+function sameConcreteLocation(
+  left: { start: number; end: number } | undefined,
+  right: { start: number; end: number } | undefined
+): boolean {
+  return left !== undefined && right !== undefined
+    && left.start === right.start && left.end === right.end;
 }
 
 export function finalizeContextualImportantState(
@@ -291,7 +288,7 @@ const emitLeadingTriviaForSingleInterpolatedCustomValue = (
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, source.spanStart, 'before', options), options);
+  emitTriviaTokens(consumeTrivia(trivia, spanStartOf(source), 'before', options), options);
 };
 
 const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
@@ -307,7 +304,7 @@ const emitLeadingTriviaForCustomValue = (
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, value.spanStart, 'before', options), options);
+  emitTriviaTokens(consumeTrivia(trivia, spanStartOf(value), 'before', options), options);
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
@@ -357,7 +354,7 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (!isNode(node, N.Sequence | N.List)) {
     return false;
   }
-  if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
+  if ((sourceSpanOf(node) !== undefined) !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
   const children = node instanceof Sequence ? node.value : node instanceof List ? node.value : [];
@@ -494,7 +491,7 @@ const maybeDirectSyntheticDeclarationLeafText = (node: DeclarationValue['value']
   ) {
     return undefined;
   }
-  if (node._location !== undefined) {
+  if (sourceSpanOf(node) !== undefined) {
     return undefined;
   }
   return maybeTrimmedScalarText(node);
@@ -552,13 +549,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   important: DeclarationValue['important'];
 
   /**
-   * Source end offset of the (string) `name` slot, from `fieldSpans` (childKeys
-   * order: name=slot 0 → `[start, end, flags]` at indices 0..2). Used to place
-   * name-boundary trivia when the name is a bare string with no own span.
+   * Source end offset of the (string) `name` slot, from `fieldSpans` (name = slot 0).
+   * Used to place name-boundary trivia when the name is a bare string.
    */
   private _nameSlotEnd(): number | undefined {
-    const fs = this.fieldSpans;
-    return fs && fs.length >= 2 ? fs[1] : undefined;
+    return fieldSpansOf(this)?.[0]?.end;
   }
 
   constructor(
@@ -568,7 +563,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     treeContext?: Context['treeContext']
   ) {
     super();
-    this._location = location;
+    setSourceSpan(this, location);
     this._options = options;
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
@@ -713,7 +708,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const node = new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
+      sourceSpanOf(this),
       this._treeContext
     );
     return this.applyDerivedMetadata(node);
@@ -1580,8 +1575,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 && n !== this
                 && source !== (outputNode?.sourceNode ?? outputNode)
                 && source !== (this.sourceNode ?? this)
-                && !sameConcreteLocation(n.location, outputNode?.location)
-                && !sameConcreteLocation(n.location, this.location);
+                && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
             },
             requiredDeclarationAssignments: [
               AssignmentType.MergeList,
@@ -1634,8 +1629,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && n !== this
                   && source !== (outputNode?.sourceNode ?? outputNode)
                   && source !== (this.sourceNode ?? this)
-                  && !sameConcreteLocation(n.location, outputNode?.location)
-                  && !sameConcreteLocation(n.location, this.location);
+                  && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                  && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
             }, undefined, this.sourceRoot?._treeContext);
             // The merge ref reads the PRIOR value of this property. Its lookup
@@ -1866,7 +1861,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.decl({\n', loc)
   //   context.indent++
   //   out.add(`  name: `)

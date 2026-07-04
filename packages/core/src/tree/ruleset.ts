@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
@@ -659,7 +660,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         })
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
     node.hoistToRoot = this.hoistToRoot;
@@ -686,7 +687,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         })
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this) as this;
   }
@@ -1217,7 +1218,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           Mixin: 'public'
         }
       },
-      this.location.length ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -2336,7 +2337,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           ? new Rules(
               this.rules,
               this.options ? { ...this.options } : undefined,
-              this.location.length ? this.location : undefined,
+              sourceSpanOf(this),
               this.sourceRoot?._treeContext
             ).inherit(this)
           : evaluatedRules;

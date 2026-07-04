@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf } from '../util/provenance.js';
 import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
@@ -160,8 +161,8 @@ describe('Complex selector', () => {
         after: new Map([[26, run('\n')]])
       });
       const treeContext = new TreeContext({ trivia });
-      const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
-      const nested = el('.inside', undefined, [20, 2, 3, 26, 2, 10], treeContext);
+      const parent = el('.top', undefined, { start: 0, end: 3 }, treeContext);
+      const nested = el('.inside', undefined, { start: 20, end: 26 }, treeContext);
 
       const rendered = sel([
         nested,
@@ -265,13 +266,15 @@ describe('Complex selector', () => {
       ]);
       const sourceChild = selector.value[1]!;
       const sourceParent = sourceChild.parent;
-      const sourceLocation = sourceChild.location;
+      const sourceSpanStart = spanStartOf(sourceChild);
+    const sourceSpanEnd = spanEndOf(sourceChild);
       const resolved = await selector.eval(context);
 
       expect(resolved.toTrimmedString()).toBe('.keep');
       expect(resolved).not.toBe(sourceChild);
       expect(sourceChild.parent).toBe(sourceParent);
-      expect(sourceChild.location).toBe(sourceLocation);
+      expect(spanStartOf(sourceChild)).toBe(sourceSpanStart);
+    expect(spanEndOf(sourceChild)).toBe(sourceSpanEnd);
       expect(selector.toTrimmedString()).toBe('&.keep');
     });
   });

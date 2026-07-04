@@ -147,7 +147,7 @@ describe('quoted', () => {
       node: 'red',
       rgb: [255, 0, 0],
       alpha: 1
-    }, undefined, [10, 1, 11, 12, 1, 13], treeContext);
+    }, undefined, { start: 10, end: 12 }, treeContext);
 
     expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
   });

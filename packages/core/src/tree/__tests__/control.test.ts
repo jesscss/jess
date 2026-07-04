@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
   Any,
   Interpolated,
@@ -308,7 +309,7 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected unmatched $if output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toHaveLength(0);
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
@@ -569,7 +570,7 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected false $while output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toHaveLength(0);
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
@@ -1210,7 +1211,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toEqual([]);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
@@ -1370,7 +1371,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toHaveLength(2);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());

@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf, valueSpansOf } from './util/provenance.js';
 import { type Combinator } from './combinator.js';
 import { type Ampersand } from './ampersand.js';
 import {
@@ -93,8 +94,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
     const node = this instanceof RelativeSelector
-      ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location)
-      : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location);
+      ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this))
+      : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this));
     if (hoistToRoot) {
       node.hoistToRoot = true;
     }
@@ -169,7 +170,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         } else {
           const prev = value[i - 1];
           const next = value[i + 1];
-          const spans = this.valueSpans;
+          const spans = valueSpansOf(this);
           let tokens: ReturnType<typeof consumeTriviaBetween>;
           if (options.trivia && prev instanceof Node && next instanceof Node) {
             tokens = consumeTriviaBetween(options.trivia, prev, next, options);
@@ -177,7 +178,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             // String components: recover surrounding offsets from valueSpans
             // (prev component end, next component start).
             tokens = consumeTriviaBetweenOffsets(
-              options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options
+              options.trivia, spans[i - 1]?.end, spans[i + 1]?.start, options
             );
           }
           if (typeof component === 'string') {
@@ -190,7 +191,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
               w.add(' ', this);
             }
           } else {
-            const coStart = component.spanStart;
+            const coStart = spanStartOf(component);
             const spaceBeforeTrivia = coStart !== undefined
               && tokens?.start !== undefined
               && coStart < tokens.start;
@@ -428,8 +429,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
         ctx: file ? { file } : undefined,
         filePath: file?.fullPath,
-        line: amp.location?.[1],
-        column: amp.location?.[2],
+
         meta: { selector: selectorText }
       })));
     }
@@ -509,7 +509,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
+  //   out.add('$J.sel([', sourceSpanOf(this))
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     node.toModule(context, out)

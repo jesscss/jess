@@ -1059,9 +1059,10 @@ export function processExtends(context: Context): void {
         continue;
       }
       const target = instruction.target.valueOf();
-      const targetLocation = instruction.target.location;
-      const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
-      const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
+      // Line/col are no longer stored on nodes (only offsets); the diagnostic path
+      // derives them from the node/offset + source.
+      const targetLine: number | undefined = undefined;
+      const targetColumn: number | undefined = undefined;
       const targetFile = instruction.target.sourceRoot?._treeContext?.file;
       const targetFilePath = targetFile?.fullPath;
       const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {

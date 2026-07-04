@@ -1,3 +1,4 @@
+import { setSourceSpan, setFieldSpans, sourceSpanOf } from '../util/provenance.js';
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
@@ -699,11 +700,11 @@ describe('Declaration', () => {
       source: INTERPOLATION_PLACEHOLDER,
       replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
     });
-    interpolatedValue._location = [50, 1, 51, 72, 1, 73];
+    setSourceSpan(interpolatedValue, { start: 50, end: 72 });
     const value = new Sequence([interpolatedValue]);
-    value._location = interpolatedValue.location;
+    setSourceSpan(value, sourceSpanOf(interpolatedValue));
     const trivia = createTriviaMap({
-      before: new Map([[interpolatedValue.location[0], run(' ')]])
+      before: new Map([[sourceSpanOf(interpolatedValue)?.start, run(' ')]])
     }) satisfies TriviaMap;
     context = new Context({ trivia });
     const node = rules([
@@ -885,7 +886,7 @@ describe('Declaration', () => {
 
     try {
       const important = any('!important', { role: 'flag' });
-      important._location = [12, 1, 13, 21, 1, 22];
+      setSourceSpan(important, { start: 12, end: 21 });
       const node = decl({
         name: 'color',
         value: any('red'),
@@ -904,13 +905,13 @@ describe('Declaration', () => {
 
   it('serializes comment trivia between declaration values and semicolons', () => {
     const value = any('yes');
-    value._location = [7, 1, 8, 9, 1, 10];
+    setSourceSpan(value, { start: 7, end: 9 });
     const node = decl({ name: 'b', value });
-    node._location = [4, 1, 5, 25, 1, 26];
+    setSourceSpan(node, { start: 4, end: 25 });
     const shared = run(' /* comment */');
     const trivia = createTriviaMap({
       before: new Map([[23, shared]]),
-      after: new Map([[value.location[3], shared]])
+      after: new Map([[sourceSpanOf(value)?.end, shared]])
     }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
@@ -924,7 +925,7 @@ describe('Declaration', () => {
     const src = 'color/* survive */ /* me too */: grey';
     const name = 'color';
     const node = decl({ name, value: any('grey') });
-    node.fieldSpans = [0, 5, 0]; // name slot end = 5
+    setFieldSpans(node, [0, 5, 0]); // name slot end = 5
     const shared = makeTrivia(src, 5, 31); // "/* survive */ /* me too */"
     const trivia = createTriviaMap({
       before: new Map([[31, shared]]),
@@ -1631,12 +1632,12 @@ describe('Declaration', () => {
   it('does not treat boundary trivia before a value as authored multiline value text', () => {
     const name = 'color';
     const value = any('white');
-    value._location = [8, 2, 1, 12, 2, 6];
+    setSourceSpan(value, { start: 8, end: 12 });
     const node = decl({ name, value });
-    node._location = [0, 1, 1, 12, 2, 6];
-    node.fieldSpans = [0, 5, 0]; // name slot [0,5] (bare string carries no own span)
+    setSourceSpan(node, { start: 0, end: 12 });
+    setFieldSpans(node, [0, 5, 0]); // name slot [0,5] (bare string carries no own span)
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], run('\n')]])
+      before: new Map([[sourceSpanOf(value)?.start, run('\n')]])
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('color: white');

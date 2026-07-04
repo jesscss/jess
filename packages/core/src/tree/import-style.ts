@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
@@ -131,17 +132,7 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
 }
 
 function getInlineSourceLocation(source: string): NodeLocation {
-  let line = 1;
-  let column = 1;
-  for (let index = 0; index < source.length; index++) {
-    if (source.charCodeAt(index) === 10) {
-      line++;
-      column = 1;
-    } else {
-      column++;
-    }
-  }
-  return [0, 1, 1, source.length, line, column];
+  return { start: 0, end: source.length };
 }
 
 /**
@@ -547,7 +538,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       shareChildren?: boolean;
     }
   ): Rules {
-    const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
+    const sourceLocation = sourceSpanOf(anchorRules);
     const wrapped = childNodes !== undefined
       ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules._treeContext)
       : anchorRules.derive();
@@ -859,7 +850,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       ? preludeNodes[0]
       : new Sequence(preludeNodes);
 
-    const location = this.location && this.location.length === 6 ? this.location : undefined;
+    const location = sourceSpanOf(this);
     // @import has no block body — it is a semicolon at-rule statement.
     return new AtRuleStatement({
       name: '@import',

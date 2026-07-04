@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
 import { defineType, F_STATIC } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -69,14 +70,14 @@ export class BasicSelector extends SimpleSelector<string> {
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   if (this.isClass) {
-  //     out.add(context.hashClass(this.value.value), this.location)
+  //     out.add(context.hashClass(this.value.value), sourceSpanOf(this))
   //   } else {
-  //     out.add(this.value.value, this.location)
+  //     out.add(this.value.value, sourceSpanOf(this))
   //   }
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.el(', loc)
   //   this.value.toModule(context, out)
   //   out.add(')')

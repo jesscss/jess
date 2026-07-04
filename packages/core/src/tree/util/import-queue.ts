@@ -1,25 +1,21 @@
+import { sourceSpanOf } from './provenance.js';
 import { type Context } from '../../context.js';
 import { AtRuleStatement } from '../at-rule-statement.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 
-function locationsEqual(a: readonly unknown[] | undefined, b: readonly unknown[] | undefined): boolean {
+function locationsEqual(
+  a: { start: number; end: number } | undefined,
+  b: { start: number; end: number } | undefined
+): boolean {
   if (a === b) {
     return true;
   }
-  if (!a || !b || a.length !== b.length) {
-    return false;
-  }
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
+  return a !== undefined && b !== undefined && a.start === b.start && a.end === b.end;
 }
 
 function importSyntaxMatches(a: AtRuleStatement, b: AtRuleStatement): boolean {
-  if (!locationsEqual(a.location, b.location)) {
+  if (!locationsEqual(sourceSpanOf(a), sourceSpanOf(b))) {
     return false;
   }
   const aName = a.name.valueOf?.() ?? a.name;

@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf } from './provenance.js';
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -44,7 +45,7 @@ function incrementSerializeProfileCounter(counter: SerializeProfileCounter): voi
 }
 
 function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
-  return side === 'before' ? node.spanStart : node.spanEnd;
+  return side === 'before' ? spanStartOf(node) : spanEndOf(node);
 }
 
 export function hasPrintableTriviaAt(
@@ -128,7 +129,7 @@ type RenderRuleEntry = {
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
   const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
-  return triviaHasBlockComment(trivia?.lookup(node.spanStart, 'before'));
+  return triviaHasBlockComment(trivia?.lookup(spanStartOf(node), 'before'));
 }
 
 function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {

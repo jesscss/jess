@@ -1,3 +1,4 @@
+import { setSourceSpan, setFieldSpans } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
@@ -1686,7 +1687,7 @@ describe('AtRule', () => {
     const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
     const name = '@-webkit-keyframes';
     const prelude = any('hover', { role: 'keyword' });
-    prelude._location = [32, 1, 33, 37, 1, 38];
+    setSourceSpan(prelude, { start: 32, end: 37 });
     // Runs carry their REAL source spans — the offset model validates that a
     // between-offsets run actually sits in the [nameEnd, preludeStart) gap.
     const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
@@ -1714,7 +1715,7 @@ describe('AtRule', () => {
       ]
     });
     // The name's source span lives on the AtRule's fieldSpans (name slot [0,18]).
-    node.fieldSpans = [0, 18, 0];
+    setFieldSpans(node, [0, 18, 0]);
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });

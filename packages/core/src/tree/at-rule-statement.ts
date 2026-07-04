@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from './util/provenance.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { type Context } from '../context.js';
 import {
@@ -44,7 +45,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     treeContext?: Context['treeContext']
   ) {
     super();
-    this._location = location;
+    setSourceSpan(this, location);
     this._options = options;
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
@@ -66,7 +67,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
         prelude
       },
       this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
+      sourceSpanOf(this),
       this._treeContext
     ).inherit(this) as this;
   }
@@ -96,7 +97,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
           ...(prelude !== undefined && { prelude })
         },
         this._options ? { ...this._options } : undefined,
-        this._location?.length ? this._location : undefined,
+        sourceSpanOf(this),
         this._treeContext
       ).inherit(this);
     };

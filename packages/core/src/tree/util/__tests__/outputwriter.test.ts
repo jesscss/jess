@@ -1,3 +1,4 @@
+import { setSourceSpan } from '../provenance.js';
 import { describe, it, expect } from 'vitest';
 import { OutputWriter } from '../print.js';
 
@@ -502,10 +503,8 @@ describe('OutputWriter', () => {
       const w = new OutputWriter();
 
       // Add content with origin that has location info
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5], // [start, startLine, startColumn, end, endLine, endColumn]
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('content', mockOrigin);
       const positions = positionsFor(w);
@@ -517,10 +516,8 @@ describe('OutputWriter', () => {
     it('creates segments for content with origin location', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5], // [start, startLine, startColumn, end, endLine, endColumn]
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('hello', mockOrigin);
       const segments = w.getSegments();
@@ -538,10 +535,8 @@ describe('OutputWriter', () => {
     it('capture does not create segments in main buffer', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('before');
       const beforeSegments = [...w.getSegments()];
@@ -558,10 +553,8 @@ describe('OutputWriter', () => {
     it('restore properly resets segments array', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('before');
       const mark = w.mark();
@@ -577,10 +570,8 @@ describe('OutputWriter', () => {
     it('segments track correct generated positions', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('hello\nworld', mockOrigin);
       const segments = w.getSegments();
@@ -593,15 +584,11 @@ describe('OutputWriter', () => {
     it('multiple segments track positions correctly', () => {
       const w = new OutputWriter();
 
-      const origin1 = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test1.css' } } }
-      };
+      const origin1: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test1.css' } } } };
+      setSourceSpan(origin1, { start: 0, end: 0 });
 
-      const origin2 = {
-        location: [0, 2, 1, 0, 2, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test2.css' } } }
-      };
+      const origin2: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test2.css' } } } };
+      setSourceSpan(origin2, { start: 0, end: 0 });
 
       w.add('hello', origin1);
       w.add(' world', origin2);
@@ -617,10 +604,8 @@ describe('OutputWriter', () => {
     it('segments handle newlines correctly', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('line1\nline2', mockOrigin);
       const segments = w.getSegments();
@@ -633,10 +618,8 @@ describe('OutputWriter', () => {
     it('restore with segments maintains correct mapping', () => {
       const w = new OutputWriter();
 
-      const mockOrigin = {
-        location: [0, 1, 1, 0, 1, 5],
-        sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } }
-      };
+      const mockOrigin: any = { flags: 0, sourceRoot: { _treeContext: { file: { fullPath: 'test.css' } } } };
+      setSourceSpan(mockOrigin, { start: 0, end: 0 });
 
       w.add('before');
       const mark = w.mark();

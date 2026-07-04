@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
@@ -76,12 +77,12 @@ describe('List', () => {
   });
 
   it('emits trivia before parser-owned list separators', () => {
-    const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
-    const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const first = new Any('screen', undefined, { start: 0, end: 5 });
+    const second = new Any('print', undefined, { start: 23, end: 27 });
     const shared = run(' /* comment */');
     const trivia = createTriviaMap({
       before: new Map([[21, shared]]),
-      after: new Map([[first.location[3], shared]])
+      after: new Map([[sourceSpanOf(first)?.end, shared]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
@@ -89,12 +90,12 @@ describe('List', () => {
 
   it('streams list items without capture scaffolding', () => {
     const writer = new CountingWriter();
-    const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
-    const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const first = new Any('screen', undefined, { start: 0, end: 5 });
+    const second = new Any('print', undefined, { start: 23, end: 27 });
     const shared = run(' /* comment */');
     const trivia = createTriviaMap({
       before: new Map([[21, shared]]),
-      after: new Map([[first.location[3], shared]])
+      after: new Map([[sourceSpanOf(first)?.end, shared]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
@@ -102,8 +103,8 @@ describe('List', () => {
   });
 
   it('leaves plain separator whitespace to list syntax', () => {
-    const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
-    const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
+    const first = new Any('10px', undefined, { start: 0, end: 3 });
+    const second = new Any('2', undefined, { start: 7, end: 7 });
     const trivia = createTriviaMap({
       before: new Map([[5, run(' ')]])
     }) satisfies TriviaMap;
@@ -113,13 +114,13 @@ describe('List', () => {
 
   it('preserves multiline separator whitespace without capture scaffolding', () => {
     const writer = new CountingWriter();
-    const first = new Any('the', undefined, [0, 1, 1, 2, 1, 3]);
-    const second = new Any('great', undefined, [14, 2, 14, 18, 2, 19]);
-    const third = new Any('wall', undefined, [30, 3, 14, 33, 3, 18]);
+    const first = new Any('the', undefined, { start: 0, end: 2 });
+    const second = new Any('great', undefined, { start: 14, end: 18 });
+    const third = new Any('wall', undefined, { start: 30, end: 33 });
     const trivia = createTriviaMap({
       before: new Map([
-        [second.location[0], run('\n            ')],
-        [third.location[0], run('\n            ')]
+        [sourceSpanOf(second)?.start, run('\n            ')],
+        [sourceSpanOf(third)?.start, run('\n            ')]
       ])
     }) satisfies TriviaMap;
 

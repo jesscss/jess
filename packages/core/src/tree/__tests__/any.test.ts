@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { any, keyword, seq } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -96,14 +97,14 @@ describe('Any and Keyword', () => {
   it('renders custom-property Any values from source without result inheritance', async () => {
     const context = new Context();
     const node = any('var(--tone)', { role: 'customprop' });
-    const originalLocation = [4, 1, 5, 15, 1, 16] as const;
-    node._location = [...originalLocation];
+    const originalLocation = { start: 4, end: 15 } as const;
+    setSourceSpan(node, [...originalLocation]);
     node.resolve = () => {
       throw new Error('Any.render should not resolve static custom property fragments');
     };
 
     expect(node.render(context)).toBe('var(--tone)');
-    expect(node.location).toEqual([...originalLocation]);
+    expect(sourceSpanOf(node)).toEqual([...originalLocation]);
     expect(node.sourceNode ?? node).toBe(node);
   });
 

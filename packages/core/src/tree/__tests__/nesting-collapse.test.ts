@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   compound, type SimpleSelector, type Selector, amp, co
@@ -130,16 +131,16 @@ describe('CSS Nesting Collapse', () => {
       rules: [
         decl({ name: 'case', value: spaced([el('2')]) })
       ]
-    }, undefined, [0, 1, 1, 20, 1, 21]);
+    }, undefined, { start: 0, end: 20 });
     const second = ruleset({
       selector: sel([el('.same')]),
       rules: [
         decl({ name: 'case', value: spaced([el('3')]) })
       ]
-    }, undefined, [34, 2, 1, 54, 2, 21]);
+    }, undefined, { start: 34, end: 54 });
     const trivia = createTriviaMap({
-      before: new Map([[second.location[0], boundaryTrivia]]),
-      after: new Map([[first.location[3], boundaryTrivia]])
+      before: new Map([[sourceSpanOf(second)?.start, boundaryTrivia]]),
+      after: new Map([[sourceSpanOf(first)?.end, boundaryTrivia]])
     });
     const node = rules([first, second]);
 
@@ -540,7 +541,7 @@ describe('CSS Nesting Collapse', () => {
       decl({ name: 'color', value: spaced([el('red')]) })
     ], {
       referenceMode: true
-    }, [10, 1, 11, 20, 1, 21]);
+    }, { start: 10, end: 20 });
     const trivia = createTriviaMap({
       before: new Map([[10, run('/* keep */')]])
     });

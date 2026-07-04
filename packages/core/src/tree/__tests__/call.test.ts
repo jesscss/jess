@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
 import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
@@ -442,8 +443,8 @@ describe('Call', () => {
   });
 
   it('serializes comment trivia owned by function argument separators', () => {
-    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
     const rule = new Call({
       name: 'linear-gradient',
       args: new List([first, second])
@@ -451,7 +452,7 @@ describe('Call', () => {
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
 
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
@@ -459,8 +460,8 @@ describe('Call', () => {
 
   it('writes trivia-bearing call args without arg-list trim marks', () => {
     const writer = new CountingWriter();
-    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
     const rule = new Call({
       name: 'linear-gradient',
       args: new List([first, second])
@@ -468,7 +469,7 @@ describe('Call', () => {
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
 
     rule.writeSyntax(getPrintOptions({ writer, trivia }));
@@ -1457,12 +1458,12 @@ describe('Call', () => {
   });
 
   it('preserves source trivia in optional fallback call arguments', async () => {
-    const first = new Color({ node: '#333' }, undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Color({ node: '#111' }, undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Color({ node: '#333' }, undefined, { start: 20, end: 23 });
+    const second = new Color({ node: '#111' }, undefined, { start: 40, end: 43 });
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
     context = new Context({ trivia });
     const args = list([first, second]);
@@ -2859,7 +2860,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2888,7 +2889,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2926,7 +2927,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2978,7 +2979,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
@@ -3029,7 +3030,7 @@ describe('Call', () => {
       contentNode: new Sequence(
         [any('raw'), any('content')],
         undefined,
-        [10, 1, 11, 20, 1, 21]
+        { start: 10, end: 20 }
       )
     }, { silentFail: true });
 
