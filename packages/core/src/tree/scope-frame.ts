@@ -14,7 +14,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/core-architecture/PERFORMANCE-HANDOFF.md
+ * @see docs/archive/PERFORMANCE-HANDOFF.md
  */
 
 import { F_STATIC, Node } from './node.js';

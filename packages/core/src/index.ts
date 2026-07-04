@@ -5,7 +5,7 @@ import '@ungap/set-methods';
  * tree barrel; everything else is exported explicitly from the modules below.
  * Core-internal helpers (print state, trivia emission, compare/cast/lookup
  * machinery) are intentionally NOT exported — import them relatively inside
- * core. See docs/future/ponytail-core-audit.md (A1/A2).
+ * core. See docs/archive/ponytail-core-audit.md (A1/A2).
  */
 export * from './tree/index.js';
 

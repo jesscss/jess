@@ -1,3 +1,8 @@
+> ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
+> per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
+> PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
+> lives in `docs/archive/`. This doc is kept for its routing/guardrail context.
+
 # Core Architecture Handoff
 
 This is the stable router for Jess core architecture work. Keep it short: it
