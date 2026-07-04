@@ -53,16 +53,6 @@ class BuilderHost extends ScssGrammar implements FunctionalParseHost {
 
 const host = new BuilderHost();
 
-const ALIASES: Record<string, string> = {
-  stylesheet: 'Stylesheet',
-  main: 'Stylesheet',
-  declaration: 'anyDeclaration',
-  declarationList: 'declarationList',
-  selector: 'LessSelectorList',
-  value: 'valueList',
-  valueList: 'valueList'
-};
-
 export type ScssFnParseResult = {
   tree: Rules;
   errors: JessError[];
@@ -74,16 +64,16 @@ export type ScssFnParseOptions = {
   context?: TreeContext;
 };
 
+// `rule` is a grammar rule name — the root `Stylesheet` by default.
 export function parseScssFn(
   input: string,
-  rule = 'stylesheet',
+  rule = 'Stylesheet',
   options: ScssFnParseOptions = {}
 ): ScssFnParseResult {
-  const ruleName = ALIASES[rule] ?? rule;
   const g = scssGrammar as Record<string, unknown>;
   host.setContext(options.context);
   // SCSS trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[ruleName], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
 }
 
 setParseScssFnForInterp(parseScssFn);
@@ -114,10 +104,10 @@ export class ScssParser {
   }
 
   parse(text: string): IParseResult<Rules>;
-  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
-  parse(text: string, rule: 'stylesheet', options: { context?: TreeContext }): IParseResult<Rules>;
-  parse(text: string, rule?: ScssRules, options?: { context?: TreeContext }): IParseResult;
-  parse(text: string, rule: ScssRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
+  parse(text: string, rule: 'Stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule: 'Stylesheet', options: { context?: TreeContext }): IParseResult<Rules>;
+  parse(text: string, rule?: string, options?: { context?: TreeContext }): IParseResult;
+  parse(text: string, rule: string = 'Stylesheet', options?: { context?: TreeContext }): IParseResult {
     return toParseResult(parseScssFn(text, rule, { context: options?.context }));
   }
 

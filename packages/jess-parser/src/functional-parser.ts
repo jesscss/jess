@@ -45,16 +45,6 @@ class BuilderHost extends JessGrammar implements FunctionalParseHost {
 
 const host = new BuilderHost();
 
-const ALIASES: Record<string, string> = {
-  stylesheet: 'Stylesheet',
-  main: 'Stylesheet',
-  declaration: 'anyDeclaration',
-  declarationList: 'declarationList',
-  selector: 'LessSelectorList',
-  value: 'valueList',
-  valueList: 'valueList'
-};
-
 export type JessFnParseResult = {
   tree: Rules;
   errors: JessError[];
@@ -62,14 +52,14 @@ export type JessFnParseResult = {
   trivia: TriviaMap;
 };
 
-export function parseJessFn(input: string, rule = 'stylesheet'): JessFnParseResult {
-  const ruleName = ALIASES[rule] ?? rule;
+// `rule` is a grammar rule name — the root `Stylesheet` by default.
+export function parseJessFn(input: string, rule = 'Stylesheet'): JessFnParseResult {
   const g = jessGrammar as Record<string, unknown>;
   // Jess trivia (inherited from SCSS/Less) includes `//` line comments.
-  return runFunctionalParse(input, g[ruleName], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
 }
 
 /** Functional Jess parser — macro-composed Less + SCSS + Jess. */
 export class JessParserParsemanFn {
-  parse = (text: string, rule = 'stylesheet'): JessFnParseResult => parseJessFn(text, rule);
+  parse = (text: string, rule = 'Stylesheet'): JessFnParseResult => parseJessFn(text, rule);
 }

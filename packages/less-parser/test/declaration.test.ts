@@ -57,14 +57,14 @@ describe('declaration', () => {
   });
 
   it('opportunistically structures a curly-brace custom-property value as a declaration body', async () => {
-    const { errors, tree } = parse('@a: red; a { --foo: { color: @a; } }', 'stylesheet');
+    const { errors, tree } = parse('@a: red; a { --foo: { color: @a; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const evald = await tree!.eval(new Context());
     expect(String(evald)).toContain('--foo:{color: red}');
   });
 
   it('tolerantly falls back to opaque text for a non-CSS-shaped curly custom-property value', () => {
-    const { errors, tree } = parse('a { --foo: { 1, 2, 3 }; }', 'stylesheet');
+    const { errors, tree } = parse('a { --foo: { 1, 2, 3 }; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(String(tree)).toContain('{ 1, 2, 3 }');
   });
@@ -74,12 +74,12 @@ describe('declaration', () => {
       each(@vars, {
         --@{key}: @value;
       });
-    }`, 'stylesheet');
+    }`, 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
-    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'stylesheet');
+    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 
@@ -88,7 +88,7 @@ describe('declaration', () => {
   });
 
   it('preserves block comments attached to invisible evaluated variables during stylesheet serialization', async () => {
-    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'stylesheet');
+    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 

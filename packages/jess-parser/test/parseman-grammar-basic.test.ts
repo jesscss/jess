@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseJessFn } from '../src/functional-parser.js';
 
-function parse(input: string, rule = 'stylesheet') {
+function parse(input: string, rule = 'Stylesheet') {
   return parseJessFn(input, rule);
 }
 

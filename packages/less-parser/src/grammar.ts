@@ -280,11 +280,11 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // selector, and `.a:extend(.b).c` leaves `.c` unconsumed → parse error
   // (extend-must-be-last). The compound run also stops at `:extend(` (extendAhead).
   // collapse: single compound (no combinator, no extend) IS the compound.
-  const LessComplexSelector = node('LessComplexSelector',
+  const ComplexSelector = node('ComplexSelector',
     parser({ trivia: rw }, sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(selectorBoundary), g.CompoundSelector)), optional(g.ExtendPseudo))), undefined, { collapse: true });
   // collapse: single complex selector (no comma) IS that selector.
-  const LessSelectorList = node('LessSelectorList',
-    parser({ trivia: rw }, sequence(g.LessComplexSelector, many(sequence(literal(','), g.LessComplexSelector)))), undefined, { collapse: true });
+  const SelectorList = node('SelectorList',
+    parser({ trivia: rw }, sequence(g.ComplexSelector, many(sequence(literal(','), g.ComplexSelector)))), undefined, { collapse: true });
   // Attribute name may carry a CSS namespace prefix (`ns|attr`, `*|attr`,
   // `|attr`). Less also allows interpolation in the name and value: `[@{n}=@{v}]`,
   // `[data=@{attr-data}]`. interpKey matches a run containing `@{…}`.
@@ -295,10 +295,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(literal('['), attrNsPrefix, choice(interpKey, ident), optional(sequence(attrOp, choice(singleStr, doubleStr, interpKey, ident), optional(attrMod))), literal(']'))));
   // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
   // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
-  // LessSelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
-  const pseudoArg = choice(nth, g.LessSelectorList, scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
+  // SelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
+  const pseudoArg = choice(nth, g.SelectorList, scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
   const pseudoSelectorParens = choice(
-    sequence(literal('('), choice(nth, g.LessSelectorList), literal(')')),
+    sequence(literal('('), choice(nth, g.SelectorList), literal(')')),
     sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))
   );
   const PseudoSelector = node('PseudoSelector',
@@ -321,7 +321,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // halt before a trailing flag (so `.x all` parses as target `.x` + flag `all`).
   const extendCompound = node('CompoundSelector',
     parser({ trivia: rw }, sequence(g.simpleSelector, many(sequence(not(selectorBoundary), not(extendFlagAhead), g.simpleSelector)))));
-  const extendComplex = node('LessComplexSelector',
+  const extendComplex = node('ComplexSelector',
     parser({ trivia: rw }, sequence(optional(combinator), g.extendCompound, many(sequence(optional(combinator), not(whenAhead), not(extendFlagAhead), g.extendCompound)))));
   // A single extend target: a complex selector + its optional flag.
   const ExtendTarget = node('ExtendTarget',
@@ -343,7 +343,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.LessSelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(g.SelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}'))));
   // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
   // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
   // plain declaration or a `.name { }` ruleset. (declarationList only had MixinCall,
@@ -407,7 +407,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';')))));
-  const anyDeclaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
+  const declaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
   // A comma must be followed by a value — a trailing comma (`a, b,`) is a parse
@@ -637,8 +637,8 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
-    CompoundSelector, LessComplexSelector, LessSelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
-    Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, anyDeclaration,
+    CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
+    Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,

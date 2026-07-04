@@ -48,32 +48,19 @@ class BuilderHost extends LessGrammar implements FunctionalParseHost {
 
 const host = new BuilderHost();
 
-// Public entry-rule names → internal rule names, so callers can parse a specific
-// sub-rule (a selector, a value, a guard, mixin args, …) by a friendly name. Only
-// needed where that name differs from the grammar's own rule name — any real rule
-// name also works directly via the `?? rule` pass-through below.
-const ALIASES: Record<string, string> = {
-  stylesheet: 'Stylesheet', main: 'Stylesheet', declaration: 'anyDeclaration',
-  declarationList: 'declarationList', selector: 'LessSelectorList',
-  complexSelector: 'LessComplexSelector', selectorList: 'LessSelectorList',
-  atRule: 'AtRuleBlock', value: 'valueList', valueList: 'valueList',
-  comparison: 'Comparison', guard: 'Guard', guardOr: 'GuardOr', guardAnd: 'GuardAnd',
-  qualifiedRule: 'MixinOrQualifiedRule', mixinOrQualifiedRule: 'MixinOrQualifiedRule',
-  mixinArgs: 'MixinArgs', anonymousMixinDefinition: 'AnonymousMixinDefinition'
-};
-
 export type LessFnParseResult = FunctionalParseResult;
 
+// `rule` is a grammar rule name — the root `Stylesheet` by default, or any rule
+// (e.g. `Declaration`, `Guard`, `SelectorList`) to parse that fragment directly.
 export function parseLessFn(
   input: string,
-  rule = 'stylesheet',
+  rule = 'Stylesheet',
   mathMode: MathMode = 'parens-division'
 ): LessFnParseResult {
   host.mathMode = mathMode;
-  const ruleName = ALIASES[rule] ?? rule;
   const g = lessGrammar as Record<string, unknown>;
   // Less trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[ruleName], host, { trailingTrivia: g.rw });
+  return runFunctionalParse(input, g[rule], host, { trailingTrivia: g.rw });
 }
 
 /** Functional Less parser — call .parse(text) to get a Jess AST. */
@@ -85,7 +72,7 @@ export class LessParser {
   }
 
   // Arrow field so `const parse = parser.parse` (used in tests) keeps `this`.
-  parse = (text: string, rule = 'stylesheet'): LessFnParseResult => {
+  parse = (text: string, rule = 'Stylesheet'): LessFnParseResult => {
     // Inline JavaScript (backticks) was removed in v5 — report it as a normal
     // parse error at the backtick, NOT by throwing (a parser must not throw).
     const backtick = text.indexOf('`');

@@ -11,12 +11,12 @@ function namedNode(n: Node | string | undefined): { name: { rawKey?: { type: str
 
 describe('anonymousMixinDefinition', () => {
   it('should parse anonymous mixin', () => {
-    const { errors } = parse('.(@v;@i) {}', 'anonymousMixinDefinition');
+    const { errors } = parse('.(@v;@i) {}', 'AnonymousMixinDefinition');
     expect(errors.length).toBe(0);
   });
 
   it('should parse anonymous mixin without params', () => {
-    const { errors } = parse('.() {}', 'anonymousMixinDefinition');
+    const { errors } = parse('.() {}', 'AnonymousMixinDefinition');
     expect(errors.length).toBe(0);
   });
 });
@@ -24,29 +24,29 @@ describe('anonymousMixinDefinition', () => {
 describe('mixinArgs', () => {
   it('should parse mixin args', () => {
     // @ts-expect-error -- the bound parse() collapses its overloads, hiding the optional third (rule-options) argument this start rule accepts at runtime.
-    const { errors } = parser.parse('(@v)', 'mixinArgs', { isDefinition: true });
+    const { errors } = parser.parse('(@v)', 'MixinArgs', { isDefinition: true });
     expect(errors.length).toBe(0);
   });
 
   it('should parse empty mixin args', () => {
-    const { errors } = parse('()', 'mixinArgs');
+    const { errors } = parse('()', 'MixinArgs');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('mixinArgList', () => {
   it('should parse comma-separated mixin args', () => {
-    const { errors } = parse('(@a, @b)', 'mixinArgs');
+    const { errors } = parse('(@a, @b)', 'MixinArgs');
     expect(errors.length).toBe(0);
   });
 
   it('should parse semicolon-separated mixin args', () => {
-    const { errors } = parse('(@a; @b)', 'mixinArgs');
+    const { errors } = parse('(@a; @b)', 'MixinArgs');
     expect(errors.length).toBe(0);
   });
 
   it('serializes comma-root mixin args as a comma List', () => {
-    const { errors, tree } = parse('.mixin(a, b, c)', 'mixinOrQualifiedRule');
+    const { errors, tree } = parse('.mixin(a, b, c)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference [role=name]');
@@ -61,7 +61,7 @@ describe('mixinArgList', () => {
   });
 
   it('serializes semicolon-root mixin args as a semicolon List', () => {
-    const { errors, tree } = parse('.mixin(a; b; c)', 'mixinOrQualifiedRule');
+    const { errors, tree } = parse('.mixin(a; b; c)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference [role=name]');
@@ -76,7 +76,7 @@ describe('mixinArgList', () => {
   });
 
   it('preserves escaped nested comma values inside semicolon-root mixin args', () => {
-    const { errors, tree } = parse('.mixin(~(a, b); c)', 'mixinOrQualifiedRule');
+    const { errors, tree } = parse('.mixin(~(a, b); c)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference [role=name]');
@@ -92,52 +92,52 @@ describe('mixinArgList', () => {
 
 describe('mixinArg', () => {
   it('should parse mixin arg with default value', () => {
-    const { errors } = parse('(@a: 10px)', 'mixinArgs');
+    const { errors } = parse('(@a: 10px)', 'MixinArgs');
     expect(errors.length).toBe(0);
   });
 
   it('should parse rest parameter', () => {
     // @ts-expect-error -- the bound parse() collapses its overloads, hiding the optional third (rule-options) argument this start rule accepts at runtime.
-    const { errors } = parser.parse('(@rest...)', 'mixinArgs', { isDefinition: true });
+    const { errors } = parser.parse('(@rest...)', 'MixinArgs', { isDefinition: true });
     expect(errors.length).toBe(0);
   });
 });
 
 describe('mixinName', () => {
   it('should parse class mixin name', () => {
-    const { errors } = parse('.mixin() { }', 'mixinOrQualifiedRule');
+    const { errors } = parse('.mixin() { }', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
   });
 
   it('should parse id mixin name', () => {
-    const { errors } = parse('#mixin() { }', 'mixinOrQualifiedRule');
+    const { errors } = parse('#mixin() { }', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('mixinOrQualifiedRule', () => {
   it('should parse mixin definition', () => {
-    const { errors } = parse('.m(@v) when (@v) {two: when true}', 'mixinOrQualifiedRule');
+    const { errors } = parse('.m(@v) when (@v) {two: when true}', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
   });
 
   it('should parse mixin call variants', () => {
-    let { errors } = parse('.mixin-with-guard-inside(0px)', 'mixinOrQualifiedRule');
+    let { errors } = parse('.mixin-with-guard-inside(0px)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
 
-    ({ errors } = parse(`.mixin;`, 'main'));
+    ({ errors } = parse(`.mixin;`, 'Stylesheet'));
     expect(errors.length).toBe(0);
 
-    ({ errors } = parse(`.wrap-mixin(@ruleset: { color: red; })`, 'mixinOrQualifiedRule'));
+    ({ errors } = parse(`.wrap-mixin(@ruleset: { color: red; })`, 'MixinOrQualifiedRule'));
     expect(errors.length).toBe(0);
 
-    ({ errors } = parse('.mixin-takes-two(@a : d, e; @b : f)', 'mixinOrQualifiedRule'));
+    ({ errors } = parse('.mixin-takes-two(@a : d, e; @b : f)', 'MixinOrQualifiedRule'));
     expect(errors.length).toBe(0);
 
-    ({ errors } = parse('.mixin-call({direct: works;}; @b: {named: works;});', 'stylesheet'));
+    ({ errors } = parse('.mixin-call({direct: works;}; @b: {named: works;});', 'Stylesheet'));
     expect(errors.length).toBe(0);
 
-    ({ errors } = parse(`.mixout ('left') { }`, 'mixinOrQualifiedRule'));
+    ({ errors } = parse(`.mixout ('left') { }`, 'MixinOrQualifiedRule'));
     expect(errors.length).toBe(0);
   });
 });
@@ -220,7 +220,7 @@ describe('lookupOrCall', () => {
   });
 
   it('should flatten compound segments in complex mixin reference paths', () => {
-    const { errors, tree } = parse('#foo-foo > .bar.baz()', 'mixinOrQualifiedRule');
+    const { errors, tree } = parse('#foo-foo > .bar.baz()', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('markImportant: false');

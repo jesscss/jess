@@ -8,7 +8,7 @@ export function parseStylesheet(
   src: string,
   options?: { context?: TreeContext }
 ): IParseResult<Rules> {
-  return parser.parse(src, 'stylesheet', options);
+  return parser.parse(src, 'Stylesheet', options);
 }
 
 export function expectParseOk(src: string, options?: { context?: TreeContext }) {

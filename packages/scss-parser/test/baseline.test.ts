@@ -484,7 +484,7 @@ describe('scss-parser (baseline)', () => {
   functionalIt('rejects compound @extend targets when only simple selectors are allowed', () => {
     const parser = new Parser();
     const context = new TreeContext({ allowExtendSelectors: ['simple'] });
-    const result = parser.parse(`.a { @extend .b.c; }`, 'stylesheet', { context });
+    const result = parser.parse(`.a { @extend .b.c; }`, 'Stylesheet', { context });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.message).toContain('@extend only allows simple');
@@ -494,7 +494,7 @@ describe('scss-parser (baseline)', () => {
   functionalIt('allows selector lists when each @extend target is allowed', () => {
     const parser = new Parser();
     const context = new TreeContext({ allowExtendSelectors: ['simple'] });
-    const result = parser.parse(`.a { @extend .b, .c; }`, 'stylesheet', { context });
+    const result = parser.parse(`.a { @extend .b, .c; }`, 'Stylesheet', { context });
 
     expect(result.errors).toHaveLength(0);
     expect(serializeTypes(result.tree)).toContainString('(Extend');

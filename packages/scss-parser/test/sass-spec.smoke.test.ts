@@ -214,7 +214,7 @@ describe('sass-spec smoke (parse-only)', () => {
       // Probe each case once so we can choose it vs it.fails deterministically.
       const probeParser = new Parser();
       const probed = casesLimited.map((c) => {
-        const r = probeParser.parse(c.contents, 'stylesheet');
+        const r = probeParser.parse(c.contents, 'Stylesheet');
         const errMsg = r.errors[0]?.message ?? '';
         const isErrorFixture = /\/error\//i.test(c.sectionPath) || /\/error\./i.test(c.hrxPath);
         const isIntentionalUnsupported =
@@ -237,7 +237,7 @@ describe('sass-spec smoke (parse-only)', () => {
         for (const c of probed) {
           const rel = path.relative(specRoot, c.hrxPath);
           const name = `${rel} :: ${c.sectionPath}`;
-          const result = parser.parse(c.contents, 'stylesheet');
+          const result = parser.parse(c.contents, 'Stylesheet');
           const okNow = result.lexerResult.errors.length === 0 && result.errors.length === 0;
           if (result.tree) {
             // Even for non-enforced cases, ensure we never create an invalid AST.

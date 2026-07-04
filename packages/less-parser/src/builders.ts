@@ -109,8 +109,8 @@ export class LessGrammar extends CssParser {
       case 'VarDeclaration':      return this._buildVarDeclaration(children, raw, loc);
       case 'Reference':           return this._buildReference(children, loc);
       case 'LessAmpersand':       return this._buildAmpersand(children, loc);
-      case 'LessComplexSelector': return this._buildComplexSelector(raw, loc);
-      case 'LessSelectorList':    return this._buildSelectorList(raw, loc);
+      case 'ComplexSelector': return this._buildComplexSelector(raw, loc);
+      case 'SelectorList':    return this._buildSelectorList(raw, loc);
       case 'Ruleset':             return this._buildRuleset(children, raw, loc) as unknown as JessNode;
       case 'Declaration':
         this._warnDeprecatedValue(span);
@@ -697,7 +697,7 @@ export class LessGrammar extends CssParser {
    * Extend(s); the leading `&` is just the statement marker.
    */
   private _buildExtendStatement(
-    children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+    children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, _loc: LocationInfo
   ): JessNode {
     // ExtendPseudo always yields the grouped Extend (or List of Extends).
     const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List')!;
@@ -1603,7 +1603,7 @@ export class LessGrammar extends CssParser {
 
     // ComplexSelector: recurse into its CompoundSelector components and pull out
     // any trailing Extend / List<Extend> (the `:extend(...)` pseudo lives at the
-    // end of the complex selector — see grammar's LessComplexSelector).
+    // end of the complex selector — see grammar's ComplexSelector).
     if (selector instanceof ComplexSelector) {
       const allExtends: JessNode[] = [];
       const newParts: any[] = [];

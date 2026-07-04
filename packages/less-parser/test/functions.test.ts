@@ -158,7 +158,7 @@ describe('ifFunction', () => {
           ${declarations}
         }
       }
-    `, 'stylesheet');
+    `, 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
@@ -178,7 +178,7 @@ describe('booleanFunction', () => {
 
 describe('callArgument', () => {
   it('should parse anonymous mixin as argument', () => {
-    const { errors } = parse('.mixin({ color: red; })', 'mixinOrQualifiedRule');
+    const { errors } = parse('.mixin({ color: red; })', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
   });
 

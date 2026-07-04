@@ -430,7 +430,7 @@ describe('ScssParserParseman — @use / @forward / @import / @extend', () => {
   });
 
   it('reports compound @extend rejection when configured', () => {
-    const result = parseScssFn('.a { @extend .b.c; }', 'stylesheet', {
+    const result = parseScssFn('.a { @extend .b.c; }', 'Stylesheet', {
       context: new TreeContext({ allowExtendSelectors: ['simple'] })
     });
     expect(result.errors.length).toBeGreaterThan(0);

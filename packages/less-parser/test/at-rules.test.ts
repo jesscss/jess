@@ -17,22 +17,22 @@ const testData = resolveLessTestDataRoot();
 
 describe('importAtRule', () => {
   it('should parse @import with url', () => {
-    const { errors } = parse('@import "file.css";', 'stylesheet');
+    const { errors } = parse('@import "file.css";', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @import with url() function', () => {
-    const { errors } = parse('@import url("file.css");', 'stylesheet');
+    const { errors } = parse('@import url("file.css");', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @import with options', () => {
-    const { errors } = parse('@import (reference) "file.less";', 'stylesheet');
+    const { errors } = parse('@import (reference) "file.less";', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('keeps a CSS @import media-query tail (not just the path)', () => {
-    const { errors, tree } = parse('@import "test.css" screen, print;', 'stylesheet');
+    const { errors, tree } = parse('@import "test.css" screen, print;', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree.toString()).toBe('@import "test.css" screen, print;\n');
   });
@@ -40,53 +40,53 @@ describe('importAtRule', () => {
 
 describe('innerAtRule', () => {
   it('should parse @media inside rule', () => {
-    const { errors } = parse('.test { @media screen { color: red; } }', 'stylesheet');
+    const { errors } = parse('.test { @media screen { color: red; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @supports inside rule', () => {
-    const { errors } = parse('.test { @supports (display: flex) { color: red; } }', 'stylesheet');
+    const { errors } = parse('.test { @supports (display: flex) { color: red; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('layerName', () => {
   it('should parse @layer with name', () => {
-    const { errors } = parse('@layer theme { }', 'stylesheet');
+    const { errors } = parse('@layer theme { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @layer with variable in name', () => {
-    const { errors } = parse('@layer @var { }', 'stylesheet');
+    const { errors } = parse('@layer @var { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('keyframesName', () => {
   it('should parse @keyframes with identifier', () => {
-    const { errors } = parse('@keyframes name { }', 'stylesheet');
+    const { errors } = parse('@keyframes name { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @keyframes with variable in name', () => {
-    const { errors } = parse('@keyframes @var { }', 'stylesheet');
+    const { errors } = parse('@keyframes @var { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('mediaInParens', () => {
   it('should parse media query in parentheses', () => {
-    const { errors } = parse('@media (min-width: 500px) { }', 'stylesheet');
+    const { errors } = parse('@media (min-width: 500px) { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse escaped string in media query', () => {
-    const { errors } = parse('@media ~"screen" { }', 'stylesheet');
+    const { errors } = parse('@media ~"screen" { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('unwraps an escaped-string media query to its literal content on eval', async () => {
-    const { errors, tree } = parse('@media ~"screen" { a { color: red; } }', 'stylesheet');
+    const { errors, tree } = parse('@media ~"screen" { a { color: red; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const evald = await tree!.eval(new Context());
     expect(String(evald)).toContain('@media screen {');
@@ -96,7 +96,7 @@ describe('mediaInParens', () => {
   it('keeps an escaped-string media query atomic across embedded spaces/parens', async () => {
     const { errors, tree } = parse(
       '@media ~"screen and (min-width: 400px)" { a { color: red; } }',
-      'stylesheet'
+      'Stylesheet'
     );
     expect(errors.length).toBe(0);
     const evald = await tree!.eval(new Context());
@@ -104,7 +104,7 @@ describe('mediaInParens', () => {
   });
 
   it('should parse variable media query at top level', () => {
-    const { errors, tree } = parse('@media @breakpoint, print { }', 'stylesheet');
+    const { errors, tree } = parse('@media @breakpoint, print { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
@@ -119,7 +119,7 @@ describe('mediaInParens', () => {
   });
 
   it('should parse namespaced reference media query at top level', () => {
-    const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
+    const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
@@ -134,7 +134,7 @@ describe('mediaInParens', () => {
   });
 
   it('should parse simple bare variable media query at top level as indexed reference', () => {
-    const { errors, tree } = parse('@media @breakpoint { }', 'stylesheet');
+    const { errors, tree } = parse('@media @breakpoint { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule');
@@ -149,7 +149,7 @@ describe('mediaInParens', () => {
 
 describe('mfValue', () => {
   it('should parse media feature value', () => {
-    const { errors } = parse('@media (width: 500px) { }', 'stylesheet');
+    const { errors } = parse('@media (width: 500px) { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
@@ -165,7 +165,7 @@ describe('at-rule prelude comments', () => {
 @import "test.css" screen /* comment */, print;
 `;
 
-    const { errors, tree } = parse(source, 'stylesheet');
+    const { errors, tree } = parse(source, 'Stylesheet');
 
     expect(errors.length).toBe(0);
     expect(tree.toString()).toContain('screen /* comment */, print /* another */, handheld');
@@ -191,7 +191,7 @@ describe('at-rule prelude comments', () => {
       'utf8'
     );
     const source = readFileSync(fixture, 'utf8');
-    const { errors, tree } = parse(source, 'stylesheet');
+    const { errors, tree } = parse(source, 'Stylesheet');
 
     expect(errors.length).toBe(0);
 
@@ -204,17 +204,17 @@ describe('at-rule prelude comments', () => {
 
 describe('exportAtRule', () => {
   it('should parse @-export with path', () => {
-    const { errors } = parse('@-export "./theme.jess";', 'stylesheet');
+    const { errors } = parse('@-export "./theme.jess";', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @-export with namespace', () => {
-    const { errors } = parse('@-export "./theme.jess" as theme;', 'stylesheet');
+    const { errors } = parse('@-export "./theme.jess" as theme;', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @-export with url()', () => {
-    const { errors } = parse('@-export url("./theme.jess");', 'stylesheet');
+    const { errors } = parse('@-export url("./theme.jess");', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });

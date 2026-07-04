@@ -428,7 +428,7 @@ describe('Selector Productions', () => {
       const context = new TreeContext({ allowExtendSelectors: ['simple'] });
       const localParser = new Parser();
       // @ts-expect-error -- the bound parse() collapses its overloads, hiding the third (context) argument the 'stylesheet' rule accepts at runtime.
-      const { errors, tree } = localParser.parse('.parent { &:extend(.base, .other); }', 'stylesheet', { context });
+      const { errors, tree } = localParser.parse('.parent { &:extend(.base, .other); }', 'Stylesheet', { context });
 
       expect(errors).toHaveLength(0);
       expect(serializeTypes(tree)).toContainString('(Extend');

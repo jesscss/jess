@@ -44,17 +44,17 @@ describe('value', () => {
 
   it('should reject backtick javascript values', () => {
     // A parser must not throw — inline JS (removed in v5) is a graceful parse error.
-    const { errors } = parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet');
+    const { errors } = parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'Stylesheet');
     expect(errors.length).toBeGreaterThanOrEqual(1);
     expect(errors[0]!.message).toContain('Inline JavaScript using backticks is not supported');
   });
 
   it('should reject a trailing comma in a value list (stricter than Less 4.x)', () => {
     // A comma must be followed by a value; a dangling comma is a parse error in v5.
-    expect(parse('@x: a, b, c,;', 'stylesheet').errors.length).toBeGreaterThanOrEqual(1);
-    expect(parse('.a { prop: 1, 2,; }', 'stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    expect(parse('@x: a, b, c,;', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    expect(parse('.a { prop: 1, 2,; }', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
     // a well-formed comma list still parses cleanly
-    expect(parse('@y: a, b, c;', 'stylesheet').errors.length).toBe(0);
+    expect(parse('@y: a, b, c;', 'Stylesheet').errors.length).toBe(0);
   });
 
   it('parses each() with a block callback into a For control node', () => {
@@ -64,7 +64,7 @@ describe('value', () => {
           padding+_: (@value * 10px);
         });
       }
-    `, 'stylesheet');
+    `, 'Stylesheet');
 
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);

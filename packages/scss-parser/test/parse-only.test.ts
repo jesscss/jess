@@ -16,14 +16,14 @@ type ErrorCase = ParseCase & {
 const parser = new Parser();
 
 function expectParseOk({ src, options }: ParseCase) {
-  const result = parser.parse(src, 'stylesheet', options);
+  const result = parser.parse(src, 'Stylesheet', options);
   expect(result.lexerResult.errors.map(error => error.message)).toEqual([]);
   expect(result.errors.map(error => error.message)).toEqual([]);
   expect(result.tree).toBeDefined();
 }
 
 function expectSingleParseError({ src, options, message }: ErrorCase) {
-  const result = parser.parse(src, 'stylesheet', options);
+  const result = parser.parse(src, 'Stylesheet', options);
   expect(result.lexerResult.errors.map(error => error.message)).toEqual([]);
   expect(result.errors.length).toBeGreaterThan(0);
   if (message) {

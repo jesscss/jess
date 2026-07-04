@@ -402,7 +402,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssPlaceholderSelector = node('ScssPlaceholderSelector',
     scssPlaceholder);
-  const scssExtendComplex = choice(ScssPlaceholderSelector, g.LessComplexSelector);
+  const scssExtendComplex = choice(ScssPlaceholderSelector, g.ComplexSelector);
   const ScssExtendTarget = node('ScssExtendTarget',
     parser({ trivia: rw }, sequence(
       scssExtendComplex,
@@ -458,7 +458,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const ScssAtRootSelector = node('ScssAtRootSelector',
     parser({ trivia: rw }, sequence(
       atRootKw,
-      g.LessSelectorList,
+      g.SelectorList,
       ScssDeclBody
     )));
 
