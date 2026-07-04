@@ -106,80 +106,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    const w = printOptions.writer;
-    let depth = printOptions.depth;
-    let space = ''.padStart(depth * 2);
-    const value: SelectorListItem[] = [];
-    for (const item of this.value) {
-      if (isNode(item, N.PseudoSelector) && item.name === ':is') {
-        const arg = item.arg;
-        if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.value);
-          continue;
-        }
-      }
-      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
-          const arg = only.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
-          const arg = only.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      value.push(item);
-    }
-    if (
-      printOptions.referenceMode === true
-      && printOptions.referenceRenderEnabled === true
-      && printOptions.referenceFilterTargets === true
-    ) {
-      let extendedCount = 0;
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i]!;
-        if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
-          value[extendedCount++] = item;
-        }
-      }
-      if (extendedCount > 0) {
-        value.length = extendedCount;
-      }
-    }
-    let length = value.length;
-    if (length === 0) {
-      return;
-    }
-    let item = value[0]!;
-
-    emitSelectorListItem(item, printOptions);
-
-    for (let i = 1; i < length; i++) {
-      const prevItem = item;
-      item = value[i]!;
-      if (typeof prevItem !== 'string' && typeof item !== 'string') {
-        emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
-      }
-      w.add(`,\n${space}`);
-      if (printOptions.trivia && typeof item !== 'string') {
-        emitTriviaTokens(
-          consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions),
-          printOptions,
-          { skipLeadingWhitespace: true }
-        );
-      }
-      emitSelectorListItem(item, printOptions, true);
-    }
+    emitSelectorListItems(this.value, printOptions);
   }
 
   /** Normalize value on separate lines with indentation */
@@ -422,16 +349,94 @@ export function finishSelectorListSurface(
   return SelectorList.create(items).inherit(inheritFrom);
 }
 
+/**
+ * Emit a selector list — the single writer shared by `SelectorList.writeSyntax`
+ * and the bare string/array header surface. Hoists inner `:is(...)` lists to the
+ * top level, applies reference-mode extend filtering, and separates items with
+ * `,\n<indent>` so multi-selector headers break onto their own lines.
+ */
+export function emitSelectorListItems(
+  rawItems: readonly SelectorListItem[],
+  printOptions: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const w = printOptions.writer;
+  const space = ''.padStart(printOptions.depth * 2);
+  const value: SelectorListItem[] = [];
+  for (const item of rawItems) {
+    if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+      const arg = item.arg;
+      if (arg && isNode(arg, N.SelectorList)) {
+        value.push(...arg.value);
+        continue;
+      }
+    }
+    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.value);
+          continue;
+        }
+      }
+    }
+    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.value);
+          continue;
+        }
+      }
+    }
+    value.push(item);
+  }
+  if (
+    printOptions.referenceMode === true
+    && printOptions.referenceRenderEnabled === true
+    && printOptions.referenceFilterTargets === true
+  ) {
+    let extendedCount = 0;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        value[extendedCount++] = item;
+      }
+    }
+    if (extendedCount > 0) {
+      value.length = extendedCount;
+    }
+  }
+  const length = value.length;
+  if (length === 0) {
+    return;
+  }
+  let item = value[0]!;
+  emitSelectorListItem(item, printOptions, suppressPre);
+  for (let i = 1; i < length; i++) {
+    const prevItem = item;
+    item = value[i]!;
+    if (typeof prevItem !== 'string' && typeof item !== 'string') {
+      emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
+    }
+    w.add(`,\n${space}`);
+    if (printOptions.trivia && typeof item !== 'string') {
+      emitTriviaTokens(
+        consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions),
+        printOptions,
+        { skipLeadingWhitespace: true }
+      );
+    }
+    emitSelectorListItem(item, printOptions, true);
+  }
+}
+
 export function emitSelectorListLike(
   value: SelectorListLike,
   options: FinalPrintOptions,
   suppressPre = false
 ): void {
-  const items = selectorListItems(value);
-  for (let i = 0; i < items.length; i++) {
-    if (i > 0) {
-      options.writer.add(', ');
-    }
-    emitSelectorListItem(items[i]!, options, suppressPre && i === 0);
-  }
+  emitSelectorListItems(selectorListItems(value), options, suppressPre);
 }
