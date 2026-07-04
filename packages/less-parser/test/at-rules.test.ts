@@ -108,7 +108,7 @@ describe('mediaInParens', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
-    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
     expect(out).toContainString('\'@media\'');
     expect(out).toContainString('(List\n            value:');
     expect(out).toContainString('(Reference [role=ident]');
@@ -139,7 +139,7 @@ describe('mediaInParens', () => {
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule');
     expect(out).toContainString('nestable: true');
-    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
     expect(out).toContainString('\'@media\'');
     expect(out).toContainString('(Reference [role=ident]');
     expect(out).toContainString('type: \'index\'');

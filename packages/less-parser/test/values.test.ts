@@ -109,10 +109,11 @@ describe('valueSequence', () => {
 
     expect(errors.length).toBe(0);
     const serialized = serializeTypes(tree, { showOptions: true });
-    expect(serialized).toContain('sep: \'/\'');
-    expect(serialized).toContain('\'small\'');
-    expect(serialized).toContain('(Dimension');
-    expect(serialized).toContain('unit: \'px\'');
+    expect(serialized).toContain('small / 20px');
+    expect(serialized).toContain('20px');
+    expect(serialized).toContain('(Keyword [role=keyword]');
+    expect(serialized).toContain('\'Verdana\'');
+    expect(serialized).toContain('\'Trebuchet MS\'');
   });
 
   it('allows color-keyword slash values to remain division-like in math: always mode', () => {

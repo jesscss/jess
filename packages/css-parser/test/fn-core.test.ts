@@ -15,7 +15,8 @@ describe('functional CSS grammar — core', () => {
                 [
                   (Declaration
                     name: 'b'
-                    value: 'c'
+                    value:
+                      (Keyword [role=keyword] 'c')
                   )
                 ]
             )

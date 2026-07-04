@@ -8,7 +8,7 @@ import {
   type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
-import { attachSelectorBitLibrary, Selector, type SelectorLike, type SelectorValue } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -180,7 +180,6 @@ export class SelectorList extends Selector<SelectorListItem[]> {
       emitSelectorListItem(item, printOptions, true);
     }
   }
-
 
   /** Normalize value on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
@@ -383,14 +382,55 @@ export class SelectorList extends Selector<SelectorListItem[]> {
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist');
 
-/**
- * Normalize a {@link SelectorLike} to the canonical stored form. An array becomes a
- * `SelectorList` (an array stands in for a list — no caller-built wrapper needed);
- * a single node or string is returned as-is.
- */
-export function normalizeSelectorLike(value: SelectorLike): SelectorValue {
+/** A selector list stored as a node or a plain array (parser-delivered form). */
+export type SelectorListLike = SelectorList | SelectorListItem[];
+
+export function isSelectorListLike(value: unknown): value is SelectorListLike {
+  return Array.isArray(value) || isNode(value, N.SelectorList);
+}
+
+export function selectorListItems(value: SelectorListLike): SelectorListItem[] {
+  return Array.isArray(value) ? value : value.value;
+}
+
+export function selectorListValueOf(items: readonly SelectorListItem[]): string {
+  return items.map(item => (typeof item === 'string' ? item : item.valueOf())).join(', ');
+}
+
+export function selectorSurfaceValueOf(value: SelectorLike): string {
   if (Array.isArray(value)) {
-    return SelectorList.create(value);
+    return selectorListValueOf(value);
   }
-  return value;
+  return value.valueOf();
+}
+
+/**
+ * Finish a selector-list extend/compose result in the same representation as
+ * `inheritFrom`: arrays stay arrays; legacy `SelectorList` nodes stay nodes.
+ */
+export function finishSelectorListSurface(
+  items: SelectorListItem[],
+  inheritFrom: SelectorListLike
+): SelectorListLike {
+  if (items.length === 1) {
+    return items[0]!;
+  }
+  if (Array.isArray(inheritFrom)) {
+    return items;
+  }
+  return SelectorList.create(items).inherit(inheritFrom);
+}
+
+export function emitSelectorListLike(
+  value: SelectorListLike,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const items = selectorListItems(value);
+  for (let i = 0; i < items.length; i++) {
+    if (i > 0) {
+      options.writer.add(', ');
+    }
+    emitSelectorListItem(items[i]!, options, suppressPre && i === 0);
+  }
 }

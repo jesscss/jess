@@ -23,14 +23,11 @@ import {
   type TriviaMap,
   type Trivia,
   makeTrivia,
-  nil,
   Rules, Ruleset,
   Comment,
   type Selector,
-  BasicSelector, CompoundSelector, type CompoundSelectorComponent,
+  CompoundSelector, type CompoundSelectorComponent,
   ComplexSelector, type ComplexSelectorValue,
-  Combinator,
-  SelectorList,
   Declaration, CustomDeclaration,
   Any, Dimension, Num, Color, ColorFormat,
   Sequence, List,
@@ -140,6 +137,80 @@ export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>):
     }
   }
   return out;
+}
+
+function firstRawNodeSpan(rawChildren: ReadonlyArray<{ _tag: string }>): Span | undefined {
+  for (const rc of rawChildren as Array<{ _tag: string; span?: Span }>) {
+    if (rc._tag === 'node' && rc.span) {
+      return rc.span;
+    }
+  }
+  return undefined;
+}
+
+/** Member source spans for parser-delivered selector-list arrays (plain arrays carry no spans). */
+const selectorListSpans = new WeakMap<object, Span[]>();
+
+function readPseudoArg(children: ReadonlyArray<Child>, pseudoName: string): {
+  arg: Node | string | unknown[] | undefined;
+  memberSpans?: Span[];
+  valueSpans?: number[];
+} {
+  const keepStructured = SELECTOR_PSEUDOS.has(pseudoName.toLowerCase());
+  for (const ch of children) {
+    if (ch._tag === 'leaf') {
+      continue;
+    }
+    if (Array.isArray(ch)) {
+      return { arg: ch, memberSpans: selectorListSpans.get(ch) };
+    }
+    if (ch._tag === 'node') {
+      const node = ch as unknown as JessNode & { value?: unknown; valueSpans?: number[] };
+      if (Array.isArray(node.value) && selectorListSpans.has(node.value)) {
+        return { arg: node.value, memberSpans: selectorListSpans.get(node.value) };
+      }
+      if (!keepStructured && Array.isArray(node.value)) {
+        return { arg: node.value, valueSpans: node.valueSpans };
+      }
+      return { arg: node };
+    }
+  }
+  return { arg: undefined };
+}
+
+function readRulesetSelector(children: ReadonlyArray<Child>): string | Selector {
+  const first = children[0];
+  if (first === undefined) {
+    return '';
+  }
+  // Collapsed selector-list / basic-selector builds land as bare strings or arrays.
+  if (typeof first === 'string' || Array.isArray(first)) {
+    return first as string | Selector;
+  }
+  if (first._tag === 'node') {
+    return first as unknown as JessNode;
+  }
+  return (nodeChildren(children)[0] ?? '') as string | Selector;
+}
+
+function selectorListMemberSpans(rawChildren: ReadonlyArray<{ _tag: string }>): Span[] | undefined {
+  const listNode = rawChildren.find(rc => rc._tag === 'node') as {
+    rawChildren?: Array<{ _tag: string; span?: Span }>;
+    children?: Array<{ _tag: string; span?: Span }>;
+  } | undefined;
+  const inner = listNode?.rawChildren ?? listNode?.children;
+  if (!inner?.length) {
+    return undefined;
+  }
+  const items = spannedComponents(inner).filter(i => i.comp !== ',');
+  if (items.length < 2) {
+    return undefined;
+  }
+  return items.map(i => i.span);
+}
+
+export function selectorListSpansFor(value: unknown): Span[] | undefined {
+  return value && typeof value === 'object' ? selectorListSpans.get(value) : undefined;
 }
 
 export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: number, span: Span) {
@@ -466,19 +537,26 @@ export class CssParser {
     rawChildren: ReadonlyArray<{ _tag: string }>,
     loc: LocationInfo
   ) {
+    const selector = readRulesetSelector(children);
     const sel = spannedComponents(rawChildren)[0];
-    const selector = (sel?.comp ?? '') as string | Selector;
+    const selectorSpan = sel?.span ?? firstRawNodeSpan(rawChildren);
     const rawRules = nodeChildren(children.slice(1));
-    const braceIdx = this._source.indexOf('{', sel ? sel.span.end : loc[0]);
+    const braceIdx = this._source.indexOf('{', selectorSpan ? selectorSpan.end : loc[0]);
     const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
     const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
     const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
     const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
     const node = new Ruleset({ selector, rules }, undefined, loc);
-    if (sel) {
+    if (selectorSpan) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
       if (index >= 0) {
-        setFieldSpan(node as unknown as JessNode, index, count, sel.span);
+        setFieldSpan(node as unknown as JessNode, index, count, selectorSpan);
+      }
+    }
+    if (Array.isArray(selector)) {
+      const memberSpans = selectorListSpans.get(selector) ?? selectorListMemberSpans(rawChildren);
+      if (memberSpans && memberSpans.length === selector.length) {
+        setValueSpans(node as unknown as JessNode, memberSpans);
       }
     }
     return node;
@@ -489,12 +567,16 @@ export class CssParser {
   // becomes a plain array, and a basic selector becomes a bare string. Every
   // functional-builder construction routes through these two helpers so that
   // migration is a one-line change here instead of ~20 scattered edits.
-  protected _makeSelectorList(items: unknown, loc: LocationInfo): JessNode {
-    return new SelectorList(items as (Selector | string)[], undefined, loc) as unknown as JessNode;
+  protected _makeSelectorList(items: unknown, _loc: LocationInfo): (Selector | string)[] {
+    return items as (Selector | string)[];
   }
 
-  protected _makeBasicSelector(value: string, loc: LocationInfo): JessNode {
-    return new BasicSelector(value, undefined, loc) as unknown as JessNode;
+  protected _makeBasicSelector(value: string, _loc: LocationInfo): string {
+    return value;
+  }
+
+  protected _valueKeyword(text: string, loc: LocationInfo): Keyword {
+    return new Keyword(text, undefined, loc);
   }
 
   protected _buildSelectorList(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -502,9 +584,9 @@ export class CssParser {
     if (items.length === 1) {
       return items[0]!.comp as unknown as JessNode;
     }
-    const node = this._makeSelectorList(items.map(i => i.comp), loc);
-    setValueSpans(node, items.map(i => i.span));
-    return node;
+    const list = this._makeSelectorList(items.map(i => i.comp), loc) as object;
+    selectorListSpans.set(list, items.map(i => i.span));
+    return list as unknown as JessNode;
   }
 
   protected _buildComplexSelector(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -606,19 +688,16 @@ export class CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const prefix = ls[0]?.value ?? ':';
     const pseudoName = ls[1]?.value ?? '';
-    const argNode = nodeChildren(children)[0] as Node | undefined;
-    let arg = argNode;
-    let argValueSpans: number[] | undefined;
-    if (argNode && !SELECTOR_PSEUDOS.has(pseudoName.toLowerCase())) {
-      const v = (argNode as unknown as { value?: unknown }).value;
-      if (Array.isArray(v)) {
-        arg = v as unknown as Node;
-        argValueSpans = (argNode as unknown as { valueSpans?: number[] }).valueSpans;
-      }
-    }
-    const node = new PseudoSelector({ name: prefix + pseudoName, arg }, undefined, loc);
-    if (argValueSpans) {
-      (node as unknown as { valueSpans?: number[] }).valueSpans = argValueSpans;
+    const { arg, memberSpans, valueSpans } = readPseudoArg(children, pseudoName);
+    const node = new PseudoSelector(
+      { name: prefix + pseudoName, arg: arg as Node | undefined },
+      undefined,
+      loc
+    );
+    if (memberSpans) {
+      setValueSpans(node as unknown as JessNode, memberSpans);
+    } else if (valueSpans) {
+      (node as unknown as { valueSpans?: number[] }).valueSpans = valueSpans;
     }
     return node;
   }
@@ -674,7 +753,7 @@ export class CssParser {
   protected _assembleValue(items: Spanned[], loc: LocationInfo): { value: Component; span: Span | undefined } {
     const content = items.filter(i => i.comp !== ',');
     if (content.length === 0) {
-      return { value: new Any('', {}, loc), span: undefined };
+      return { value: '', span: undefined };
     }
     const span: Span = {
       start: content[0]!.span.start,
@@ -688,23 +767,27 @@ export class CssParser {
         segments.at(-1)!.push(it);
       }
     }
-    const segValues = segments.map(seg => this._assembleSegment(seg, loc));
+    const filledSegments = segments.filter(seg => seg.length > 0);
+    const segValues = filledSegments.map(seg => this._assembleSegment(seg, loc));
     if (segValues.length === 1) {
       return { value: segValues[0]!, span };
     }
     const listValues = segValues.map((v) => {
-      if (!Array.isArray(v)) {
-        return v;
+      if (Array.isArray(v)) {
+        return v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
       }
-      const parts = (v as Component[]).map(c =>
-        typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c);
-      return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+      if (typeof v === 'string') {
+        return this._valueKeyword(v, loc) as unknown as Component;
+      }
+      return v;
     });
     const list = new List(listValues as unknown as Node[], undefined, loc);
-    setValueSpans(list as unknown as JessNode, segments.map(seg => ({
-      start: seg[0]!.span.start,
-      end: seg[seg.length - 1]!.span.end
-    })));
+    if (filledSegments.length) {
+      setValueSpans(list as unknown as JessNode, filledSegments.map(seg => ({
+        start: seg[0]!.span.start,
+        end: seg[seg.length - 1]!.span.end
+      })));
+    }
     return { value: list as unknown as Component, span };
   }
 
@@ -724,7 +807,7 @@ export class CssParser {
       return comps;
     }
     const asNode = (c: Component): Component =>
-      typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c;
+      typeof c === 'string' ? (this._valueKeyword(c, loc) as unknown as Component) : c;
     const out: Component[] = [];
     let i = 0;
     while (i < comps.length) {
@@ -763,7 +846,7 @@ export class CssParser {
   ): JessNode {
     const asOperand = (c: unknown): unknown =>
       c && typeof c === 'object' && (c as { _tag?: string })._tag === 'leaf'
-        ? new Any((c as CSTLeaf).value, { role: 'ident' }, loc)
+        ? this._valueKeyword((c as CSTLeaf).value, loc)
         : c;
     const opOf = (c: unknown): string =>
       c && typeof c === 'object' && (c as { _tag?: string })._tag === 'leaf'
@@ -840,11 +923,11 @@ export class CssParser {
     return new Url(inner as unknown as Node, undefined, loc);
   }
 
-  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode | string {
+  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
     const items = spannedComponents(rawChildren);
     const name = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     if (!items.some(it => it.comp === '(')) {
-      return name;
+      return this._valueKeyword(name, loc) as unknown as JessNode;
     }
     const inner = this._betweenParens(items);
     // Arithmetic (calc bodies, nested groups) is folded into Operation nodes by the
@@ -900,7 +983,15 @@ export class CssParser {
           semiSegs.at(-1)!.push(it);
         }
       }
-      const parts = semiSegs.filter(s => s.length > 0).map(s => this._assembleArgs(s, loc));
+      const parts = semiSegs.filter(s => s.length > 0).map((s) => {
+        const arg = this._assembleArgs(s, loc);
+        const items = (arg as List<Node>).value;
+        const sep = (arg as List<Node>).options?.sep;
+        if (!sep && items?.length === 1) {
+          return items[0]!;
+        }
+        return arg;
+      });
       return new List(parts as unknown as Node[], { sep: ';' } as any, loc);
     }
     const segments: Spanned[][] = [[]];
@@ -915,8 +1006,7 @@ export class CssParser {
     const values = nonEmpty.map((seg) => {
       const assembled = this._assembleSegment(seg, loc);
       if (Array.isArray(assembled)) {
-        const parts = (assembled as Component[]).map(c => this._argComponent(c, loc));
-        return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+        return (assembled as Component[]).map(c => this._argComponent(c, loc));
       }
       return this._argComponent(assembled, loc);
     });
@@ -933,14 +1023,19 @@ export class CssParser {
   protected _argComponent(comp: Component, loc: LocationInfo): Component {
     const colored = this._colorize(comp, loc);
     if (typeof colored === 'string') {
-      return new Any(colored, { role: 'ident' }, loc) as unknown as Component;
+      return this._valueKeyword(colored, loc) as unknown as Component;
     }
     return colored;
   }
 
   protected _colorize(comp: Component, loc: LocationInfo): Component {
-    if (typeof comp === 'string' && CSS_COLOR_NAMES.has(comp.toLowerCase())) {
-      return new Color({ node: comp }, {}, loc) as unknown as Component;
+    const text = typeof comp === 'string'
+      ? comp
+      : comp instanceof Keyword
+        ? comp.valueOf()
+        : undefined;
+    if (text && CSS_COLOR_NAMES.has(text.toLowerCase())) {
+      return new Color({ node: text }, {}, loc) as unknown as Component;
     }
     return comp;
   }

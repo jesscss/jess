@@ -43,7 +43,7 @@ describe('Stylesheet', () => {
     expect(root.toTrimmedString()).toBe('.a {\n  color: red;\n  background: blue !important;\n  --gap:  1px 2px;\n}\n');
   });
 
-  it('requires hydration before evaluating string-backed fields', () => {
+  it('passes string-backed declaration values through evaluation inertly', () => {
     const stringDeclaration = decl({ name: 'color', value: 'red' });
     const stringRuleset = ruleset({
       selector: '.a',
@@ -51,12 +51,10 @@ describe('Stylesheet', () => {
     });
     const context = new Context();
 
-    // Declaration values can be arbitrary expressions and must be hydrated to
-    // nodes before evaluation.
-    expect(() => stringDeclaration.evalNode(context)).toThrow('String-backed declaration values must be hydrated');
-    // String-backed ruleset selectors, by contrast, materialize lazily on
-    // demand (createRawSelectorNode), so evaluation does not require them to be
-    // pre-hydrated and does not throw.
+    // Inert string values are not coerced to nodes; evaluation leaves them as-is.
+    expect(() => stringDeclaration.evalNode(context)).not.toThrow();
+    expect(stringDeclaration.evalNode(context)).toBe(stringDeclaration);
+    // String-backed selectors are also used as delivered — no lazy materialization.
     expect(() => stringRuleset.eval(context)).not.toThrow();
   });
 });

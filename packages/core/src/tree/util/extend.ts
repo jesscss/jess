@@ -111,7 +111,14 @@
 import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
-import { SelectorList } from '../selector-list.js';
+import {
+  SelectorList,
+  type SelectorListItem,
+  type SelectorListLike,
+  finishSelectorListSurface,
+  isSelectorListLike,
+  selectorListItems
+} from '../selector-list.js';
 import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
@@ -150,6 +157,9 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
   extendOrderByValueOf = orderByValueOf ?? null;
 }
 
+/** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
+type ExtendSelectorSurface = Selector | SelectorListItem[];
+
 function isSelectorNode(value: unknown): value is Selector {
   return !!value && typeof value === 'object' && 'isSelector' in value && value.isSelector === true;
 }
@@ -169,6 +179,9 @@ function expectSelectorArray(value: Selector | Selector[] | ExtendErrorType): Se
 }
 
 function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
+  if (typeof value === 'string') {
+    return true;
+  }
   return isNode(value, N.SimpleSelector)
     || isNode(value, N.CompoundSelector)
     || isNode(value, N.ComplexSelector)
@@ -309,8 +322,8 @@ export function applyExtendsToSelector(
   const expandExactSelectorListTargets = (instructions: ExtendInstruction[]): ExtendInstruction[] => {
     const expanded: ExtendInstruction[] = [];
     for (const instruction of instructions) {
-      if (!instruction.partial && isNode(instruction.target, N.SelectorList)) {
-        for (const target of instruction.target.value) {
+      if (!instruction.partial && isSelectorListLike(instruction.target)) {
+        for (const target of selectorListItems(instruction.target)) {
           expanded.push({
             ...instruction,
             target: selectorListItemForMatch(target)
@@ -465,19 +478,20 @@ function applyBatchedExtend(
   find: Selector,
   extendWithList: Selector[]
 ): Selector | null {
-  // Fast path: non-partial SelectorList with a SimpleSelector find.
+  // Fast path: non-partial selector list with a SimpleSelector find.
   // One scan to find all matching items, then append all extendWiths at once.
-  if (isNode(selector, N.SelectorList) && isNode(find, N.SimpleSelector)) {
+  if (isSelectorListLike(selector) && isNode(find, N.SimpleSelector)) {
     const searchResult = findExtendableLocations(selector, find);
     if (!searchResult.hasMatches) {
       return null;
     }
 
+    const listItems = selectorListItems(selector);
     const originalItems: Selector[] = [];
     const newItems: Selector[] = [];
     let anyWholeMatch = false;
 
-    for (const item of (selector as SelectorList).value) {
+    for (const item of listItems) {
       const sItem = selectorListItemForExtend(item);
       const itemCompare = selectorCompare(sItem, find);
       if (!itemCompare.hasWholeMatch) {
@@ -517,7 +531,10 @@ function applyBatchedExtend(
       return null;
     }
     const processedArray = isArray(processed) ? processed : [processed];
-    return expectSelector(SelectorList.create(processedArray).inherit(selector));
+    const inheritFrom = isNode(selector, N.SelectorList)
+      ? selector
+      : SelectorList.create(listItems);
+    return expectSelector(SelectorList.create(processedArray).inherit(inheritFrom));
   }
 
   // Generic fallback: apply each extendWith sequentially.
@@ -1110,7 +1127,10 @@ function sameArrayItems<T>(left: readonly T[], right: readonly T[]): boolean {
  * @param inheritFrom - Optional selector to inherit from
  * @returns A new SelectorList with deduplicated and flattened value
  */
-function createExtendedSelectorList(value: Selector[], inheritFrom?: Selector): SelectorList | ExtendErrorType {
+function createExtendedSelectorList(
+  value: Selector[],
+  inheritFrom?: SelectorListLike
+): SelectorListLike | ExtendErrorType {
   // Extract value from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of value) {
@@ -1234,8 +1254,10 @@ function createExtendedSelectorList(value: Selector[], inheritFrom?: Selector): 
   // it before `.inherit(inheritFrom)` reads the parent chain.
   const placedArray = copySelectorsForPlacement(processedArray);
 
-  const result = SelectorList.create(placedArray);
-  return inheritFrom ? result.inherit(inheritFrom) : result;
+  if (!inheritFrom) {
+    return placedArray.length === 1 ? placedArray[0]! : placedArray;
+  }
+  return finishSelectorListSurface(placedArray, inheritFrom);
 }
 
 /**
@@ -1433,15 +1455,21 @@ export function tryExtendSelector(
  * @throws ExtendError if extension fails
  */
 export function extendSelector(
-  target: Selector,
+  target: ExtendSelectorSurface,
   find: Selector,
   extendWith: Selector,
   partial: boolean,
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
-): Selector | ExtendErrorType {
+): ExtendSelectorSurface | ExtendErrorType {
+  // Parser-delivered array selector lists are wrapped into a transient
+  // SelectorList node so they run through the same match/NOT_FOUND search as
+  // node targets; the SelectorList branch below (after the search) delegates
+  // to extendSelectorList exactly as before.
+  if (Array.isArray(target)) {
+    return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
+  }
   if (process.env.PROBE_EXTEND) {
-    // eslint-disable-next-line no-console
     console.error('[PROBE enter]', JSON.stringify({ target: target.valueOf(), find: find.valueOf(), partial }));
   }
   if (partial && find.valueOf() === extendWith.valueOf()) {
@@ -1496,7 +1524,7 @@ export function extendSelector(
       }
     }
   }
-  const comparison = selectorCompare(target, find, searchResult);
+  let comparison = selectorCompare(target, find, searchResult);
   if (!searchResult.hasMatches) {
     return 'NOT_FOUND';
   }
@@ -1520,6 +1548,17 @@ export function extendSelector(
       if (shouldSkipResolvedOnlySimpleBoundary || shouldSkipRelativePartialBoundary) {
         // Keep local extends on nested/relative value in normal flow.
         // Forcing amp-boundary hoisting here flattens authored nesting unexpectedly.
+        // Relative partial extends (e.g. `> &.item`) still need the ampersand
+        // resolved before matching, but must not mutate the source selector tree.
+        if (shouldSkipRelativePartialBoundary && ampersandCrossingInfo.ampersandNode) {
+          // Match legacy behavior: locations were computed on the unresolved selector
+          // (e.g. `> &.item`) but extension applies to the ampersand-resolved target.
+          // Re-searching on the resolved tree can pick a narrower partial match.
+          target = replaceAmpersandWithItsValue(
+            originalTarget,
+            ampersandCrossingInfo.ampersandNode
+          );
+        }
       } else {
         const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
           !loc?.isPartialMatch
@@ -1542,7 +1581,9 @@ export function extendSelector(
     }
   }
 
-  // Special handling for SelectorList targets - extend each matching selector in the list
+  // Special handling for SelectorList targets - extend each matching selector in the list.
+  // Runs AFTER the search + ampersand-boundary checks so combinator/keyset
+  // mismatches short-circuit to NOT_FOUND before we delegate to the list path.
   if (isNode(target, N.SelectorList)) {
     return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
   }
@@ -2133,13 +2174,14 @@ export function extendSelector(
  * @returns Extended SelectorList
  */
 function extendSelectorList(
-  target: SelectorList,
+  target: SelectorListLike,
   find: Selector,
   extendWith: Selector,
   partial: boolean,
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
-): Selector | ExtendErrorType {
+): SelectorListLike | ExtendErrorType {
+  const listItems = selectorListItems(target);
   const markExtended = (selector: Selector): Selector => {
     selector.addFlag(F_EXTENDED);
     return selector;
@@ -2196,7 +2238,7 @@ function extendSelectorList(
   const orderedMatchFlags: boolean[] = [];
   const newSelectors: Selector[] = [];
 
-  for (const item of target.value) {
+  for (const item of listItems) {
     const selector = selectorListItemForExtend(item);
     const comparison = selectorCompare(selector, find);
     if (!comparison.locations.length || (!comparison.hasWholeMatch && !comparison.hasPartialMatch)) {
@@ -2319,14 +2361,14 @@ function extendSelectorList(
     // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
     // when we also inherit from it.
     const safeArray = processedArray.map(s => (s === target ? copySelectorForExtend(s) : s));
-    return SelectorList.create(safeArray).inherit(target);
+    return finishSelectorListSurface(safeArray, target);
   }
   // Exact-mode OR propagation:
   // If a selector-list contains authored `:is(parent)` sibling branches and only some siblings
   // whole-match `find`, propagate `extendWith` into the shared parent `:is(...)` argument for the
   // non-matching sibling branches in the same group.
   let fullModeSelectors = allSelectors;
-  if (!partial && isNode(find, N.ComplexSelector) && isNode(target, N.SelectorList)) {
+  if (!partial && isNode(find, N.ComplexSelector) && isSelectorListLike(target)) {
     type OrGroupCandidate = {
       idx: number;
       selector: ComplexSelector;
@@ -3380,6 +3422,56 @@ function findAmpersandsInSelector(selector: Selector): Array<{ ampersand: Ampers
   return results;
 }
 
+function copySelectorTreeForExtend(selector: Selector): Selector {
+  const copied = selector.clone((child) => {
+    if (child.canReuseAsLeaf()) {
+      return child.reuseAsLeaf();
+    }
+    if (isSelectorNode(child)) {
+      return copySelectorTreeForExtend(child);
+    }
+    return child.cloneForPlacement({ reuseLeaves: false });
+  });
+  if (!isSelectorNode(copied)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return copied;
+}
+
+function ownSharedSelectorChildren(source: Selector, copy: Selector): void {
+  if (isNode(source, N.ComplexSelector) && isNode(copy, N.ComplexSelector)) {
+    const copyValue = copy.value;
+    const sourceValue = source.value;
+    for (let i = 0; i < copyValue.length; i++) {
+      const part = copyValue[i];
+      if (typeof part === 'string' || !isSelectorNode(part)) {
+        continue;
+      }
+      if (part === sourceValue[i]) {
+        copyValue[i] = copySelectorTreeForExtend(part);
+      } else {
+        ownSharedSelectorChildren(expectSelector(sourceValue[i]), part);
+      }
+    }
+    return;
+  }
+  if (isNode(source, N.CompoundSelector) && isNode(copy, N.CompoundSelector)) {
+    const copyValue = copy.value;
+    const sourceValue = source.value;
+    for (let i = 0; i < copyValue.length; i++) {
+      const part = copyValue[i];
+      if (typeof part === 'string' || !isSelectorNode(part)) {
+        continue;
+      }
+      if (part === sourceValue[i]) {
+        copyValue[i] = copySelectorTreeForExtend(part);
+      } else {
+        ownSharedSelectorChildren(expectSelector(sourceValue[i]), part);
+      }
+    }
+  }
+}
+
 /**
  * Creates a version of the selector with the specified ampersand replaced by its resolved value
  * @param selector - The selector containing the ampersand
@@ -3392,7 +3484,12 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
     return selector;
   }
 
-  const selectorCopy = copySelectorForExtend(selector);
+  const selectorCopy = isNode(selector, N.CompoundSelector) || isNode(selector, N.SelectorList)
+    ? copySelectorTreeForExtend(selector)
+    : copySelectorForExtend(selector);
+  if (!isNode(selector, N.CompoundSelector) && !isNode(selector, N.SelectorList)) {
+    ownSharedSelectorChildren(selector, selectorCopy);
+  }
   let resolvedSelector: Selector = copySelectorForExtend(resolved);
 
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
@@ -3433,8 +3530,12 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
  * @returns Selector with ampersand removed
  */
 function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Selector {
-  // Create a copy of the selector
-  const selectorCopy = copySelectorForExtend(selector);
+  const selectorCopy = isNode(selector, N.CompoundSelector) || isNode(selector, N.SelectorList)
+    ? copySelectorTreeForExtend(selector)
+    : copySelectorForExtend(selector);
+  if (!isNode(selector, N.CompoundSelector) && !isNode(selector, N.SelectorList)) {
+    ownSharedSelectorChildren(selector, selectorCopy);
+  }
 
   const ampersandResolvedValue = ampersand.getResolvedSelector()?.valueOf();
   // Find and remove the ampersand node

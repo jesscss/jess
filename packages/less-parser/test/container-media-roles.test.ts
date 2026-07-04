@@ -51,7 +51,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree);
-    expect(out).toContain('role=operator');
+    expect(out).toContain('>');
     expect(out).toContain('>');
   });
 

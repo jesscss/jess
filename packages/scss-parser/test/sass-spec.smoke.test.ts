@@ -227,7 +227,6 @@ describe('sass-spec smoke (parse-only)', () => {
       it('reports parse coverage', () => {
         const valid = probed.filter(c => !c.isErrorFixture && !c.isIntentionalUnsupported);
         const passing = valid.filter(c => c.ok);
-        // eslint-disable-next-line no-console -- diagnostic for coverage triage
         console.log(`[${feature.name}] valid ${passing.length}/${valid.length} parse clean`);
       });
 

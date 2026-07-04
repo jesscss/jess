@@ -8,7 +8,6 @@ import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selecto
 import { isNode } from './util/is-node.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
-import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import {
   CompoundSelector,
@@ -16,7 +15,8 @@ import {
   type CompoundSelectorComponent
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
-import { SelectorList, normalizeSelectorLike, type SelectorListItem } from './selector-list.js';
+import { BasicSelector } from './selector-basic.js';
+import { SelectorList, selectorListValueOf, type SelectorListItem } from './selector-list.js';
 import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { Ampersand } from './ampersand.js';
@@ -49,8 +49,9 @@ import {
 
 export type RulesetValue = {
   /**
-   * A string, a selector node, or an array of either — an array stands in for a
-   * SelectorList (normalized on construction). See {@link SelectorLike}.
+   * A string, a selector node, or an array of either. An array IS a selector
+   * list — it is stored as-is, never materialized into a SelectorList node.
+   * See {@link SelectorLike}.
    */
   selector: SelectorLike | Nil;
   /**
@@ -487,8 +488,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
-  /** Stored (normalized) form: input arrays become a SelectorList on construction. */
-  selector: Selector | string | Nil | undefined;
+  /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
+  selector: SelectorLike | Nil | undefined;
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
@@ -512,22 +513,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       options = { ...options, hasDefault: true };
     }
     super(value.rules, options, location, treeContext);
-    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
-    // An array selector stands in for a SelectorList — normalize it here.
-    const selector = Array.isArray(value.selector)
-      ? normalizeSelectorLike(value.selector)
-      : value.selector;
-    if (typeof selector === 'string') {
-      // The parser is the authority on selector syntax; the runtime stores
-      // whatever string it produced (materializing to nodes lazily when needed).
-      this.selector = selector.trim();
-      this.guard = 'guard' in value ? value.guard : undefined;
-      this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
+    // Store the parser-delivered selector as-is: string, array (selector list), or node.
+    if (typeof value.selector === 'string') {
+      this.selector = value.selector.trim();
     } else {
-      this.selector = selector;
-      this.guard = value.guard;
-      this.selectorBeforeExtend = value.selectorBeforeExtend;
+      this.selector = value.selector;
     }
+    this.guard = 'guard' in value ? value.guard : undefined;
+    this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
     // R2 SINGLE-FRAME: the Ruleset IS its own canonical body. Body children are
     // parented to the Ruleset by the `ruleset()` factory's parentChildren
     // (childKeys includes 'rules'); the Ruleset's own scope frame is the single
@@ -584,32 +577,16 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   /**
-   * Resolve the parser-delivered selector into the Selector node the semantic
-   * (registration / eval / extend / compose) pipeline structurally requires.
-   *
-   * The parser may deliver a bare-string selector (e.g. `div`, produced by the
-   * single-part compound/complex short-circuit, or a keyframe stop like `0%`).
-   * The eval and extend pipelines operate on Selector nodes (`eval`, `hasFlag`,
-   * `keySetLibrary`, `adopt`), so a string selector is resolved once, here, via
-   * the scanner-native `createRawSelectorNode` classifier. A string that is not a
-   * recognized selector shape is held verbatim inside a `CompoundSelector` (never
-   * a `BasicSelector`, which is deprecated). Selector/Nil are passed through.
+   * Return the parser-delivered selector as-is. Strings and arrays are valid
+   * selector surfaces; no lazy string→node materialization.
    */
-  private resolveSemanticSelector(): Selector | Nil {
-    const selector = this.selector;
-    if (selector instanceof Selector || selector instanceof Nil) {
+  private resolveSemanticSelector(): SelectorLike | Nil {
+    const { selector } = this;
+    if (selector instanceof Nil) {
       return selector;
     }
-    if (typeof selector === 'string') {
-      const rawSelector = selector.trim();
-      const location = this.location.length ? this.location : undefined;
-      const treeContext = this.sourceRoot?._treeContext;
-      const resolved = createRawSelectorNode(rawSelector, location, treeContext)
-        ?? createRawSelectorBranchNode(rawSelector, location, treeContext)
-        ?? markStaticSelector(new CompoundSelector([rawSelector], undefined, location, treeContext));
-      this.adopt(resolved);
-      this.selector = resolved;
-      return resolved;
+    if (typeof selector === 'string' || Array.isArray(selector) || selector instanceof Selector) {
+      return selector;
     }
     throw new TypeError('Ruleset requires a selector before semantic evaluation.');
   }
@@ -618,7 +595,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (selector instanceof Nil) {
       return;
     }
-    if (!(selector instanceof Selector)) {
+    if (Array.isArray(selector)) {
+      for (const item of selector) {
+        this.attachSelectorBits(item, selectorBits);
+      }
+      return;
+    }
+    if (typeof selector === 'string') {
       return;
     }
     this.attachSelectorBitsToNode(selector, selectorBits);
@@ -720,7 +703,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    *   descendant combinator. A `SelectorList` parent is wrapped in `:is()`
    *   to avoid distribution; simple/compound/complex parents splice inline.
    */
-  static composeSelector(child: Selector, parent: Selector): Selector {
+  static composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike {
     // String-backed selectors (scanner-native simple selectors) compose
     // textually: substitute `&` with the parent, or prepend the parent via a
     // descendant combinator. Returned as a string so the flattened ruleset keeps
@@ -731,39 +714,41 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const composed = childStr.includes('&')
         ? childStr.replace(/&/g, parentStr)
         : `${parentStr} ${childStr}`;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return composed as unknown as Selector;
+      return composed;
     }
-    const library = child.keySetLibrary ?? parent.keySetLibrary;
+    const library = (child instanceof Selector ? child.keySetLibrary : undefined)
+      ?? (parent instanceof Selector ? parent.keySetLibrary : undefined);
     // Child is a parent-replacement: its `&` has already been fully resolved
     // against the parent context (e.g. `.a, .b { &-1 { ... } }` →
     // `.a-1, .b-1`). The selector already contains the parent; composing
     // further would re-prepend it. Signaled by `hoistToRoot` on the selector,
     // set by `Ampersand.evalNode` when substituting a bare `&` or `&-X`.
-    if (child.hoistToRoot === true) {
+    if (child instanceof Selector && child.hoistToRoot === true) {
       return attachSelectorBitLibrary(child, library);
     }
-    // Child is a SelectorList: compose each item independently. Each item
-    // carries its own explicit-vs-implicit & semantics.
-    if (isNode(child, N.SelectorList)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const items = (child as SelectorList).value as Selector[];
-      const out: Selector[] = [];
+    // Child is a selector list (array or legacy node): compose each item independently.
+    if (Array.isArray(child) || isNode(child, N.SelectorList)) {
+      const items = Array.isArray(child) ? child : child.value;
+      const out: SelectorListItem[] = [];
       for (const item of items) {
-        const composed = Ruleset.composeSelector(item, parent);
-        // A bare-& item substituted with a list parent comes back as a list:
-        // flatten its items into the outer result.
-        if (isNode(composed, N.SelectorList)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          out.push(...((composed as SelectorList).value as Selector[]));
+        const composed = Ruleset.composeSelector(item as SelectorLike, parent);
+        if (Array.isArray(composed)) {
+          out.push(...composed);
+        } else if (isNode(composed, N.SelectorList)) {
+          out.push(...composed.value);
         } else {
-          out.push(composed);
+          out.push(composed as SelectorListItem);
         }
       }
       if (out.length === 1) {
-        return attachSelectorBitLibrary(out[0]!, library);
+        const only = out[0]!;
+        return only instanceof Selector ? attachSelectorBitLibrary(only, library) : only;
       }
-      return attachSelectorBitLibrary(SelectorList.create(out).inherit(child), library);
+      return out;
+    }
+
+    if (!(child instanceof Selector) || !(parent instanceof Selector)) {
+      return child;
     }
 
     const childHasAmp = child.hasFlag(F_AMPERSAND)
@@ -1077,6 +1062,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this._valueOf = selector;
       return this._valueOf;
     }
+    if (Array.isArray(selector)) {
+      this._valueOf = selectorListValueOf(selector);
+      return this._valueOf;
+    }
     if (selector instanceof Nil) {
       this._valueOf = '';
       return this._valueOf;
@@ -1364,7 +1353,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    * Make authored selector nodes printable while keeping implicit ampersands
    * invisible so nested output stays short.
    */
-  private static ensureSelectorVisible(sel: string | Selector | Nil): void {
+  private static ensureSelectorVisible(sel: SelectorLike | Nil): void {
     if (typeof sel === 'string') {
       return;
     }
@@ -1377,8 +1366,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!sel.hasFlag(F_VISIBLE)) {
       sel.addFlag(F_VISIBLE);
     }
-    if (isNode(sel, N.SelectorList)) {
-      for (const item of sel.value) {
+    if (isNode(sel, N.SelectorList) || Array.isArray(sel)) {
+      const items = Array.isArray(sel) ? sel : sel.value;
+      for (const item of items) {
         Ruleset.ensureSelectorVisible(item);
       }
       return;
@@ -1402,7 +1392,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
   }
 
-  private static needsVisibleSelectorClone(sel: string | Selector | Nil): boolean {
+  private static needsVisibleSelectorClone(sel: SelectorLike | Nil): boolean {
     if (typeof sel === 'string') {
       return false;
     }
@@ -1412,9 +1402,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!(isNode(sel, N.Ampersand) && sel.hasFlag(F_IMPLICIT_AMPERSAND)) && !sel.hasFlag(F_VISIBLE)) {
       return true;
     }
-    if (isNode(sel, N.SelectorList)) {
-      for (let i = 0; i < sel.value.length; i++) {
-        if (Ruleset.needsVisibleSelectorClone(sel.value[i]!)) {
+    if (isNode(sel, N.SelectorList) || Array.isArray(sel)) {
+      const items = Array.isArray(sel) ? sel : sel.value;
+      for (let i = 0; i < items.length; i++) {
+        if (Ruleset.needsVisibleSelectorClone(items[i]!)) {
           return true;
         }
       }
@@ -1474,12 +1465,16 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return false;
   }
 
-  static hasExtendedTopLevelSelector(sel: string | Selector | Nil): boolean {
+  static hasExtendedTopLevelSelector(sel: SelectorLike | Nil): boolean {
     if (typeof sel === 'string') {
       return false;
     }
     if (!sel || sel instanceof Nil) {
       return false;
+    }
+    if (Array.isArray(sel)) {
+      // An array IS a selector list — check each member.
+      return sel.some(item => typeof item !== 'string' && item.hasFlag(F_EXTENDED));
     }
     if (isNode(sel, N.SelectorList)) {
       for (let i = 0; i < sel.value.length; i++) {
@@ -1928,8 +1923,9 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     ) {
       rawParentComposed = options.composedSelectorStack?.at(-2);
     }
-    const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
-    const referenceComposeSelectorText = (ownSelector ?? renderSelector).valueOf();
+    const ownSelectorRaw = (this.options as RulesetOptions | undefined)?.ownSelector;
+    const ownSelector = ownSelectorRaw && typeof ownSelectorRaw !== 'string' ? ownSelectorRaw : undefined;
+    const referenceComposeSelectorText = (ownSelectorRaw ?? renderSelector).valueOf();
     let referenceComposeAmpCount = 0;
     for (let index = 0; index < referenceComposeSelectorText.length; index++) {
       if (referenceComposeSelectorText.charCodeAt(index) === 38) {
@@ -2000,12 +1996,24 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const { selector } = this;
 
     if (typeof selector === 'string') {
-      if (
-        options.collapseNesting
-        || options.referenceMode === true
-        || withoutComments
-      ) {
+      if (options.referenceMode === true || withoutComments) {
         return false;
+      }
+      if (options.collapseNesting) {
+        const renderSelector = this.composeHeaderSelector(
+          options,
+          new BasicSelector(selector),
+          undefined
+        );
+        const saved = savePrintState(options, []);
+        const position = options.writer.position();
+        try {
+          renderSelector.writeSyntax(options);
+          options.writer.trimEndSince(position);
+        } finally {
+          restorePrintState(options, saved);
+        }
+        return options.writer.position() !== position;
       }
       options.writer.add(selector);
       return selector.length > 0;
@@ -2178,7 +2186,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       : this._finishRulesetSelectorPrep(node, sel, context);
   }
 
-  private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
+  private _prepareRulesetSelectorIdentity(
+    selector: SelectorLike | Nil,
+    context: Context
+  ): MaybePromise<SelectorLike | Nil> {
+    if (typeof selector === 'string' || Array.isArray(selector)) {
+      return selector;
+    }
     return selector.eval(context);
   }
 
@@ -2199,44 +2213,46 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
   }
 
-  private _storeOwnSelector(node: Ruleset, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
+  private _storeOwnSelector(node: Ruleset, selector: SelectorLike | Nil, selectorBits: Context['selectorBits']): void {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
-    const ownSelector: Selector | Nil = !(selector instanceof Nil)
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      ? copySelectorForRulesetMetadata(selector) as Selector
-      : selector;
-    this.attachSelectorBits(ownSelector, selectorBits);
+    let storedOwn: Selector | Nil;
+    if (selector instanceof Nil) {
+      storedOwn = selector;
+    } else if (typeof selector === 'string' || isRulesetSelectorMetadata(selector)) {
+      storedOwn = copySelectorForRulesetMetadata(selector);
+    } else {
+      storedOwn = new Nil();
+    }
+    this.attachSelectorBits(storedOwn, selectorBits);
     if (node._options) {
-      (node._options as RulesetOptions).ownSelector = ownSelector;
+      (node._options as RulesetOptions).ownSelector = storedOwn;
     } else {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      node._options = { ownSelector } as unknown as RulesetOptions & NodeOptions;
+      node._options = { ownSelector: storedOwn } as unknown as RulesetOptions & NodeOptions;
     }
   }
 
   private _finishRulesetSelectorPrep(
     node: Ruleset,
-    sel: Selector | Nil,
+    sel: SelectorLike | Nil,
     context: Context
   ): MaybePromise<Ruleset> {
     const rulesetNode: Ruleset = node;
     // Store the evaluated selector - this is what will be in the frame
-    node.adopt(sel);
+    if (sel instanceof Node) {
+      node.adopt(sel);
+      node.invalidateSelectorValueCache(sel instanceof Selector ? sel : undefined);
+      if (sel.hoistToRoot) {
+        node.hoistToRoot = true;
+      }
+      if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
+        (sel as Selector).keySetLibrary ??= context.selectorBits;
+      }
+    } else {
+      node.invalidateSelectorValueCache(undefined);
+    }
     node.selector = sel;
-    node.invalidateSelectorValueCache(sel);
-    if (sel.hoistToRoot) {
-      node.hoistToRoot = true;
-    }
-    // Wire up the BitSet library on the evaluated selector so that
-    // extend fast-rejection via keySet/requiredKeySet works. The
-    // library is shared across all selectors in a compilation via
-    // context.selectorBits; assigning it here ensures that when the
-    // lazy `keySet` getter fires during extend matching, it produces
-    // real BitSets instead of undefined.
-    if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
-      (sel as Selector).keySetLibrary ??= context.selectorBits;
-    }
     // Register the concrete Ruleset with the current extend root.
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (extendRoot) {
@@ -2359,9 +2375,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         }
         return finishEvaluatedRules(evaluatedRules);
       }
-      this.adopt(selector);
+      if (selector instanceof Node) {
+        this.adopt(selector);
+        this.invalidateSelectorValueCache(selector instanceof Selector ? selector : undefined);
+      } else {
+        this.invalidateSelectorValueCache(undefined);
+      }
       this.selector = selector;
-      this.invalidateSelectorValueCache(selector);
       if (context.opts.output?.collapseNesting) {
         this.hoistToRoot = true;
       }

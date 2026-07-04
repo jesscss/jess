@@ -10,8 +10,8 @@ interface SelView {
 }
 interface RuleView {
   type: string;
-  selector: SelView;
-  target: SelView;
+  selector: SelView | unknown[] | string;
+  target: SelView | unknown[] | string;
   flag: number;
   rules: RuleView[];
   name: unknown;
@@ -19,6 +19,24 @@ interface RuleView {
   prelude: unknown;
   options: { assign: string };
   location: number[];
+}
+function selectorListMembers(selector: unknown): unknown[] {
+  if (Array.isArray(selector)) {
+    return selector;
+  }
+  if (selector && typeof selector === 'object' && 'value' in selector) {
+    const value = (selector as { value: unknown }).value;
+    return Array.isArray(value) ? value : [selector];
+  }
+  return [selector];
+}
+function selectorListValues(selector: unknown): unknown[] {
+  return selectorListMembers(selector).map((node: unknown) => {
+    if (typeof node === 'object' && node !== null && 'valueOf' in node && typeof (node as { valueOf: () => unknown }).valueOf === 'function') {
+      return (node as { valueOf: () => unknown }).valueOf();
+    }
+    return node;
+  });
 }
 function asRuleset(n: Node | string | undefined): RuleView {
   if (!isNode(n, N.Ruleset)) {
@@ -68,8 +86,7 @@ describe('serializeTypes coverage', () => {
         rules:
           [
             (VarDeclaration
-              name:
-                (Any [role=ident] 'ref')
+              name: 'ref'
               value:
                 (Reference
                   target:
@@ -105,8 +122,7 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name:
-          (Any [role=ident] 'color')
+        name: 'color'
         value:
           (Color
             node: 'red'
@@ -158,7 +174,7 @@ describe('serializeTypes coverage', () => {
               [
                 (VarDeclaration
                   name:
-                    (Any [role=property] 'color')
+                    'color'
                   value:
                     (Nil '')
                 )
@@ -168,7 +184,7 @@ describe('serializeTypes coverage', () => {
           [
             (Declaration
               name:
-                (Any [role=property] 'color')
+                'color'
               value:
                 (Reference
                   key: 'color'
@@ -276,15 +292,14 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'rules')
+        name: 'rules'
         value:
           (Mixin
             rules:
               [
                 (Declaration
                       name:
-                        (Any [role=property] 'color')
+                        'color'
                       value:
                         (Color
                           node: 'red'
@@ -427,7 +442,7 @@ test('rest parameter in mixin', () => {
         [
           (Declaration
             name:
-              (Any [role=property] 'color')
+              'color'
             value:
               (Color
                 node: 'red'
@@ -627,16 +642,10 @@ test('@import "file.css" parsed as import AtRule', () => {
   expect(serializeTypes(tree)).toContainString(`
       (AtRuleStatement
         name: 
-          (Any [role=atkeyword] '@import')
+          '@import'
         prelude:
-          (Sequence
-            value:
-              [
-                (Quoted
-                  value:
-                    (Any [role=any] 'file.css')
-                )
-              ]
+          (Quoted
+            value: 'file.css'
           )
       )
     `);
@@ -658,16 +667,10 @@ test('@import (css) "file.css" with css option', () => {
   expect(serializeTypes(tree)).toContainString(`
       (AtRuleStatement
         name: 
-          (Any [role=atkeyword] '@import')
+          '@import'
         prelude:
-          (Sequence
-            value:
-              [
-                (Quoted
-                  value:
-                    (Any [role=any] 'file.css')
-                )
-              ]
+          (Quoted
+            value: 'file.css'
           )
       )
     `);
@@ -724,10 +727,9 @@ test('parse known at-rule as variable declaration', () => {
 
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'property')
+        name: 'property'
         value: 
-          (Any [role=ident] 'foo')
+          (Keyword [role=keyword] 'foo')
       )
     `);
 });
@@ -738,10 +740,9 @@ test('parse known at-rule as variable declaration', () => {
 
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'property')
+        name: 'property'
         value: 
-          (Any [role=ident] 'foo')
+          (Keyword [role=keyword] 'foo')
       )
     `);
 });
@@ -759,7 +760,7 @@ test('parse known at-rule as variable call', () => {
             name:
               (Reference [role=name]
                 key:
-                  (Any [role=ident] 'media')
+                  (Keyword [role=keyword] 'media')
               )
           )
       )
@@ -772,8 +773,7 @@ test('namespace reference - simple id', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference [role=name]
             key: '#id'
@@ -788,8 +788,7 @@ test('namespace reference - simple class', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference [role=name]
             key: '.class'
@@ -804,8 +803,7 @@ test('namespace reference - complex selector', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference [role=name]
             key:
@@ -821,8 +819,7 @@ test('namespace call - simple id with parentheses', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -840,8 +837,7 @@ test('namespace call - complex selector with parentheses', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -860,8 +856,7 @@ test('namespace reference with accessor', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference
             target:
@@ -883,8 +878,7 @@ test('variable reference with accessor', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference
             target:
@@ -915,8 +909,7 @@ test('namespace reference with complex selector and accessor', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference
             target: 
@@ -939,8 +932,7 @@ test('namespace call with accessor and parentheses', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -963,8 +955,7 @@ test('chained mixin calls - simple chain', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -989,8 +980,7 @@ test('chained mixin calls - with arguments', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -1007,9 +997,9 @@ test('chained mixin calls - with arguments', () => {
                           [
                             (VarDeclaration
                               name:
-                                (Any [role=property] 'foo')
+                                'foo'
                               value:
-                                (Any [role=ident] 'bar')
+                                (Keyword [role=keyword] 'bar')
                             )
                           ]
                       )
@@ -1027,8 +1017,7 @@ test('chained mixin calls - complex chain with accessors', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Reference
             target: 
@@ -1053,9 +1042,9 @@ test('chained mixin calls - complex chain with accessors', () => {
                                           [
                                             (VarDeclaration
                                               name:
-                                                (Any [role=property] 'foo')
+                                                'foo'
                                               value:
-                                                (Any [role=ident] 'bar')
+                                                (Keyword [role=keyword] 'bar')
                                             )
                                           ]
                                       )
@@ -1081,8 +1070,7 @@ test('chained mixin calls - deep nesting', () => {
 
   expect(serializeTypes(tree)).toContainString(`
       (VarDeclaration
-        name: 
-          (Any [role=ident] 'ref')
+        name: 'ref'
         value: 
           (Call
             name: 
@@ -1146,7 +1134,7 @@ describe('extend cases', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
-    expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(selectorListValues(ruleset.selector)).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 1);
     expect(ruleset.rules[1]!.type).toBe('Declaration');
   });
@@ -1158,7 +1146,7 @@ describe('extend cases', () => {
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.x', 1, '.a');
     expectExtend(wrapper.rules[1], '.y', 1, '.b');
-    expect(wrapper.rules[2]!.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(selectorListValues(wrapper.rules[2]!.selector)).toEqual(['.a', '.b']);
   });
 
   test('mixed selectors - some with extends, some without - root-level extends', () => {
@@ -1167,7 +1155,7 @@ describe('extend cases', () => {
     const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.x', 1, '.a');
-    expect(wrapper.rules[1]!.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(selectorListValues(wrapper.rules[1]!.selector)).toEqual(['.a', '.b']);
   });
 
   test('ampersand extend - single extend', () => {
@@ -1226,10 +1214,10 @@ describe('extend cases', () => {
     const extendCount = extendMatches?.length || 0;
     expect(extendCount).toBe(1);
     // Verify the Extend is in .c, not in .d
-    expect(sExpr).toContainString('(BasicSelector \'.c\')');
+    expect(sExpr).toContainString('selector: \'.c\'');
     expect(sExpr).toContain('selector: \'.d\'');
     // The Extend should be in the .c ruleset, not in the .d ruleset
-    const cExtendIndex = sExpr.indexOf('(BasicSelector \'.c\')');
+    const cExtendIndex = sExpr.indexOf('selector: \'.c\'');
     const dExtendIndex = sExpr.indexOf('selector: \'.d\'');
     const extendIndex = sExpr.indexOf('(Extend');
     expect(extendIndex).toBeGreaterThan(-1);
@@ -1251,7 +1239,7 @@ describe('extend cases', () => {
     const { errors, tree } = parser.parse('.a:extend(.x all), .b:extend(.x all) { color: blue; }');
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
-    expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(selectorListValues(ruleset.selector)).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 0);
   });
 
@@ -1259,7 +1247,7 @@ describe('extend cases', () => {
     const { errors, tree } = parser.parse('.a:extend(.x), .b:extend(.x), .c:extend(.x) { color: blue; }');
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
-    expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b', '.c']);
+    expect(selectorListValues(ruleset.selector)).toEqual(['.a', '.b', '.c']);
     expectExtend(ruleset.rules[0], '.x', 1);
   });
 
@@ -1268,7 +1256,7 @@ describe('extend cases', () => {
 
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
-    expect(ruleset.selector.value.map((node: any) => node.valueOf())).toEqual(['.a', '.b']);
+    expect(selectorListValues(ruleset.selector)).toEqual(['.a', '.b']);
     expectExtend(ruleset.rules[0], '.x', 0);
   });
 
@@ -1277,7 +1265,7 @@ describe('extend cases', () => {
     expect(errors.length).toBe(0);
     const ruleset = asRuleset(tree.rules[0]);
     expect(ruleset.selector.valueOf()).toBe('.a');
-    expect(ruleset.rules[0]!.target.value.map((node: any) => node.valueOf())).toEqual(['.x', '.y']);
+    expect(selectorListValues(ruleset.rules[0]!.target)).toEqual(['.x', '.y']);
     expect(ruleset.rules[0]!.flag).toBe(1);
   });
 
@@ -1325,7 +1313,7 @@ describe('extend cases', () => {
     if (extendMatch) {
       const extendStr = extendMatch[0];
       // Should not contain "selector:" followed by a BasicSelector
-      expect(extendStr).not.toContain('selector:\n                (BasicSelector \'.c\')');
+      expect(extendStr).not.toContain('selector:\n                \'.c\'');
     }
   });
 
@@ -1345,14 +1333,14 @@ describe('extend cases', () => {
     const extendCount = extendMatches?.length || 0;
     expect(extendCount).toBe(2);
     // Extends should be inside the ruleset with selector: undefined
-    expect(sExpr).toContainString('(SelectorList');
-    expect(sExpr).toContainString('(BasicSelector \'.ext3\')');
-    expect(sExpr).toContainString('(BasicSelector \'.ext4\')');
+    expect(sExpr).toContainString('[\'.ext3\', \'.ext4\']');
+    expect(sExpr).toContainString('.ext3');
+    expect(sExpr).toContainString('.ext4');
     // Targets should be present
     expect(sExpr).toContainString('(Extend');
     expect(sExpr).toContainString('target:');
-    expect(sExpr).toContainString('(BasicSelector \'.foo\')');
-    expect(sExpr).toContainString('(BasicSelector \'.bar\')');
+    expect(sExpr).toContainString('target: \'.foo\'');
+    expect(sExpr).toContainString('target: \'.bar\'');
   });
 
   test('extend with selector list target and all flag', () => {
@@ -1386,7 +1374,7 @@ describe('extend cases', () => {
     const wrapper = asRules(tree.rules[0]);
     expect(wrapper.type).toBe('Rules');
     expectExtend(wrapper.rules[0], '.ext5', 0, '.ext7');
-    expect(wrapper.rules[1]!.selector.value.map((node: any) => node.valueOf())).toEqual([
+    expect(selectorListValues(wrapper.rules[1]!.selector)).toEqual([
       '.should-not-exist-in-output',
       '.ext7'
     ]);

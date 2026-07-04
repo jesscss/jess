@@ -15,9 +15,14 @@ import type { Rules } from './rules.js';
 import type { Ruleset } from './ruleset.js';
 import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
-import { Combinator } from './combinator.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
-import { SelectorList } from './selector-list.js';
+import {
+  SelectorList,
+  type SelectorListItem,
+  isSelectorListLike,
+  selectorSurfaceValueOf,
+  emitSelectorListLike
+} from './selector-list.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
@@ -37,10 +42,10 @@ export enum ExtendFlag {
 }
 
 export type ExtendValue = {
-  /** The current selector. By default is `&`. An array stands in for a SelectorList. */
-  selector?: Selector | Selector[];
-  /** The target to extend. An array stands in for a SelectorList. */
-  target: Selector | Selector[];
+  /** The current selector. By default is `&`. An array stands in for a selector list. */
+  selector?: Selector | SelectorListItem[];
+  /** The target to extend. An array stands in for a selector list. */
+  target: Selector | SelectorListItem[];
   /**
    * Optional namespace scoping for extend targets.
    *
@@ -65,8 +70,8 @@ export interface Extend extends Node<ExtendValue> {
 export class Extend extends Node<ExtendValue> {
   static override childKeys = ['selector', 'target'] as const;
 
-  readonly selector: Selector | undefined;
-  readonly target: Selector;
+  readonly selector: Selector | SelectorListItem[] | undefined;
+  readonly target: Selector | SelectorListItem[];
   readonly namespace: string | undefined;
   readonly flag: ExtendFlag | undefined;
 
@@ -78,9 +83,8 @@ export class Extend extends Node<ExtendValue> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    // An array stands in for a SelectorList — normalize on construction.
-    this.selector = Array.isArray(value.selector) ? SelectorList.create(value.selector) : value.selector;
-    this.target = Array.isArray(value.target) ? SelectorList.create(value.target) : value.target;
+    this.selector = value.selector;
+    this.target = value.target;
     this.namespace = value.namespace;
     this.flag = value.flag;
     this.removeFlag(F_VISIBLE);
@@ -88,7 +92,10 @@ export class Extend extends Node<ExtendValue> {
   }
 
   override valueOf() {
-    return `$extend ${this.target.valueOf()}`;
+    const targetText = isSelectorListLike(this.target)
+      ? selectorSurfaceValueOf(this.target)
+      : this.target.valueOf();
+    return `$extend ${targetText}`;
   }
 
   /** @internal */
@@ -100,7 +107,11 @@ export class Extend extends Node<ExtendValue> {
       w.add(' ');
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
-      selector.writeSyntax(options);
+      if (isSelectorListLike(selector)) {
+        emitSelectorListLike(selector, options, true);
+      } else {
+        selector.writeSyntax(options);
+      }
       options.suppressBoundaryTrivia = saved;
       w.add(' ->');
     }
@@ -110,7 +121,11 @@ export class Extend extends Node<ExtendValue> {
     }
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
-    target.writeSyntax(options);
+    if (isSelectorListLike(target)) {
+      emitSelectorListLike(target, options, true);
+    } else {
+      target.writeSyntax(options);
+    }
     options.suppressBoundaryTrivia = saved;
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');

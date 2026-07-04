@@ -449,3 +449,18 @@ describe('ScssParserParseman — @use / @forward / @import / @extend', () => {
     expect(result.errors[0]?.message).toContain('@forward with "show"/"hide" lists is not supported');
   });
 });
+
+describe('ScssParserParseman — trailing commas', () => {
+  it('parses function calls with a trailing comma', () => {
+    parseOk('a { z: foo(1, 2,); }');
+  });
+
+  it('parses parenthesized list literals with a trailing comma', () => {
+    parseOk('a { z: (1, 2, 3,); }');
+  });
+
+  it('rejects a bare comma in function args', () => {
+    const result = parseScssFn('a { z: foo(,); }');
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+});

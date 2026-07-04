@@ -54,7 +54,7 @@ describe('mixinArgList', () => {
     expect(out).toContainString('key: \'.mixin\'');
     expect(out).toContainString('(List\n          sep: \',\'');
     expect(out).toContainString('value:');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
@@ -69,7 +69,7 @@ describe('mixinArgList', () => {
     expect(out).toContainString('key: \'.mixin\'');
     expect(out).toContainString('(List\n          sep: \';\'');
     expect(out).toContainString('value:');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
@@ -83,7 +83,7 @@ describe('mixinArgList', () => {
     expect(out).toContainString('key: \'.mixin\'');
     expect(out).toContainString('(List\n          sep: \';\'');
     expect(out).toContainString('(Paren\n              escaped: true');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
@@ -161,11 +161,7 @@ describe('lookupOrCall', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (Declaration
           assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
+        name: 'color'
         value:
           (Reference
               type: 'index'
@@ -189,11 +185,7 @@ describe('lookupOrCall', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (Declaration
           assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
+        name: 'color'
         value:
           (Reference
               type: 'variable'
@@ -214,11 +206,7 @@ describe('lookupOrCall', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (Declaration
           assign: ':'
-        name: 
-          (Any [role=property]
-              role: 'property'
-            'color'
-          )
+        name: 'color'
         value:
           (Call
             name: 

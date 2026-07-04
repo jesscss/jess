@@ -41,7 +41,7 @@ describe('expressionProduct', () => {
     expect(out).toContainString('value:');
     expect(out).toContainString('(List\n        sep: \'/\'');
     expect(out).toContainString('value:');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'foo\'');
     expect(out).toContainString('(Num 2)');
   });

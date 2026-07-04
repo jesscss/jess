@@ -27,6 +27,24 @@ function valueStart(node: any, index: number): number {
 function valueEnd(node: any, index: number): number {
   return packedSpanEnd(node.valueSpans, index);
 }
+function selectorListMembers(selector: unknown): unknown[] {
+  if (Array.isArray(selector)) {
+    return selector;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return selector.value;
+  }
+  return [selector];
+}
+function selectorMemberValueOf(item: unknown): string {
+  if (typeof item === 'string') {
+    return item;
+  }
+  if (item && typeof item === 'object' && 'valueOf' in item && typeof item.valueOf === 'function') {
+    return String(item.valueOf());
+  }
+  return String(item);
+}
 
 describe('serializeTypes coverage', () => {
   test('charset', () => {
@@ -47,7 +65,8 @@ describe('serializeTypes coverage', () => {
                 [
                   (Declaration
                     name: 'b'
-                    value: 'c'
+                    value:
+                      (Keyword [role=keyword] 'c')
                   )
                 ]
             )
@@ -139,13 +158,10 @@ describe('serializeTypes coverage', () => {
               (PseudoSelector
                 name: ':is'
                 arg:
-                  (SelectorList
-                    value:
-                      [
-                        'b'
-                        'c'
-                      ]
-                  )
+                  [
+                    'b'
+                    'c'
+                  ]
               )
             ]
         )
@@ -329,30 +345,30 @@ describe('serializeTypes coverage', () => {
   test('selector list comments stay in trivia between selector members', () => {
     const { tree, trivia } = cssParser.parse('#a,\n/*x*//*y*/\n.b,/*z*/.c { d: e; }');
     const ruleset = tree.rules[0];
-    if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
-      throw new Error('Expected first parsed rule to have a selector list');
+    if (!isNode(ruleset, N.Ruleset) || !Array.isArray(ruleset.selector)) {
+      throw new Error('Expected first parsed rule to have an array selector list');
     }
-    const [first, second, third] = ruleset.selector.value;
+    const [first, second, third] = selectorListMembers(ruleset.selector);
 
-    expect(first?.valueOf()).toBe('#a');
-    expect(second?.valueOf()).toBe('.b');
-    expect(third?.valueOf()).toBe('.c');
-    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 1), 'before'))).toBe('\n/*x*//*y*/\n');
-    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 2), 'before'))).toBe('/*z*/');
+    expect(selectorMemberValueOf(first)).toBe('#a');
+    expect(selectorMemberValueOf(second)).toBe('.b');
+    expect(selectorMemberValueOf(third)).toBe('.c');
+    expect(triviaText(trivia.lookup(packedSpanStart(ruleset.valueSpans, 1), 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(packedSpanStart(ruleset.valueSpans, 2), 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
     const { tree, trivia } = cssParser.parse('#comments /* boo *//* boo again*/, .comments { color: red; }');
     const ruleset = tree.rules[0];
-    if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
-      throw new Error('Expected first parsed rule to have a selector list');
+    if (!isNode(ruleset, N.Ruleset) || !Array.isArray(ruleset.selector)) {
+      throw new Error('Expected first parsed rule to have an array selector list');
     }
-    const [first, second] = ruleset.selector.value;
+    const [first, second] = selectorListMembers(ruleset.selector);
 
-    expect(first?.valueOf()).toBe('#comments');
-    expect(second?.valueOf()).toBe('.comments');
-    const firstEnd = valueEnd(ruleset.selector, 0);
-    const secondStart = valueStart(ruleset.selector, 1);
+    expect(selectorMemberValueOf(first)).toBe('#comments');
+    expect(selectorMemberValueOf(second)).toBe('.comments');
+    const firstEnd = packedSpanEnd(ruleset.valueSpans, 0);
+    const secondStart = packedSpanStart(ruleset.valueSpans, 1);
     expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]

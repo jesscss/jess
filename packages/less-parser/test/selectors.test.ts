@@ -106,13 +106,10 @@ describe('Selector Productions', () => {
         (PseudoSelector
           name: ':unknown'
           arg:
-            (Sequence
-              value:
-                [
-                  (Any '.sel')
-                  (Any '.a')
-                ]
-            )
+            [
+              (Keyword [role=keyword] '.sel')
+              (Keyword [role=keyword] '.a')
+            ]
         )
       `);
     });
@@ -227,13 +224,15 @@ describe('Selector Productions', () => {
       // Test with class selectors first to verify selector list parsing works
       const { errors, tree } = parser.parse('.top, .bottom { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(SelectorList');
+      expect(serializeTypes(tree)).toContainString('[\'.top\', \'.bottom\']');
     });
 
     it('should parse selector list with element names and complex selector', () => {
       const { errors, tree } = parser.parse('.top, header > h1 { color: red; }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(SelectorList');
+      const serialized = serializeTypes(tree);
+      expect(serialized).toContainString('\'.top\'');
+      expect(serialized).toContainString('header');
     });
   });
 

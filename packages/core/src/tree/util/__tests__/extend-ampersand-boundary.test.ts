@@ -29,13 +29,11 @@ describe('Extend ampersand boundary behavior', () => {
     implicitSpace.generated = true;
     implicitSpace.removeFlag(F_VISIBLE);
 
-    const headerNavBody = rules([]);
     const headerNav = ruleset({
       selector: sel([implicitAmp, implicitSpace, el('.header-nav')]),
-      rules: headerNavBody
+      rules: []
     });
-    const headerBody = rules([headerNav]);
-    const header = ruleset({ selector: el('.header'), rules: headerBody });
+    const header = ruleset({ selector: el('.header'), rules: [headerNav] });
 
     const root = rules([
       header,
@@ -55,7 +53,7 @@ describe('Extend ampersand boundary behavior', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const headerRuleset = evald.rules[0] as unknown as Ruleset;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const innerRuleset = (headerRuleset?.rules as unknown as { rules?: Ruleset[] })?.rules?.[0];
+    const innerRuleset = headerRuleset?.rules?.[0] as Ruleset | undefined;
     expect(innerRuleset?.hoistToRoot).toBe(true);
   });
 

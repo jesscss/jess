@@ -99,6 +99,28 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)),
     (c: any, r: any, s: any) => build('Paren', c, r, s));
 
+  // Sass allows trailing commas in comma-separated lists (Less v5 rejects them).
+  const valueList = parser({ trivia: rw }, sequence(
+    g.valueSequence,
+    many(sequence(literal(','), g.valueSequence)),
+    optional(literal(','))
+  ));
+  const callArgSeq = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, g.valueSequence);
+  const callArgList = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, valueList);
+  const functionCallArgs = parser({ trivia: rw }, sequence(
+    optional(sequence(
+      callArgSeq,
+      many(sequence(literal(','), callArgSeq)),
+      optional(literal(',')),
+      many(sequence(literal(';'), optional(callArgList)))
+    )),
+    literal(')')
+  ));
+  const fnIdent = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const Call = node('Call',
+    parser({ trivia: rw }, sequence(fnIdent, literal('('), functionCallArgs)),
+    (c: any, r: any, s: any) => build('Call', c, r, s));
+
   const value = choice(
     ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
     g.Url, g.CalcCall, g.Call, ScssIdentValue, g.EscapedValue, g.GluedParen, ScssMapLiteral,
@@ -550,7 +572,8 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
 
   return {
     VarDeclaration, Reference,
-    ScssInterpBare, InterpValue, value, ScssMapLiteral, ScssIdentValue,
+    ScssInterpBare, InterpValue, value, valueList, functionCallArgs, Call,
+    ScssMapLiteral, ScssIdentValue,
     ScssInterpolatedName, InterpolatedSelector,
     Declaration, CustomDeclaration,
     ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
