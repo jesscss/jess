@@ -129,10 +129,94 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     parser({ trivia: rw }, sequence(whileKw, g.ScssCondOr, g.ScssRules)),
     (c: any, r: any, s: any) => build('ScssWhile', c, r, s));
 
+  // ── Mixins: @mixin / @include / @content ───────────────────────────────────
+  // Faithful ports of scssMixinAtRule / scssIncludeAtRule / scssContentAtRule.
+  // Interpolated mixin names (`foo-#{$bar}`) deferred to the interpolation tranche.
+  const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const mixinKw = regex(/@mixin(?![-\w])/i);
+  const includeKw = regex(/@include(?![-\w])/i);
+  const contentKw = regex(/@content(?![-\w])/i);
+  const usingKw = regex(/\busing\b/);
+
+  // SCSS call/mixin argument: `$x: val`, `val...`, or a plain value.
+  const ScssCallArg = node('ScssCallArg',
+    parser({ trivia: rw }, choice(
+      sequence(scssVar, literal(':'), g.valueSequence),
+      sequence(g.valueSequence, literal('...')),
+      g.valueSequence
+    )),
+    (c: any, r: any, s: any) => build('ScssCallArg', c, r, s));
+  const ScssCallArgsInner = node('ScssCallArgsInner',
+    parser({ trivia: rw }, optional(sequence(
+      g.ScssCallArg,
+      many(sequence(literal(','), optional(g.ScssCallArg)))
+    ))),
+    (c: any, r: any, s: any) => build('ScssCallArgsInner', c, r, s));
+  const optionalCallParens = optional(sequence(
+    literal('('), g.ScssCallArgsInner, expect(literal(')'), ')')
+  ));
+
+  // Mixin parameter: `...$rest`, `$rest...`, `$a: default`, or bare `$a`.
+  const ScssMixinParam = node('ScssMixinParam',
+    parser({ trivia: rw }, choice(
+      sequence(literal('...'), scssVar),
+      sequence(scssVar, literal('...')),
+      sequence(scssVar, optional(sequence(literal(':'), g.valueSequence)))
+    )),
+    (c: any, r: any, s: any) => build('ScssMixinParam', c, r, s));
+  const ScssMixinParams = node('ScssMixinParams',
+    parser({ trivia: rw }, sequence(
+      literal('('),
+      optional(sequence(
+        g.ScssMixinParam,
+        many(sequence(literal(','), optional(g.ScssMixinParam)))
+      )),
+      expect(literal(')'), ')')
+    )),
+    (c: any, r: any, s: any) => build('ScssMixinParams', c, r, s));
+
+  // Mixin/include name: `foo` or module-qualified `ns.foo`.
+  const ScssMixinName = node('ScssMixinName',
+    parser({ trivia: rw }, choice(
+      sequence(plainIdent, literal('.'), plainIdent),
+      plainIdent
+    )),
+    (c: any, r: any, s: any) => build('ScssMixinName', c, r, s));
+
+  const ScssDeclBody = node('ScssDeclBody',
+    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'), '}'))),
+    (c: any, r: any, s: any) => build('ScssDeclBody', c, r, s));
+
+  const ScssMixin = node('ScssMixin',
+    parser({ trivia: rw }, sequence(
+      mixinKw, plainIdent, optional(g.ScssMixinParams), g.ScssDeclBody
+    )),
+    (c: any, r: any, s: any) => build('ScssMixin', c, r, s));
+
+  const ScssIncludeUsing = node('ScssIncludeUsing',
+    parser({ trivia: rw }, sequence(
+      usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'), ')')
+    )),
+    (c: any, r: any, s: any) => build('ScssIncludeUsing', c, r, s));
+
+  const ScssInclude = node('ScssInclude',
+    parser({ trivia: rw }, sequence(
+      includeKw, g.ScssMixinName, optionalCallParens,
+      optional(g.ScssIncludeUsing), optional(g.ScssRules), optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => build('ScssInclude', c, r, s));
+
+  const ScssContent = node('ScssContent',
+    parser({ trivia: rw }, sequence(contentKw, optionalCallParens, optional(literal(';')))),
+    (c: any, r: any, s: any) => build('ScssContent', c, r, s));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
-  const scssStatement = choice(g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile);
+  const scssStatement = choice(
+    g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile,
+    g.ScssMixin, g.ScssInclude, g.ScssContent
+  );
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(scssStatement, g.stylesheetItem))),
     (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
@@ -143,6 +227,8 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     VarDeclaration, Reference,
     ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
     ScssEach, ScssFor, ScssWhile,
+    ScssCallArg, ScssCallArgsInner, ScssMixinParam, ScssMixinParams, ScssMixinName,
+    ScssDeclBody, ScssMixin, ScssIncludeUsing, ScssInclude, ScssContent,
     Stylesheet, declarationList, atRuleBody
   };
 };

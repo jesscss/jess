@@ -43,7 +43,12 @@ import {
   For,
   While,
   Nil,
-  Sequence
+  Sequence,
+  Mixin,
+  Call,
+  Rest,
+  List,
+  F_VISIBLE
 } from '@jesscss/core';
 
 // ---------------------------------------------------------------------------
@@ -116,6 +121,16 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssEach':          return this._buildScssEach(children, loc);
       case 'ScssFor':           return this._buildScssFor(children, loc);
       case 'ScssWhile':         return this._buildScssWhile(children, loc);
+      case 'ScssCallArg':       return this._buildScssCallArg(children, loc);
+      case 'ScssCallArgsInner': return this._buildScssCallArgsInner(children, loc);
+      case 'ScssMixinParam':    return this._buildScssMixinParam(children, loc);
+      case 'ScssMixinParams':   return this._buildScssMixinParams(children, loc);
+      case 'ScssMixinName':     return this._buildScssMixinName(children, loc);
+      case 'ScssDeclBody':      return this._buildScssRules(children, loc);
+      case 'ScssMixin':         return this._buildScssMixin(children, loc);
+      case 'ScssIncludeUsing':  return this._buildScssIncludeUsing(children, loc);
+      case 'ScssInclude':       return this._buildScssInclude(children, loc);
+      case 'ScssContent':       return this._buildScssContent(children, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -347,6 +362,157 @@ export class ScssGrammar extends LessGrammar {
     const body = nodes.find((n): n is Rules => n instanceof Rules)!;
     const condition = nodes.find(n => n !== body) ?? new Any('', {}, loc);
     return new While({ condition, rules: body.rules }, undefined, loc) as unknown as JessNode;
+  }
+
+  // ── @mixin / @include / @content ───────────────────────────────────────────
+
+  /** Build a module-qualified or plain mixin `Reference`. */
+  private _buildScssMixinName(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const parts = children
+      .filter((c): c is CSTLeaf => c._tag === 'leaf')
+      .map(l => l.value)
+      .filter(v => v !== '.');
+    if (parts.length >= 2) {
+      let ref: Reference = new Reference(parts[0]!, { type: 'variable' }, loc);
+      for (let i = 1; i < parts.length; i++) {
+        const isFinal = i === parts.length - 1;
+        ref = new Reference(
+          { target: ref, key: parts[i]! },
+          { type: isFinal ? 'mixin' : 'index', ...(isFinal ? { role: 'name' as const } : {}) },
+          loc
+        );
+      }
+      return ref as unknown as JessNode;
+    }
+    return new Reference({ key: parts[0] ?? '' }, { type: 'mixin', role: 'name' }, loc) as unknown as JessNode;
+  }
+
+  /** `$x: val` keyword arg, `val...` spread, or plain value. */
+  private _buildScssCallArg(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const varLeaf = ls.find(l => l.value.startsWith('$') && l.value !== '$');
+    const hasColon = ls.some(l => l.value === ':');
+    const hasSpread = ls.some(l => l.value === '...');
+    if (varLeaf && hasColon) {
+      const name = varLeaf.value.slice(1);
+      const value = nodes.find(n => n !== undefined && !ls.includes(n as any)) ?? nodes[0] ?? new Nil();
+      return new VarDeclaration(
+        { name: new Any(name, { role: 'property' }, loc), value: value as Node },
+        {},
+        loc
+      ) as unknown as JessNode;
+    }
+    const value = nodes[0] ?? new Any('', {}, loc);
+    if (hasSpread) {
+      return new Rest(value as Node, undefined, loc) as unknown as JessNode;
+    }
+    return value as unknown as JessNode;
+  }
+
+  private _buildScssCallArgsInner(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return undefined as unknown as JessNode;
+    }
+    return new List(nodes as any, undefined, loc) as unknown as JessNode;
+  }
+
+  /** Mixin param: `...$rest`, `$rest...`, `$a: default`, or bare `$a`. */
+  private _buildScssMixinParam(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const varLeaf = ls.find(l => l.value.startsWith('$'));
+    const varName = varLeaf?.value.slice(1) ?? '';
+    const hasPrefixEllipsis = ls[0]?.value === '...';
+    const hasSuffixEllipsis = ls.some(l => l.value === '...' && ls.indexOf(l) > 0);
+    if (hasPrefixEllipsis || hasSuffixEllipsis) {
+      return new Rest(varName, undefined, loc) as unknown as JessNode;
+    }
+    const hasColon = ls.some(l => l.value === ':');
+    if (hasColon && nodes[0]) {
+      return new VarDeclaration(
+        { name: new Any(varName, { role: 'property' }, loc), value: nodes[0] as Node },
+        { paramVar: true },
+        loc
+      ) as unknown as JessNode;
+    }
+    return new Any(varName, { role: 'property' }, loc) as unknown as JessNode;
+  }
+
+  private _buildScssMixinParams(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    return new List(nodes as any, undefined, loc) as unknown as JessNode;
+  }
+
+  /** `@mixin name($params) { … }` → `Mixin` (inner vars default to private). */
+  private _buildScssMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const nameLeaf = ls.find(l => !l.value.startsWith('@') && l.value !== '(' && l.value !== ')'
+      && l.value !== '{' && l.value !== '}' && l.value !== ',');
+    const name = new Any(nameLeaf?.value ?? '', { role: 'name' }, loc);
+    const params = nodes.find(n => n.type === 'List') as List | undefined;
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    return new Mixin(
+      { name: name as Any<'name'>, params, rules: body.rules },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** `using ($c, $n)` param list for `@include … using (…)`. */
+  private _buildScssIncludeUsing(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const vars = ls.filter(l => l.value.startsWith('$')).map(l => this._scssParamVar(l.value.slice(1), loc));
+    return new List(vars as any, undefined, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `@include name(args) [using (…)] [ { … } ];` → `Call(Reference(type=mixin))`.
+   * An optional content block becomes an anonymous visible `Mixin` on the call.
+   */
+  private _buildScssInclude(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const nameRef = nodes.find(n => n.type === 'Reference') as Reference;
+    const lists = nodes.filter(n => n.type === 'List') as List[];
+    const hasUsing = ls.some(l => l.value === 'using');
+    let args: List | undefined;
+    let usingParams: List | undefined;
+    if (lists.length === 2) {
+      args = lists[0];
+      usingParams = lists[1];
+    } else if (lists.length === 1) {
+      if (hasUsing) {
+        usingParams = lists[0];
+      } else {
+        args = lists[0];
+      }
+    }
+    const contentRules = nodes.find((n): n is Rules => n instanceof Rules);
+    let contentNode: Mixin | undefined;
+    if (contentRules) {
+      contentNode = new Mixin(
+        { rules: contentRules.rules, params: usingParams },
+        undefined,
+        loc
+      );
+      contentNode.addFlags(F_VISIBLE);
+    }
+    return new Call(
+      { name: nameRef, args, contentNode: contentNode as Node | undefined },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** `@content[(args)];` → `Call(Reference('content', type=mixin))`. */
+  private _buildScssContent(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const args = nodes.find(n => n.type === 'List') as List | undefined;
+    const ref = new Reference({ key: 'content' }, { type: 'mixin', role: 'name' }, loc);
+    return new Call({ name: ref, args }, undefined, loc) as unknown as JessNode;
   }
 
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */

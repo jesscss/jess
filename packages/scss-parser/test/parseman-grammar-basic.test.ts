@@ -132,3 +132,66 @@ describe('ScssParserParseman — @each / @for / @while', () => {
     }
   });
 });
+
+describe('ScssParserParseman — @mixin / @include / @content', () => {
+  it('parses @content as Call(Reference content)', () => {
+    const { tree } = parseOk('@content;');
+    const call = tree.rules[0]!;
+    expect(isNode(call, N.Call)).toBe(true);
+    if (isNode(call, N.Call) && isNode(call.name, N.Reference)) {
+      expect(call.name.options?.type).toBe('mixin');
+      expect(call.name.key).toBe('content');
+    }
+  });
+
+  it('parses @content with args', () => {
+    const { tree } = parseOk('@content($color, $count);');
+    expect(isNode(tree.rules[0], N.Call)).toBe(true);
+  });
+
+  it('parses @mixin definition with params', () => {
+    const { tree } = parseOk('@mixin foo($a, $b: 2, ...$rest) { @content; }');
+    expect(isNode(tree.rules[0], N.Mixin)).toBe(true);
+  });
+
+  it('parses @mixin suffix rest param', () => {
+    const { tree } = parseOk('@mixin foo($a, $rest...,) { @content; }');
+    expect(isNode(tree.rules[0], N.Mixin)).toBe(true);
+  });
+
+  it('parses @include mixin call', () => {
+    const { tree } = parseOk('@include wrap(red);');
+    expect(isNode(tree.rules[0], N.Call)).toBe(true);
+  });
+
+  it('parses bare @include', () => {
+    const { tree } = parseOk('@include wrap;');
+    expect(isNode(tree.rules[0], N.Call)).toBe(true);
+  });
+
+  it('parses @include spread args', () => {
+    parseOk('@include wrap($args...,);');
+  });
+
+  it('parses module-qualified @include', () => {
+    const { tree } = parseOk('@include ns.foo($x);');
+    expect(isNode(tree.rules[0], N.Call)).toBe(true);
+    if (isNode(tree.rules[0], N.Call)) {
+      expect(tree.rules[0].toTrimmedString()).toContain('$ns > foo');
+    }
+  });
+
+  it('parses @include keyword args', () => {
+    parseOk('@include wrap($x: 1, $y: 2);');
+  });
+
+  it('parses @include using block', () => {
+    const { tree } = parseOk(
+      '@include wrap(red) using ($c, $n) { .child { color: $c; z-index: $n; } }'
+    );
+    expect(isNode(tree.rules[0], N.Call)).toBe(true);
+    if (isNode(tree.rules[0], N.Call)) {
+      expect(tree.rules[0].contentNode).toBeDefined();
+    }
+  });
+});
