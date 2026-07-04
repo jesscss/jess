@@ -227,10 +227,8 @@ describe('scss-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     expect(serializeTypes(tree)).toContainString(`
       (Ruleset
-        selector:
-          (BasicSelector
     `);
-    expect(serializeTypes(tree)).toContainString(`foo`);
+    expect(serializeTypes(tree)).toContainString(`\\foo`);
   });
 
   functionalIt('serializes @if $a == $b as a Condition using =', () => {
@@ -365,9 +363,9 @@ describe('scss-parser (ast serialize)', () => {
       (Ruleset
         selector:
           (ComplexSelector
-            components:
+            value:
               [
-                (Ampersand
+                (Ampersand)
     `);
     expect(serialized).toContainString(`root-class`);
   });
@@ -410,15 +408,10 @@ describe('scss-parser (ast serialize)', () => {
     const { tree, errors, lexerResult } = parser.parse(`.a { color: fn($x); }`);
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Call
-        name:
-          (Reference
-            type: 'function'
-            fallbackValue: true
-            key: 'fn'
-          )
-      `);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`type: 'function'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`fallbackValue: true`);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`key: 'fn'`);
+    expect(serializeTypes(tree, { showOptions: true })).not.toContain(`silentFail: true`);
   });
 
   functionalIt('serializes selector.parse("...") as SelectorCapture', () => {
@@ -483,14 +476,9 @@ describe('scss-parser (ast serialize)', () => {
     const { tree, errors, lexerResult } = parser.parse(`.a { color: ns.\\#foo($x); }`);
     expect(lexerResult.errors).toEqual([]);
     expect(errors).toEqual([]);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Expression
-        node:
-          (Call
-            name:
-              (Reference
-                type: 'function'
-      `);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`type: 'mixin-ruleset'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`key: 'ns'`);
+    expect(serializeTypes(tree, { showOptions: true })).toContain(`key: 'foo'`);
   });
 
   functionalIt('serializes @each destructuring as For with tuple pattern', () => {

@@ -68,19 +68,24 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
       expect(literal(')'), ')')
     )),
     (c: any, r: any, s: any) => build('ScssMapLiteral', c, r, s));
+  const scssHashName = regex(/#-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssIdentValue = node('ScssIdentValue',
     parser({ trivia: rw }, sequence(
       plainIdent,
       optional(choice(
+        sequence(
+          literal('.'), literal('\\'), choice(scssHashName, dotName),
+          literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')')
+        ),
         sequence(literal('.'), scssVar),
-        sequence(dotName, literal('('), g.functionCallArgs)
+        sequence(dotName, literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')'))
       ))
     )),
     (c: any, r: any, s: any) => build('ScssIdentValue', c, r, s));
 
   const value = choice(
     ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
-    g.Url, g.CalcCall, ScssIdentValue, g.Call, g.EscapedValue, g.GluedParen, ScssMapLiteral,
+    g.Url, g.CalcCall, g.Call, ScssIdentValue, g.EscapedValue, g.GluedParen, ScssMapLiteral,
     g.Paren, g.SquareParen, g.Quoted, g.anyValue
   );
 
@@ -97,17 +102,6 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     )),
     (c: any, r: any, s: any) => build('InterpolatedSelector', c, r, s));
 
-  const Declaration = node('Declaration',
-    parser({ trivia: rw }, sequence(
-      scssDeclPropName,
-      optional(choice(literal('+_'), literal('+'))),
-      literal(':'),
-      optional(g.valueList),
-      optional(important),
-      optional(literal(';'))
-    )),
-    (c: any, r: any, s: any) => build('Declaration', c, r, s));
-
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(
       choice(scssCustomPropInterp, customProp),
@@ -116,6 +110,40 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
       optional(literal(';'))
     )),
     (c: any, r: any, s: any) => build('CustomDeclaration', c, r, s));
+
+  const ScssNestedDecl = node('ScssNestedDecl',
+    parser({ trivia: rw }, sequence(
+      scssDeclPropName,
+      literal(':'),
+      g.valueList,
+      optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => build('Declaration', c, r, s));
+
+  const ScssNestedProps = node('ScssNestedProps',
+    parser({ trivia: rw }, sequence(
+      literal('{'),
+      many(ScssNestedDecl),
+      expect(literal('}'), '}')
+    )),
+    (c: any, r: any, s: any) => build('ScssNestedProps', c, r, s));
+
+  const Declaration = node('Declaration',
+    parser({ trivia: rw }, sequence(
+      scssDeclPropName,
+      optional(choice(literal('+_'), literal('+'))),
+      literal(':'),
+      choice(
+        ScssNestedProps,
+        sequence(
+          optional(g.valueList),
+          optional(ScssNestedProps)
+        )
+      ),
+      optional(important),
+      optional(literal(';'))
+    )),
+    (c: any, r: any, s: any) => build('Declaration', c, r, s));
 
   // ── Control flow: @if / @else if / @else ───────────────────────────────────
   // Faithful port of the Chevrotain scssCondition* / scssIfAtRule productions
@@ -219,6 +247,7 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
   const ScssCallArg = node('ScssCallArg',
     parser({ trivia: rw }, choice(
       sequence(scssVar, literal(':'), g.valueSequence),
+      sequence(g.value, literal('...')),
       sequence(g.valueSequence, literal('...')),
       g.valueSequence
     )),
@@ -402,6 +431,46 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     )),
     (c: any, r: any, s: any) => build('ScssImportAtRule', c, r, s));
 
+  const atRootKw = regex(/@at-root(?![-\w])/i);
+  const debugKw = regex(/@debug(?![-\w])/i);
+  const warnKw = regex(/@warn(?![-\w])/i);
+  const errorKw = regex(/@error(?![-\w])/i);
+
+  const ScssDiagnostic = node('ScssDiagnostic',
+    parser({ trivia: rw }, sequence(
+      choice(debugKw, warnKw, errorKw),
+      g.valueSequence,
+      expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => build('ScssDiagnostic', c, r, s));
+
+  const ScssAtRootFilter = node('ScssAtRootFilter',
+    parser({ trivia: rw }, sequence(
+      atRootKw,
+      literal('('),
+      g.valueSequence,
+      literal(')'),
+      ScssRules
+    )),
+    (c: any, r: any, s: any) => build('ScssAtRootFilter', c, r, s));
+
+  const ScssAtRootSelector = node('ScssAtRootSelector',
+    parser({ trivia: rw }, sequence(
+      atRootKw,
+      g.LessSelectorList,
+      ScssDeclBody
+    )),
+    (c: any, r: any, s: any) => build('ScssAtRootSelector', c, r, s));
+
+  const ScssAtRootPlain = node('ScssAtRootPlain',
+    parser({ trivia: rw }, sequence(atRootKw, ScssRules)),
+    (c: any, r: any, s: any) => build('ScssAtRootPlain', c, r, s));
+
+  // ── SCSS at-rule prelude interpolation (segments) ────────────────────────
+  const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
+  const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
+  const scssPermissivePrelude = parser({ trivia: rw }, oneOrMore(scssPreludeSegment));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
@@ -409,13 +478,59 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile,
     g.ScssMixin, g.ScssInclude, g.ScssContent,
     g.ScssFunction, g.ScssReturn,
-    g.ScssUse, g.ScssForward
+    g.ScssUse, g.ScssForward,
+    ScssDiagnostic,
+    ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain
   );
-  const Stylesheet = node('Stylesheet',
-    parser({ trivia: rw }, many(choice(scssStatement, g.stylesheetItem))),
-    (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
-  const declarationList = parser({ trivia: rw }, many(choice(scssStatement, g.ScssExtend, g.blockItem)));
+  const declarationList = parser({ trivia: rw }, many(choice(
+    scssStatement, g.ScssExtend, Declaration, CustomDeclaration, g.blockItem
+  )));
   const atRuleBody = parser({ trivia: rw }, many(choice(scssStatement, g.blockItem)));
+
+  const ScssPlaceholderRuleset = node('ScssPlaceholderRuleset',
+    parser({ trivia: rw }, sequence(
+      ScssPlaceholderSelector,
+      optional(g.Guard),
+      literal('{'),
+      declarationList,
+      expect(literal('}'), '}')
+    )),
+    (c: any, r: any, s: any) => build('ScssPlaceholderRuleset', c, r, s));
+  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const QueryAtRuleBlock = node('QueryAtRuleBlock',
+    parser({ trivia: rw }, sequence(
+      queryAtKeyword,
+      scssPermissivePrelude,
+      expect(literal('{'), '{'),
+      atRuleBody,
+      expect(literal('}'), '}')
+    )),
+    (c: any, r: any, s: any) => build('QueryAtRuleBlock', c, r, s));
+  const scopeKw = regex(/@scope(?![-\w])/i);
+  const ScssScopeBlock = node('ScssScopeBlock',
+    parser({ trivia: rw }, sequence(
+      scopeKw,
+      scssPermissivePrelude,
+      literal('{'),
+      atRuleBody,
+      expect(literal('}'), '}')
+    )),
+    (c: any, r: any, s: any) => build('ScssScopeBlock', c, r, s));
+  const layerKw = regex(/@layer(?![-\w])/i);
+  const ScssLayerBlock = node('ScssLayerBlock',
+    parser({ trivia: rw }, sequence(
+      layerKw,
+      optional(ScssInterpolatedName),
+      literal('{'),
+      atRuleBody,
+      expect(literal('}'), '}')
+    )),
+    (c: any, r: any, s: any) => build('ScssLayerBlock', c, r, s));
+  const Stylesheet = node('Stylesheet',
+    parser({ trivia: rw }, many(choice(
+      scssStatement, ScssPlaceholderRuleset, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
+    ))),
+    (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
 
   return {
     VarDeclaration, Reference,
@@ -428,8 +543,11 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     ScssDeclBody, ScssMixin, ScssIncludeUsing, ScssInclude, ScssContent,
     ScssFunction, ScssReturn,
     ScssWithConfigEntry, ScssWithConfig, ScssUseAs, ScssUse, ScssForward,
-    ScssPlaceholderSelector, ScssExtendTarget, ScssExtend,
+    ScssPlaceholderSelector, ScssPlaceholderRuleset, ScssExtendTarget, ScssExtend,
     ScssImportItem, ImportAtRuleStatement,
+    ScssNestedProps,
+    ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
+    QueryAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
     Stylesheet, declarationList, atRuleBody
   };
 };

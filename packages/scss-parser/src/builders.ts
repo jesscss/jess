@@ -61,22 +61,23 @@ import {
   Collection,
   Declaration,
   Expression,
+  Operation,
   StyleImport,
   JsImport,
   Extend,
   ExtendFlag,
   AtRuleStatement,
+  AtRule,
+  Log,
+  Ruleset,
+  Log,
+  SelectorCapture,
   type Selector
 } from '@jesscss/core';
 import {
   buildScssInterpolatedFromString,
   toInterpReplacement
 } from './interp.js';
-import {
-  desugarMapLookup,
-  desugarNamespacedCall,
-  toDeclKey
-} from './scss-value-helpers.js';
 import {
   quotedLike,
   isPlainCssImportPrelude,
@@ -86,6 +87,17 @@ import {
   isScriptUsePath,
   defaultNamespaceFromPath
 } from './scss-atrule-helpers.js';
+import {
+  lowerPlainAtRootRules,
+  prefixAtRootSelector
+} from './scss-atroot-helpers.js';
+import { parseSelectorListExpression } from './productions/helpers.js';
+import {
+  desugarMapLookup,
+  desugarNamespacedCall,
+  makeNamespacedReference,
+  toDeclKey
+} from './scss-value-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,7 +190,7 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssInterpolatedName': return this._buildScssInterpolatedName(children, loc);
       case 'InterpValue':       return this._buildScssInterpValue(_rawChildren, loc);
       case 'InterpolatedSelector': return this._buildScssInterpolatedSelector(children, loc);
-      case 'Declaration':       return this._buildScssDeclaration(_rawChildren, loc, () =>
+      case 'Declaration':       return this._buildScssDeclaration(children, loc, () =>
         super.buildNode(type, span, children, _state, _rawChildren));
       case 'CustomDeclaration': return this._buildScssCustomDeclaration(children, loc, () =>
         super.buildNode(type, span, children, _state, _rawChildren));
@@ -192,12 +204,21 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssUse':           return this._buildScssUse(children, loc);
       case 'ScssForward':       return this._buildScssForward(children, _rawChildren, loc);
       case 'ScssPlaceholderSelector': return this._buildScssPlaceholderSelector(children, loc);
+      case 'ScssPlaceholderRuleset': return this._buildRuleset(children, _rawChildren, loc);
       case 'ScssExtendTarget':  return this._buildScssExtendTarget(children, _rawChildren, loc);
       case 'ScssExtend':        return this._buildScssExtend(children, _rawChildren, loc);
       case 'ScssImportItem':    return this._buildScssImportItem(children, _rawChildren, loc);
       case 'ScssImportAtRule':  return this._buildScssImportAtRule(children, loc);
+      case 'ScssNestedProps':   return this._buildScssNestedProps(children, loc);
+      case 'ScssDiagnostic':    return this._buildScssDiagnostic(children, loc);
+      case 'ScssAtRootFilter':  return this._buildScssAtRootFilter(children, loc);
+      case 'ScssAtRootSelector': return this._buildScssAtRootSelector(children, loc);
+      case 'ScssAtRootPlain':   return this._buildScssAtRootPlain(children, loc);
+      case 'ScssScopeBlock':    return this._buildScssPermissiveAtRule(children, loc);
+      case 'ScssLayerBlock':    return this._buildScssLayerBlock(children, loc);
       case 'Call':              return this._buildCall(_rawChildren, loc);
       case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
+      case 'Paren':             return this._buildScssParen(_rawChildren, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
     }
   }
@@ -694,16 +715,29 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _buildScssDeclaration(
-    _raw: ReadonlyArray<{ _tag: string }>,
+    children: ReadonlyArray<Child>,
     loc: LocationInfo,
     buildLess: () => JessNode
   ) {
-    const decl = buildLess();
-    const d = decl as { name?: unknown };
+    const decl = buildLess() as Declaration;
+    const d = decl as { name?: unknown; value?: unknown };
     if (d.name !== undefined) {
       d.name = this._scssInterpDeclName(d.name, loc);
     }
-    return decl;
+    const valueNodes = nodeChildren(children).filter(n =>
+      isNode(n, N.Collection) || isNode(n, N.Sequence) || isNode(n, N.Keyword)
+      || isNode(n, N.Reference) || isNode(n, N.Num) || isNode(n, N.Paren) || isNode(n, N.List)
+    );
+    const collection = valueNodes.find(n => isNode(n, N.Collection));
+    if (collection && valueNodes.length > 1) {
+      const base = valueNodes.find(n => n !== collection);
+      if (base) {
+        d.value = new Sequence([base as Node, collection as Node], undefined, loc);
+      }
+    } else if (collection) {
+      d.value = collection;
+    }
+    return decl as unknown as JessNode;
   }
 
   private _buildScssCustomDeclaration(
@@ -749,18 +783,21 @@ export class ScssGrammar extends LessGrammar {
     return new Collection(decls as any, undefined, loc) as unknown as JessNode;
   }
 
-  /** `ns.$var`, `ns.fn(…)`, or a plain ident. */
+  /** `ns.$var`, `ns.fn(…)`, `ns.\#foo(…)`, or a plain ident. */
   private _buildScssIdentValue(
     children: ReadonlyArray<Child>,
     raw: ReadonlyArray<{ _tag: string }>,
     loc: LocationInfo
   ) {
     const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
-    const identLeaf = ls.find(l => !l.value.startsWith('.') && l.value !== '(' && l.value !== ')');
+    const identLeaf = ls.find(l => !l.value.startsWith('.') && l.value !== '(' && l.value !== ')'
+      && l.value !== '\\');
     const ident = identLeaf?.value ?? '';
     const varLeaf = ls.find(l => l.value.startsWith('$'));
     const dotLeaf = ls.find(l => l.value.startsWith('.') && !l.value.startsWith('$'));
+    const hashLeaf = ls.find(l => l.value.startsWith('#'));
     const hasCall = ls.some(l => l.value === '(');
+    const hasEscape = ls.some(l => l.value === '\\');
 
     if (varLeaf && dotLeaf) {
       const nsRef = new Reference(ident, { type: 'variable' }, loc);
@@ -768,8 +805,46 @@ export class ScssGrammar extends LessGrammar {
       return new Reference({ target: nsRef, key }, { type: 'variable' }, loc) as unknown as JessNode;
     }
 
+    if (hasEscape && hashLeaf && hasCall) {
+      const key = hashLeaf.value.slice(1);
+      const args = nodeChildren(children).find(n => isNode(n, N.List)) as List | undefined;
+      const ref = makeNamespacedReference([ident, key], 'mixin-ruleset', loc);
+      const call = new Call({ name: ref, args }, undefined, loc);
+      return new Expression(call, undefined, loc) as unknown as JessNode;
+    }
+
     if (dotLeaf && hasCall) {
       const fnName = dotLeaf.value.slice(1);
+      if (ident === 'selector' && fnName === 'parse') {
+        const items = spannedComponents(raw);
+        const open = items.findIndex(i => i.comp === '(');
+        let close = items.length;
+        for (let i = items.length - 1; i >= 0; i--) {
+          if (items[i]!.comp === ')') {
+            close = i;
+            break;
+          }
+        }
+        const { value: argValue } = this._assembleValue(items.slice(open + 1, close), loc);
+        const firstArg = isNode(argValue as Node, N.List)
+          ? (argValue as List).value[0]
+          : argValue;
+        const selectorText = firstArg && isNode(firstArg as Node, N.Quoted)
+          ? typeof (firstArg as Quoted).value === 'string'
+            ? (firstArg as Quoted).value as string
+            : isNode((firstArg as Quoted).value, N.Any)
+              ? String((firstArg as Quoted).value.valueOf())
+              : undefined
+          : undefined;
+        if (selectorText !== undefined) {
+          try {
+            const selector = parseSelectorListExpression(selectorText);
+            return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
+          } catch {
+            // fall through to default call desugaring
+          }
+        }
+      }
       const items = spannedComponents(raw);
       const open = items.findIndex(i => i.comp === '(');
       let close = items.length;
@@ -786,12 +861,20 @@ export class ScssGrammar extends LessGrammar {
           ? argValue as List
           : new List([argValue as Node], undefined, loc);
       }
-      const call = new Call({ name: `${ident}.${fnName}`, args }, undefined, loc);
-      const mapped = desugarMapLookup(call, loc);
+      const dottedName = `${ident}.${fnName}`;
+      const lookupCall = new Call({ name: dottedName, args }, undefined, loc);
+      const mapped = desugarMapLookup(lookupCall, loc);
       if (isNode(mapped, N.Reference)) {
-        return new Expression(mapped, undefined, loc) as unknown as JessNode;
+        return mapped as unknown as JessNode;
       }
-      return new Expression(desugarNamespacedCall(mapped as Call, loc), undefined, loc) as unknown as JessNode;
+      const memberType = fnName.startsWith('#') ? 'mixin-ruleset' : 'function';
+      const memberKey = fnName.startsWith('#') ? fnName.slice(1) : fnName;
+      const ref = makeNamespacedReference([ident, memberKey], memberType, loc);
+      const call = new Call({ name: ref, args }, undefined, loc);
+      if (memberType === 'mixin-ruleset') {
+        return new Expression(call, undefined, loc) as unknown as JessNode;
+      }
+      return new Expression(desugarNamespacedCall(call, loc), undefined, loc) as unknown as JessNode;
     }
 
     return new Any(ident, { role: 'ident' }, loc) as unknown as JessNode;
@@ -806,13 +889,74 @@ export class ScssGrammar extends LessGrammar {
   private _flattenScssImportLists(nodes: JessNode[]): JessNode[] {
     const flat: JessNode[] = [];
     for (const n of nodes) {
-      if (isNode(n, N.List) && (n as List).options?.role === 'scss-imports') {
+      if (isNode(n, N.List) && ((n as List).options?.role === 'scss-imports'
+        || (n as List).options?.role === 'scss-at-root')) {
         flat.push(...(n as List).value);
       } else {
         flat.push(n);
       }
     }
     return flat;
+  }
+
+  private _buildScssNestedProps(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const decls = nodeChildren(children).filter(n => isNode(n, N.Declaration)) as Declaration[];
+    return new Collection(decls as any, undefined, loc) as unknown as JessNode;
+  }
+
+  private _buildScssDiagnostic(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const atLeaf = ls.find(l => l.value.startsWith('@'));
+    const level = (atLeaf?.value.slice(1) ?? 'debug') as 'debug' | 'warn' | 'error';
+    const message = nodeChildren(children).find(n => !isNode(n, N.Any) || (n as Any).options?.role !== 'atkeyword')
+      ?? nodeChildren(children)[0]
+      ?? new Any('', {}, loc);
+    return new Log({ level, message: message as Node }, undefined, loc) as unknown as JessNode;
+  }
+
+  private _buildScssAtRootFilter(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const prelude = nodes.find(n => !(n instanceof Rules)) ?? nodes[0];
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    const name = new Any('@at-root', { role: 'atkeyword' }, loc);
+    this._error(
+      '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
+      loc[0]
+    );
+    return new AtRule(
+      { name, prelude: prelude as Node, rules: body.rules },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssAtRootSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const selector = nodes.find(n => !(n instanceof Rules)) as Selector;
+    const body = nodes.find((n): n is Rules => n instanceof Rules)!;
+    const context = this._parseContext;
+    return new Ruleset(
+      {
+        selector: prefixAtRootSelector(selector, context),
+        rules: body.rules
+      },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssAtRootPlain(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const body = nodeChildren(children).find((n): n is Rules => n instanceof Rules)!;
+    const context = this._parseContext;
+    const lowered = new Rules([...body.rules], undefined, loc);
+    lowerPlainAtRootRules(lowered, context);
+    if (lowered.rules.length === 0) {
+      return new Nil(undefined, undefined, loc) as unknown as JessNode;
+    }
+    if (lowered.rules.length === 1) {
+      return lowered.rules[0]! as unknown as JessNode;
+    }
+    return new List(lowered.rules, { role: 'scss-at-root' }, loc) as unknown as JessNode;
   }
 
   private _buildScssWithConfigEntry(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -925,6 +1069,68 @@ export class ScssGrammar extends LessGrammar {
     const raw = ls[0]?.value ?? '';
     const name = `\\${raw.slice(1)}`;
     return this._makeBasicSelector(name, loc);
+  }
+
+  private _buildScssPermissiveAtRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
+    const prelude = new Sequence(nodeChildren(preludeChildren) as Node[], undefined, loc);
+    return new AtRule(
+      { name, prelude, rules: nodeChildren(bodyChildren) },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssLayerBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
+    const preludeNodes = nodeChildren(preludeChildren);
+    const prelude = preludeNodes.length === 1
+      ? preludeNodes[0]
+      : preludeNodes.length > 0
+        ? new Sequence(preludeNodes as Node[], undefined, loc)
+        : undefined;
+    return new AtRule(
+      { name, prelude, rules: nodeChildren(bodyChildren) },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  protected override _buildQueryAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
+    const prelude = new Sequence(nodeChildren(preludeChildren) as Node[], undefined, loc);
+    return new AtRule(
+      { name, prelude, rules: nodeChildren(bodyChildren) },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  protected _buildScssParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const inner = this._betweenParens(spannedComponents(rawChildren));
+    const { value } = this._assembleValue(inner, loc);
+    if (value && isNode(value as Node, N.Operation)) {
+      return new Expression(value as Node, undefined, loc) as unknown as JessNode;
+    }
+    if (value && isNode(value as Node, N.List) && (value as List).options?.sep === '/'
+      && (value as List).value.length === 2) {
+      const [left, right] = (value as List).value;
+      const operation = new Operation([left!, '/', right!], undefined, loc);
+      return new Expression(operation, undefined, loc) as unknown as JessNode;
+    }
+    return new Paren(value as unknown as Node, undefined, loc) as unknown as JessNode;
   }
 
   private _buildScssExtendTarget(
@@ -1079,11 +1285,70 @@ export class ScssGrammar extends LessGrammar {
 
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const call = super._buildCall(rawChildren, loc) as Call;
-    const mapped = desugarMapLookup(call, loc);
+    const nameNode = call.name;
+    const stringName = typeof nameNode === 'string'
+      ? nameNode
+      : isNode(nameNode, N.Reference) && typeof nameNode.key === 'string'
+        ? nameNode.key
+        : '';
+
+    const mapped = desugarMapLookup(
+      new Call({ name: stringName, args: call.args }, call.options, loc),
+      loc
+    );
     if (isNode(mapped, N.Reference)) {
       return mapped as unknown as JessNode;
     }
-    return desugarNamespacedCall(mapped as Call, loc) as unknown as JessNode;
+
+    const desugared = desugarNamespacedCall(
+      new Call({ name: stringName, args: call.args }, call.options, loc),
+      loc
+    );
+    const name = desugared.name;
+
+    if (stringName === 'selector.parse') {
+      const argValues = isNode(desugared.args, N.List) ? desugared.args.value : [];
+      const firstArg = argValues[0];
+      const selectorText = firstArg && isNode(firstArg, N.Quoted)
+        ? typeof firstArg.value === 'string'
+          ? firstArg.value
+          : isNode(firstArg.value, N.Any)
+            ? String(firstArg.value.valueOf())
+            : undefined
+        : undefined;
+      if (selectorText !== undefined) {
+        try {
+          const selector = parseSelectorListExpression(selectorText);
+          return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
+        } catch {
+          return desugared as unknown as JessNode;
+        }
+      }
+      return desugared as unknown as JessNode;
+    }
+
+    if (typeof name === 'string' && name.includes('.')) {
+      return new Expression(desugared, undefined, loc) as unknown as JessNode;
+    }
+
+    if (isNode(name, N.Reference) && name.options?.type === 'function') {
+      return new Call({ name, args: desugared.args }, undefined, loc) as unknown as JessNode;
+    }
+
+    if (typeof name === 'string') {
+      const ref = new Reference(
+        { key: name },
+        { type: 'function', fallbackValue: true },
+        loc
+      );
+      return new Call(
+        { name: ref, args: desugared.args },
+        undefined,
+        loc
+      ) as unknown as JessNode;
+    }
+
+    return desugared as unknown as JessNode;
   }
 
   protected override _buildSquareParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {

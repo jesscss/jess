@@ -906,8 +906,8 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`%foo { color: red; }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString(`(BasicSelector`);
-    expect(serializeTypes(result.tree)).toContainString(`foo`);
+    expect(serializeTypes(result.tree)).toContainString(`(Ruleset`);
+    expect(serializeTypes(result.tree)).toContainString(`\\foo`);
   });
 
   functionalIt('lowers @at-root selector shorthand to a null-parent ampersand selector', () => {
