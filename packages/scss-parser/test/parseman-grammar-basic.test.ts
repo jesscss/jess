@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseScssFn } from '../src/index.js';
-import { isNode, N, Condition, serializeTypes } from '@jesscss/core';
+import { isNode, N, Condition, serializeTypes, TreeContext } from '@jesscss/core';
 
 function parseOk(src: string) {
   const result = parseScssFn(src);
@@ -331,5 +331,121 @@ describe('ScssParserParseman — maps / lists / module refs', () => {
     expect(serialized).toContain('(Expression');
     expect(serialized).toContain('(Call');
     expect(serialized).toContain('(Reference');
+  });
+});
+
+describe('ScssParserParseman — @use / @forward / @import / @extend', () => {
+  it('parses @use as StyleImport(compose)', () => {
+    const { tree } = parseOk('@use "foo";');
+    expect(isNode(tree.rules[0], N.StyleImport)).toBe(true);
+    if (isNode(tree.rules[0], N.StyleImport)) {
+      expect(tree.rules[0].options?.type).toBe('compose');
+    }
+  });
+
+  it('parses @use with namespace and with-config', () => {
+    const { tree } = parseOk('@use "foo" as bar with ($a: #{$b}, $c: 1 !default);');
+    const imp = tree.rules[0]!;
+    expect(isNode(imp, N.StyleImport)).toBe(true);
+    if (isNode(imp, N.StyleImport)) {
+      expect(imp.options?.namespace).toBe('bar');
+      expect(imp.with?.node).toBeDefined();
+    }
+  });
+
+  it('parses @use sass: builtin as JsImport', () => {
+    const { tree } = parseOk('@use "sass:map";');
+    expect(isNode(tree.rules[0], N.JsImport)).toBe(true);
+  });
+
+  it('parses @use wildcard namespace', () => {
+    const { tree } = parseOk('@use "foo" as *;');
+    if (isNode(tree.rules[0], N.StyleImport)) {
+      expect(tree.rules[0].options?.namespace).toBe('*');
+    }
+  });
+
+  it('parses @forward as forwarded StyleImport', () => {
+    const { tree } = parseOk('@forward "foo";');
+    expect(isNode(tree.rules[0], N.StyleImport)).toBe(true);
+    if (isNode(tree.rules[0], N.StyleImport)) {
+      expect(tree.rules[0].options?.importOptions?.forward).toBe(true);
+    }
+  });
+
+  it('parses @forward with config', () => {
+    const { tree } = parseOk('@forward "foo" with ($a: #{$b});');
+    if (isNode(tree.rules[0], N.StyleImport)) {
+      expect(tree.rules[0].with?.node).toBeDefined();
+    }
+  });
+
+  it('parses legacy Sass @import as StyleImport', () => {
+    const { tree } = parseOk('@import "foo";');
+    expect(isNode(tree.rules[0], N.StyleImport)).toBe(true);
+    if (isNode(tree.rules[0], N.StyleImport)) {
+      expect(tree.rules[0].options?.type).toBe('import');
+    }
+  });
+
+  it('parses comma-separated legacy @import as multiple StyleImports', () => {
+    const { tree } = parseOk('@import "a", "b";');
+    expect(tree.rules.length).toBe(2);
+    expect(isNode(tree.rules[0], N.StyleImport)).toBe(true);
+    expect(isNode(tree.rules[1], N.StyleImport)).toBe(true);
+  });
+
+  it('preserves plain CSS @import as AtRuleStatement', () => {
+    const { tree } = parseOk('@import "foo.css";');
+    expect(isNode(tree.rules[0], N.AtRuleStatement)).toBe(true);
+  });
+
+  it('parses @extend inside a ruleset', () => {
+    const { tree } = parseOk('.a { @extend .b; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      expect(isNode(ruleset.rules[0], N.Extend)).toBe(true);
+    }
+  });
+
+  it('parses placeholder @extend', () => {
+    const { tree } = parseOk('.a { @extend %foo; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const ext = ruleset.rules[0];
+      expect(isNode(ext, N.Extend)).toBe(true);
+      if (isNode(ext, N.Extend)) {
+        expect(ext.namespace).toBe('*');
+        expect(serializeTypes(ext.target)).toContain('\\foo');
+      }
+    }
+  });
+
+  it('parses selector-list @extend targets', () => {
+    const { tree } = parseOk('.a { @extend .b, .c; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      expect(isNode(ruleset.rules[0], N.Extend)).toBe(true);
+    }
+  });
+
+  it('reports compound @extend rejection when configured', () => {
+    const result = parseScssFn('.a { @extend .b.c; }', 'stylesheet', {
+      context: new TreeContext({ allowExtendSelectors: ['simple'] })
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]?.message).toContain('@extend only allows simple');
+  });
+
+  it('reports @forward prefixing as unsupported', () => {
+    const result = parseScssFn('@forward "foo" as bar-*;');
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]?.message).toContain('@forward with "as <prefix>-*" prefixing is not supported');
+  });
+
+  it('reports @forward show/hide as unsupported', () => {
+    const result = parseScssFn('@forward "foo" show $a, mixin-b, fn-c;');
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]?.message).toContain('@forward with "show"/"hide" lists is not supported');
   });
 });

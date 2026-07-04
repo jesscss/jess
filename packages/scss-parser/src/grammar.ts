@@ -5,7 +5,7 @@
  */
 import { rules } from 'parseman' with { type: 'macro' };
 import type { Span } from 'parseman';
-import type { TriviaMap, JessError, Rules } from '@jesscss/core';
+import type { TriviaMap, JessError, Rules, TreeContext } from '@jesscss/core';
 import { runFunctionalParse } from '@jesscss/css-parser';
 import { lessGrammarRules } from '@jesscss/less-parser/grammar-rules';
 import { scssGrammarRules } from './grammar-rules.js';
@@ -35,6 +35,10 @@ class BuilderHost extends ScssGrammar {
 
   getErrors() {
     return this._errors.slice();
+  }
+
+  setContext(context?: TreeContext) {
+    this._parseContext = context;
   }
 
   build(type: string, span: { start: number; end: number }, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>): unknown {
@@ -79,9 +83,18 @@ export type ScssFnParseResult = {
   trivia: TriviaMap;
 };
 
-export function parseScssFn(input: string, rule = 'stylesheet'): ScssFnParseResult {
+export type ScssFnParseOptions = {
+  context?: TreeContext;
+};
+
+export function parseScssFn(
+  input: string,
+  rule = 'stylesheet',
+  options: ScssFnParseOptions = {}
+): ScssFnParseResult {
   const ruleName = ALIASES[rule] ?? rule;
   const fn = (scssRules as Record<string, unknown>)[ruleName];
+  host.setContext(options.context);
   return runFunctionalParse(input, fn, host, { lineComments: true });
 }
 

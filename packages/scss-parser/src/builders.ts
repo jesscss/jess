@@ -33,8 +33,9 @@ import { spannedComponents } from '@jesscss/css-parser';
 import {
   type Node,
   type LocationInfo,
+  type TreeContext,
   Any,
-  VarDeclaration, type VarDeclarationOptions,
+  VarDeclaration, type VarDeclarationOptions, type AssignmentType,
   Reference,
   Rules,
   Condition, type ConditionOperator,
@@ -59,7 +60,13 @@ import {
   N,
   Collection,
   Declaration,
-  Expression
+  Expression,
+  StyleImport,
+  JsImport,
+  Extend,
+  ExtendFlag,
+  AtRuleStatement,
+  type Selector
 } from '@jesscss/core';
 import {
   buildScssInterpolatedFromString,
@@ -70,6 +77,15 @@ import {
   desugarNamespacedCall,
   toDeclKey
 } from './scss-value-helpers.js';
+import {
+  quotedLike,
+  isPlainCssImportPrelude,
+  validateExtendTarget,
+  checkForwardPreludeErrors,
+  isPlaceholderExtendTarget,
+  isScriptUsePath,
+  defaultNamespaceFromPath
+} from './scss-atrule-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,6 +115,11 @@ export class ScssGrammar extends LessGrammar {
   // Must be declared BEFORE _trivia so the field initializer captures this rw.
   rw = regex(/(?:[ \t\n\r\f]+|\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
   protected _trivia = this.rw;
+  protected _parseContext?: TreeContext;
+
+  setContext(context?: TreeContext) {
+    this._parseContext = context;
+  }
 
   // ── SCSS $variable token ──────────────────────────────────────────────────
   scssVar = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
@@ -165,6 +186,16 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssMapPair':       return this._buildScssMapPair(children, loc);
       case 'ScssMapLiteral':    return this._buildScssMapLiteral(children, loc);
       case 'ScssIdentValue':    return this._buildScssIdentValue(children, _rawChildren, loc);
+      case 'ScssWithConfigEntry': return this._buildScssWithConfigEntry(_rawChildren, loc);
+      case 'ScssWithConfig':    return this._buildScssWithConfig(children, loc);
+      case 'ScssUseAs':         return this._buildScssUseAs(children, loc);
+      case 'ScssUse':           return this._buildScssUse(children, loc);
+      case 'ScssForward':       return this._buildScssForward(children, _rawChildren, loc);
+      case 'ScssPlaceholderSelector': return this._buildScssPlaceholderSelector(children, loc);
+      case 'ScssExtendTarget':  return this._buildScssExtendTarget(children, loc);
+      case 'ScssExtend':        return this._buildScssExtend(children, loc);
+      case 'ScssImportItem':    return this._buildScssImportItem(children, _rawChildren, loc);
+      case 'ScssImportAtRule':  return this._buildScssImportAtRule(children, loc);
       case 'Call':              return this._buildCall(_rawChildren, loc);
       case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
       default:                  return super.buildNode(type, span, children, _state, _rawChildren);
@@ -271,7 +302,8 @@ export class ScssGrammar extends LessGrammar {
 
   /** A `{ … }` control-block body → Rules. */
   private _buildScssRules(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    return new Rules(nodeChildren(children) as any, undefined, loc) as unknown as JessNode;
+    const rules = this._flattenScssImportLists(nodeChildren(children));
+    return new Rules(rules, undefined, loc) as unknown as JessNode;
   }
 
   /**
@@ -763,6 +795,231 @@ export class ScssGrammar extends LessGrammar {
     }
 
     return new Any(ident, { role: 'ident' }, loc) as unknown as JessNode;
+  }
+
+  protected override _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = this._flattenScssImportLists(nodeChildren(children));
+    const lifted = this._liftStandaloneComments(nodes, loc[0], loc[3], loc);
+    return new Rules(lifted, undefined, loc);
+  }
+
+  private _flattenScssImportLists(nodes: JessNode[]): JessNode[] {
+    const flat: JessNode[] = [];
+    for (const n of nodes) {
+      if (isNode(n, N.List) && (n as List).options?.role === 'scss-imports') {
+        flat.push(...(n as List).value);
+      } else {
+        flat.push(n);
+      }
+    }
+    return flat;
+  }
+
+  private _buildScssWithConfigEntry(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const name = rawName.startsWith('$') ? rawName.slice(1) : rawName;
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    let end = items.length;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!' || c === '!default' || c === '!global' || c === ',' || c === ')') {
+        end = i;
+        break;
+      }
+    }
+    const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
+    const sawDefault = items.slice(end).some(i => i.comp === '!default');
+    const sawGlobal = items.slice(end).some(i => i.comp === '!global');
+    return new VarDeclaration(
+      { name: new Any(name, { role: 'property' }, loc) as unknown as Node, value: value as Node },
+      {
+        assign: (sawDefault ? '?:' : ':') as AssignmentType,
+        setDefined: sawGlobal
+      },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssWithConfig(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const decls = nodeChildren(children).filter(n => isNode(n, N.VarDeclaration));
+    return new Collection(decls as Node[], undefined, loc) as unknown as JessNode;
+  }
+
+  private _buildScssUseAs(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const nsLeaf = ls.find(l => l.value !== 'as');
+    return new Any(nsLeaf?.value ?? '', { role: 'ident' }, loc) as unknown as JessNode;
+  }
+
+  private _buildScssUse(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const pathNode = nodeChildren(children).find(n => isNode(n, N.Quoted)) as Quoted | undefined;
+    const withConfig = nodeChildren(children).find(n => isNode(n, N.Collection)) as Collection | undefined;
+    const useAs = nodeChildren(children).find(n => isNode(n, N.Any) && (n as Any).options?.role === 'ident');
+    const namespace = useAs ? String((useAs as Any).valueOf()) : undefined;
+    const rawPath = pathNode?.valueOf() ?? '';
+
+    if (rawPath.startsWith('sass:')) {
+      const mod = rawPath.slice('sass:'.length);
+      const rewritten = `#sass/${mod}`;
+      const q = quotedLike(pathNode!, rewritten, loc);
+      return new JsImport(
+        { path: q },
+        { namespace: namespace ?? defaultNamespaceFromPath(rawPath) },
+        loc
+      ) as unknown as JessNode;
+    }
+
+    if (isScriptUsePath(rawPath)) {
+      return new JsImport(
+        { path: pathNode! },
+        { namespace: namespace ?? defaultNamespaceFromPath(rawPath) },
+        loc
+      ) as unknown as JessNode;
+    }
+
+    return new StyleImport(
+      {
+        path: pathNode!,
+        with: withConfig ? { node: withConfig, type: 'set' } : undefined
+      },
+      {
+        type: 'compose',
+        namespace,
+        importOptions: {}
+      },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssForward(
+    children: ReadonlyArray<Child>,
+    _raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    const pathNode = nodeChildren(children).find(n => isNode(n, N.Quoted)) as Quoted | undefined;
+    const withConfig = nodeChildren(children).find(n => isNode(n, N.Collection)) as Collection | undefined;
+    const preludeText = this._source.slice(loc[0], loc[3]);
+    const pathMatch = /(['"])([^'"]+)\1/.exec(preludeText);
+    const afterPath = pathMatch
+      ? preludeText.slice(preludeText.indexOf(pathMatch[0]) + pathMatch[0].length)
+      : '';
+    const preludeExtra = afterPath.replace(/\bwith\s*\([^)]*\)\s*;?\s*$/, '').replace(/;\s*$/, '').trim();
+    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc[0]));
+
+    return new StyleImport(
+      {
+        path: pathNode!,
+        with: withConfig ? { node: withConfig, type: 'set' } : undefined
+      },
+      {
+        type: 'compose',
+        importOptions: { forward: true }
+      },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssPlaceholderSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
+    const raw = ls[0]?.value ?? '';
+    const name = `\\${raw.slice(1)}`;
+    return this._makeBasicSelector(name, loc);
+  }
+
+  private _buildScssExtendTarget(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const items = nodeChildren(children);
+    if (items.length === 1) {
+      return items[0]!;
+    }
+    return this._makeSelectorList(items, loc);
+  }
+
+  private _buildScssExtend(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const target = nodeChildren(children).find(n =>
+      ['SelectorList', 'BasicSelector', 'CompoundSelector', 'ComplexSelector'].includes(n.type)
+    )!;
+    validateExtendTarget(
+      target as Node,
+      this._parseContext?.opts?.allowExtendSelectors,
+      msg => this._error(msg, loc[0])
+    );
+    const namespace = isPlaceholderExtendTarget(target as Node) ? '*' : undefined;
+    return new Extend(
+      { target: target as unknown as Selector, flag: ExtendFlag.All, namespace },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildScssImportItem(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    const prelude = nodeChildren(children).find(n => isNode(n, N.Quoted) || isNode(n, N.Url)) as Node | undefined;
+    const pathSpan = spannedComponents(raw).find(i =>
+      isNode(i.comp as Node, N.Quoted) || isNode(i.comp as Node, N.Url) || (typeof i.comp === 'string' && (i.comp.startsWith('"') || i.comp.startsWith('\'') || i.comp.startsWith('url')))
+    );
+    let extraText: string | undefined;
+    if (pathSpan) {
+      const tail = raw.filter(c => c._tag === 'leaf' && (c as CSTLeaf).value !== '@import')
+        .map(c => (c as CSTLeaf).value)
+        .join('');
+      const pathText = typeof pathSpan.comp === 'string' ? pathSpan.comp : '';
+      const idx = tail.indexOf(pathText);
+      if (idx >= 0) {
+        extraText = tail.slice(idx + pathText.length).replace(/^[\s,]+/, '').replace(/[,;]\s*$/, '').trim() || undefined;
+      }
+    }
+    const seqItems: Node[] = [];
+    if (prelude) {
+      seqItems.push(prelude);
+    }
+    if (extraText) {
+      seqItems.push(new Any(extraText, { role: 'ident' }, loc) as unknown as Node);
+    }
+    return new Sequence(seqItems, undefined, loc) as unknown as JessNode;
+  }
+
+  private _buildScssImportAtRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const items = nodeChildren(children).filter(n => isNode(n, N.Sequence));
+    const importName = new Any('@import', { role: 'atkeyword' }, loc) as unknown as Node;
+    const built: JessNode[] = [];
+    for (const item of items) {
+      const seq = item as Sequence;
+      const prelude = seq.value[0];
+      const extra = seq.value[1];
+      const extraText = extra && isNode(extra, N.Any) ? String((extra as Any).valueOf()).trim() : undefined;
+      const itemLoc = (Array.isArray(seq.location) ? seq.location : loc) as LocationInfo;
+      if (!prelude) {
+        continue;
+      }
+      if (!isPlainCssImportPrelude(prelude as Node, extraText) && isNode(prelude as Node, N.Quoted)) {
+        built.push(new StyleImport(
+          { path: prelude as Quoted },
+          { type: 'import', importOptions: { multiple: true } },
+          itemLoc
+        ) as unknown as JessNode);
+        continue;
+      }
+      const preludeNodes = [prelude as Node];
+      if (extraText) {
+        preludeNodes.push(new Any(extraText, { role: 'ident' }, itemLoc) as unknown as Node);
+      }
+      built.push(new AtRuleStatement(
+        {
+          name: importName,
+          prelude: new Sequence(preludeNodes, undefined, itemLoc)
+        },
+        undefined,
+        itemLoc
+      ) as unknown as JessNode);
+    }
+    if (built.length === 1) {
+      return built[0]!;
+    }
+    return new List(built, { role: 'scss-imports' }, loc) as unknown as JessNode;
   }
 
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {

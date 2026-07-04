@@ -9,7 +9,7 @@
  * Macro-neutral: imports `'parseman'` without `with { type: 'macro' }`.
  * Self-contained: terminals are block-local inside the factory.
  */
-import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect, sepBy, oneOrMore } from 'parseman';
+import { node, regex, literal, sequence, choice, optional, parser, noTrivia, many, expect, sepBy, oneOrMore, scanTo, balanced } from 'parseman';
 
 export type ScssGrammarDeps = { build: (type: string, c: any, r: any, s: any) => any };
 
@@ -303,18 +303,118 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     parser({ trivia: rw }, sequence(returnKw, g.valueList, expect(literal(';'), ';'))),
     (c: any, r: any, s: any) => build('ScssReturn', c, r, s));
 
+  // ── @use / @forward / @import / @extend ───────────────────────────────────
+  // Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /
+  // scssExtendAtRule (productions/atRules.ts).
+  const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
+  const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
+  const strHole = [singleStr, doubleStr];
+  const bParen = balanced('(', ')', { skip: strHole });
+  const bSquare = balanced('[', ']', { skip: strHole });
+  const bCurly = balanced('{', '}', { skip: strHole });
+  const scanSkip = [bParen, bSquare, bCurly, singleStr, doubleStr];
+
+  const kwAs = regex(/\bas\b/);
+  const kwWith = regex(/\bwith\b/);
+  const useKw = regex(/@use(?![-\w])/i);
+  const forwardKw = regex(/@forward(?![-\w])/i);
+  const extendKw = regex(/@extend(?![-\w])/i);
+  const extendOptional = regex(/!optional\b/);
+  const importKw = regex(/@import(?![-\w])/i);
+
+  const ScssWithConfigEntry = node('ScssWithConfigEntry',
+    parser({ trivia: rw }, sequence(
+      scssVar, literal(':'), g.valueSequence,
+      optional(choice(literal('!default'), literal('!global')))
+    )),
+    (c: any, r: any, s: any) => build('ScssWithConfigEntry', c, r, s));
+  const ScssWithConfig = node('ScssWithConfig',
+    parser({ trivia: rw }, sequence(
+      literal('('),
+      optional(sepBy(ScssWithConfigEntry, literal(','))),
+      expect(literal(')'), ')')
+    )),
+    (c: any, r: any, s: any) => build('ScssWithConfig', c, r, s));
+
+  const ScssUseAs = node('ScssUseAs',
+    parser({ trivia: rw }, sequence(kwAs, choice(literal('*'), plainIdent))),
+    (c: any, r: any, s: any) => build('ScssUseAs', c, r, s));
+
+  const ScssUse = node('ScssUse',
+    parser({ trivia: rw }, sequence(
+      useKw, g.Quoted,
+      optional(ScssUseAs),
+      optional(sequence(kwWith, ScssWithConfig)),
+      expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => build('ScssUse', c, r, s));
+
+  const forwardExtra = optional(scanTo(
+    choice(sequence(kwWith, literal('(')), literal(';')),
+    { skip: scanSkip }
+  ));
+  const ScssForward = node('ScssForward',
+    parser({ trivia: rw }, sequence(
+      forwardKw, g.Quoted,
+      forwardExtra,
+      optional(sequence(kwWith, ScssWithConfig)),
+      expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => build('ScssForward', c, r, s));
+
+  const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const ScssPlaceholderSelector = node('ScssPlaceholderSelector',
+    scssPlaceholder,
+    (c: any, r: any, s: any) => build('ScssPlaceholderSelector', c, r, s));
+  const scssExtendComplex = choice(ScssPlaceholderSelector, g.LessComplexSelector);
+  const ScssExtendTarget = node('ScssExtendTarget',
+    parser({ trivia: rw }, sequence(
+      scssExtendComplex,
+      many(sequence(literal(','), scssExtendComplex))
+    )),
+    (c: any, r: any, s: any) => build('ScssExtendTarget', c, r, s));
+  const ScssExtend = node('ScssExtend',
+    parser({ trivia: rw }, sequence(
+      extendKw, ScssExtendTarget,
+      optional(extendOptional),
+      expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => build('ScssExtend', c, r, s));
+
+  const importOptionsParen = sequence(
+    literal('('),
+    scanTo(literal(')'), { skip: scanSkip }),
+    literal(')')
+  );
+  const importPostlude = scanTo(choice(literal(','), literal(';')), { skip: scanSkip });
+  const ScssImportItem = node('ScssImportItem',
+    parser({ trivia: rw }, sequence(
+      expect(choice(g.Url, g.Quoted), 'import path'),
+      optional(importPostlude)
+    )),
+    (c: any, r: any, s: any) => build('ScssImportItem', c, r, s));
+  const ImportAtRuleStatement = node('ScssImportAtRule',
+    parser({ trivia: rw }, sequence(
+      importKw,
+      optional(importOptionsParen),
+      sepBy(ScssImportItem, literal(',')),
+      expect(literal(';'), ';')
+    )),
+    (c: any, r: any, s: any) => build('ScssImportAtRule', c, r, s));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
   const scssStatement = choice(
     g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile,
     g.ScssMixin, g.ScssInclude, g.ScssContent,
-    g.ScssFunction, g.ScssReturn
+    g.ScssFunction, g.ScssReturn,
+    g.ScssUse, g.ScssForward
   );
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(scssStatement, g.stylesheetItem))),
     (c: any, r: any, s: any) => build('Stylesheet', c, r, s));
-  const declarationList = parser({ trivia: rw }, many(choice(scssStatement, g.blockItem)));
+  const declarationList = parser({ trivia: rw }, many(choice(scssStatement, g.ScssExtend, g.blockItem)));
   const atRuleBody = parser({ trivia: rw }, many(choice(scssStatement, g.blockItem)));
 
   return {
@@ -327,6 +427,9 @@ export const scssGrammarRules = (g: any, { build }: ScssGrammarDeps) => {
     ScssCallArg, ScssCallArgsInner, ScssMixinParam, ScssMixinParams, ScssMixinName,
     ScssDeclBody, ScssMixin, ScssIncludeUsing, ScssInclude, ScssContent,
     ScssFunction, ScssReturn,
+    ScssWithConfigEntry, ScssWithConfig, ScssUseAs, ScssUse, ScssForward,
+    ScssPlaceholderSelector, ScssExtendTarget, ScssExtend,
+    ScssImportItem, ImportAtRuleStatement,
     Stylesheet, declarationList, atRuleBody
   };
 };
