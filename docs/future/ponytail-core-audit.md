@@ -377,15 +377,31 @@ direction.
     (reflog: "only parent if unparented"), which is the same precondition — coordinate so
     this doesn't duplicate in-flight work.
 
-- **E12. `allowRoot`/`allowRuleRoot` — DECISION PENDING (⚠ deleted at HEAD).** Currently
-  removed (base fields + 25 overrides) but they are Less-4.x root-validation scaffolding
-  the owner flagged as intended-but-unimplemented (eval throws on a node placed where its
-  `allowRoot`/`allowRuleRoot` forbids). They were **write-only** in Jess — set by 25
-  classes, read nowhere. Ponytail-correct resolution: keep deleted; when root-validation is
-  actually implemented, reintroduce the fields *with* the reading/throwing eval logic in
-  the same pass, so they are never write-only. Reintroducing them now (option b) re-adds
-  dead weight. Confirm the Less-4.x semantics from `~/git/oss/less.js` before implementing.
-  Owner's call; default recommendation = leave deleted, implement-with-reads later.
+- **E12. `allowRoot`/`allowRuleRoot` — RESOLVED via Less 4.x source audit (keep deleted).**
+  Audited `git -C ~/git/oss/less.js show master:packages/less/lib/less/visitors/to-css-visitor.js`.
+  Findings:
+  - `allowRoot` is a real 4.x feature but the name misleads: `checkValidNodes(rules, isRoot)`
+    runs over EVERY ruleset body during to-CSS and throws for (1) `isRoot && Declaration &&
+    !variable` → "Properties must be inside selector blocks…", (2) any surviving `Call` →
+    "Function '…' did not return a root node", (3) `type && !allowRoot` → "`{type}` node
+    returned by a function is not valid here". So `allowRoot` means **"statement-legal
+    node"** (the ~13 types allowed in a rules list: AtRule, Comment, Declaration, Extend,
+    Import, Media, MixinCall/Definition, Ruleset, VariableCall, Anonymous, escaped Quoted).
+    It catches a function/detached-ruleset leaking a bare value node into statement
+    position. It is **validation/error-reporting, not output correctness.**
+  - `allowRuleRoot` does **not exist in Less 4.x** — pure Jess invention. Keep deleted.
+  - Jess's `allowRoot` was **write-only**: it copied the field-setting but never ported
+    `checkValidNodes`, so it threw nothing. Deleting the bare fields removed zero behavior.
+  - v5 gap + better-than-4.x plan: the missing piece is `checkValidNodes` itself (a real
+    error-reporting feature Jess lacks). When implementing it, do NOT reintroduce per-node
+    fields — Less needs them only because its nodes are dynamically typed. Jess has the
+    `nodeType` bitmask: express statement-legality as one constant `N_STATEMENT_LEGAL =
+    AtRule | Comment | Declaration | Extend | StyleImport | Ruleset | Mixin | Call | …` and
+    check `(node.nodeType & N_STATEMENT_LEGAL)` in the Rules render/eval pass, plus the
+    Declaration-at-root and unresolved-Call throws. Zero per-node fields. (Edge: 4.x
+    `Quoted.allowRoot = escaped` — handle the escaped-quoted-at-statement case explicitly.)
+  Decision: **keep both deleted.** The feature to build later is `checkValidNodes` as a
+  bitmask predicate, tracked as a v5 error-reporting item, not a field restore.
 - **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
   string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
   `[]`-typed constant per class load but an own field per instance… it's a class field
@@ -512,9 +528,12 @@ progress tracker — statuses in the sections above are detail, not the index.
       hoistToRoot → 2 flag bits. Getter/setter over flag (like `visible`) keeps
       all call sites unchanged — single-file node-base edits. Low risk, gate like
       the deletion passes. (frozen removed — see E11; allowRoot removed — see E12)
-- [ ] **E12 (⚠ decision)** `allowRoot`/`allowRuleRoot` currently deleted at HEAD;
-      decide keep-deleted (default) vs restore-as-stubs vs implement-with-reads.
-      Owner flagged as Less-4.x root-validation scaffolding, not true dead code.
+- [x] **E12 (resolved via 4.x source audit)** keep `allowRoot`/`allowRuleRoot`
+      deleted. `allowRuleRoot` isn't in Less 4.x (Jess invention); `allowRoot` was
+      write-only (never ported `checkValidNodes`, threw nothing). The real gap is
+      `checkValidNodes` error-reporting → implement later as a `nodeType` bitmask
+      predicate (`N_STATEMENT_LEGAL`) + 3 throws in the render pass, zero per-node
+      fields. Tracked as a v5 error-reporting item, not a field restore.
 - [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
       base per-node probe + 5 casts); selector flags → `Selector.inherit`.
       Binding-lane, benchmark + full-suite gated
