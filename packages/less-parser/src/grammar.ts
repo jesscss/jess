@@ -171,16 +171,11 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     )));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
-  // Structured mixin args: the COMBINATORS split on the separators (sepBy), each
-  // arg VALUE an opaque chunk scanned to the next top-level `,` `;` or `)` (values
-  // are freeform — scanTo is the right tool *here*, and balanced skips keep commas
-  // inside nested ()/[]/{}/strings out of the split). The builder reads the
-  // pre-split chunks/separators (no string _splitTopLevel) and rejects mixing `,`
-  // and `;` to separate args. See _buildMixinArgs.
-  const argChunk = scanTo(choice(literal(','), literal(';'), literal(')')),
-    { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
-  const MixinArgs = node('MixinArgs',
-    parser({ trivia: rw }, sequence(literal('('), optional(sepBy(sepBy(argChunk, literal(',')), literal(';'))), literal(')'))));
+  // Mixin arguments are composed from the SAME value combinators as function-call
+  // args (`callArgSeq`) — NOT captured as raw text — so an arithmetic arg like
+  // `@a * 2` is a real Operation, not a Reference whose key is the raw string. The
+  // `MixinArgs` production lives next to `callArgSeq`/`callArgList` (below) so it can
+  // reuse them directly. See `_buildMixinArgs` (which reuses the shared `_assembleArgs`).
   const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
   const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
@@ -543,9 +538,30 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // detached ruleset `{…}` — e.g. `each(@list, { … })`, `func({a:1}, {b:2})`. The
   // comma phase takes value SEQUENCES (comma is the arg separator); after a `;` the
   // args become value LISTS (comma allowed within an arg).
-  const callArgSeq = choice(g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
-  const callArgList = choice(g.AnonymousMixinDefinition, DetachedRuleset, g.valueList);
+  // Function-call args and mixin-call args share ONE set of arg productions, so an
+  // arithmetic arg like `@a * 2` is a real Operation in both, and values are
+  // assembled by the shared `_assembleArgs` builder (Keyword-ification + trivia — no
+  // raw text, no manual trimming). Beyond values / anon-mixin / detached-ruleset,
+  // the args admit the `@x: value` NAMED form and the `...` / `@x...` VARIADIC form.
+  // Named args flow through function calls too (dispatch to a named-param function,
+  // e.g. a Sass fn); the runtime rejects them if the target declares no names.
+  // Ordered choice: `...`/`:` lookahead lets variadic/named win, else the value
+  // combinator consumes the whole expression (so `@a * 2` is never truncated at
+  // `@a`). A bare `@a` is a Reference (the CALL shape); the mixin-DEFINITION builder
+  // reinterprets a lone `@name` as a param.
+  const argRest = node('Rest', parser({ trivia: rw }, sequence(optional(lessVar), literal('...'))));
+  const argNamedSeq = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence))));
+  const argNamedList = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueList))));
+  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
+  const callArgList = choice(argRest, argNamedList, g.AnonymousMixinDefinition, DetachedRuleset, g.valueList);
   const functionCallArgs = parser({ trivia: rw }, sequence(optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(callArgList))))), literal(')')));
+  // Mixin args differ from function args in ONE way: after a `;`, commas keep
+  // splitting args (`sepBy(callArgSeq, ',')`) instead of folding into a value list.
+  // This is what lets `.m(@a: 1; @b: 2, @c: 3)` be recognized as the illegal
+  // `,`/`;` mix (two named params in a `;`-group) rather than one list-valued param.
+  // The assembled value is otherwise identical (`_assembleArgs` folds the comma run).
+  const MixinArgs = node('MixinArgs', parser({ trivia: rw },
+    sequence(literal('('), optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(sepBy(callArgSeq, literal(','))))))), literal(')'))));
   // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
   // bare `%` operand (e.g. `calc(1 %)`) is a syntax error (Chevrotain: mathProduct
   // has no `%` alt, so the trailing `%` fails the closing `)`). We model calc as a
