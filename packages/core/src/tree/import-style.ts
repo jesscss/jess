@@ -321,6 +321,25 @@ function nodeChildKeys(node: Node): readonly string[] | undefined {
   return childKeys === null ? undefined : childKeys;
 }
 
+// A source child that a first-use import placement may OWN (clone) rather than
+// share: a plain Declaration, or a Ruleset/Rules whose entire body is likewise
+// ownable. Anything callable-bearing (Mixin, AtRule, nested StyleImport) stays
+// shared so reference-import guard/param scope resolution is preserved.
+function isPlacementScalarChild(node: Node): boolean {
+  if (isNode(node, N.Declaration | N.VarDeclaration)) {
+    return true;
+  }
+  if (isNode(node, N.Ruleset) && node instanceof Rules) {
+    for (let i = 0; i < node.rules.length; i++) {
+      if (!isPlacementScalarChild(node.rules[i]!)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -426,9 +445,11 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
-  if (placementChild.canReuseAsLeaf()) {
-    return placementChild;
-  }
+  // NOTE: a placement child may itself LOOK like a reusable leaf (a cloned
+  // container whose only child was reused-as-leaf clears F_HAS_NODE_CHILD) yet
+  // still map to a distinct source child. So resolve positionally through the
+  // segments — a genuinely shared leaf resolves to itself via the value-path
+  // walk (it is the same object in both source and placement).
   for (const segment of state.childSegments) {
     const placementSegment = placementRules.rules[segment.index];
     if (placementSegment === placementChild) {
@@ -586,15 +607,28 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
-    // Thin placement: SHARE the imported source children directly (the
-    // canonical tree is never copied). Per-placement state lives in the
-    // placement state record / scope frame, not in copied nodes.
+    // Thin placement: the placement OWNS its child containers (a fresh
+    // declaration/ruleset surface per placement) while REUSING inert scalar
+    // leaves (shared by identity via `reuseAsLeaf`). The canonical source
+    // children keep their imported-tree parent — `cloneForPlacement` never
+    // reparents the source. Each segment records the ORIGINAL source child so
+    // placement→source mapping (getImportPlacementSourceChild) still resolves,
+    // and a reusable leaf placement child IS its own source. See
+    // LIVE_BINDING_ARCHITECTURE.md §4.
     const children = new Array<Node>(sourceRules.rules.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
-      children[index] = source;
-      childSegments[index] = createPlacementChildSegment(source, source, index);
+      // Only pure scalar-declaration content is placement-owned (a fresh
+      // declaration/ruleset surface reusing the scalar leaf). Callable-bearing
+      // content (mixins with guards/params, at-rules, nested imports) MUST stay
+      // shared: a reference-import's mixin guards resolve caller scope through
+      // the shared source parent chain, which cloning would sever.
+      const output = isPlacementScalarChild(source)
+        ? source.cloneForPlacement({ detachChildren: true })
+        : source;
+      children[index] = output;
+      childSegments[index] = createPlacementChildSegment(source, output, index);
     }
     return {
       source: sourceRules,
