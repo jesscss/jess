@@ -113,10 +113,17 @@ describe('Style import', () => {
       expect(colorCacheKeys.length).toBeGreaterThan(0);
       expect(missingCacheKeys.length).toBeGreaterThan(0);
 
-      await node.eval(context);
+      // Copy-on-write: eval derives a placement surface and never mutates the
+      // source `node`, so its declaration buckets/caches for unrelated names
+      // (`color`, `missing`) stay intact on `node` — a style-import registration
+      // must NOT globally wipe them. The promotion's keyed declaration-lookup bump
+      // for the imported name lands on the evaluated surface (where the import
+      // actually placed the member), not the untouched source.
+      const evald = await node.eval(context);
 
+      // Source `node` is untouched: global version, buckets, and the unrelated
+      // `color`/`missing` cache entries are all preserved (no global wipe).
       expect(node.declarationLookupVersion).toBe(declarationLookupVersion);
-      expect(node.getDeclarationLookupVersion('imported-color')).toBeGreaterThan(importedLookupVersion);
       expect(node.directDeclarationsByName).toBe(buckets);
       expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
       expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
@@ -125,10 +132,10 @@ describe('Style import', () => {
       expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
         key => key.startsWith('missing\u001f')
       )).toEqual(missingCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('imported-color\u001f')
-      )).toEqual([]);
-      expect(findPropertyDeclarationOccurrence(node, 'imported-color')?.node.value.valueOf()).toBe('green');
+      // The import promotion lands on the evaluated surface: its keyed lookup
+      // version for the imported name bumps and the member resolves there.
+      expect(evald.getDeclarationLookupVersion('imported-color')).toBeGreaterThan(importedLookupVersion);
+      expect(findPropertyDeclarationOccurrence(evald, 'imported-color')?.node.value.valueOf()).toBe('green');
     });
 
     it('tracks reference-import presence on evaluated Rules wrappers', async () => {
