@@ -229,6 +229,21 @@ the render list?* (merge decided) — no overloaded mutable flag.
      container via the same set (emitNode handles containers). Gate hard for output-neutrality; the
      superseded fragment's value is already composed into the survivor, so nothing else should read it
      post-coalesce (all lookups ran during eval, before coalesce). [HOT: rules.ts — solo, careful.]
+     **Deeper findings (traced this session — implement carefully):**
+     - `options` IS the shared `context.printState` (getPrintOptions returns it by reference, threads
+       into nested container renders at rules.ts:3988 `n.render(context, getPrintOptions(options))`), and
+       `suppressedNodes` is NOT a RestorablePrintStateKey so save/restore won't touch it — so a set on it
+       reaches every descendant `emitNode`. BUT: seed it exactly ONCE at the outermost render and CLEAR on
+       exit, else (a) a nested Rules without the field would null it mid-render, (b) a stale set leaks to
+       the next render (shared printState). Seed point is NOT `_emitRulesBody` (runs for nested too).
+     - The coalesced tree is `evalForRender(...).output`, NOT source `this` — `_mergeSuppressed` lives on
+       the OUTPUT. Seed from `value.output._mergeSuppressed` inside `renderRulesStateToString` /
+       `writeRulesStateRenderOutput` (the outermost render-state entries), clear in their finally.
+     - F_VISIBLE had GLOBAL reach; `suppressedNodes` is render-only. Before merging, check the other
+       consumers that read the now-still-visible superseded nodes: `flatRules(true)` (rules.ts:4167) and
+       `hasVisibleRules()`. If a container's ONLY content is superseded fragments, old code skipped it
+       (all invisible) but new code renders-then-excludes — watch for empty-container boundary/newline
+       deltas in the gate.
 4. **Leave reference-mode as the sole runtime filter.**
 Guardrail throughout: stable core set must not move; string selectors emit. (baseline now 60, was 85.)
 
