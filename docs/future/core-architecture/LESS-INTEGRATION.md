@@ -360,15 +360,18 @@ Current state (verified 2026-07-05): `jess` is ALREADY correct — `@jesscss/plu
 (`peerDependencies` + `peerDependenciesMeta.optional=true`) plus a `devDependency` (for tests), and is NOT in
 `dependencies`. So the old "installed as top-level runtime dep" bug is not currently present in `jess`.
 Gaps to close when building the sandbox:
-1. **`jess-plugin-less-compat` under-declares it (phantom dep).** The `@plugin` handler lives in
-   `jess-plugin-less-compat/src/plugin.ts` and reaches plugin-js via `require()` (~line 101 "try require() directly",
-   fallback ~1040), but that package lists plugin-js in NO dep section — it only resolves via the monorepo symlink and
-   would `MODULE_NOT_FOUND` for a real consumer. Fix: mirror `jess`'s shape on compat (optional peer + dev).
-2. **Decouple the enable-gate from module RESOLUTION (the real improvement).** Today the gate = "did require/deno-load
-   succeed"; in the workspace that ALWAYS succeeds (symlink), so the absent-path throw (`LESS_PLUGIN_JS_RUNTIME_MESSAGE`)
-   is untestable and can silently regress. Gate instead on whether the JS runtime was EXPLICITLY PROVIDED (injected via
-   plugin options / the plugin list / config); use require/dynamic-import only to FETCH it once opted in. Then both
-   paths are deterministic regardless of node_modules: provided → executes; not provided → throws gate (testable).
+1. **`jess-plugin-less-compat` correctly does NOT depend on plugin-js — separate concerns (CORRECTED).**
+   compat never imports/requires `@jesscss/plugin-js` (only occurrence is the error-message string, plugin.ts:15).
+   Its deno/plugin path (`loadLessPluginFileWithDeno`) is ALREADY injection-based: it searches the INJECTED
+   `_context.plugins`/`opts.plugins` for a runtime duck-typed on `importLessPlugin`+`supportedExtensions`, delegates to
+   it, and throws `LESS_PLUGIN_JS_RUNTIME_MESSAGE` only when none is provided. The one `require()` (`requirePluginFile`)
+   is the Less-4 `autoLoadPlugins` npm-by-name path requiring the USER's @plugin package (gated on autoLoadPlugins),
+   not the JS runtime. So compat declaring nothing is right; the runtime is consumer-injected. (Earlier "phantom dep,
+   add optional peer to compat" was WRONG — retracted.)
+2. **Enable-gate is ALREADY injection-driven for the deno/plugin path** (compat gates on finding an injected runtime,
+   not on module resolution) — so the absent-path throw IS deterministic there. Remaining: ensure the Less-4
+   `autoLoadPlugins` require() path is also opt-in/gated so it can't mask "runtime absent", and that the jess test
+   opts in by injecting plugin-js into the `plugins` list (not by relying on monorepo symlink resolution).
 3. **Guard test:** assert plugin-js is absent from `dependencies` and present in `peerDependenciesMeta` as optional on
    BOTH `jess` and `jess-plugin-less-compat`; add a `pnpm publish --dry-run` closure check so it never enters the
    shipped runtime tree. (`bootstrap-less-port` is already correctly a devDep of `jess`.)
