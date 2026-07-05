@@ -128,6 +128,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **color-fns** (cbeb40b01): fns color utils no longer read nonexistent node.location (sourceSpanOf/.inherit); color output correct, +4 tsc errors gone. Color all-less fixtures still blocked by: parser `red(rgb())` call-lexing (color-keyword+`(` not a Call), calc-on-relative-color-keyword, custom-property `--x:val` whitespace.
 - **tail-undefined** (51ad1b565): 7 root causes, all Cannot-read-undefined/selector-is-not-a-function crashes eliminated (crashes→diffs); core 2703/0.
 - **D-color** (c65dc2782): named-color table; **C-lookup** (38b269453): accessor key typing + property lane excludes VarDecl; all-less→54.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
