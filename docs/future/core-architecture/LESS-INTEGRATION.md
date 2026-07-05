@@ -405,3 +405,14 @@ Gaps to close when building the sandbox:
   node (scoped, no shared `_assembleValue` touch). css/scss/less-parser suites clean. Flipped **mixins-advanced**.
   mixins-guards/mixins-nested have DEEPER failures beyond this (further along now — hasFlag throw gone).
 - IN FLIGHT: `less/color-fns` (core: red()/channel eval + `red (` over-spacing).
+
+## 2026-07-05 — MILESTONE 4: v5-alpha re-pointed onto dev (merge dev → feature/less-v5-alpha-readiness)
+`git merge dev` into `feature/less-v5-alpha-readiness` (dev was 851 ahead; alpha had 3 unique commits). Resolution:
+- alpha `5fa885e6b` (perf serialize) + `214b0b7e2` (perf extend fast-reject) are SUPERSEDED by dev's evolved
+  serialize/extend — took dev's versions (serialize-helper.ts via --theirs; extend-roots.ts reset to dev after the
+  fast-reject broke 109 extend tests with `Cannot read '_library' of undefined`).
+- alpha `e868dffd1` (less-compat: bridge Less-4.x custom fns + tree constructors) is ADDITIVE — kept, auto-merged
+  clean, validated by all-less.
+Gate: core 2737/0 ×2, all-less 68/93 (identical to dev). Merge commit 84f315659 + fixup.
+**Continued work now happens on `feature/less-v5-alpha-readiness` (this worktree /Users/matthew/git/oss/jess);
+future sub-agent worktrees branch from it. dev remains the canonical fix line; alpha = dev + less-compat bridge.**
