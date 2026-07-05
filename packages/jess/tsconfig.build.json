@@ -4,6 +4,7 @@
     "outDir": "./lib",
     "rootDir": "./src",
     "noEmit": false,
+    "composite": false,
     "paths": {
       "styles-config": ["./node_modules/styles-config/lib/index.d.ts"],
       "@jesscss/plugin-less": ["./node_modules/@jesscss/plugin-less/lib/index.d.ts"]

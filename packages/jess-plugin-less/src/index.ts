@@ -186,7 +186,7 @@ export class LessPlugin extends AbstractPlugin {
     let tree: Rules | undefined;
 
     try {
-      const parseResult = this.parser.parse(source, 'stylesheet', { context });
+      const parseResult = this.parser.parse(source);
       tree = parseResult.tree;
 
       // Convert parser deprecation warnings to diagnostics

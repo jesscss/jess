@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "paths": {},
     "rootDir": "./src",
     "outDir": "./lib",
     "noEmit": false
