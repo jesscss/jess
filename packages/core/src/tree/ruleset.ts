@@ -29,7 +29,8 @@ import {
   savePrintState,
   restorePrintState,
   getCachedComposedSelector,
-  setCachedComposedSelector
+  setCachedComposedSelector,
+  cachedComposedMatches
 } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
@@ -1452,12 +1453,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     behavior: { skipCurrentCachedParent?: boolean; skipSameSelectorCompose?: boolean } = {}
   ): Selector {
     let rawParentComposed = options.composedSelectorStack?.at(-1);
-    const cachedCurrentComposed = getCachedComposedSelector(options, this);
     if (
       behavior.skipCurrentCachedParent !== false
       && rawParentComposed
-      && cachedCurrentComposed
-      && rawParentComposed.valueOf() === cachedCurrentComposed.valueOf()
+      && cachedComposedMatches(options, this, rawParentComposed.valueOf())
     ) {
       rawParentComposed = options.composedSelectorStack?.at(-2);
     }
@@ -1494,7 +1493,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       structuralParent && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
     );
-    let cached = getCachedComposedSelector(options, this);
+    const parentKey = composeParent ? composeParent.valueOf() : '';
+    let cached = getCachedComposedSelector(options, this, parentKey);
     if (!cached) {
       const hasExtendedComposeContext = Boolean(
         Ruleset.hasExtendedTopLevelSelector(renderSelector)
@@ -1524,7 +1524,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         cached = Ruleset.simplifyGeneratedIsSelector(cached) ?? cached;
       }
       if (composeParent) {
-        setCachedComposedSelector(options, this, cached);
+        setCachedComposedSelector(options, this, cached, parentKey);
       }
     }
     return cached;
