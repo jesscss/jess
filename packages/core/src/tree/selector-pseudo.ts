@@ -70,7 +70,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   readonly name: string;
   arg: Node | undefined;
-  generatedPseudoPlacementOverride: GeneratedPseudoPlacementOverrideState | undefined;
+  /**
+   * Rare: only set on generated `:is()` wrappers (see `setGeneratedPseudoPlacementOverride`).
+   * `declare` + conditional ctor assignment so the common pseudo shape (`:hover`,
+   * `:focus`, ...) carries NO own slot for it — the eager `= undefined` used to add
+   * a hidden-class slot to every one of ~3000 instances in the collapse census.
+   */
+  declare generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 
   constructor(
     value: PseudoSelectorValue,
@@ -82,7 +88,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
-    this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    if (value.generatedPseudoPlacementOverride !== undefined) {
+      this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    }
   }
 
   private renderPseudoSyntax(options?: PrintOptions): string {
