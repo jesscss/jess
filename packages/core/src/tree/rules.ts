@@ -2731,14 +2731,50 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return true;
       }
+      // The prefix match IS this entry's own namespace ruleset. That holds for
+      // compound-selector namespaces (`#panel.dark.navbar`) too, where
+      // `consumed` carries every selector key — not just a single segment.
       if (
-        consumed.length === 1
+        consumed.length >= 1
         && consumed[0] === segment
         && sourceRulesOf(ruleset) === entrySource
         && (matchScope === scope || matchSource === sourceRulesOf(scope))
       ) {
         return true;
       }
+    }
+    return false;
+  }
+
+  /**
+   * True when `node` is a callable namespace with a definite own key that is
+   * not `segment` and cannot emit into the enclosing ambient namespace. Such a
+   * namespace's mixin surface lives behind its own name, so it never
+   * contributes a `segment` callable to the scope that contains it.
+   */
+  private staticNamespaceExcludesKey(node: Rules, segment: string): boolean {
+    // An ambient mixin-output surface can inject arbitrary callables into the
+    // scope, so its key is not statically known — never skip it.
+    if (node.options.mixinOutputSlot) {
+      return false;
+    }
+    if (isNode(node, N.Mixin)) {
+      const { name } = node;
+      return typeof name === 'string' && name !== segment;
+    }
+    if (isNode(node, N.Ruleset)) {
+      const { selector } = node;
+      if (!selector || isNode(selector, N.Nil)) {
+        return false;
+      }
+      // Simple selectors (`#theme`, `.button`) are stored as plain strings;
+      // node selectors carry ordered keys. Either way, a resolvable first key
+      // that differs from `segment` means the namespace is reachable only under
+      // its own name — irrelevant to a `segment` lookup.
+      const keys = typeof selector === 'string'
+        ? splitSelectorStringKeys(selector)
+        : getOrderedSelectorKeys(selector);
+      return keys.length > 0 && keys[0] !== segment;
     }
     return false;
   }
@@ -2767,6 +2803,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       if (options.local && entry.node.options?.local) {
+        continue;
+      }
+      if (this.staticNamespaceExcludesKey(entry.node, segment)) {
+        // A definitely-named callable namespace (`#ns() {…}`, `#panel.x {…}`)
+        // gates its inner mixins behind its own key. It can never inject a
+        // differently-named callable into this scope's ambient namespace, so a
+        // `segment` lookup is unaffected by it — even though it carries a mixin
+        // surface. Skip it so a sibling namespace doesn't defeat the fast path.
         continue;
       }
       if (!this.prefixOwnsChildren(scope, entry.node, segment, prefixMatches)) {
@@ -3418,7 +3462,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            return this.findMixin(pathKeys, filterType, options);
+            return this.findMixinPath(pathKeys, filterType, options);
           }
           return undefined;
         }
@@ -3493,26 +3537,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           if (frameHit.kind === 'miss') {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options);
+              return this.findMixinPath(pathKeys, filterType, options);
             }
             return undefined;
           }
           if (frameMissCovered) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options);
+              return this.findMixinPath(pathKeys, filterType, options);
             }
             return undefined;
           }
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            return this.findMixin(pathKeys, filterType, options);
+            return this.findMixinPath(pathKeys, filterType, options);
           }
         }
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        return this.findMixin(pathKeys, filterType, options);
+        return this.findMixinPath(pathKeys, filterType, options);
       }
       const direct = this.findMixinsFast(keys, {
         hasTarget: options.hasTarget,
@@ -3526,114 +3570,130 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
-      const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
-      let compoundPrefixFast: CallableRulesetPathResult | undefined;
-      let mixinNamespaceFast: MixinEntry[] | undefined;
-      if (mixinFilterType !== 'Mixin') {
-        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-        if (rulesetNamespaceFast !== undefined) {
-          return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-        }
-        let namespaceMixins: MixinEntry[] | undefined;
-        let namespaceMixinMissCovered = false;
-        if (this._scopeFrame) {
-          const namespaceKey = keys[0]!;
-          this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
-          const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
-            includeRulesets: false
-          });
-          if (frameHit.kind === 'hit') {
-            namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
-          } else if (frameHit.kind === 'miss') {
-            namespaceMixinMissCovered = true;
-          } else if (
-            frameHit.reason === 'child-surface'
-            || frameHit.reason === 'reference-import'
-            || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
-          ) {
-            const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
-            const uncovered = this.findMixinsFastForUncoveredCallable(
-              namespaceKey,
-              reason,
-              false,
-              options
-            );
-            if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-              namespaceMixins = uncovered;
-              namespaceMixinMissCovered = true;
-            }
-          }
-        }
-        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
-          if (options.searchParents === false) {
-            const uncoveredChildNamespaceMixins = this.findMixinsFastForUncoveredCallable(
-              keys[0]!,
-              'child-surface',
-              false,
-              options
-            );
-            if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-              namespaceMixins = uncoveredChildNamespaceMixins;
-              namespaceMixinMissCovered = true;
-            }
-          }
-        }
-        if (
-          namespaceMixins === undefined
-          && !namespaceMixinMissCovered
-          && !this._scopeFrame
+      return this.findMixinPath(keys, filterType, options);
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve a multi-segment namespace path (`#theme > .dark > .colors`) via the
+   * frame fast path. Leads with `findRulesetNamespacePathFast`, which walks the
+   * scope-frame chain to the frame that owns the head namespace — so a single
+   * pass at the current scope resolves the whole path without a per-scope
+   * array crawl. The string branch splits static paths straight to here rather
+   * than round-tripping through the public array-form `findMixin`.
+   */
+  private findMixinPath(
+    keys: string[],
+    filterType?: string,
+    options: CallableFindOptions = {}
+  ): MixinEntry[] | undefined {
+    const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
+    let compoundPrefixFast: CallableRulesetPathResult | undefined;
+    let mixinNamespaceFast: MixinEntry[] | undefined;
+    if (mixinFilterType !== 'Mixin') {
+      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
+      if (rulesetNamespaceFast !== undefined) {
+        return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+      }
+      let namespaceMixins: MixinEntry[] | undefined;
+      let namespaceMixinMissCovered = false;
+      if (this._scopeFrame) {
+        const namespaceKey = keys[0]!;
+        this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
+        const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
+          includeRulesets: false
+        });
+        if (frameHit.kind === 'hit') {
+          namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
+        } else if (frameHit.kind === 'miss') {
+          namespaceMixinMissCovered = true;
+        } else if (
+          frameHit.reason === 'child-surface'
+          || frameHit.reason === 'reference-import'
+          || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
         ) {
-          namespaceMixins = this.findMixinsFast(keys[0]!, {
+          const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
+          const uncovered = this.findMixinsFastForUncoveredCallable(
+            namespaceKey,
+            reason,
+            false,
+            options
+          );
+          if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            namespaceMixins = uncovered;
+            namespaceMixinMissCovered = true;
+          }
+        }
+      }
+      if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+        if (options.searchParents === false) {
+          const uncoveredChildNamespaceMixins = this.findMixinsFastForUncoveredCallable(
+            keys[0]!,
+            'child-surface',
+            false,
+            options
+          );
+          if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            namespaceMixins = uncoveredChildNamespaceMixins;
+            namespaceMixinMissCovered = true;
+          }
+        }
+      }
+      if (
+        namespaceMixins === undefined
+        && !namespaceMixinMissCovered
+        && !this._scopeFrame
+      ) {
+        namespaceMixins = this.findMixinsFast(keys[0]!, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          includeRulesets: false
+        });
+      }
+      if (!namespaceMixins || namespaceMixins.length === 0) {
+        if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
+          const namespaceRulesets = this.findCallableRulesetPath([keys[0]!], {
             hasTarget: options.hasTarget,
-            local: options.local,
-            includeRulesets: false
+            local: options.local
           });
-        }
-        if (!namespaceMixins || namespaceMixins.length === 0) {
-          if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
-            const namespaceRulesets = this.findCallableRulesetPath([keys[0]!], {
-              hasTarget: options.hasTarget,
-              local: options.local
-            });
-            if (namespaceRulesets.length !== 0) {
-              return undefined;
-            }
-            const exactRulesetPath = this.findCallableRulesetPath(keys, {
-              hasTarget: options.hasTarget,
-              local: options.local
-            });
-            if (exactRulesetPath.length > 0) {
-              return exactRulesetPath;
-            }
+          if (namespaceRulesets.length !== 0) {
+            return undefined;
           }
-          return undefined;
-        }
-        compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
-        mixinNamespaceFast = this.findCallableDescendants(
-          namespaceMixins,
-          keys,
-          options
-        );
-      }
-      const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
-      if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
-        let compoundUnion = compoundPrefixFast.entries;
-        let compoundUnionOwned = compoundPrefixFast.owned;
-        if (fast !== undefined && fast.length > 0) {
-          if (!compoundUnionOwned) {
-            compoundUnion = [...compoundUnion];
-            compoundUnionOwned = true;
-          }
-          for (let i = 0; i < fast.length; i++) {
-            compoundUnion.push(fast[i]!);
+          const exactRulesetPath = this.findCallableRulesetPath(keys, {
+            hasTarget: options.hasTarget,
+            local: options.local
+          });
+          if (exactRulesetPath.length > 0) {
+            return exactRulesetPath;
           }
         }
-        return compoundUnion;
+        return undefined;
       }
-      if (fast !== undefined) {
-        return fast.length > 0 ? fast : undefined;
+      compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
+      mixinNamespaceFast = this.findCallableDescendants(
+        namespaceMixins,
+        keys,
+        options
+      );
+    }
+    const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+    if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
+      let compoundUnion = compoundPrefixFast.entries;
+      let compoundUnionOwned = compoundPrefixFast.owned;
+      if (fast !== undefined && fast.length > 0) {
+        if (!compoundUnionOwned) {
+          compoundUnion = [...compoundUnion];
+          compoundUnionOwned = true;
+        }
+        for (let i = 0; i < fast.length; i++) {
+          compoundUnion.push(fast[i]!);
+        }
       }
-      return undefined;
+      return compoundUnion;
+    }
+    if (fast !== undefined) {
+      return fast.length > 0 ? fast : undefined;
     }
     return undefined;
   }
