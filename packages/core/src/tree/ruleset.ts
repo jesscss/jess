@@ -84,12 +84,7 @@ function copySelectorForRulesetMetadata(selector: Selector | string): Selector |
 }
 
 function isRulesetSelectorMetadata(value: unknown): value is Selector {
-  return value instanceof Selector
-    || (
-      !!value
-      && typeof value === 'object'
-      && (value as { isSelector?: unknown }).isSelector === true
-    );
+  return value instanceof Selector;
 }
 
 type RulesetOptions = NodeOptions & {
