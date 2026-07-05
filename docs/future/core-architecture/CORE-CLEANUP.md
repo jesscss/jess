@@ -13,8 +13,31 @@ set of focus-trackers and audit docs that had drifted out of sync with the code
 
 Branch: `feature/parseman`. Author/verify convention: build core, run the core suite,
 diff the **stable** failure set (run twice; flaky ±) against the prior baseline — a
-change is real only if the stable set moves. Baseline at last edit: **85 stable
-failures** (mid-migration; see Focus D).
+change is real only if the stable set moves.
+
+## Driver terminal status (this pass)
+
+**Stable failures: 85 → 60, zero regressions.** Every open tracker item is now **CLOSED or
+DEFERRED-with-rationale**. The mechanically-safe correctness + cleanup harvest is complete:
+- **Done:** Focus A (serialization audit; A-node done-by-design, A-flip rejected as make-work);
+  Focus D Theme A selector serialization GREEN + trivia; Focus E E1; D.1 stages 1a/1c/2a; D1-3a
+  (leading-comment hoist → exclusion set); F-rename (all 3 classes, 20 identifiers); Focus F
+  dead-code claims verified false (nothing deletable). Merges: E-lookup, extend-eval, decl-trivia,
+  D1-2 + several inline units.
+- **Deferred (with written rationale):** D1-3b (removeFlag in coalesce is load-bearing for lookup +
+  re-coalesce — render-only exclusion proven insufficient by the gate, reverted; needs merge-engine
+  rework); E2/E3 (monolithic "wrapper is scope identity" scope rework); D.1 1b (no consumer until
+  language conversion), 2b/stage-4 (dynamic per-instance visibility, pair together); Focus B loops +
+  R3, Focus C perf (no failing-test signal — perf/architecture, not correctness); Focus A Ruleset
+  source-direct (perf eligibility); F-consolidate (legibility polish, no correctness impact); D-eval
+  diffs (coupled to E2/E3).
+
+**The residual 60 stable failures are traced to the deferred deep work** — dominated by E2/E3
+scope-identity (~16+), the D1-3b-blocked merge-chain/lookup coupling, and eval/collapse diffs
+downstream of them. Driving below 60 requires the deferred **monolithic scope-identity rework**, not
+more mechanical units. That is the documented irreducible minimum for the safe drive-to-green loop.
+
+Baseline snapshots below may cite older counts (85 mid-migration); the current stable set is **60**.
 
 ---
 
@@ -40,17 +63,21 @@ writeSyntax` in code; the old row tracker's checkboxes were stale.
   selector) for zero functional change — **rejected as make-work.** The doc comment at node-base:1437-38
   is about `toString`-vs-`toTrimmedString` (it correctly says override `toTrimmedString`) and is NOT stale.
   ~~A-flip~~ — dropped, no action needed.
-- [ ] `Ruleset`: source-direct eligibility + bare-ampersand selector-list header path
-  (interacts with Focus D string-selector work). [HOT: ruleset.ts]
+- [DEFERRED] `Ruleset`: source-direct eligibility + bare-ampersand selector-list header path.
+  **No failing-test signal** — the string-selector header work it interacted with is already GREEN
+  (Focus D Theme A). This is a render-fast-path *eligibility* refinement (perf/legibility), not a
+  correctness gap; it does not move the stable set. Deferred to a dedicated perf/render pass. [HOT: ruleset.ts]
 
 ## Focus B — Binding / single-frame
 
 The single-frame migration largely landed (frame identity stable, mixin wrapper
 removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 
-- [ ] **Loops still COPY per iteration** — `$for`/`$each`/`$while` clone the body each
-  pass instead of re-pointing a covered frame (see `control.ts` TODO). The last
-  structural single-frame gap.
+- [DEFERRED] **Loops still COPY per iteration** — `$for`/`$each`/`$while` clone the body each
+  pass instead of re-pointing a covered frame (see `control.ts` TODO). The last structural
+  single-frame gap. **No failing-test signal** (loops are correct, just not zero-copy); it's a
+  perf/architecture refinement, not a correctness fix, and carries real regression risk (frame
+  re-pointing semantics). Deferred to a dedicated single-frame/perf pass, not the drive-to-green loop.
 - [defer] **`direct-rules-lookup` fallback (R3)** — confined to `$while` and
   dynamic/interpolated/explicit-target names. **Deferred: downstream of Focus E2/E3** — it
   is the same "resolve through the frame the binding actually lives on" problem; fix it as
@@ -69,24 +96,9 @@ of the drive-to-green loop.
 - [defer] `F_STATIC` eval-free static-tree lever (`static-eval-optimizations.md`) — the next
   big perf win, design-stage; explicitly deferred.
 
-## Focus D — strings-not-nodes render migration (NEW; == task #9)
-
-Selectors/names are now bare strings / arrays, but the render+eval paths still call
-node methods on them. This is the single biggest cluster of the current core test
-failures (~44 of 85).
-
-- [x] `Ruleset.needsVisibleSelectorClone` + `writeHeaderSelector` string/array-aware
-  (this session — array branch hoisted above the flag check; bare surface emits via
-  `emitSelectorListLike`).
-- [ ] **~5 remaining `hasFlag`/`writeSyntax`/`valueOf`-on-string crash sites** in the
-  render path — each fix currently clears ~1 test then the next test crashes at the
-  next site; chase the chain.
-- [ ] **`toBeString` assertion failures** — nodes that the migration intends to be
-  bare strings are still Node-wrapped.
-- [ ] **Stale materialization tests** — several `string-backed-nodes` tests assert
-  string→node selector *materialization* that was proven dead and **deleted** this
-  session; these tests test removed behavior and should be updated/removed, not
-  "fixed".
+<!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
+crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
+authoritative Focus D progress section below. -->
 
 ## Focus E — scope / mixin lookup misses (== task #17 tail)
 
@@ -100,7 +112,7 @@ isn't resolving bindings that should exist. **NOT one root cause** — three fam
   config vars live. Fix (callable-scope-frame.ts): body + prebound param-guard frames now
   chain the distinct call-site `parentFrame` when `fallbackScopeFrame` is absent. Cleared 2
   import-style tests. Baseline 66 → **64**.
-- [ ] **E2/E3 — configured/reference import surface not on the callable resolution chain**
+- [DEFERRED] **E2/E3 — configured/reference import surface not on the callable resolution chain**
   (DIAGNOSED, DEFERRED — the bulk of the cluster, ~16+ tests). Detached-ruleset closures,
   child-surface `with` reads, lazy nested mixin-ruleset re-eval, and reference-import members
   (`fromRefProp`, `.z`) resolve through a chain that never contains the configured import
@@ -132,7 +144,7 @@ this goal's scope, overlapping deferred work:
   but left unit fixtures on the dead flat shape (`[0,5,0]`), so `[0]?.end` was `undefined`
   and name-boundary trivia was dropped. Fix = align fixtures to `{start,end}`. Cleared both
   the declaration and at-rule trivia tests. Baseline 68 → 66.
-- [ ] **Eval-output / collapse diffs** — recursive-mixin / merge-chain / extend / nesting-
+- [DEFERRED] **Eval-output / collapse diffs** — recursive-mixin / merge-chain / extend / nesting-
   collapse output differs (e.g. a hoisted `.parent` wrapper ruleset dropped under `@media`);
   eval correctness coupled to Focus E lookup + the deferred F_VISIBLE eval stomps, not render.
 
@@ -195,7 +207,7 @@ the render list?* (merge decided) — no overloaded mutable flag.
      reference emission is driven by `referenceFilteredLocal`. Zero new failures.
      `copySelectorForRulesetMetadata` stays: a shared non-mutating copy for reference-filter
      + `ownSelector`, not the dance. **The render path no longer mutates `F_VISIBLE`.**
-   - [ ] **1b — render-ignoring-visibility walker** (`renderNodeFull`): has **no current
+   - [DEFERRED] **1b — render-ignoring-visibility walker** (`renderNodeFull`): has **no current
      consumer** — the tests were migrated off `fullRender` to plain suppression, so nothing
      needs render-despite-visibility yet. It also couples with the by-type source render
      (stage 2, since a bare `!F_VISIBLE` gate would still block it). Build it when language
@@ -206,7 +218,7 @@ the render list?* (merge decided) — no overloaded mutable flag.
      Gave each a no-op `render()` override and DELETED the base `render()` gate (node-base.ts:1471).
      Also removed 4 DEAD value-type render gates (dimension/bool/combinator/color — never invisible).
      Output-neutral (66→66), tsc unchanged. The common render hot path no longer reads F_VISIBLE.
-   - [ ] **2b — dynamic toString/render gates** (deferred, pairs with stage 4): base `toString()`
+   - [DEFERRED] **2b — dynamic toString/render gates** (deferred, pairs with stage 4): base `toString()`
      gate (node-base:1441) + at-rule.ts:834 + comment.ts:56 + declaration-var render are genuine
      **per-instance dynamic** visibility (line `//` comments, false-guard at-rules, paramVar) — not
      by-type. These need the reference-mode/per-instance mechanism, not a type no-op.
@@ -251,14 +263,16 @@ is NOT dead, it's private. Re-verify true dead-ness (0 callers *including* inter
 deleting anything. The safe, high-value win is the **rename pass**; structural consolidations
 are medium-risk on HOT files and must be gated individually.
 
-- [~] **F-rename** (safest, no semantics) — shorten burmese-python identifiers per concise-naming.
-  - [x] **ruleset.ts + at-rule.ts DONE** (7 renames, output-neutral, stable 60): `unwrapGeneratedReferenceIs`→
-    `unwrapGeneratedIs`, `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`,
-    `filterExtendedTopLevelSelectorItems`→`filterExtendedItems`, `_ownComplexComponentForCompose`→`_ownForCompose`;
-    `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→`serializeAtRule`, `renderBodyRecord`→`renderRecord`.
-  - [ ] **rules.ts renames DEFERRED** — batch with D1-3b so the rename churn and the merge-engine edit land
-    together on the same HOT file (~13 candidates below).
-  Remaining vetted candidates (verify no collision, apply across all call sites):
+- [x] **F-rename DONE** (all 3 classes, output-neutral, stable 60, 2 commits).
+  - ruleset.ts + at-rule.ts (7): `unwrapGeneratedReferenceIs`→`unwrapGeneratedIs`,
+    `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`, `filterExtendedTopLevelSelectorItems`→
+    `filterExtendedItems`, `_ownComplexComponentForCompose`→`_ownForCompose`; `_preludeStartOffset`→
+    `_preludeStart`, `renderSerializedAtRule`→`serializeAtRule`, `renderBodyRecord`→`renderRecord`.
+  - rules.ts (13): `findVisibleExactCallableRulesetPath`→`findCallableRulesetPath`,
+    `frameChainHasExactMixinNamespace`→`hasMixinNamespace`, `findCompoundPrefixCallableRulesetPathFast`→
+    `findCompoundPrefixPath`, `childMixinNamespaceUncertaintyIsLimitedToPrefixes`→`uncertaintyLimitedToPrefixes`,
+    et al. (done standalone once D1-3b deferred — no reason to batch with deferred work).
+  <!-- original vetted candidate list (all applied):
   - Ruleset: `_ownComplexComponentForCompose`→`_ownForCompose`, `filterExtendedTopLevelSelectorItems`→
     `filterExtendedItems`, `unwrapGeneratedReferenceIs`→`unwrapGeneratedIs`,
     `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`.
@@ -267,9 +281,10 @@ are medium-risk on HOT files and must be gated individually.
     `frameChainHasExactMixinNamespace`→`hasMixinNamespace`, `findCompoundPrefixCallableRulesetPathFast`→
     `findCompoundPrefixPath`, `childMixinNamespaceUncertaintyIsLimitedToPrefixes`→`uncertaintyLimitedToPrefixes`,
     et al. (full list in audit output).
-  - AtRule: `_nameSlotEnd`→`_nameEnd`, `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→
-    `serializeAtRule`, `renderBodyRecord`→`renderRecord`.
-  [HOT: rules.ts/ruleset.ts/at-rule.ts — rename-only, but sequence so it doesn't collide with 3b.]
+  - AtRule: `_nameSlotEnd`→`_nameEnd` (deferred — spans at-rule.ts + declaration.ts, ambiguous),
+    `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→`serializeAtRule`,
+    `renderBodyRecord`→`renderRecord`. -->
+
 **Dead-code claims VERIFIED FALSE** (re-checked all callers incl. internal + tests): the audit's
 "dead" list is entirely live — `getRenderFrames`/`getRenderRules` are called by **serialize-helper.ts**
 (render path) + ruleset.ts + 19 tests; `unwrapGeneratedReferenceIs`/`simplifyGeneratedIsSelector`/
@@ -277,16 +292,17 @@ are medium-risk on HOT files and must be gated individually.
 one case test) callers. **Nothing on the audit's dead list is safely deletable** — do NOT delete them.
 F-consolidate is therefore rename + genuine-refactor only, no free deletions.
 
-- [ ] **F-consolidate** (medium risk, verify dead-ness first):
+- [DEFERRED] **F-consolidate** — medium-risk pure refactors with **no correctness impact** (nothing on the
+  audit's dead list is actually deletable, verified above; these are legibility-only merges of near-duplicate
+  private methods). Deferred as low-priority polish behind the correctness work; each must be gated
+  individually and none reduces the stable failure set. Candidates retained for when polish is warranted:
   - Rules CLUSTER-2: unify `collectPublicVariableAssignmentBindingsInto` / `collectPublicChildVariable…` /
     `prepareScopeFrameAssignmentBindings` into one parameterized visitor (~60 lines) — IF truly redundant.
-  - Rules CLUSTER-3: `hasUncoveredVariableAssignmentSurface` + `hasUncoveredChildVariableAssignmentSurface`
-    (~20 lines).
+  - Rules CLUSTER-3: `hasUncoveredVariableAssignmentSurface` + `hasUncoveredChildVariableAssignmentSurface`.
   - AtRule inline-extractors: `createBodyEvalRecord`/`evalBodyPreludeState` into `evalBodyResult`;
-    `renderBodyRecord` into `renderEvaluatedValue`. `getRenderFrames`/`getRenderRules` — verify 0 callers
-    (incl. plugins) before deleting.
-  - Ruleset `_substitute*` ampersand cluster (~400 lines, extend-critical) — HIGHEST risk, defer last;
-    only after the extend pipeline is otherwise green.
+    `renderRecord` into `renderEvaluatedValue`.
+  - Ruleset `_substitute*` ampersand cluster (~400 lines, extend-critical) — HIGHEST risk, only after the
+    extend pipeline is otherwise green.
 
 ---
 
