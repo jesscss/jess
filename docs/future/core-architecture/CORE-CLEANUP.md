@@ -324,29 +324,51 @@ Triage verdict:
   2.4–4% serialize); keep as correctness-hygiene, not a headline perf win. eval's 22% (dynamic) is spread
   across surface-creation + provenance, NOT the collapse frame juggling C1 targets.
 
-### Provenance side-table — cross-cutting allocator (NEW item, characterized)
-Heap profile: native `set` = **58.9%** of sampled allocation. Source: `ensureProv` (`provenance.ts:46`)
-does `PROV.set(node, {})` per source-spanned node (WeakMap entry + `{}` object), and every `sourceSpanOf`/
-`spanStartOf`/`spanEndOf` is a `WeakMap.get`. This is the `501abdb8c` migration (node fields → WeakMap
-side-table) — it freed the node `.state` name for Parséman but moved provenance into per-node WeakMap
-churn + get-indirection on every span read. Options (for a dedicated stage, not now): lazy-alloc prov only
-for nodes that truly carry spans (many are `isSourceFree`/`F_HAS_SPAN=0` already — verify the alloc is
-actually gated on that), or a denser span store (parallel typed arrays keyed by node id) instead of `{}`
-per node. Cross-cutting + risky — own stage, measure first.
+### Provenance side-table — the WeakMap is the SMELL, not a thing to optimize (NEW item)
+Heap profile: native `set` = **58.9%** of sampled allocation. Source: the `PROV` WeakMap in
+`provenance.ts`. `setSourceSpan(this, location)` fires **in the Node constructor** (`node-base.ts:704`) —
+so every spanned node, at parse/construction, does `PROV.set(node, {})` (a WeakMap entry + a `{}`), and
+clone/inherit does another (`node-base.ts:1384`). Every `sourceSpanOf`/`spanStartOf`/`spanEndOf` read is a
+`WeakMap.get`. **The span is ALREADY granted at construction from the parser's `location` arg — it's just
+mis-stored in a side-table instead of on the node.** This is the `501abdb8c` regression: provenance was
+moved off the node (to free the old `.state` name for Parséman) into a WeakMap; the churn + get-indirection
+is the cost. **FIX = put spans back INLINE on the node** (a dedicated field the parser sets at construction;
+`.flags`/Parséman naming is already resolved, so the original name-collision reason is gone). Eliminate the
+`PROV` WeakMap entirely — do not "lazy-alloc" or "denser-store" it; it shouldn't exist. Cross-cutting
+(node-base + provenance.ts + all `*Of` readers) — own stage, gate byte-identical + baseline.
 
 ### Remaining tracker perf items — triage verdicts (explore-all pass)
 - **Focus A — Ruleset source-direct render eligibility:** minor; render fast-path *eligibility* refinement,
   not on the measured hot list. Keep deferred.
-- **Focus B — loops COPY per iteration (`$for`/`$each`/`$while`):** UNMEASURED here — needs a `.jess` loop
-  harness, blocked by the pre-broken `jess-plugin` (TS5096); `.less` can't express jess loops. Reasoned real
-  (body clone/iteration = allocation) but input-dependent. Flag: fix jess-plugin build to measure.
+- **Focus B — loops COPY per iteration (`@for`/`@each`/`@while`):** UNMEASURED but NOT blocked (correction —
+  the earlier "`.less` can't / jess-plugin blocked" claim was wrong). `.scss` expresses these; scss-parser
+  builds the loop nodes and core evaluates them, so the loop-copy cost IS reachable. The CLI just doesn't
+  register `.scss` by default (needs Compiler plugin wiring, same as `.jess`). Reasoned real (per-iteration
+  body clone = allocation). TODO: wire scss render + profile a loop-heavy `.scss` sheet to size it.
 - **Focus D.1 — `F_VISIBLE` per-node reads:** cheap (bitmask `&`); `fullRender` prototype-read already
   deleted. Not a headline; hygiene only.
 
+### Copy/materialization — `createRulesLikeReferenceSurface` (spec'd, #1 dynamic-eval alloc)
+`reference.ts:2591-2637`. Builds a defensive "owned surface" over a Rules-like reference value (independent
+`parent`/`sourceNode` per reference site, per LIVE_BINDING invariant 8) using **reflective
+`Object.getOwnPropertyDescriptors` + `Object.defineProperties` + a shallow `_options` clone** — ~20-30
+descriptor objects PER call, once per mixin-ruleset reference resolve (call sites 2792/2810/2833/2988/3118).
+~921ms / ~8% of dynamic eval self-time.
+- **Lowest-risk fix: cheaper CONSTRUCTION** — replace the reflective descriptor copy with a direct field
+  assignment or a prototype-delegating thin wrapper. Same objects/semantics, far cheaper per call. Do FIRST.
+- **Memoization (agent's FIX A) — CAUTION, do NOT key on `(input, referenceNode)` alone.** The surface's
+  `parent` is the *reference-SITE scope*, which differs when the same reference node resolves in different
+  scopes (recursion / a mixin called from multiple sites). Keying without the resolution scope returns a
+  surface with the WRONG parent → output corruption. Only safe with the scope-identity in the key (agent's
+  FIX C), which is the higher-risk architectural version. Prefer the construction win first; memoize only
+  with scope-keying and heavy gating.
+- Gate: byte-identical on the 1200-mixin dynamic input + the 2-known-fail baseline. Own stage (eval-semantics;
+  overlaps live reference/less work — coordinate). Full agent report in session history.
+
 **Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
-- [PROMOTED ↑] Copy / materialization boundary — `createRulesLikeReferenceSurface`; confirmed #1 dynamic-eval alloc.
-- [NEW] Provenance side-table WeakMap churn — see above; the heap `set` 58.9%.
+- [SPEC'D ↑] Copy / materialization boundary — see above; construction-cost fix first, scope-keyed memo later.
+- [NEW] Provenance side-table WeakMap churn — see above; the heap `set` 58.9%; eliminate the WeakMap (inline spans).
 
 <!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
