@@ -112,14 +112,28 @@ isn't resolving bindings that should exist. **NOT one root cause** — three fam
   config vars live. Fix (callable-scope-frame.ts): body + prebound param-guard frames now
   chain the distinct call-site `parentFrame` when `fallbackScopeFrame` is absent. Cleared 2
   import-style tests. Baseline 66 → **64**.
-- [DEFERRED] **E2/E3 — configured/reference import surface not on the callable resolution chain**
-  (DIAGNOSED, DEFERRED — the bulk of the cluster, ~16+ tests). Detached-ruleset closures,
-  child-surface `with` reads, lazy nested mixin-ruleset re-eval, and reference-import members
-  (`fromRefProp`, `.z`) resolve through a chain that never contains the configured import
-  surface (config lives as live-slots on a *derived* surface). Correct fix = make the
-  configured surface's frame the one on the callable's definition/lexical chain — this is the
-  **monolithic "wrapper is scope identity" scope rework** (see LIVE_BINDING_ARCHITECTURE.md);
-  too big/risky for a single safe wave. Its own multi-step project, not a mechanical unit.
+- **E2/E3 — configured/reference import surface not on the callable resolution chain.** Being
+  chipped by scoped sub-agents in an isolated worktree (proper orchestration), NOT one monolith.
+  - [x] **E2-a — reference-import property/declaration members** (merged cleanup/e-scope-identity,
+    commit 825dc3ec0, 60→59). Root cause traced: property lookup (`findDeclarationLookupWithStrategy`
+    in direct-rules-lookup.ts) walks the static AST parent chain and only checked `startRules`'s OWN
+    fallback frame, never an ancestor's — so a `reference:true` import on the root frame was invisible
+    to property refs (sibling variable `fromRef` resolved but property `fromRefProp` threw). Fix:
+    `PROPERTY_LOOKUP.includeFallbackFrames=true` + capture the closest ancestor scope's fallback entry
+    and descend into it after the primary chain exhausts (precedence preserved). Wire the frame — not a
+    shim. Fixed `import-reference: real hit and miss refs avoid public declaration bridges`.
+  - [ ] **E2-b — reference-import mixin/ruleset callability** (`.z` family, `reference-imported
+    selector-list rulesets remain callable as mixins`). DIFFERENT root cause from E2-a: the callable
+    lookup (`findMixin`, rules.ts ~2259) already walks fallback frames; the miss is in the uncovered-
+    callable coverage branch (`findMixinsFastForUncoveredCallable` / `hasReferenceImportChildSurface`
+    crawl gating). Localized — likely a coverage-flag/crawl-gate fix analogous to E2-a on the callable
+    path. **NEXT SLICE (in flight).**
+  - [DEFERRED] **E3 — lazy/cold namespace-mixin-body ref-imports** (`uncalled … stay cold`, `evaluated
+    namespace mixin bodies expose … descendants`) — genuine eval-ordering/coldness behavior, closest to
+    the true monolithic rework.
+  - [DEFERRED] **E3 — `with`-config child-surface + detached-ruleset closures** — the monolithic core
+    (config lives on a *derived* surface not on the callable's definition/lexical chain); the
+    **"wrapper is scope identity" scope rework** (see LIVE_BINDING_ARCHITECTURE.md). Its own project.
 
 ## Focus D — strings-not-nodes render (progress: 85 → 67 stable, zero regressions)
 
