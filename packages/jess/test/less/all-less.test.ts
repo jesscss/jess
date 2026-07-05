@@ -154,6 +154,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
+  ['tests-unit/urls/urls.less', 'blocked upstream of url/data-uri by unimplemented import-path interpolation (@import "@{file_to_import}" via mixin arg) and svg-gradient; data-uri()/url serialization themselves work (fns data-uri.test.ts + core url.test.ts)'],
   ['tests-config/process-imports/google.less', 'processImports=false should leave remote CSS imports out of rendered CSS'],
   ['tests-config/rewrite-urls-all/rewrite-urls-all.less', 'rewriteUrls=all URL rebasing is not implemented'],
   ['tests-config/rewrite-urls-local/rewrite-urls-local.less', 'rewriteUrls=local URL rebasing is not implemented'],

@@ -46,15 +46,19 @@ export function resolveAssetPath(context: Context, rawPath: string): string | un
   return undefined;
 }
 
-export function readAsset(context: Context, rawPath: string): { path: string; contents: Buffer } {
-  const resolvedPath = resolveAssetPath(context, rawPath);
-  if (!resolvedPath) {
-    throw new Error(`File not found: ${rawPath}`);
+export async function readAsset(context: Context, rawPath: string): Promise<{ contents: Buffer }> {
+  // Prefer the compiler's plugin file manager (search paths, locators) over a
+  // hand-rolled fs walk. Falls back to local base-dir resolution when no plugin
+  // resolver is wired (e.g. a bare Context in a unit test).
+  try {
+    return { contents: await context.readBinary(rawPath) };
+  } catch {
+    const resolvedPath = resolveAssetPath(context, rawPath);
+    if (!resolvedPath) {
+      throw new Error(`File not found: ${rawPath}`);
+    }
+    return { contents: readFileSync(resolvedPath) };
   }
-  return {
-    path: resolvedPath,
-    contents: readFileSync(resolvedPath)
-  };
 }
 
 export function lookupMime(filePath: string): { type: string; ascii: boolean } {

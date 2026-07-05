@@ -5,7 +5,7 @@ import { serializeNodeValue } from '../util/serialize-node.js';
 
 async function readSize(context: any, filePathNode: Node) {
   const rawPath = await serializeNodeValue(filePathNode, context);
-  const { contents } = readAsset(context, rawPath);
+  const { contents } = await readAsset(context, rawPath);
   return getImageDimensions(contents);
 }
 

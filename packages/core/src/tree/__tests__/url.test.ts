@@ -184,6 +184,20 @@ describe('url', () => {
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
   });
 
+  it('serializes an unquoted string url value verbatim', () => {
+    expect(url('image.png').toTrimmedString()).toBe('url(image.png)');
+    expect(url('image.png').render(context)).toBe('url(image.png)');
+  });
+
+  it('serializes a protocol-relative unquoted url without mangling the //', () => {
+    expect(url('//z').toTrimmedString()).toBe('url(//z)');
+    expect(url('//z').render(context)).toBe('url(//z)');
+  });
+
+  it('keeps a quoted url quoted through render', () => {
+    expect(url(quoted('http://x/y', undefined)).render(context)).toBe('url("http://x/y")');
+  });
+
   it('keeps source url values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
