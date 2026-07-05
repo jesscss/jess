@@ -322,8 +322,11 @@ the goal's axes (fewest allocations / least redundant work):
    writer is already !tracksSources for no-sourcemap renders; the cost is the from-0 loop in BOTH branches).
 
 - [ ] **W1 — single-writer serialization** (root cause 1). Highest allocation win. → fewest object creations.
-- [ ] **W2 — incremental `refreshPositions(from)`** (root cause 2). Self-contained, lower-risk; do FIRST
-      (quick measurable A/B), then W1. Both in `print.ts` + `serialize-helper.ts` — sequence, don't parallelize.
+- [x] **W2 — incremental `refreshPositions(from)`** — DONE + merged (b629d5af4, gate clean, byte-identical).
+      `refreshPositions(from=0)` recomputes only `[from..end]`, seeded from position[from-1] (mirrors
+      `restore()`); trims pass `mark`; the flat-buffer seed at line 431 stays full (from=0). **HUGE win, on the
+      integration branch: collapse 1006→291ms (~3.5x), nested 400→226ms (~1.8x).** The single biggest perf
+      result of the whole drive — and it was invisible to the walk-minimization plan (found only by profiling).
 W1/W2 are reprioritized ABOVE C1–C4 (eval is 2.7%; the writer is >70% incl. GC+trims).
 
 ### PROFILE IS BIMODAL (measured both shapes — triage of ALL perf items)
