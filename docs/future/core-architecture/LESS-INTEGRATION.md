@@ -317,6 +317,9 @@ its dialect. TWO SEPARATE diagnostic axes — the trigger flips only the first:
 - Trigger is WHOLE-FILE, so severity resolves POST-parse: collect diagnostics as `{category, span}` during parse,
   pick the severity map once after knowing whether any dialect-trigger fired (a `@use` on line 300 makes a
   strict-violation on line 5 an error). No two-pass parse — just deferred severity assignment.
-- Explicit override escape hatch: config `mode: 'less4' | 'strict'` or a `@-jess strict;` pragma forces it; auto-detect
-  decides only when unspecified.
+- Three ways into strict, all collapsing to the SAME severity map (predictable): (1) AUTO — file uses
+  `@use`/`@compose`/`@-import`; (2) EXPLICIT — `strict: true` in options forces compat OFF unconditionally;
+  (3) pragma `@-jess strict;` (in-file, optional/later). `strict: true` flips strict-violations → ERRORS.
+  Deprecations stay STRONG WARNINGS even under `strict: true` (migration files legitimately keep `@import`);
+  "deprecations-as-errors" would be a SEPARATE sharper knob (e.g. future-version target), not what `strict` means.
 - Still testable: the less.js corpus is pure Less 4.x (no `@use`) → compat → warnings only → matches upstream.
