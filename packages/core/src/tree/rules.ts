@@ -5881,7 +5881,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const lastVisibleByName = new Map<string, DeclOccurrence>();
     const mergedAnchorByName = new Map<string, DeclOccurrence>();
     const accumulatedValueByName = new Map<string, Node>();
-    const processDeclarationOccurrence = (node: Node, ownerRules: Rules): void => {
+    const processDeclarationOccurrence = (node: Node, ownerRules: Rules, inMixinOutput: boolean): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
@@ -5897,6 +5897,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           lastVisibleByName.set(name, { node, ownerRules });
         }
         return;
+      }
+      // A mixin-ruleset output reuses the callee's evaluated declaration node by
+      // identity (thin model): the SAME node is both the callee's own rendered
+      // declaration and the placement copy in this host's output subtree. A merge
+      // occurrence here can be superseded by a later `+:` in the host, and the
+      // coalesce strips F_VISIBLE by node identity — which would also hide the
+      // callee's own declaration. Detach (COW) the shared placement copy into a
+      // distinct instance owned by the output surface before it can be superseded.
+      if (inMixinOutput) {
+        const idx = ownerRules.rules.indexOf(node);
+        if (idx !== -1) {
+          const copy = node.deriveWithParts({ value: node.value });
+          ownerRules.rules[idx] = copy;
+          ownerRules.adopt(copy);
+          node = copy;
+        }
       }
       currentNode = normalizeMergedDeclarationValue(node);
       let currentAccumulatedValue: Node | undefined;
@@ -5959,21 +5975,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         lastVisibleByName.set(name, occurrence);
       }
     };
-    const walkMergedDeclarations = (node: Node, ownerRules: Rules): void => {
+    const walkMergedDeclarations = (node: Node, ownerRules: Rules, inMixinOutput: boolean): void => {
       if (isNode(node, N.Declaration)) {
-        processDeclarationOccurrence(node, ownerRules);
+        processDeclarationOccurrence(node, ownerRules, inMixinOutput);
         return;
       }
-      if (!isNode(node, N.Rules)) {
+      // A nested Ruleset / at-rule is its OWN cascade scope (a distinct selector
+      // block, coalesced by its own eval pass). `Ruleset`'s nodeType carries the
+      // `Rules` bit, so guard against it explicitly — otherwise sibling rulesets
+      // are walked as one merge chain and later `+:` values suppress earlier
+      // selectors. Only descend into inline Rules (mixin outputs, plain groups)
+      // that render into the CURRENT selector scope.
+      if (!isNode(node, N.Rules) || isNode(node, N.Ruleset | N.AtRule)) {
         return;
       }
+      const childInMixinOutput = inMixinOutput || Boolean(node.options.mixinOutputSlot);
       for (let i = 0; i < node.rules.length; i++) {
-        walkMergedDeclarations(node.rules[i]!, node);
+        walkMergedDeclarations(node.rules[i]!, node, childInMixinOutput);
       }
     };
 
     for (const node of rules.rules) {
-      walkMergedDeclarations(node, rules);
+      walkMergedDeclarations(node, rules, Boolean(rules.options.mixinOutputSlot));
     }
   }
 
