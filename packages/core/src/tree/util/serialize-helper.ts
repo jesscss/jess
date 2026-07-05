@@ -467,14 +467,15 @@ function renderHoistedParentHeader(
   options: FinalPrintOptions,
   depth: number
 ): string {
-  const writer = new OutputWriter();
+  const writer = options.writer;
+  const mark = writer.mark();
   writeSelectorLike(parent.selector, {
     ...options,
-    writer,
     collapseNesting: false,
     composedSelectorStack: []
   });
-  const selectorOut = writer.toString();
+  const selectorOut = writer.getSince(mark);
+  writer.restore(mark);
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
@@ -484,15 +485,17 @@ function renderHoistedParentComparableHeader(
   parent: { frame: Ruleset; selector: SelectorLike },
   options: FinalPrintOptions
 ): string {
-  const writer = new OutputWriter();
+  const writer = options.writer;
+  const mark = writer.mark();
   writeSelectorLike(parent.selector, {
     ...options,
-    writer,
     collapseNesting: false,
     composedSelectorStack: []
   });
-  writer.trimEndSince(0);
-  return writer.toString();
+  writer.trimEndSince(mark);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 }
 
 function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
@@ -642,9 +645,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
         continue;
       }
-      const declWriter = new OutputWriter();
-      const declSaved = savePrintState(options, ['writer', 'depth']);
-      options.writer = declWriter;
+      const declWriter = options.writer;
+      const declMark = declWriter.mark();
+      const declSaved = savePrintState(options, ['depth']);
       options.depth = options.depth + 1;
       if (serializeProfileCounters) {
         incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
@@ -652,7 +655,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       withScratchEmittedTrivia(options, () => {
         node.writeSyntax(options);
       });
-      const declOut = declWriter.toString();
+      const declOut = declWriter.getSince(declMark);
+      declWriter.restore(declMark);
       restorePrintState(options, declSaved);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       let seenValues = seenDeclarationsByProp.get(declProp);

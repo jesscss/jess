@@ -17,7 +17,6 @@ import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
-  OutputWriter,
   type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
@@ -611,12 +610,13 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
 }
 
 function writeDetached(options: PrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string {
-  const writer = new OutputWriter();
-  fn(getPrintOptions({
-    ...options,
-    writer
-  }));
-  return writer.toString();
+  const resolved = getPrintOptions(options);
+  const writer = resolved.writer;
+  const mark = writer.mark();
+  fn(resolved);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 }
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
