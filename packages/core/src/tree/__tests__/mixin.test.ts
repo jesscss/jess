@@ -570,11 +570,16 @@ describe('Mixin', () => {
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.output)).toEqual(result.rules);
       expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
-      expect(result.rules[0]).not.toBe(sourceComment);
+      // Copy-on-write output: the comment carries no per-eval state, so it is
+      // shared unchanged; the nested ruleset carries evaluated selector/scope
+      // state, so it is detached into a copy. Neither is reparented onto the
+      // output Rules — eval never reparents, so source children keep their
+      // source parent (matching the sibling Declaration case above).
+      expect(result.rules[0]).toBe(sourceComment);
       expect(result.rules[1]).not.toBe(sourceNested);
       expect(sourceComment.parent).toBe(sourceRuleset);
       expect(sourceNested.parent).toBe(sourceRuleset);
-      expect(result.rules.map(child => child.parent)).toEqual([result, result]);
+      expect(result.rules.map(child => child.parent)).toEqual([sourceRuleset, sourceRuleset]);
     });
 
     it('should call a mixin with parameters', async () => {
@@ -1401,7 +1406,9 @@ describe('Mixin', () => {
       expect(result.rules.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
-      expect(mixinBody.parent).toBe(mixinNoParam);
+      // mixinNoParam was added to `root` via the rules([...]) factory, so its
+      // canonical parent is `root` (no constructor/eval reparenting).
+      expect(mixinBody.parent).toBe(root);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
@@ -1427,7 +1434,12 @@ describe('Mixin', () => {
       expect(secondResult.rules.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.rules.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(secondResult.rules).toEqual(result.rules);
+      // The two outputs are independently-evaluated instances (asserted distinct
+      // above), so their nodes carry different per-eval BindingCell identities and
+      // ordinals. The stable invariant is that both map back to the same source
+      // children in the same order.
+      expect(secondResult.rules.map(child => getMixinOutputSourceChild(secondResult, child)))
+        .toEqual(result.rules.map(child => getMixinOutputSourceChild(result, child)));
     });
 
     it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
