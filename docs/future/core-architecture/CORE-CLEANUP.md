@@ -306,9 +306,27 @@ the goal's axes (fewest allocations / least redundant work):
       (quick measurable A/B), then W1. Both in `print.ts` + `serialize-helper.ts` — sequence, don't parallelize.
 W1/W2 are reprioritized ABOVE C1–C4 (eval is 2.7%; the writer is >70% incl. GC+trims).
 
-**Still-deferred perf backlog (unchanged, no failing-test signal):**
+### PROFILE IS BIMODAL (measured both shapes — triage of ALL perf items)
+The cost profile flips with input shape, so no single item is "the" hotspot:
+- **Static / output-heavy** (4500-ruleset synth): OutputWriter dominates — `refreshPositions` 51%, GC 14%,
+  trims 7%; eval 2.7%, serialize-compose 4%. → **W1/W2** own this.
+- **Dynamic / eval-heavy** (1200 mixin-call+operation blocks): **parse 30%, eval 22%, GC 17%, serialize 2.4%**.
+  Top eval self-time: **`createRulesLikeReferenceSurface` 921ms** (= the deferred "copy/materialization
+  boundary" item — REAL, not dead), **`ensureProv` 711ms** (provenance alloc — appears in BOTH profiles).
+Triage verdict:
+- **W1/W2 (writer)** — biggest win for static/large-output. IN PROGRESS.
+- **[promote] copy/materialization** (`createRulesLikeReferenceSurface`) — the #1 eval-side allocation on
+  dynamic input; the deferred item below is confirmed real. Its own stage after W1/W2.
+- **[new] provenance `ensureProv`** — cross-cutting alloc in both shapes (~488–711ms). Characterize separately.
+- **parse reify (`_r_*`) 30% on dynamic** — amortized in parse-once usage; a parser-perf concern
+  (`parser-parse-speed-plan.md`), not core-render. Note, don't chase here.
+- **C1–C4 walk/collapse-state** — small on both shapes (the specific collapse bookkeeping is a slice of the
+  2.4–4% serialize); keep as correctness-hygiene, not a headline perf win. eval's 22% (dynamic) is spread
+  across surface-creation + provenance, NOT the collapse frame juggling C1 targets.
+
+**Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
-- [defer] Copy / materialization boundary — owned-public-resolve still copies.
+- [PROMOTED ↑] Copy / materialization boundary — `createRulesLikeReferenceSurface`; confirmed #1 dynamic-eval alloc.
 
 <!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
