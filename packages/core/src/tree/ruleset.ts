@@ -586,6 +586,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]!;
       if (typeof part === 'string') {
+        // String combinators (' ', '>', …) separate the complex's compound
+        // groups — preserve them. Dropping them collapsed `&.foo-xxx .yyy` into
+        // `&.foo-xxx.yyy`, losing the descendant relationship on `&` substitution.
+        newParts.push(part);
         continue;
       }
       if (isNode(part, N.Ampersand)) {
