@@ -122,12 +122,22 @@ isn't resolving bindings that should exist. **NOT one root cause** — three fam
     `PROPERTY_LOOKUP.includeFallbackFrames=true` + capture the closest ancestor scope's fallback entry
     and descend into it after the primary chain exhausts (precedence preserved). Wire the frame — not a
     shim. Fixed `import-reference: real hit and miss refs avoid public declaration bridges`.
-  - [ ] **E2-b — reference-import mixin/ruleset callability** (`.z` family, `reference-imported
-    selector-list rulesets remain callable as mixins`). DIFFERENT root cause from E2-a: the callable
-    lookup (`findMixin`, rules.ts ~2259) already walks fallback frames; the miss is in the uncovered-
-    callable coverage branch (`findMixinsFastForUncoveredCallable` / `hasReferenceImportChildSurface`
-    crawl gating). Localized — likely a coverage-flag/crawl-gate fix analogous to E2-a on the callable
-    path. **NEXT SLICE (in flight).**
+  - [x] **E2-b — reference-import callable LOOKUP** (merged cleanup/e-refimport-mixin, commit 35f8087a5,
+    59→59 metric-neutral, zero-regression). Traced root cause: the single-key `findMixin` retry-walk
+    (rules.ts ~3376) only chained the *calling* frame's direct fallback, never the fallback chains hanging
+    off ancestor retry frames — so a ref-imported callable on an ancestor's `fallbackFrame` was invisible
+    once the primary chain exhausted. Fix: queue every passed frame's fallback head and drain after the
+    primary chain (precedence preserved). **Completes the 3-way ancestor-fallback consistency** (property
+    [E2-a] / namespace-walk / single-key callable). Merged as a principled latent-lookup-bug fix + E3
+    prerequisite; it is metric-neutral because the target test `reference-imported selector-list rulesets
+    remain callable as mixins` now fails DOWNSTREAM on E3 selector-rebasing, not lookup.
+  - [ ] **E2-b-render / E3-rebasing — selector-list mixin application** (`.z` target test, now lookup-green).
+    After `.z` resolves, its `color:red` rebases to `.b` correctly, but nested content does NOT: `.c`
+    renders `.z .c` (keeps imported parent instead of rebasing to call site), and the selector-list leaks
+    into `:is(.only-with-visible, .z):hover` (not clipped to the matched key, `&` not rebased). The prior
+    agent reproduced it with a LOCAL (non-imported) copy — so it's **application-side selector rebasing of
+    a selector-list ruleset applied as a mixin**, independent of imports. Concrete + describable → attempt
+    as a slice. **NEXT (in flight).**
   - [DEFERRED] **E3 — lazy/cold namespace-mixin-body ref-imports** (`uncalled … stay cold`, `evaluated
     namespace mixin bodies expose … descendants`) — genuine eval-ordering/coldness behavior, closest to
     the true monolithic rework.
