@@ -65,7 +65,7 @@ describe('Extend Selector Tests', () => {
     it('derives selector-list extend output without reparenting the matched source item', () => {
       const target = sellist([el('.a'), el('.b')]);
       const sourceItem = target.value[0]!;
-      expect(typeof sourceItem !== 'string' && sourceItem.isSelector).toBe(true);
+      expect(typeof sourceItem !== 'string' && isNode(sourceItem, N.Selector)).toBe(true);
       const result = extendSelector(target, el('.a'), el('.c'), false);
 
       expect(result.valueOf()).toBe('.a,.b,.c');

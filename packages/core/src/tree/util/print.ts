@@ -674,7 +674,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks[first] = '';
       first++;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimHorizontalStartSince(mark: number): void {
@@ -695,7 +695,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks[first] = '';
       first++;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimHorizontalEndSince(mark: number): void {
@@ -717,7 +717,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks.length = last;
       last--;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimEndSince(mark: number): void {
@@ -739,7 +739,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks.length = last;
       last--;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   /** Restore writer state to a given mark, discarding appended chunks and segments */
@@ -773,29 +773,38 @@ export class OutputWriter implements OutputWriter {
     this.clearQueuedSpacer();
   }
 
-  private refreshPositions(): void {
+  private refreshPositions(from = 0): void {
+    const start = from > 0 ? from : 0;
+    const seedIndex = start - 1;
     if (!this.tracksSources) {
-      this._posLength.length = 0;
-      this._length = 0;
-      for (let i = 0; i < this.chunks.length; i++) {
+      this._length = seedIndex >= 0 ? (this._posLength[seedIndex] ?? 0) : 0;
+      for (let i = start; i < this.chunks.length; i++) {
         this._length += this.chunks[i]!.length;
         this._posLength[i] = this._length;
       }
-      this._posLine.length = 0;
-      this._posColumn.length = 0;
-      this._posSegments.length = 0;
-      this._line = 0;
-      this._column = 0;
-      this._segments.length = 0;
+      this._posLength.length = this.chunks.length;
+      // The tracksSources arrays are unused in this branch, but keep
+      // line/column/segments in their reset state to match prior behavior.
+      if (start === 0) {
+        this._posLine.length = 0;
+        this._posColumn.length = 0;
+        this._posSegments.length = 0;
+        this._line = 0;
+        this._column = 0;
+        this._segments.length = 0;
+      }
       return;
     }
-    this._posLine.length = 0;
-    this._posColumn.length = 0;
-    this._posLength.length = 0;
-    this._length = 0;
-    this._line = 0;
-    this._column = 0;
-    for (let i = 0; i < this.chunks.length; i++) {
+    if (seedIndex >= 0 && seedIndex < this._posLine.length) {
+      this._length = this._posLength[seedIndex] ?? 0;
+      this._line = this._posLine[seedIndex] ?? 0;
+      this._column = this._posColumn[seedIndex] ?? 0;
+    } else {
+      this._length = 0;
+      this._line = 0;
+      this._column = 0;
+    }
+    for (let i = start; i < this.chunks.length; i++) {
       const text = this.chunks[i]!;
       const segmentCount = this._posSegments[i] ?? this._segments.length;
       this._length += text.length;
@@ -819,6 +828,9 @@ export class OutputWriter implements OutputWriter {
       this._posSegments[i] = segmentCount;
       this._posLength[i] = this._length;
     }
+    this._posLine.length = this.chunks.length;
+    this._posColumn.length = this.chunks.length;
+    this._posLength.length = this.chunks.length;
     this._posSegments.length = this.chunks.length;
     const lastIndex = this.chunks.length - 1;
     this._segments.length = lastIndex >= 0 ? (this._posSegments[lastIndex] ?? 0) : 0;

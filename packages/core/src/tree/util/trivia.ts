@@ -217,28 +217,63 @@ export function emitCommentTriviaAfterNode(
 }
 
 /**
- * Like `emitCommentTriviaAfterNode`, but keyed by an explicit source offset —
- * for a string component (e.g. a bare declaration/at-rule name) that carries no
- * own node span; the offset comes from the owning node's `fieldSpans` slot.
+ * The comment-bearing trivia runs that fall entirely within `[spanStart,
+ * spanEnd]`, in source order and de-duplicated by run identity.
+ *
+ * Used by serializers that no longer carry per-sub-component source spans:
+ * normalized selectors/declarations/at-rules drop authored inter-component
+ * whitespace, but COMMENTS in those gaps must still round-trip. A node keeps
+ * its own `[spanStart, spanEnd]`; this scans the map for comment runs inside
+ * that node and hands them back so the writer can place them at the gaps
+ * (one per gap, in order). Pure-whitespace runs are ignored.
  */
-export function emitCommentTriviaAfterOffset(
+export function commentRunsWithinSpan(
   trivia: TriviaMap | undefined,
-  offset: number | undefined,
+  spanStart: number | undefined,
+  spanEnd: number | undefined
+): Trivia[] {
+  if (!trivia || spanStart === undefined || spanEnd === undefined) {
+    return [];
+  }
+  const seen = new Set<Trivia>();
+  const runs: Trivia[] = [];
+  for (const [, run] of trivia.entries('after')) {
+    if (
+      run.hasComment
+      && run.start >= spanStart
+      && run.end <= spanEnd
+      && !seen.has(run)
+    ) {
+      seen.add(run);
+      runs.push(run);
+    }
+  }
+  runs.sort((a, b) => a.start - b.start);
+  return runs;
+}
+
+/**
+ * Emit the next unconsumed comment run from a `commentRunsWithinSpan` list at
+ * cursor position `index`, marking it consumed in `options.emittedTrivia`.
+ * Returns the new cursor (advanced past the emitted run, or unchanged when the
+ * run was already emitted / none remained).
+ */
+export function emitNextSpanComment(
+  runs: readonly Trivia[],
+  index: number,
   options: TriviaEmitOptions
-): void {
-  if (!trivia || offset === undefined) {
-    return;
+): number {
+  if (index >= runs.length) {
+    return index;
   }
-  const run = trivia.lookup(offset, 'after');
-  if (!run?.hasComment) {
-    return;
-  }
+  const run = runs[index]!;
   const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
   if (emittedTrivia.has(run)) {
-    return;
+    return index + 1;
   }
   emittedTrivia.add(run);
   emitTriviaTokens(run, options);
+  return index + 1;
 }
 
 export function consumeTrivia(
@@ -280,27 +315,6 @@ export function consumeTriviaBetween(
   const prevEnd = spanEndOf(prev);
   const nextStart = spanStartOf(next);
   if (!trivia || prevEnd === undefined || nextStart === undefined || prevEnd > nextStart) {
-    return undefined;
-  }
-  const run = trivia.lookup(nextStart, 'before');
-  if (!run || run.start < prevEnd || run.end > nextStart) {
-    return undefined;
-  }
-  return consumeTrivia(trivia, nextStart, 'before', options);
-}
-
-/**
- * Like consumeTriviaBetween, but for string components that carry no own node
- * location — the surrounding offsets come from the owning node's valueSpans.
- */
-export function consumeTriviaBetweenOffsets(
-  trivia: TriviaMap | undefined,
-  prevEnd: number | undefined,
-  nextStart: number | undefined,
-  options: TriviaEmitOptions
-): Trivia | undefined {
-  if (!trivia || prevEnd === undefined || nextStart === undefined
-    || prevEnd < 0 || nextStart < 0 || prevEnd > nextStart) {
     return undefined;
   }
   const run = trivia.lookup(nextStart, 'before');

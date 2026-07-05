@@ -195,6 +195,160 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 
 ## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
 
+### ⛔ STANDING PERF RULE — FAST V8 OBJECTS ONLY (hard-coded, non-negotiable)
+Hot-path objects MUST be **fixed-shape / monomorphic** so V8 keeps them in fast mode (stable hidden class +
+inline caches). **BANNED on hot paths:** `Object.getOwnPropertyDescriptors`/`defineProperties`/`defineProperty`,
+`Reflect.deleteProperty` / `delete obj.x`, `Object.assign` into a varying-shape object, `Object.create(proto)`
++ dynamic property attach, `setPrototypeOf`/`__proto__` mutation. These push objects into dictionary mode and
+kill property-access ICs. Build objects with a **constructor or a literal that sets ALL fields up front, in a
+fixed order** (add `= undefined` fields rather than attaching later). Precedent is already IN this codebase:
+`node-base.ts:533/577/696` note the old per-instance `Object.defineProperties` was **~38x slower** and was
+replaced with constructor-set fields — reference.ts never got the memo.
+**Inventory of current violations (fix on the perf drive):**
+- **`reference.ts:2594-2616` (`createRulesLikeReferenceSurface`) — HOT, per mixin-ruleset reference.** The
+  `getOwnPropertyDescriptors` → `Reflect.deleteProperty`×3 → `defineProperties`×2 dance. **NUKE IT** — replace
+  with a proper fixed-shape surface (a small class with declared fields, or the node's own clone constructor
+  + 3 field sets). This IS the #1 dynamic-eval alloc (~921ms). Follow the node-base 38x pattern.
+- `render-buffer.ts:290/297` — `Object.getOwnPropertyDescriptor(node,'render')` on the render path; verify
+  frequency, replace with a direct property/flag check.
+- `define-function.ts:338/628/759/775` — `defineProperties`/`assign` at FUNCTION-REGISTRATION time (cold, once
+  per definition); lower priority but convert for consistency.
+- `logger.ts:13` — cold, ignore.
+
+### ⛔ STANDING PERF RULE — SLIM NODES (minimize node shape; performance is the driver)
+Every field on a node is paid per-instance: memory + construction cost + a slot on the hidden class + a bigger
+object to GC. Keep node shapes **AS LEAN AS POSSIBLE.** Prefer **type specialization** — distinct lean node
+classes each carrying ONLY the fields it needs (e.g. the approved `DeclarationReference`/`VariableReference`/
+`PropertyReference`/`MixinReference` split) — over one fat `Node` with dozens of optional/`undefined` fields.
+Rare/optional data belongs on the specialized subclass that needs it, **NOT a side-table (WeakMap)** — the
+provenance regression proved side-tables are strictly worse (alloc + indirection). When adding a field, first
+ask: can it be a **flag bit** (boolean → `F_*`), be **derived** (computed, not stored), live on a **subtype**,
+or be **dropped**? **DX may change** — getter names, method surface, even public API — as long as the new DX is
+**sane** (need not match or beat the old; just not bad). **Performance is the driver.** Track field-count per
+node class as a metric; slim the fat ones. Shared behavior across lean types goes in **util functions**, not a
+fat base class. **Specializing a node into subtypes? Judge it on BOTH axes: (1) DISPATCH — measure (V8 often
+already inlines monomorphic method calls, so this is frequently a wash — the reference split proved it); (2)
+SHAPE-SLIM — build the per-kind FIELD MATRIX (kind × field → used?) and DROP unused fields per subtype. Keeping
+the union shape on all subtypes is a NAIVE split that captures at most dispatch and forfeits the slim payoff.
+If the matrix shows all fields used by all kinds, the split is pointless for slim.**
+
+**SLIM targets (audit → `packages/core/perf/SLIM_NODES_AUDIT.md`; heap census ~39k nodes/7.1MB; Ruleset 12000×
+is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` slims all 12000 Rulesets):**
+1. **`Rules`: 11 eager booleans → one `rulesFlags` int** (12000× × 11) — the dominant lever. `has*ChildSurface`
+   (rules.ts:905-911) + `_bodyEvaluated`(934)/`_hasExtends`(948)/`_hasReferenceImports`(954)/
+   `_registrationPrepared`(956). A Rules-only int (NOT base `flags` — that'd widen the read for leaf nodes);
+   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **DONE — merged c40fea6; own-key 42->32 (x12k Rulesets).**
+2. **Drop dead `Selector.isSelector=true`** (12000×, selector.ts:82) — always true, redundant with `instanceof`.
+   Cleanest effort:payoff. **DONE — merged f3a3c02; byte-identical; own-key 12->11.**
+3. **`Node.frozen` → base `flags` bit** (~39k×, node-base.ts:562) — flags has headroom (14/31 used). Getter keeps
+   name. **DONE — merged afcffa0e; own-key 42->41 (x39k nodes).**
+4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
+5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
+   MEASURE first, don't downgrade the lookup fast path for slot count.
+### Provenance fields — FOLLOW-UP: span granularity is a DESIGN DECISION (not a simple subtype move)
+provenance-inline (LANDED, killed the WeakMap) took the easy path — all 6 fields onto `Node` base. But the
+right fix depends on **how granular span tracking needs to be**, and the consumer evidence is decisive:
+- `_spanStart`/`_spanEnd` (node-level) — used by BOTH sourcemaps (`sourceSegmentFor`, print.ts:197 uses ONLY
+  `spanStart`) and trivia. **KEEP on base** (cheap, universal).
+- `_cstState`/`_cstChildren` — **DEAD** (0 readers/writers/callers of `cstStateOf`/`cstChildrenOf` anywhere) →
+  **DELETE fields + accessors.** They're the vestige of a CST-side edit representation that doesn't exist yet.
+- `_fieldSpans`/`_valueSpans` (SUB-NODE granularity) — consumed by **exactly one thing: authored-trivia
+  round-trip serialization** (selector-*/at-rule/declaration read them to emit whitespace BETWEEN sub-components
+  and look up the `TriviaMap` by offset). Sourcemaps DON'T use them; plain CSS render DOESN'T use them; no edit
+  mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
+  - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
+    round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
+  - **DECIDED (owner): DROP `fieldSpans`/`valueSpans` (per-sub-component arrays), REPLACE readers with a
+    node-level COMMENT check.** Edit/round-trip works on the CST/reparse, so eval nodes need only node-level
+    `spanStart`/`spanEnd`. **Owner refinement:** normalized selectors don't need per-component whitespace — the
+    only authored fidelity that matters is COMMENTS. The `TriviaMap` already tracks `hasComment` per run by
+    offset (`types/index.ts:22`), so the `valueSpansOf`/`fieldSpansOf` readers collapse to one **"is there a
+    comment in this node's `[spanStart,spanEnd]`?"** range check against the TriviaMap — PRESERVES comment
+    fidelity while dropping the arrays (strictly better than losing fidelity). **The trivia source is PARSÉMAN's**
+    — the grammar's `trivia()` combinator (`css-parser/grammar.ts:25` `rw = trivia(ws|comment)`) logs offsets →
+    `buildLazyTriviaMap(triviaLog, src)` (`builders.ts:253`) → `opts.trivia` (lazy whole-doc `TriviaMap`).
+    `valueSpans`/`fieldSpans` were DUPLICATING position data the parser already holds; the comment-range check
+    queries `opts.trivia` (via `sourceRoot._treeContext.opts.trivia`), not per-node arrays. **Plan:** delete the 2 fields +
+    accessors; replace core readers (selector-complex/compound/pseudo, declaration, at-rule) with the node-range
+    comment check; make parser WRITERS (`css-parser` set*) no-op stubs FIRST (cross-package — parser owners
+    remove the calls later; don't reach into the parser). Gate: normal render byte-identical; round-trip keeps
+    COMMENTS, drops sub-node whitespace (accepted). Sourcemaps: node-level only (CSS maps at rule/decl level).
+    SEQUENCE after dead-CST (DONE, cc9888e2) — same worktree/agent.
+  - **`hasComment` API note (owner-flagged; for the parser/`Trivia` owners):** `makeTrivia` (trivia.ts:52)
+    computes `hasComment` as *any non-whitespace char in the run* — it's really `hasNonWhitespace`, equal to
+    "comment" only via the grammar invariant `trivia = ws|comment`. It's a lossy single bit: can't distinguish
+    `//` (line, no-collapse) from `/* */` (block, inline-safe) or any FUTURE erasable-but-meaningful trivia
+    kind, and would silently mislabel non-comment trivia as a comment. Fine for OUR comment-in-range use; but
+    the honest primitive is `hasNonWhitespace`, and finer needs should classify via the run's exposed
+    `src`+`[start,end]` (or add a `kind`/segments). **⚠ CORRECTION (I earlier mis-attributed this to Parséman —
+    it is a JESS-CORE issue).** Parséman ALREADY does the right thing: its `_triviaLog` carries labeled trivia
+    KINDS (position + kind, no boolean). The over-fit is entirely jess-side: the parser packages'
+    `buildLazyTriviaMap` DISCARDS Parséman's kinds, reduces to `(start,end)` offset pairs, and re-derives the
+    lossy `hasComment` via core's `makeTrivia`. **Fix belongs in jess core** — rename to `hasNonWhitespace`, or
+    (better) stop discarding Parséman's kinds in `buildLazyTriviaMap` and carry them through. Parséman needs
+    NOTHING. (Being fixed in jess core by another agent — rename + honest doc, core green.)
+  - **Span storage (V8, answered):** keep `_spanStart`/`_spanEnd` as TWO inline number fields (SMIs → 0 alloc,
+    inline in the hidden-class slot) — NOT a `{start,end}` object (1 heap alloc per spanned node, reintroduces
+    the WeakMap cost) and NOT a packed single number (two offsets exceed V8's 31-bit SMI range → boxes to a
+    HeapNumber, worse than 2 SMIs). Prefer `spanStartOf`/`spanEndOf` (inline reads) over `sourceSpanOf` (rebuilds
+    `{start,end}` on read) on hot paths.
+
+### DRY + dead-code sweep (NEW standing task — requested)
+Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
+helper families that accreted — see archived SURFACE_PRIMITIVES_AUDIT), and (2) **dead-code removal** (like
+`cstState`/`cstChildren` above: exported accessors with zero callers, unused fields, dead branches). Read-only
+AUDIT first → ranked target list, then gated removal stages. Ties into SLIM (fewer fields) + FAST-V8 + DRY.
+
+### Micro-opt considered — inline `hasFlag`/`addFlag`/`removeFlag` to raw bitwise: REJECTED (verify-only)
+Converting `hasFlag(F_X)` → raw `(this.flags & F_X) !== 0` at call sites is NOT worth it: these are tiny
+MONOMORPHIC methods on `Node.prototype`, which V8 inlines to the bitwise op already. `hasFlag` has NEVER
+appeared in any CPU profile (refreshPositions/ensureProv/surface/etc. dominated) — strong evidence it's already
+free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ONLY if a profile shows it hot.
+
+### LANDED LOG (integration branch `perf/walk-collapse` — bench after each merge)
+- **W2** incremental `refreshPositions` — collapse **1006→~290ms (~3.5x)**, nested **400→~225ms (~1.8x)**. HEADLINE (found only by profiling; walk-plan would've missed it).
+- **ref-nuke** `createRulesLikeReferenceSurface` reflective→same-prototype field-copy — that fn **164→21.5ms (~8x)**; dynamic end-to-end ~170→~157ms (modest, GC-absorbed); byte-identical. FAST-V8 compliance; kills dictionary-mode surface objects. (Contract: surface must NOT clone/inherit/reparent — field-copy is the only valid shape; tests lock it.)
+- **FAST-V8 sweep** `render-buffer` descriptor-check→`hasOwnProperty` walk (oracle-proven equivalent) + `define-function:338` fixed-shape; byte-identical. Hygiene. (`Object.assign` record-merge sites kept — genuine dynamic user keys.)
+- **provenance-inline** killed the `PROV` WeakMap → 6 inline `= undefined` span fields on `Node`. **Heap alloc 40.5→23.6MB (~42% less; the `set` 59% hotspot GONE); dynamic parse 54.8→46.3ms (~15%).** byte-identical (133 fixtures). The provenance smell is fully resolved (parser-set inline fields, no side-table).
+- **W1 single-writer** 6/18 fragment sites → shared writer + `restore`; **−25.7% OutputWriter allocations (~10,800 fewer)**; byte-identical. The other 12 sites are INTENTIONALLY separate — `CountingWriter` tests enforce keeping fragments off the caller writer (architectural contract, not laziness) — so "one writer per serialization" is partial-by-design.
+- Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
+- **span-array drop** — `_fieldSpans`/`_valueSpans` deleted; readers → node-span comment scan against Parséman's
+  `opts.trivia` (comments round-trip verbatim, sub-node whitespace normalizes); base `Node` down to
+  `_spanStart`/`_spanEnd` only (6 provenance fields → **2**). byte-identical normal render; own-key 29→27.
+- **core-residuals** — `canReuseLeaf` field-read→flag (FAST-V8); other residuals deferred (complexity > sub-1%).
+**Integrated now: collapse ~215ms, nested ~180ms, dynamic ~130ms** (from 1006 / 400 / ~170 → **4.7x / 2.2x / 1.3x**).
+
+### ✅ CORE-RENDER DRIVE COMPLETE (at its floor)
+Every core-render hotspot is crushed (re-profile-confirmed): serialize 51%→1.3%, GC 14-17%→~9%, the eval-alloc
+#1/#2 gone, node shapes slimmed (Rules 42→32, base Node 6→2 prov fields, every node −3 to −5 slots), static
+bench **1006→215ms (4.7x)**. Suite GREEN (core 2697/0). The ONLY remaining hotspot ≥3% is PARSE (~42%), a
+different subsystem — evidence-backed ideas handed to the parser owners in `parser-thing/notes/PERF_IDEAS.md`.
+Residuals are long-tail (agent found one clean micro-opt, deferred the rest). **`perf/walk-collapse` now needs
+to land forward into the trunk** (feature/parseman → dev → feature/less-v5-alpha-readiness) — team's call.
+(Note: the branch inherits the trunk's in-flight less-parser failures via the feature/parseman merge — 5 tests,
+all structural/less-integration WIP, verified NOT caused by any perf change; they resolve upstream.)
+
+### RE-PROFILE (current state — the core-render hotspots are CRUSHED; PARSE is now #1)
+Fresh CPU+heap profile of the integrated branch (`perf/reprofile`, `REPROFILE.md`). What moved: serialize
+`refreshPositions` **51%→1.3%** (W2); GC **14-17%→~9%** (provenance+SLIM); eval `createRulesLikeReferenceSurface`
++ `ensureProv` (old #1/#2, 921/711ms) **GONE from the top 18**; PROV `set`/WeakMap **0 heap frames**. New ranking
+(both shapes): **PARSE ~42% · eval ~18-22% · GC ~9% · serialize 2-7%**. New #1 = the Parséman selector-reify
+chain (`_r_InterpolatedSelector` less-parser/grammar.ts:249, `_r_value` css-parser/grammar.ts:152,
+`_r_ComplexSelector`/`_r_CompoundSelector`/`_r_LessAmpersand`) + `buildNode` (CST→AST) + node ctors.
+**STRATEGIC INFLECTION:** the core eval/serialize/allocation drive has largely achieved its goal. What's left:
+- **Parse (#1, ~42%)** — a DIFFERENT subsystem (parser packages, `parser-parse-speed-plan.md`), owned by the
+  parser/less-integration teams, and **benchmark-INFLATED** (these benches re-parse every render; real-world is
+  parse-once/render-many). **MEASURE a parse-once/render-many split before investing** — even discounted it's the
+  biggest bucket, but the honest real-world share is much smaller. Cross-package: coordinate, don't reach in.
+- **Residual GC (~9%)** — mostly parse alloc + one hot `clone @ index.js:1539` (9.4% render-path heap) +
+  render-buffer `add` array growth. Small standalone looks.
+- **eval long tail** — `isNode` (already bitmask-fast; target call-count) + `_assignDocumentOrderDepthFirst`
+  (index.js:12064, 1.3%) + `inherit`. Small focused wins; the diffuse "other" ~22% has no single ≥1.5% hotspot.
+
+**DIRECTION (owner):** keep driving CORE cleanup (the small measured residuals: hot clone, render-buffer add,
+document-order; plus the in-flight span-array drop + DRY). PARSE stays out of core — instead an agent MEASURES
+parser hotspots and writes evidence-backed IDEAS into the parseman repo (`/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`), for the parser owners. No parser code changes from here.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
@@ -227,31 +381,208 @@ reading a hoisted nested at-rule's captured `AtRule.frames` to recover its sever
 That flag only existed to name "`F_STATIC` but eval still holds collapse state." Remove the state from
 eval and `F_STATIC` alone is the eval-free signal; the scan collapses to a bare flag read.
 
-**Principle: walk count scales with CONTENT, not a fixed pipeline.** static+extend-free → parse→serialize
-(1 walk); +references adds eval; +extends adds the apply pass. The signals already exist (`F_STATIC`, root
-`_hasExtends` at `rules.ts:948`) — they're undercut by collapse-state-in-eval and the redundant scan.
+**North star: the FEWEST tree traversals for byte-identical output.** Not "1/2/3 walks by feature" —
+that's just the 4-pass pipeline reworded. End state = ONE driving traversal (the render/serialize walk):
+- **eval** is PULLED lazily by the render walk (memoized) when it hits a dynamic value — not a pre-pass.
+- **registration** is a CONSTRUCTION-TIME name index on each `Rules` node — not a runtime pass.
+- **extend** (the only non-local op) is gathered DURING the render walk; because a later `:extend` can
+  rewrite an earlier target, composed selectors are BUFFERED and extend is applied at walk-end as an
+  O(#extends) pass over that buffered set — one accepted concession, still not a second tree traversal.
+Net: one traversal + O(#extends) apply; work ∝ the dependency DAG, not passes×nodes. Static+extend-free
+is the trivial floor: the walk emits directly, pulling nothing. Signals already exist (`F_STATIC`, root
+`_hasExtends` at `rules.ts:948`); they're undercut by collapse-state-in-eval and the redundant scan.
 
-### Staged plan (each gated zero-regression + re-baselined: build core, run collapse+extend suites twice, byte-diff benchmark)
-- [ ] **C0 — dead-walk removal (safe, no eval semantics).**
-  - Verify `Ruleset.frames` (1902) unread → delete the write + the two clone-copies.
-  - Reorder `processExtends`: bail on `!context.extends.length` BEFORE the `preExtendSelectors` snapshot loop.
-- [ ] **C1 — collapse state out of eval.** Recover the hoisted-at-rule header from serialize-walk structure
-  (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`; move
-  `hoistToRoot` to a serialize-time decision. End: eval owns zero collapse state.
-- [ ] **C2 — trust the flag.** Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
-  `_hasExtends` gate); delete `isPlainStaticRuleLeaf` / the `.every()`. Static+extend-free subtrees skip
+**Measurable targets.** T1: a fully static, extend-free sheet renders with ZERO eval pass
+(`canRenderStaticRulesDirectly` → bare `F_STATIC`; delete `isPlainStaticRuleLeaf`/`.every()`; no evalNode
+on static subtrees). T2: eval-phase time for a collapse render ≈ eval-phase time for the same tree nested
+(the measured ~2.6x gap — 931 vs 357ms, 4500-ruleset synth — is ENTIRELY serialize-side; partly legit
+since flattening costs more, so target is "gap is all serialize," not "gap shrinks"). T3: extend gathered
+in-walk + applied at walk-end over buffered selectors; no separate discovery traversal. T4: eval owns zero
+serialization/collapse state; no new visibility/eval-free flag.
+
+### Staged plan (each gated: build core, stable set unchanged, output byte-identical, A/B the collapse bench)
+- [x] **C0 — dead-walk removal (DONE, 844046cbd, zero regression).** Deleted the dead `Ruleset.frames`
+  write (confirmed no serialize reader; `getHoistedParent` is AtRule-only). Reordered `processExtends` to
+  bail on `!context.extends.length` BEFORE the snapshot loop. Dead-weight, not a hotspot (A/B within noise).
+- [ ] **C1 — collapse state out of eval.** → T2, T4. Recover the hoisted-at-rule header from serialize-walk
+  structure (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`;
+  move `hoistToRoot` to a serialize-time decision. PREREQ: CPU-profile the gap (eval vs serialize) first.
+- [ ] **C2 — trust the flag.** → T1. Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
+  `_hasExtends` gate); delete `isPlainStaticRuleLeaf`/`.every()`. Static+extend-free subtrees skip
   registration-prep + eval → straight to serialize.
-- [ ] **C3 — extend as a single pre-serialize pass (the restructure).** Make extend a distinct phase between
-  eval and serialize, consuming a registry fed by (a) eval for DYNAMIC subtrees and (b) cheap selector-only
-  registration for STATIC subtrees (no eval). Lets static-but-extend-relevant subtrees skip eval while still
-  contributing extend targets. **Highest risk** (extend scoping; semantic overlap with the parallel less
-  repros) — gate hardest, do last.
+- [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
+  via a cheap construction-time signal, not eval. Overlaps at-rule work landing on feature/parseman — gate hardest.
+- [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
+  so DYNAMIC content is also single-traversal; registration → construction-time index. Largest scope, last.
 
-Guardrail: stable core set stays green; output byte-identical; A/B every stage against the benchmark.
+### Orchestration (perf work is branch-managed, not in-place on feature/parseman)
+- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Integrate ONLY from the
+  shared trunk; other agents' work (less-integration) reaches you when THEY merge to trunk — never rebase
+  directly onto another agent's branch. Trunk divergence is the integrator's merge to resolve (rebase forward).
+  - **⚠ TRUNK IS MIGRATING (coordinate):** the shared trunk is moving `feature/parseman` → `dev` (jess-dev
+    worktree) → `feature/less-v5-alpha-readiness` (the `~/git/oss/jess` main checkout) as another agent drives
+    all Less tests to green. So the latest fixes will land on `dev`, then `feature/less-v5-alpha-readiness`.
+    **Merge source follows the trunk:** keep merging `feature/parseman` until it's absorbed into `dev`, then
+    merge from `dev` / `feature/less-v5-alpha-readiness`. And eventually **`perf/walk-collapse` itself lands
+    into wherever the trunk settles** (team decides) — it's a large pile of perf wins to integrate forward.
+- Per stage: scope a precise spec → spawn an agent in its own worktree
+  (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
+  spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
+  into `perf/walk-collapse`, re-runs the full gate, keeps only if green, updates this checkbox + bench #.
+- **Fan out WIDE** across disjoint files — try many ideas concurrently. **Reuse worktrees:** when an agent
+  finishes an idea, have it COMMIT then hand it the NEXT idea in the SAME worktree (SendMessage — keeps
+  file/build context) instead of spawning fresh. Agents coordinate through the orchestrator: report → gate →
+  merge → next idea. Serialize only the MERGES (avoid concurrent edits to the same file across branches).
+- **Agent setup block:** `pnpm install` (~10s; NOT `pnpm -r build`). Correctness gate (no build; vitest on
+  src): `cd packages/core && pnpm test` — baseline = GREEN (0 fails, ~2697 passed; feature/parseman fixed the old 2 mixin fails). A ~2ms sibling-collapsed timing flake may appear — re-run; clean = that set + byte-identical.
+  Timing (optional): build `@jesscss/core styles-config @jesscss/fns jess` only (NOT `-r`: jess-plugin is
+  pre-broken TS5096). jess default output is NESTED (collapseNesting opt-in); benchmark.less does NOT
+  render on jess yet — never gate on it.
 
-**Still-deferred perf backlog (unchanged, no failing-test signal):**
+**Status:** `perf/walk-collapse` = C0 (844046cbd) → merge feature/parseman (c2f6aea01, gate green) →
+ruleset.ts lint debt fixed (1636a6e6b) → orchestrated goal (84319c476, 46674b2ad). Bench harness at
+`packages/core/perf/collapse-bench.mjs`.
+
+### PROFILE PIVOT (measured — the walk plan targets the wrong 2.7%)
+CPU profile of a 4500-ruleset collapse render (`packages/core/perf/collapse-bench.mjs collapse`, self-time):
+- **`OutputWriter.refreshPositions` (print.ts:776) — ~51%** (single biggest cost)
+- **GC — ~14%** (allocation churn), **`trimEndSince` — ~7%**
+- **eval — 2.7%**, serialize composition — ~4%
+So C1–C4 (walk-count / eval) chase 2.7%. The prize is the **OutputWriter**. Two root causes, both on
+the goal's axes (fewest allocations / least redundant work):
+1. **Per-fragment `new OutputWriter()` churn — should be ONE writer per full tree serialization.**
+   Fragment sites (`serialize-helper.ts` x6, `interpolated.ts` x3, `rules.ts:614`, `declaration.ts:383/1059`)
+   allocate a writer + position arrays per node, then getSince/toString and discard. The writer already
+   exposes `mark`/`getSince`/`restore`/`replaceSince` — thread the single render writer and use mark/restore
+   instead of allocating. Keep a separate/pooled writer ONLY where fragment rendering is genuinely reentrant
+   (interleaved with the main buffer); never per-call allocation. (The `new OutputWriter(false, parts)`
+   flat-parts sites in call/query-condition/sequence are a different buffer kind — classify, don't blindly convert.)
+2. **`refreshPositions` rebuilds from index 0 on every trim/append** (both tracks-sources branches).
+   A `trimEndSince(mark)` only invalidates `_posLength`/line/col from `mark` onward — make it incremental
+   `refreshPositions(from)`, seeded from position[from-1], not a full-buffer rebuild. NOTE: `tracksSources`
+   is NOT the lever — probed flipping the default to false → no speedup + 26 regressions (top-level render
+   writer is already !tracksSources for no-sourcemap renders; the cost is the from-0 loop in BOTH branches).
+
+- [ ] **W1 — single-writer serialization** (root cause 1). Highest allocation win. → fewest object creations.
+- [x] **W2 — incremental `refreshPositions(from)`** — DONE + merged (b629d5af4, gate clean, byte-identical).
+      `refreshPositions(from=0)` recomputes only `[from..end]`, seeded from position[from-1] (mirrors
+      `restore()`); trims pass `mark`; the flat-buffer seed at line 431 stays full (from=0). **HUGE win, on the
+      integration branch: collapse 1006→291ms (~3.5x), nested 400→226ms (~1.8x).** The single biggest perf
+      result of the whole drive — and it was invisible to the walk-minimization plan (found only by profiling).
+W1/W2 are reprioritized ABOVE C1–C4 (eval is 2.7%; the writer is >70% incl. GC+trims).
+
+### PROFILE IS BIMODAL (measured both shapes — triage of ALL perf items)
+The cost profile flips with input shape, so no single item is "the" hotspot:
+- **Static / output-heavy** (4500-ruleset synth): OutputWriter dominates — `refreshPositions` 51%, GC 14%,
+  trims 7%; eval 2.7%, serialize-compose 4%. → **W1/W2** own this.
+- **Dynamic / eval-heavy** (1200 mixin-call+operation blocks): **parse 30%, eval 22%, GC 17%, serialize 2.4%**.
+  Top eval self-time: **`createRulesLikeReferenceSurface` 921ms** (= the deferred "copy/materialization
+  boundary" item — REAL, not dead), **`ensureProv` 711ms** (provenance alloc — appears in BOTH profiles).
+Triage verdict:
+- **W1/W2 (writer)** — biggest win for static/large-output. IN PROGRESS.
+- **[promote] copy/materialization** (`createRulesLikeReferenceSurface`) — the #1 eval-side allocation on
+  dynamic input; the deferred item below is confirmed real. Its own stage after W1/W2.
+- **[new] provenance `ensureProv`** — cross-cutting alloc in both shapes (~488–711ms). Characterize separately.
+- **parse reify (`_r_*`) 30% on dynamic** — amortized in parse-once usage; a parser-perf concern
+  (`parser-parse-speed-plan.md`), not core-render. Note, don't chase here.
+- **C1–C4 walk/collapse-state** — small on both shapes (the specific collapse bookkeeping is a slice of the
+  2.4–4% serialize); keep as correctness-hygiene, not a headline perf win. eval's 22% (dynamic) is spread
+  across surface-creation + provenance, NOT the collapse frame juggling C1 targets.
+
+### Provenance side-table — the WeakMap is the SMELL, not a thing to optimize (NEW item)
+Heap profile: native `set` = **58.9%** of sampled allocation. Source: the `PROV` WeakMap in
+`provenance.ts`. `setSourceSpan(this, location)` fires **in the Node constructor** (`node-base.ts:704`) —
+so every spanned node, at parse/construction, does `PROV.set(node, {})` (a WeakMap entry + a `{}`), and
+clone/inherit does another (`node-base.ts:1384`). Every `sourceSpanOf`/`spanStartOf`/`spanEndOf` read is a
+`WeakMap.get`. **The span is ALREADY granted at construction from the parser's `location` arg — it's just
+mis-stored in a side-table instead of on the node.** This is the `501abdb8c` regression: provenance was
+moved off the node (to free the old `.state` name for Parséman) into a WeakMap; the churn + get-indirection
+is the cost. **FIX = put spans back INLINE on the node** (a dedicated field the parser sets at construction;
+`.flags`/Parséman naming is already resolved, so the original name-collision reason is gone). The parser sets
+the field ONCE at construction (parser-level, where it belongs); clone/inherit then copies it as part of the
+node's **fixed shape** — a monomorphic field copy, NOT the current eval-time `setSourceSpan` WeakMap write
+(`node-base.ts:1384`). Eliminate the `PROV` WeakMap entirely — do not "lazy-alloc" or "denser-store" it; it
+shouldn't exist. No WeakMap, no eval churn, fast V8 object. Cross-cutting (node-base + provenance.ts + all
+`*Of` readers) — own stage, gate byte-identical + baseline.
+
+### Remaining tracker perf items — triage verdicts (explore-all pass)
+- **Focus A — Ruleset source-direct render eligibility:** minor; render fast-path *eligibility* refinement,
+  not on the measured hot list. Keep deferred.
+- **Focus B — loops COPY per iteration — MEASURED, CLOSED (not worth a refactor).** `@each` over a list var
+  (4000 rulesets, identical output): loop wall-time ≈ flat (0.97x — loop parses the body once, so it's even
+  marginally faster). Per-iteration body copy + frame setup (`createForIterationSurface` +
+  `copyOwnedWithReusableLeaves` + extra `clone`/`inherit` + `resolveEntries`) = **~1–1.5% of CPU** total; the
+  copy already uses reusable leaves (not naive deep clone). Verdict: NOT worth a zero-copy loop refactor at
+  current priorities — the real loop-render cost was serialization (`refreshPositions`), already fixed by W2.
+  scss-render path (for reruns): `compiler.renderString(src, { extension: '.scss', config: { compile: {
+  plugins: [scssPluginInstance] } } })`. **Bugs found in passing (out of perf scope, flag separately):**
+  (1) `jess-plugin-scss/src/index.ts:87` passes `'stylesheet'` but the grammar root is `'Stylesheet'` →
+  scss plugin can't parse anything as-is; (2) range `@for` (`range.ts:87` evalNode stub + no `Range` case in
+  `control.ts:335 resolveEntries`) doesn't iterate; `@each` over an inline comma list mis-routes.
+- **Focus D.1 — `F_VISIBLE` per-node reads:** cheap (bitmask `&`); `fullRender` prototype-read already
+  deleted. Not a headline; hygiene only.
+
+### Copy/materialization — `createRulesLikeReferenceSurface` (spec'd, #1 dynamic-eval alloc)
+`reference.ts:2591-2637`. Builds a defensive "owned surface" over a Rules-like reference value (independent
+`parent`/`sourceNode` per reference site, per LIVE_BINDING invariant 8) using **reflective
+`Object.getOwnPropertyDescriptors` + `Object.defineProperties` + a shallow `_options` clone** — ~20-30
+descriptor objects PER call, once per mixin-ruleset reference resolve (call sites 2792/2810/2833/2988/3118).
+~921ms / ~8% of dynamic eval self-time.
+- **MANDATORY (per the FAST V8 OBJECTS rule above): nuke the reflective descriptor dance.** Replace the
+  `getOwnPropertyDescriptors`/`Reflect.deleteProperty`/`defineProperties` with a fixed-shape surface — a small
+  class with declared fields, or the node's own clone-constructor + the 3 explicit field sets (sourceNode,
+  parent, index). Follow the `node-base.ts` 38x precedent. This is THE fix, not an option; do it FIRST.
+- **Memoization (agent's FIX A) — CAUTION, do NOT key on `(input, referenceNode)` alone.** The surface's
+  `parent` is the *reference-SITE scope*, which differs when the same reference node resolves in different
+  scopes (recursion / a mixin called from multiple sites). Keying without the resolution scope returns a
+  surface with the WRONG parent → output corruption. Only safe with the scope-identity in the key (agent's
+  FIX C), which is the higher-risk architectural version. Prefer the construction win first; memoize only
+  with scope-keying and heavy gating.
+- Gate: byte-identical on the 1200-mixin dynamic input + the 2-known-fail baseline. Own stage (eval-semantics;
+  overlaps live reference/less work — coordinate). Full agent report in session history.
+
+### Reference-node specialization (idea — captured; tradeoff-nuanced)
+Should the one generic `Reference` split into distinct node types so eval dispatches by TYPE (monomorphic
+per class) instead of branching per-reference on `options.type`/flags? Separate two axes:
+- **Axis 1 — syntactic kind (known at PARSE): real win.** `.mixin()` call / `@var` / property-lookup /
+  `@import (reference)` member are syntactically distinct — the parser already knows which. Distinct node
+  classes → each gets a **monomorphic `evalNode`** (stable hidden class, hot ICs) instead of one mega-method
+  over a varying `options` bag. This is the "repeated mixin call / import-style lookup" case: the call site
+  stays monomorphic instead of megamorphic. Aligns with the FAST-V8 rule (fixed shape per type).
+- **Axis 2 — resolution outcome (only known at EVAL): NOT reducible by node typing.** Same `@x` → color /
+  number / ruleset / import-member by runtime scope. Distinct types can't remove that branch (one node, many
+  outcomes). BUT the hot `options.type === 'mixin-ruleset'` surface branch CAN become **polymorphic dispatch
+  on the resolved value's class** (`resolvedValue.createReferenceSurface()` on Rules/Collection/Mixin) — kills
+  the string compare, V8-monomorphic-per-type, without knowing the outcome at parse.
+- **Tradeoffs.** Pro: monomorphic hot paths, fixed shapes, less megamorphic `options` access; a second angle
+  on the `createRulesLikeReferenceSurface` hotspot. Con: more node classes; parser classifies at construction
+  (trivial in Less/scss — syntax disambiguates); shared lookup engine must factor into helpers so the split
+  doesn't duplicate resolution; a few refs ambiguous until eval (rare). Irreducible: outcome-polymorphism
+  stays; a per-node resolved-kind cache hits the same scope-variance caveat as memoization (scope-key or corrupt).
+- **TESTED → NO WIN → REVERTED.** Built the full 7-kind split (`VariableReference`/`DeclarationReference`/
+  `PropertyReference`/`IndexReference`/`MixinReference`/`MixinRulesetReference`/`FunctionReference`) via a
+  `createReference` factory routing on `options.type` — CORE-ONLY (no grammar changes; subclasses keep
+  `type==='Reference'` + `N.Reference` bit so all checks pass), byte-identical, all tests green. **But measured
+  PERF-NEUTRAL** (152.8 vs 153.0ms dynamic, same-dir A/B) — reference DISPATCH isn't the hotspot (the bench is
+  GC + provenance dominated; V8 already handles the polymorphic Reference eval fine). Also: NO field slimmed —
+  all 7 kinds kept the same 5 fields. **⚠ METHODOLOGY MISS (owner-flagged): that "no slim" was a NAIVE split,
+  not proof.** Behavior IS kind-gated (`options.type === 'variable'|'index'|'mixin-ruleset'` route different
+  paths, reference.ts:766/2383/2796), so the fields ARE differential — `target` only for index/property refs,
+  `role` for declaration refs, `_rulesLookupHandle` for mixin-ruleset. The agent kept the UNION shape instead of
+  building the per-kind field matrix + dropping unused fields per subtype. Rule going forward (added to SLIM):
+  a specialization must be judged on BOTH axes — DISPATCH (measure) AND SHAPE-SLIM (per-kind field-usage matrix
+  → drop unused fields per subtype). Per "perf is the driver," REVERTED (net diff = base). Backup:
+  `perf/ref-specialization-regressed-backup`. **Lesson: this was a hypothesis measurement disproved** — only
+  re-land if a reference-dispatch-heavy workload ever proves it hot. The eval engine is already free-functions
+  threading `lookupType`, so the split bought only monomorphic dispatch, which wasn't the bottleneck.
+- **⚠ BENCHMARKING HAZARD (found here):** A/B across DIFFERENT worktree directories gave a ~25ms bias on
+  BYTE-IDENTICAL bundles (filesystem/path effects). ALWAYS A/B in the SAME directory (toggle via
+  `git revert`/`cherry-pick` + rebuild in place), never base-worktree-vs-feature-worktree.
+
+**Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
-- [defer] Copy / materialization boundary — owned-public-resolve still copies.
+- [SPEC'D ↑] Copy / materialization boundary — see above; construction-cost fix first, scope-keyed memo later.
+- [NEW] Provenance side-table WeakMap churn — see above; the heap `set` 58.9%; eliminate the WeakMap (inline spans).
 
 <!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
@@ -540,6 +871,22 @@ F-consolidate is therefore rename + genuine-refactor only, no free deletions.
 `parser-parse-speed-plan.md`, `whitespace-token-proposal.md`,
 `trivia-offset-inference-model.md`, and the `packages/core/src/tree/util/**/EXTEND_*`
 set.
+
+### Friendly recursion detection (roadmap — belongs with less-integration/trunk, NOT the perf branch)
+Owner-requested: integrate Less-4.x-style friendly errors for runaway loops/recursion. **Current jess state
+(scoped):** `$while` caps at `MAX_WHILE_ITERATIONS=10000` (control.ts:36, friendly throw); `$for`/`$each` are
+bounded by range/list; mixin recursion has machinery — `context.callStack` (call.ts:758), the
+`inStack`/guarded-recursion candidate filter, and `CallMap` (recursion-helper.ts, SAME-args self-call
+detection → the caught `'Recursive mixin call'` at callable-candidate-output.ts:40). **GAP:** no call-STACK
+DEPTH cap, so DIFFERENT-args unbounded recursion (`.m(@n){ .m(@n-1) }`, no base case) hits a raw JS stack
+overflow (`RangeError`) instead of a friendly message. **Less-4.x ref:** `mixin-call.js:161-180` marks a
+candidate `isRecursive` by frame-stack membership (`mixin === context.frames[f].originalRuleset`) — recursion
+detection via the frame stack, which jess's callStack/inStack already mirrors. **Work:** (a) a call-depth
+safety cap → friendly "recursion limit exceeded" instead of RangeError; (b) polish the existing
+`'Recursive mixin call'` + `$while` messages; (c) make Less's recursion-error tests pass. **WHY IT'S NOT the
+perf branch:** eval-semantics that OVERLAPS the active less-integration work + Less's own test suite drives it
+(the less-integration team will hit these tests getting Less green). Do it on the trunk/less-integration side
+(dev / feature/less-v5-alpha-readiness), not perf/walk-collapse.
 
 ## Archived sources
 

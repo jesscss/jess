@@ -161,7 +161,7 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
 type ExtendSelectorSurface = Selector | SelectorListItem[];
 
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value && typeof value === 'object' && 'isSelector' in value && value.isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function expectSelector(value: unknown): Selector {

@@ -59,13 +59,11 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
 
 function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
   const printOpts = getPrintOptions(options);
-  const writer = new OutputWriter();
+  const writer = printOpts.writer;
   const mark = writer.mark();
-  writeReplacementSyntax(replacement, {
-    ...printOpts,
-    writer
-  }, preserveQuotedSyntax);
+  writeReplacementSyntax(replacement, printOpts, preserveQuotedSyntax);
   const result = writer.getSince(mark);
+  writer.restore(mark);
   return isNode(replacement, N.Reference) ? result : result.trim();
 }
 

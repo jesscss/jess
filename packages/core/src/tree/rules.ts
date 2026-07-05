@@ -17,7 +17,6 @@ import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
-  OutputWriter,
   type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
@@ -611,12 +610,13 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
 }
 
 function writeDetached(options: PrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string {
-  const writer = new OutputWriter();
-  fn(getPrintOptions({
-    ...options,
-    writer
-  }));
-  return writer.toString();
+  const resolved = getPrintOptions(options);
+  const writer = resolved.writer;
+  const mark = writer.mark();
+  fn(resolved);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 }
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
@@ -890,6 +890,31 @@ function setAssignmentTargetBinding(
  *   (Declaration background-color: white;)
  * ]
  */
+// Rules-only packed flags (see `rulesFlags`). A Rules-private int, distinct from
+// the base `flags` bitmask that every leaf node shares — keeps leaf reads narrow.
+const R_HAS_DIRECT_CHILD_RULE_SURFACE = 1 << 0;
+const R_HAS_DECLARATION_CHILD_SURFACE = 1 << 1;
+const R_HAS_VAR_DECLARATION_CHILD_SURFACE = 1 << 2;
+const R_HAS_REFERENCE_IMPORT_CHILD_SURFACE = 1 << 3;
+const R_HAS_EXACT_CALLABLE_CHILD_SURFACE = 1 << 4;
+const R_HAS_EXACT_MIXIN_CHILD_SURFACE = 1 << 5;
+const R_HAS_EXACT_RULESET_CHILD_SURFACE = 1 << 6;
+const R_BODY_EVALUATED = 1 << 7;
+const R_HAS_EXTENDS = 1 << 8;
+const R_HAS_REFERENCE_IMPORTS = 1 << 9;
+const R_REGISTRATION_PREPARED = 1 << 10;
+/** Bits reset by `resetDerivedState` (child-derived surfaces + extend/reference-import). */
+const R_DERIVED_STATE_MASK =
+  R_HAS_DIRECT_CHILD_RULE_SURFACE
+  | R_HAS_DECLARATION_CHILD_SURFACE
+  | R_HAS_VAR_DECLARATION_CHILD_SURFACE
+  | R_HAS_REFERENCE_IMPORT_CHILD_SURFACE
+  | R_HAS_EXACT_CALLABLE_CHILD_SURFACE
+  | R_HAS_EXACT_MIXIN_CHILD_SURFACE
+  | R_HAS_EXACT_RULESET_CHILD_SURFACE
+  | R_HAS_EXTENDS
+  | R_HAS_REFERENCE_IMPORTS;
+
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   static override childKeys: readonly string[] = ['rules'] as const;
 
@@ -902,13 +927,98 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
-  hasDirectChildRuleSurface = false;
-  hasDeclarationChildSurface = false;
-  hasVarDeclarationChildSurface = false;
-  hasReferenceImportChildSurface = false;
-  hasExactCallableChildSurface = false;
-  hasExactMixinChildSurface = false;
-  hasExactRulesetChildSurface = false;
+  /**
+   * Rules-only packed boolean state (11 formerly-per-instance booleans). One int
+   * slot instead of eleven `false`/`false`… fields keeps the Rules shape narrow
+   * (~12k instances). Backed by the `R_*` bits above; each boolean keeps its
+   * original name via a get/set pair so all call sites are unchanged.
+   */
+  private rulesFlags = 0;
+
+  get hasDirectChildRuleSurface(): boolean {
+    return (this.rulesFlags & R_HAS_DIRECT_CHILD_RULE_SURFACE) !== 0;
+  }
+
+  set hasDirectChildRuleSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_DIRECT_CHILD_RULE_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_DIRECT_CHILD_RULE_SURFACE;
+    }
+  }
+
+  get hasDeclarationChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_DECLARATION_CHILD_SURFACE) !== 0;
+  }
+
+  set hasDeclarationChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_DECLARATION_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_DECLARATION_CHILD_SURFACE;
+    }
+  }
+
+  get hasVarDeclarationChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_VAR_DECLARATION_CHILD_SURFACE) !== 0;
+  }
+
+  set hasVarDeclarationChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_VAR_DECLARATION_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_VAR_DECLARATION_CHILD_SURFACE;
+    }
+  }
+
+  get hasReferenceImportChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_REFERENCE_IMPORT_CHILD_SURFACE) !== 0;
+  }
+
+  set hasReferenceImportChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_REFERENCE_IMPORT_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_REFERENCE_IMPORT_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactCallableChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_CALLABLE_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactCallableChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_CALLABLE_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_CALLABLE_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactMixinChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_MIXIN_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactMixinChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_MIXIN_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_MIXIN_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactRulesetChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_RULESET_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactRulesetChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_RULESET_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_RULESET_CHILD_SURFACE;
+    }
+  }
+
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
   directDeclarationLookupCache: Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
@@ -931,7 +1041,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * lazy child-frame construction in callable-descendant lookup: an uncalled body
    * must stay cold (broad crawl), an evaluated body may expose its frame.
    */
-  _bodyEvaluated = false;
+  get _bodyEvaluated(): boolean {
+    return (this.rulesFlags & R_BODY_EVALUATED) !== 0;
+  }
+
+  set _bodyEvaluated(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_BODY_EVALUATED;
+    } else {
+      this.rulesFlags &= ~R_BODY_EVALUATED;
+    }
+  }
+
   /**
    * Closure environment for a detached ruleset: the per-call eval surface where
    * this detached ruleset was WRITTEN (captured at arg-binding). A detached
@@ -945,15 +1066,46 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
    */
-  _hasExtends = false;
+  get _hasExtends(): boolean {
+    return (this.rulesFlags & R_HAS_EXTENDS) !== 0;
+  }
+
+  set _hasExtends(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXTENDS;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXTENDS;
+    }
+  }
+
   /**
    * Track whether this Rules subtree contains any reference-import render
    * surfaces (`referenceMode` wrappers or reference/dedupe style imports).
    * Used to skip serializer-time reference-origin work when impossible.
    */
-  _hasReferenceImports = false;
+  get _hasReferenceImports(): boolean {
+    return (this.rulesFlags & R_HAS_REFERENCE_IMPORTS) !== 0;
+  }
 
-  private _registrationPrepared = false;
+  set _hasReferenceImports(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_REFERENCE_IMPORTS;
+    } else {
+      this.rulesFlags &= ~R_HAS_REFERENCE_IMPORTS;
+    }
+  }
+
+  private get _registrationPrepared(): boolean {
+    return (this.rulesFlags & R_REGISTRATION_PREPARED) !== 0;
+  }
+
+  private set _registrationPrepared(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_REGISTRATION_PREPARED;
+    } else {
+      this.rulesFlags &= ~R_REGISTRATION_PREPARED;
+    }
+  }
 
   /**
    * Rules clones still need to preserve function bindings so visitor/plugin
@@ -1036,21 +1188,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.callableLookupCache = undefined;
     this.directChildRuleEntries = undefined;
     this.directDeclarationChildEntries = undefined;
-    this.hasDirectChildRuleSurface = false;
-    this.hasDeclarationChildSurface = false;
-    this.hasVarDeclarationChildSurface = false;
-    this.hasReferenceImportChildSurface = false;
-    this.hasExactCallableChildSurface = false;
-    this.hasExactMixinChildSurface = false;
-    this.hasExactRulesetChildSurface = false;
+    // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
+    // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
+    // untouched, matching the prior per-field resets (which did not reset those).
+    this.rulesFlags &= ~R_DERIVED_STATE_MASK;
     this.directDeclarationsByName = undefined;
     this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
     this.declarationLookupVersion = 0;
     this.declarationLookupVersionsByName = undefined;
     this.callableLookupVersion = 0;
-    this._hasExtends = false;
-    this._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the

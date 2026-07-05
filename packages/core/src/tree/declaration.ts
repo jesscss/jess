@@ -1,4 +1,4 @@
-import { setSourceSpan, spanStartOf, sourceSpanOf, fieldSpansOf } from './util/provenance.js';
+import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   F_ALLOW_ROOT,
@@ -20,6 +20,7 @@ import type { Call } from './call.js';
 import {
   OutputWriter,
   type PrintOptions,
+  type FinalPrintOptions,
   getPrintOptions,
   prepareRenderPrintState,
   savePrintState,
@@ -31,7 +32,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -384,12 +385,12 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  const writer = new OutputWriter();
-  node.writeSyntax({
-    ...printOptions,
-    writer
-  });
-  return writer.toString();
+  const writer = printOptions.writer;
+  const mark = writer.mark();
+  node.writeSyntax(printOptions);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 };
 
 const isHorizontalWhitespace = (code: number): boolean => (
@@ -553,11 +554,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   important: DeclarationValue['important'];
 
   /**
-   * Source end offset of the (string) `name` slot, from `fieldSpans` (name = slot 0).
-   * Used to place name-boundary trivia when the name is a bare string.
+   * Emit a comment authored between a bare-string `name` and the `:`/assign.
+   *
+   * The string name carries no own span, so instead of a per-slot offset we scan
+   * this declaration's own span for comment runs that fall before the value
+   * begins — authored whitespace there is normalized away, only the comment
+   * round-trips.
    */
-  private _nameSlotEnd(): number | undefined {
-    return fieldSpansOf(this)?.[0]?.end;
+  private _emitNameBoundaryComment(options: FinalPrintOptions): void {
+    if (!options.trivia) {
+      return;
+    }
+    const value = this.value;
+    const valueStart = value instanceof Node ? spanStartOf(value) : undefined;
+    const runs = commentRunsWithinSpan(options.trivia, spanStartOf(this), valueStart);
+    if (runs.length > 0) {
+      emitNextSpanComment(runs, 0, options);
+    }
   }
 
   constructor(
@@ -953,9 +966,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (name instanceof Node) {
       emitCommentTriviaAfterNode(name, options);
     } else {
-      // String name: after-name trivia (between the name and the `:`/assign) is
-      // keyed at the name slot's end offset from fieldSpans (name = childKey 0).
-      emitCommentTriviaAfterOffset(options.trivia, this._nameSlotEnd(), options);
+      // String name: emit any comment authored between the name and the
+      // `:`/assign (scanned from this declaration's span, before the value).
+      this._emitNameBoundaryComment(options);
     }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.

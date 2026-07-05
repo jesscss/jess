@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
@@ -40,7 +40,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership } from './util/cloning.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
@@ -67,7 +67,6 @@ export type RulesetValue = {
   selectorBeforeExtend?: Selector | Nil;
 };
 
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
@@ -85,12 +84,7 @@ function copySelectorForRulesetMetadata(selector: Selector | string): Selector |
 }
 
 function isRulesetSelectorMetadata(value: unknown): value is Selector {
-  return value instanceof Selector
-    || (
-      !!value
-      && typeof value === 'object'
-      && (value as { isSelector?: unknown }).isSelector === true
-    );
+  return value instanceof Selector;
 }
 
 type RulesetOptions = NodeOptions & {
@@ -192,15 +186,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private ownRules(value: RulesetValue['rules']): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyOwnedWithReusableLeaves(value[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected ruleset rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(value, copyOwnedWithReusableLeaves);
   }
 
   /**
@@ -1507,7 +1493,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // but renders rerooted to the call site — the namespace ancestor is not in
     // `inFrames`, so composing against it would wrongly prepend it.
     const structuralParentActive = structuralParent
-      && Boolean(options.inFrames?.includes(this.parent!.parent as never));
+      && Boolean(options.inFrames?.some(f => f === this.parent!.parent));
     const composeParent: Selector | null = parentComposed ?? (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       structuralParentActive && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
@@ -1719,7 +1705,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return this._prepareRulesetRegistration(context) as MaybePromise<this>;
     }
     return this;
@@ -1907,11 +1892,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       context.frames.length = pushedFrameCount;
       pushedFrames = false;
     };
-    const collapseNesting = context.opts.output?.collapseNesting;
-    // Store frames snapshot for collapseNesting serialization
-    if (collapseNesting) {
-      this.frames = [...context.frames];
-    }
 
     const finishEvaluatedRules = (evaluatedRules: Rules | Nil): Rules | Nil => {
       restorePushedEvalFrames();
@@ -2023,12 +2003,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.guard = undefined;
         return undefined;
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
       return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
         : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }

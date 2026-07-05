@@ -145,9 +145,10 @@ export function determineExtensionType(
  * Extracted from multiple pseudo-selector checks
  */
 export function isSelector(value: any): value is Selector {
-  // Avoid `instanceof` (module identity can diverge under Vite/Vitest).
-  // All selector nodes set `isSelector = true` on the base Selector class.
-  return !!value && typeof value === 'object' && (value as any).isSelector === true;
+  // Avoid `instanceof` (module identity can diverge under Vite/Vitest). The
+  // nodeType bitmask is a prototype value keyed by string type, so it is
+  // realm-stable and matches any Selector subtype.
+  return isNode(value, N.Selector);
 }
 
 /**

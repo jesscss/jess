@@ -1,4 +1,4 @@
-import { spanStartOf, sourceSpanOf, fieldSpansOf } from './util/provenance.js';
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Anonymous, Any, Keyword } from './any.js';
@@ -17,10 +17,10 @@ import {
   emitCommentTriviaAfterNode,
   emitCommentTriviaBetweenNodes,
   emitNodeSourceSyntaxWithTrivia,
-  consumeTriviaBetweenOffsets,
-  emitTriviaTokens
+  commentRunsWithinSpan,
+  emitNextSpanComment
 } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRuleArrayDirectly } from './util/static-rules.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
@@ -214,12 +214,15 @@ function renderAtRuleBetweenOffsetsTrivia(
   if (nameEnd === undefined || preludeStart === undefined) {
     return '';
   }
+  // Whitespace between a bare-string name and its prelude is normalized; only a
+  // comment authored in that gap round-trips (its run carries its own spacing).
+  const runs = commentRunsWithinSpan(printOptions.trivia, nameEnd, preludeStart);
+  if (runs.length === 0) {
+    return '';
+  }
   const writer = new OutputWriter(printOptions.compress);
   const opts = { ...printOptions, writer };
-  const run = consumeTriviaBetweenOffsets(opts.trivia, nameEnd, preludeStart, opts);
-  if (run) {
-    emitTriviaTokens(run, opts);
-  }
+  emitNextSpanComment(runs, 0, opts);
   return writer.toString();
 }
 
@@ -684,20 +687,25 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   /**
-   * Source end offset of the (string) `name` slot, from `fieldSpans` (childKeys
-   * order: name=slot 0, prelude=1, rules=2). Undefined when no spans were captured.
+   * Source end offset of the (string) `name`. The name begins at this at-rule's
+   * span start, so its end is that start plus the name length. Undefined when no
+   * node span was captured or the name is not a bare string.
    */
   private _nameSlotEnd(): number | undefined {
-    return fieldSpansOf(this)?.[0]?.end;
+    const start = spanStartOf(this);
+    if (start === undefined || typeof this.name !== 'string') {
+      return undefined;
+    }
+    return start + this.name.length;
   }
 
-  /** Source start offset of the prelude: the prelude node's span, else `fieldSpans` slot 1. */
+  /** Source start offset of the prelude: the prelude node's span, when captured. */
   private _preludeStart(): number | undefined {
     const p = this.prelude;
-    if (p !== undefined && typeof p !== 'string' && spanStartOf(p) !== undefined) {
+    if (p !== undefined && typeof p !== 'string') {
       return spanStartOf(p);
     }
-    return fieldSpansOf(this)?.[1]?.start;
+    return undefined;
   }
 
   private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
@@ -720,15 +728,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   ownRules(rules: Node[]): Node[] {
-    const owned = new Array<Node>(rules.length);
-    for (let i = 0; i < rules.length; i++) {
-      const copied = copyWithReusableLeavesPreservingComments(rules[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected at-rule rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(rules, copyWithReusableLeavesPreservingComments);
   }
 
   private applyDerivedMetadata(node: AtRule): AtRule {

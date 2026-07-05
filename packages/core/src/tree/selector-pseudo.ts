@@ -1,4 +1,4 @@
-import { sourceSpanOf, valueSpansOf } from './util/provenance.js';
+import { sourceSpanOf, spanStartOf, spanEndOf } from './util/provenance.js';
 import {
   defineType,
   type Node
@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
+import { commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
@@ -70,7 +70,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   readonly name: string;
   arg: Node | undefined;
-  generatedPseudoPlacementOverride: GeneratedPseudoPlacementOverrideState | undefined;
+  /**
+   * Rare: only set on generated `:is()` wrappers (see `setGeneratedPseudoPlacementOverride`).
+   * `declare` + conditional ctor assignment so the common pseudo shape (`:hover`,
+   * `:focus`, ...) carries NO own slot for it — the eager `= undefined` used to add
+   * a hidden-class slot to every one of ~3000 instances in the collapse census.
+   */
+  declare generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 
   constructor(
     value: PseudoSelectorValue,
@@ -82,7 +88,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
-    this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    if (value.generatedPseudoPlacementOverride !== undefined) {
+      this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    }
   }
 
   private renderPseudoSyntax(options?: PrintOptions): string {
@@ -118,33 +126,29 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (arg) {
       w.add('(');
       if (Array.isArray(arg)) {
-        // Generic (unknown-pseudo) argument: a raw component array. Emit each
-        // component, recovering trivia between them from this node's valueSpans.
-        // A ' ' descendant combinator carries no own text — its surrounding
-        // trivia (whitespace + comments) spans from the previous part's end to
-        // the next part's start, so recover it across the combinator rather than
-        // emitting a bare space (mirrors ComplexSelector.toString).
-        const spans = valueSpansOf(this);
+        // Generic (unknown-pseudo) argument: a raw component array. String
+        // components carry no own source span, so authored inter-component
+        // whitespace is normalized; COMMENTS in those gaps still round-trip.
+        // Pull the in-span comment runs in source order and place one at each
+        // gap (combinator or adjacent-part boundary), mirroring ComplexSelector.
+        const spanComments = options.trivia
+          ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+          : [];
+        let cursor = 0;
         for (let i = 0; i < arg.length; i++) {
           const part = arg[i];
           if (part === ' ') {
-            const run = (options.trivia && spans)
-              ? consumeTriviaBetweenOffsets(options.trivia, spans[i - 1]?.end, spans[i + 1]?.start, options)
-              : undefined;
-            if (run) {
-              emitTriviaTokens(run, options);
+            if (cursor < spanComments.length) {
+              cursor = emitNextSpanComment(spanComments, cursor, options);
             } else {
               w.add(' ', this);
             }
             continue;
           }
-          // Recover trivia before this part — unless the previous part was a ' '
-          // combinator, which already consumed the trivia up to this part's start.
-          if (i > 0 && arg[i - 1] !== ' ' && options.trivia && spans) {
-            emitTriviaTokens(
-              consumeTriviaBetweenOffsets(options.trivia, spans[i - 1]?.end, spans[i]?.start, options),
-              options
-            );
+          // Emit a comment authored before this part — unless the previous part
+          // was a ' ' combinator, which already emitted the gap comment.
+          if (i > 0 && arg[i - 1] !== ' ' && cursor < spanComments.length) {
+            cursor = emitNextSpanComment(spanComments, cursor, options);
           }
           if (typeof part === 'string') {
             w.add(part, this);
@@ -156,40 +160,35 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         }
       } else if (isNode(arg, N.Sequence)) {
         // Unknown-pseudo arg stored as Sequence for AST serialization.
-        // Render each Any item inline (no separators), using valueSpans for trivia.
+        // Render each Any item inline; comments between items round-trip via the
+        // in-span comment runs, inter-item whitespace is normalized.
         const seqItems = arg.value;
-        const spans = valueSpansOf(this);
-        let srcIdx = 0;
+        const spanComments = options.trivia
+          ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+          : [];
+        let cursor = 0;
         let prevWasSpace = false;
         for (let i = 0; i < seqItems.length; i++) {
           const item = seqItems[i]!;
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const itemStr = (item as unknown as { value?: unknown }).value;
           if (itemStr === ' ') {
-            const run = (options.trivia && spans)
-              ? consumeTriviaBetweenOffsets(options.trivia, spans[srcIdx - 1]?.end, spans[srcIdx + 1]?.start, options)
-              : undefined;
-            if (run) {
-              emitTriviaTokens(run, options);
+            if (cursor < spanComments.length) {
+              cursor = emitNextSpanComment(spanComments, cursor, options);
             } else {
               w.add(' ', this);
             }
-            srcIdx++;
             prevWasSpace = true;
             continue;
           }
-          if (srcIdx > 0 && !prevWasSpace && options.trivia && spans) {
-            emitTriviaTokens(
-              consumeTriviaBetweenOffsets(options.trivia, spans[srcIdx - 1]?.end, spans[srcIdx]?.start, options),
-              options
-            );
+          if (i > 0 && !prevWasSpace && cursor < spanComments.length) {
+            cursor = emitNextSpanComment(spanComments, cursor, options);
           }
           if (typeof itemStr === 'string') {
             w.add(itemStr, this);
           } else {
             item.toString(options);
           }
-          srcIdx++;
           prevWasSpace = false;
         }
       } else if (isNode(arg, N.SelectorList)) {
@@ -203,7 +202,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
     return w.getSince(mark);
   }
-
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderPseudoSyntax(options);
