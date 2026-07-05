@@ -7,7 +7,8 @@ import {
   type TreeContext,
   F_ALLOW_ROOT,
   F_STATIC,
-  F_VISIBLE
+  F_VISIBLE,
+  F_MERGE_SUPPRESSED
 } from './node.js';
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -6137,8 +6138,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // identity (thin model): the SAME node is both the callee's own rendered
       // declaration and the placement copy in this host's output subtree. A merge
       // occurrence here can be superseded by a later `+:` in the host, and the
-      // coalesce strips F_VISIBLE by node identity — which would also hide the
-      // callee's own declaration. Detach (COW) the shared placement copy into a
+      // coalesce marks it merge-suppressed by node identity — which would also hide
+      // the callee's own declaration. Detach (COW) the shared placement copy into a
       // distinct instance owned by the output surface before it can be superseded.
       if (inMixinOutput) {
         const idx = ownerRules.rules.indexOf(node);
@@ -6187,9 +6188,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
           if (existingAnchor.node === currentNode && existingAnchor.ownerRules !== ownerRules) {
-            existingAnchor.ownerRules.removeFlag(F_VISIBLE);
+            existingAnchor.ownerRules.addFlag(F_MERGE_SUPPRESSED);
           } else {
-            existingAnchor.node.removeFlag(F_VISIBLE);
+            existingAnchor.node.addFlag(F_MERGE_SUPPRESSED);
           }
           mergedAnchorByName.set(name, occurrence);
           if (currentAccumulatedValue) {
