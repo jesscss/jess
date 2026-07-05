@@ -17,9 +17,18 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 20, zero regressions.** After the mechanical harvest reached 60, the
-"monolithic" E2/E3 cluster is being **chipped by scoped sub-agents in an isolated worktree** — and
-keeps dissolving into specific bugs, not the feared monolith:
+**Stable failures: 85 → 4, zero regressions across ~32 gated merges.** The feared "monolith" fully
+dissolved — every supposed monolithic cluster (E2/E3 scope-identity, mixin/namespace, import-style)
+decomposed into specific bugs or stale tests. The scope-identity/eval-model "one big design call"
+turned out to be ~10 distinct facets, all fixed except one bigger rework (see the 4-remaining floor
+below). Highlights of the 20→4 tail: retained per-call output frame (mixin-call output carries its
+params for value-eval), leaky-mode forward propagation (mixin output decls inject into the caller frame
+at the call index), namespace-path reroot (structural-parent compose gated to active frames +
+per-call-site hoisted-header tracking), guarded-recursion candidate filter (gate `inStack` on
+`!guarded`), namespace string-selector callable registration, `Rules.resolveBodyReferenceImports`
+(evaluate a mixin body's `reference:true` imports without full eager eval), `@forward` local-scope
+exclusion, inline-source root pinning, first-use scalar placement-ownership, guarded-namespace guard-lift
++ value-spacing (parser builders). Earlier chips (85→20):
 - **E2-a** (825dc3ec0, 60→59): property lookup now consults ancestor import fallback frames.
 - **E2-b** (35f8087a5, 59→59): single-key callable retry-walk drains ancestor fallback chains
   (completes the 3-way lookup consistency; prerequisite, metric-neutral).
@@ -56,48 +65,35 @@ keeps dissolving into specific bugs, not the feared monolith:
   - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
     source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
     comparison, not a dedupe.
-### Live work-list — the 20 remaining stable failures (all DEFERRED-with-rationale; floor reached)
-The mechanical/tractable harvest is COMPLETE (85→21, ~22 verified slices, every merge zero-regression).
-Later merged units beyond the list above: decl-trivia, E-lookup(E1), D1-2, extend-cluster Group A (COW),
-extend-bc (B+C), extend-less-fixtures (5, symlink-unmasked), decl-ref copy-boundary (source-free + reference
-eval-derived-flag + cloning), config property-path (3/4), mixin (at-rule prelude + stale tests), namespace
-string-selector registration, crawl-gate (1/3). The remaining 21 all require design/architecture calls:
+### Live work-list — the 4 remaining stable failures (all DEFERRED-with-rationale; TRUE floor)
+The mechanical/tractable harvest is COMPLETE (85→4, ~32 verified merges, every one zero-regression). The
+"Monolith-A" scope-identity narrative was WRONG: it decomposed into ~10 distinct facets, all now fixed —
+retained per-call output frame (mixin value-eval), leaky forward-propagation (source-order-gated), namespace
+reroot (2 render roots), guarded-recursion, string-selector namespace registration, `resolveBodyReferenceImports`,
+`@forward` scope-exclusion, placement-ownership, guarded-namespace lift + value-spacing. The 4 that remain:
 
-**A · The `wrapper-is-scope-identity` / eval-state MONOLITH (~16) — DEFERRED, one coupled rework.**
-Multiple independent agents converged on the same root: **evaluated / mixin-output / derived-output frames
-are not linked into the caller's lookup chain**, and the eval-state signal that gated it was removed by
-commit `1cd5cb2bc §2.7` ("drop evaluated reads") — it changed `entryRules._scopeFrame ?? (entryRules.evaluated
-? getScopeFrame() : undefined)` to an unconditional `?? getScopeFrame()` at `rules.ts:3235`. That one change
-explains:
-  - mixin interpolated-namespace (`.@{name}`→`.person` post-eval, buckets key on static names) — the output
-    ruleset registers `.person` on a COW-derived output tree the caller's `findMixin` never walks;
-  - leaky-Less var-leak from evaluated mixin-call output (root-level forward leak);
-  - import-style `evaluated-descendant` (the `uncalled cold` half is now FIXED via the narrow `_bodyEvaluated`
-    signal, merged 735fa4f62, 21→20; but the evaluated half needs `Mixin.eval()` to actually resolve its
-    reference-import member surface into a linked per-body frame — pure frame-linking rework, no narrow signal
-    can expose a surface that lazy-mixin eval never builds);
-  - wrapper-identity D-family (declaration-lookup-version on derived surface; compose finalRules `sourceNode`);
-  - mixin-recursion (2) rides on interpolated-namespace.
-**OWNER DECISION REQUIRED** (flagged, not auto-attempted): was dropping the `evaluated` eval-state signal
-(§2.7) correct — needing a *different* signal consistent with the thin/live-binding model — or a regression
-to restore? Everything below ~21 hinges on this. Precise entry point: re-introduce an eval-state signal on
-`Rules` (set by the eval wrapper even for lazy mixin defs) + restore the gate at `rules.ts:3235`, AND link the
-mixin-output frame as a fallback/child of the caller scope so post-interpolation names resolve. See
-[[parseman-wrapper-is-scope-identity]].
+1. **mixin sibling-collapsed interpolated selector-identity** (`mixin.test.ts › arity failures › keeps sibling
+   collapsed rulesets closed before a later interpolated mixin-ruleset call`). Its namespace-reroot + leaky
+   facets are already fixed; it now needs TWO things (attempted, reverted — +2 boundary regressions from a
+   blanket link): (a) prep-time lexical scope resolution for an interpolated selector identity (`.@{a1}`) that
+   RESPECTS compose/import boundaries (a scope-boundary-aware wiring, not a blanket `getScopeFrame().parent`
+   link); (b) `&`-composition into the mixin-ruleset callable key across a descendant boundary (verified the
+   LITERAL `.b .bb{&.foo-xxx{…}} .b.bb.foo-xxx()` fails identically — a pre-existing `&`-callable-key gap).
+   Bigger than a targeted fix; its own unit.
+2. **declaration merge-chain** (`Declaration › continues a property merge chain after a callable ruleset emits
+   the first declaration`) → **D1-3b**: coalesce `removeFlag(F_VISIBLE)` is load-bearing for lookup+re-coalesce
+   (proven — render-only exclusion regressed +6, reverted). Merge-engine rework. [[fvisible-coalesce-suppression-load-bearing]]
+3. **call detached-collection→Rules** (`Call › keeps detached collection calls on the collection surface`) →
+   callable-collection node-identity design decision: a no-arg detached-collection call returns `Rules` (CSS-correct)
+   but the test wants the `Collection` surface preserved. Design call: normalize to Rules vs keep Collection identity.
+4. **config with-var-survival** (`with values › keeps child-surface additive "with" configs visible to imported
+   detached ruleset variable closures`) → live-binding-across-eval: a `with` VarDeclaration is a transient pre-eval
+   frame binding that doesn't survive eval as a resolvable decl; the parent same-named decl wins. Needs the config
+   binding to persist onto the post-eval surface with module precedence.
 
-**B · Separately DEFERRED (distinct rationale each):**
-- declaration merge-chain (1) → D1-3b (coalesce `removeFlag(F_VISIBLE)` load-bearing for lookup+re-coalesce;
-  merge-engine rework, see D.1 stage 3b). [[fvisible-coalesce-suppression-load-bearing]]
-- call detached-collection→Rules (1) → callable-collection node-identity design decision (return the collection
-  surface vs normalize to Rules).
-- config with-var-survival (1) → live-binding-across-eval: a `with` VarDeclaration is a transient pre-eval frame
-  binding that doesn't survive eval as a resolvable decl; parent same-named decl wins. Needs the config binding
-  to persist onto the post-eval surface with module precedence.
-- extend Group B/C — **DONE** (merged: B appends `.base,.child`; C's doubling is Less-correct per the committed
-  `extend-selector.css`, stale test fixed).
-
-Every one of the 21 is now DEFERRED-with-written-rationale; **21 is the documented irreducible minimum for the
-mechanical loop.** Below it = the Monolith-A scope-identity/eval-state rework (owner design call) + the B items.
+**4 is the documented irreducible minimum for the mechanical loop.** #1 is a bigger scope-boundary+`&`-callable
+rework; #2–#4 are design decisions (merge-engine / node-identity / live-binding-across-eval). All four are
+DEFERRED-with-written-rationale; none is a mechanical slice.
 
 ---
 _Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
@@ -120,7 +116,7 @@ scope-identity (~16+), the D1-3b-blocked merge-chain/lookup coupling, and eval/c
 downstream of them. Driving below 60 requires the deferred **monolithic scope-identity rework**, not
 more mechanical units. That is the documented irreducible minimum for the safe drive-to-green loop.
 
-Baseline snapshots below may cite older counts (85 mid-migration); the current stable set is **45**.
+Baseline snapshots below may cite older counts (85 mid-migration); the current stable set is **4**.
 
 ---
 
