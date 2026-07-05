@@ -7,6 +7,7 @@ import round from 'lodash-es/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizePublicOperationResult } from './util/operation-result.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { namedColor } from './util/color-names.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -121,6 +122,15 @@ export class Color extends Node<ColorData, ColorOptions> {
       // Validate that we have either rgb, hsl, or a node to parse
       if (!colorData.rgb && !colorData.hsl && !colorData.node) {
         throw new TypeError('Color constructor requires rgb, hsl, or node property');
+      }
+      // Resolve a bare color-keyword node (e.g. `yellow`, `transparent`) to
+      // channels up front so `rgb`/`alpha` are correct before any operation.
+      if (colorData.node && typeof colorData.node === 'string'
+        && !colorData.node.startsWith('#') && !colorData.rgb && !colorData.hsl) {
+        const named = namedColor(colorData.node);
+        if (named) {
+          colorData = { ...colorData, rgb: named.rgb, alpha: colorData.alpha ?? named.alpha };
+        }
       }
       if (colorData.format !== undefined && colorOptions.format === undefined) {
         colorOptions = { ...colorOptions, format: colorData.format };
@@ -327,9 +337,11 @@ export class Color extends Node<ColorData, ColorOptions> {
       return rgb;
     }
 
-    // If value has a node that's a string, parse it as hex
+    // If value has a node that's a string, resolve it: a CSS color keyword
+    // (e.g. `yellow`, `transparent`) via the named-color table, else as hex.
     if (this.node && typeof this.node === 'string') {
-      const { rgb, alpha } = parseHexString(this.node);
+      const named = this.node.startsWith('#') ? undefined : namedColor(this.node);
+      const { rgb, alpha } = named ?? parseHexString(this.node);
       this._rgbChannels = rgb;
       this._alphaValue = alpha;
       // Clear HSL - parsed RGB might not match existing HSL
