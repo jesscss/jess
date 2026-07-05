@@ -111,19 +111,18 @@ describe('processExtends function (eval flow)', () => {
     });
 
     it('should extend every instance of a class when partial is true (Less `all`)', async () => {
-      const outerRules = rules([
-        ruleset({
-          selector: sellist([el('.replace'), el('.c')]),
-          rules: []
-        })
-      ]);
       const root = rules([
         ruleset({
           selector: sellist([
             compound([el('.replace'), el('.replace')]),
             sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
           ]),
-          rules: outerRules
+          rules: [
+            ruleset({
+              selector: sellist([el('.replace'), el('.c')]),
+              rules: []
+            })
+          ]
         }),
         ruleset({
           selector: el('.rep_ace'),
