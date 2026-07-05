@@ -261,8 +261,14 @@ is NOT dead, it's private. Re-verify true dead-ness (0 callers *including* inter
 deleting anything. The safe, high-value win is the **rename pass**; structural consolidations
 are medium-risk on HOT files and must be gated individually.
 
-- [ ] **F-rename** (safest, no semantics) — shorten burmese-python identifiers per concise-naming.
-  Vetted candidates (verify no collision, apply across all call sites):
+- [~] **F-rename** (safest, no semantics) — shorten burmese-python identifiers per concise-naming.
+  - [x] **ruleset.ts + at-rule.ts DONE** (7 renames, output-neutral, stable 60): `unwrapGeneratedReferenceIs`→
+    `unwrapGeneratedIs`, `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`,
+    `filterExtendedTopLevelSelectorItems`→`filterExtendedItems`, `_ownComplexComponentForCompose`→`_ownForCompose`;
+    `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→`serializeAtRule`, `renderBodyRecord`→`renderRecord`.
+  - [ ] **rules.ts renames DEFERRED** — batch with D1-3b so the rename churn and the merge-engine edit land
+    together on the same HOT file (~13 candidates below).
+  Remaining vetted candidates (verify no collision, apply across all call sites):
   - Ruleset: `_ownComplexComponentForCompose`→`_ownForCompose`, `filterExtendedTopLevelSelectorItems`→
     `filterExtendedItems`, `unwrapGeneratedReferenceIs`→`unwrapGeneratedIs`,
     `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`.
