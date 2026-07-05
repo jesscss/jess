@@ -741,7 +741,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled !== false
-      && this.hoistToRoot
+      && this.isHoisted(options)
     ) {
       const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
       if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
@@ -1480,7 +1480,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
     const structuralParent = (
       !parentAtRule?.isRootOnly()
-      && this.hoistToRoot === true
+      && this.isHoisted(options)
       && this.parent?.parent
       && isNode(this.parent.parent, N.Ruleset)
     )
@@ -1952,9 +1952,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.invalidateSelectorValueCache(undefined);
       }
       this.selector = selector;
-      if (context.opts.output?.collapseNesting) {
-        this.hoistToRoot = true;
-      }
       pushedRulesetFrameCount = context.rulesetFrames.length;
       pushedFrameCount = context.frames.length;
       context.rulesetFrames.push(this);
