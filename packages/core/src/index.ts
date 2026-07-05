@@ -36,10 +36,6 @@ export {
   setFieldSpans,
   valueSpansOf,
   setValueSpans,
-  cstStateOf,
-  setCstState,
-  cstChildrenOf,
-  setCstChildren,
   type SourceSpan
 } from './tree/util/provenance.js';
 export {

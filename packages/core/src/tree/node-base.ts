@@ -423,8 +423,6 @@ export abstract class Node<
   _spanEnd: number | undefined = undefined;
   _fieldSpans: (SourceSpan | undefined)[] | undefined = undefined;
   _valueSpans: (SourceSpan | undefined)[] | undefined = undefined;
-  _cstState: unknown = undefined;
-  _cstChildren: ReadonlyArray<{ _tag: string }> | undefined = undefined;
 
   _sourceRoot: Rules | undefined;
   get sourceRoot(): Rules | undefined {
