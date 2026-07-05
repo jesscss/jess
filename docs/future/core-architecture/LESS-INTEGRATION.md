@@ -138,14 +138,16 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 fully contained in parseman (`merge-base --is-ancestor dev feature/parseman` = true; 0 commits parseman
 lacks). Just FF-merge. Local `dev` is ahead of `origin/dev` (3e871385a) — reconcile the remote separately.
 
-**M4 — re-point v5 integration + bootstrap.less:**
-- less.js (`/oss/less.js`, @less/root 5.0.0-alpha.2) consumes Jess via `link:` deps in
-  `packages/less/package.json:159-165`: `@jesscss/core`, `@jesscss/plugin-less`,
-  `@jesscss/plugin-less-compat`, `jess` → `../../../../oss/jess/packages/*`. That target (`oss/jess`,
-  branch `feature/less-v5-alpha-readiness`, tip 5fa885e6b) is **652 commits behind parseman**.
-- RE-POINT options: (a) checkout `feature/parseman` in the `oss/jess` worktree, OR (b) repoint the 4
-  `link:` paths at `/worktrees/jess-parseman/packages/*`. Then `pnpm install` in less.js + rebuild Jess libs.
-- Carry v5-only commit `e868dffd1` (less-compat 4.x custom-fn/tree bridge) onto parseman if not superseded.
+**M4 — sync the v5 alpha branch from dev + bootstrap.less:**
+- CORRECTED FLOW (not link re-pointing): the alpha branch is the integration point and merges `dev` UP.
+  less.js (`/oss/less.js`, @less/root 5.0.0-alpha.2) already `link:`s Jess from `oss/jess`
+  (`packages/less/package.json:159-165`: core/plugin-less/plugin-less-compat/jess → `../../../../oss/jess/packages/*`),
+  and `oss/jess` is on `feature/less-v5-alpha-readiness` (tip 5fa885e6b). So after M3 (parseman→dev):
+  in the `oss/jess` worktree, **`git merge dev`** to pull the 652-commit gap up onto the alpha branch,
+  reconciling conflicts. The alpha branch's **3 unique commits STAY** (they ARE the alpha-readiness work:
+  e868dffd1 less-compat 4.x fn/tree bridge, 214b0b7e2 extend fast-reject, 5fa885e6b serialize staging) —
+  dev merges in under/around them, NOT a FF. Then `pnpm install` in less.js + rebuild Jess libs.
+- No `link:` path edits; the existing target auto-tracks once the alpha branch is synced.
 - **bootstrap.less** = Bootstrap 4.6 via `bootstrap-less-port@2.5.1` (jess devDep); flat 38 `@import`s / 90
   files. NOT a parse problem — blocked on **cluster C (scope/accessor + mixin-lookup, `'X' is not defined`:
   `_buttons/_tables/_badge/_list-group/_grid/_custom-forms/_utilities`) + cluster G (format/whitespace,
