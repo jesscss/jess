@@ -254,17 +254,23 @@ right fix depends on **how granular span tracking needs to be**, and the consume
   mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
   - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
     round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
-  - **DECIDED (owner): option (a) — DROP `fieldSpans`/`valueSpans` ENTIRELY.** Edit/round-trip works on the
-    CST or reparses (the dead `cstState`/`cstChildren` were that CST's stub), so the EVAL tree never needs
-    sub-node precision — node-level `spanStart`/`spanEnd` (for sourcemaps) is the whole requirement.
-    **Removal plan (own stage, careful):** delete the 2 fields (`node-base.ts`) + accessors
-    (`fieldSpansOf`/`valueSpansOf`/`setFieldSpans`/`setValueSpans` in `provenance.ts` + `index.ts` exports) +
-    the core READERS (selector-complex/compound/pseudo, declaration, at-rule — their sub-node-trivia emission
-    falls back to node-level/normalized) + the parser WRITERS (`css-parser` `setValueSpans`/`setFieldSpans` —
-    CROSS-PACKAGE, coordinate with the parser owners). **Gate nuance:** normal CSS render stays byte-identical,
-    but the AUTHORED trivia/round-trip output CHANGES (loses sub-node whitespace fidelity) — that's the accepted
-    tradeoff of the decision; trivia round-trip tests will need updating (or the feature moves to CST). SEQUENCE
-    **after the dead-CST delete** (shares node-base.ts/provenance.ts) — same worktree/agent.
+  - **DECIDED (owner): DROP `fieldSpans`/`valueSpans` (per-sub-component arrays), REPLACE readers with a
+    node-level COMMENT check.** Edit/round-trip works on the CST/reparse, so eval nodes need only node-level
+    `spanStart`/`spanEnd`. **Owner refinement:** normalized selectors don't need per-component whitespace — the
+    only authored fidelity that matters is COMMENTS. The `TriviaMap` already tracks `hasComment` per run by
+    offset (`types/index.ts:22`), so the `valueSpansOf`/`fieldSpansOf` readers collapse to one **"is there a
+    comment in this node's `[spanStart,spanEnd]`?"** range check against the TriviaMap — PRESERVES comment
+    fidelity while dropping the arrays (strictly better than losing fidelity). **Plan:** delete the 2 fields +
+    accessors; replace core readers (selector-complex/compound/pseudo, declaration, at-rule) with the node-range
+    comment check; make parser WRITERS (`css-parser` set*) no-op stubs FIRST (cross-package — parser owners
+    remove the calls later; don't reach into the parser). Gate: normal render byte-identical; round-trip keeps
+    COMMENTS, drops sub-node whitespace (accepted). Sourcemaps: node-level only (CSS maps at rule/decl level).
+    SEQUENCE after dead-CST (DONE, cc9888e2) — same worktree/agent.
+  - **Span storage (V8, answered):** keep `_spanStart`/`_spanEnd` as TWO inline number fields (SMIs → 0 alloc,
+    inline in the hidden-class slot) — NOT a `{start,end}` object (1 heap alloc per spanned node, reintroduces
+    the WeakMap cost) and NOT a packed single number (two offsets exceed V8's 31-bit SMI range → boxes to a
+    HeapNumber, worse than 2 SMIs). Prefer `spanStartOf`/`spanEndOf` (inline reads) over `sourceSpanOf` (rebuilds
+    `{start,end}` on read) on hot paths.
 
 ### DRY + dead-code sweep (NEW standing task — requested)
 Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
@@ -367,8 +373,7 @@ serialization/collapse state; no new visibility/eval-free flag.
   file/build context) instead of spawning fresh. Agents coordinate through the orchestrator: report → gate →
   merge → next idea. Serialize only the MERGES (avoid concurrent edits to the same file across branches).
 - **Agent setup block:** `pnpm install` (~10s; NOT `pnpm -r build`). Correctness gate (no build; vitest on
-  src): `cd packages/core && pnpm test` — baseline = EXACTLY 2 pre-existing fails (mixin.test.ts namespace
-  fast-path x2 ~5476/5578; extend-less-fixtures collection ~47:39); clean = that set + byte-identical.
+  src): `cd packages/core && pnpm test` — baseline = GREEN (0 fails, ~2697 passed; feature/parseman fixed the old 2 mixin fails). A ~2ms sibling-collapsed timing flake may appear — re-run; clean = that set + byte-identical.
   Timing (optional): build `@jesscss/core styles-config @jesscss/fns jess` only (NOT `-r`: jess-plugin is
   pre-broken TS5096). jess default output is NESTED (collapseNesting opt-in); benchmark.less does NOT
   render on jess yet — never gate on it.
