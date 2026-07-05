@@ -390,6 +390,27 @@ descriptor objects PER call, once per mixin-ruleset reference resolve (call site
 - Gate: byte-identical on the 1200-mixin dynamic input + the 2-known-fail baseline. Own stage (eval-semantics;
   overlaps live reference/less work — coordinate). Full agent report in session history.
 
+### Reference-node specialization (idea — captured; tradeoff-nuanced)
+Should the one generic `Reference` split into distinct node types so eval dispatches by TYPE (monomorphic
+per class) instead of branching per-reference on `options.type`/flags? Separate two axes:
+- **Axis 1 — syntactic kind (known at PARSE): real win.** `.mixin()` call / `@var` / property-lookup /
+  `@import (reference)` member are syntactically distinct — the parser already knows which. Distinct node
+  classes → each gets a **monomorphic `evalNode`** (stable hidden class, hot ICs) instead of one mega-method
+  over a varying `options` bag. This is the "repeated mixin call / import-style lookup" case: the call site
+  stays monomorphic instead of megamorphic. Aligns with the FAST-V8 rule (fixed shape per type).
+- **Axis 2 — resolution outcome (only known at EVAL): NOT reducible by node typing.** Same `@x` → color /
+  number / ruleset / import-member by runtime scope. Distinct types can't remove that branch (one node, many
+  outcomes). BUT the hot `options.type === 'mixin-ruleset'` surface branch CAN become **polymorphic dispatch
+  on the resolved value's class** (`resolvedValue.createReferenceSurface()` on Rules/Collection/Mixin) — kills
+  the string compare, V8-monomorphic-per-type, without knowing the outcome at parse.
+- **Tradeoffs.** Pro: monomorphic hot paths, fixed shapes, less megamorphic `options` access; a second angle
+  on the `createRulesLikeReferenceSurface` hotspot. Con: more node classes; parser classifies at construction
+  (trivial in Less/scss — syntax disambiguates); shared lookup engine must factor into helpers so the split
+  doesn't duplicate resolution; a few refs ambiguous until eval (rare). Irreducible: outcome-polymorphism
+  stays; a per-node resolved-kind cache hits the same scope-variance caveat as memoization (scope-key or corrupt).
+- **Verdict:** worth pursuing the Axis-1 syntactic split + Axis-2 value-class-dispatched surface; leave the
+  pure outcome-poly alone. Pairs with the copy/materialization nuke — do them together on the reference stage.
+
 **Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
 - [SPEC'D ↑] Copy / materialization boundary — see above; construction-cost fix first, scope-keyed memo later.
