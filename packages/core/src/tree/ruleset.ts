@@ -1547,10 +1547,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const { selector } = this;
 
     if (typeof selector === 'string') {
-      if (options.referenceMode === true || withoutComments) {
+      if (options.referenceMode === true) {
         return false;
       }
       if (options.collapseNesting) {
+        // A string selector carries no comments, so `withoutComments` (the
+        // comparable-header path) still composes against the parent frame — a
+        // nested `.child` under `.container` must compare as `.container .child`,
+        // not as an empty header that would coalesce into the parent frame.
         const renderSelector = this.composeHeaderSelector(
           options,
           new BasicSelector(selector),

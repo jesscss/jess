@@ -885,4 +885,85 @@ describe('CSS Nesting Collapse', () => {
       }`
     );
   });
+
+  // Regression: string-normalized selectors (strings-not-nodes model) through an
+  // at-rule bubble. `getHoistedParent`/`renderHoistedParentHeader` used to call
+  // `parent.selector.writeSyntax` unconditionally — a string selector has no such
+  // method, throwing `parent.selector.writeSyntax is not a function`.
+  it('hoists a string-selector parent through a bubbled at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.wrapper',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: '(max-width: 600px)',
+            rules: [
+              ruleset({
+                selector: '.mobile-only',
+                rules: [
+                  decl({ name: 'display', value: any('block') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media (max-width: 600px) {
+        .wrapper .mobile-only {
+          display: block;
+        }
+      }`
+    );
+  });
+
+  // Regression: a nested string selector under an at-rule must keep its own header.
+  // `writeHeaderSelector` returned an empty comparable header for a string selector
+  // in the `withoutComments` (comparable) path, so `.child` coalesced into the
+  // `.container` frame instead of emitting `.container .child`.
+  it('keeps a nested string selector as its own frame under an at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.container',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: 'screen',
+            rules: [
+              ruleset({
+                selector: sel([amp()]),
+                rules: [
+                  decl({ name: 'color', value: any('red') })
+                ]
+              }),
+              ruleset({
+                selector: '.child',
+                rules: [
+                  decl({ name: 'color', value: any('blue') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media screen {
+        .container {
+          color: red;
+        }
+        .container .child {
+          color: blue;
+        }
+      }`
+    );
+  });
 });
