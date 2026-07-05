@@ -1082,6 +1082,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * nodes inherit the represented parent frame even when the ancestor frame
    * was not accessed first.
    */
+  /**
+   * True once this Rules' body has been evaluated. Public read of the narrow
+   * §2.7 eval-state signal (`_bodyEvaluated`); lets render/serialize callers
+   * confirm they hold the evaluated root, not a pre-eval source tree.
+   */
+  get evaluated(): boolean {
+    return this._bodyEvaluated;
+  }
+
   get scopeFrame(): ScopeFrame {
     return this.getScopeFrame();
   }
@@ -6297,6 +6306,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     context.rulesEvalStack.pop();
     context.depth--;
+    // The evaluated OUTPUT (which render/serialize hold) may be a derived node,
+    // not `this`; carry the eval-state signal onto it so `evaluated` is true for
+    // the tree callers actually render.
+    rules._bodyEvaluated = true;
     return rules;
   }
 

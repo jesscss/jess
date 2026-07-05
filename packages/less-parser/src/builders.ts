@@ -38,6 +38,7 @@ import {
   Nil,
   Rest,
   Quoted,
+  Url,
   AtRuleStatement,
   AtRule,
   QueryCondition,
@@ -1725,6 +1726,11 @@ export class LessGrammar extends CssParser {
     const optMatch = /^\s*\(([^)]+)\)/.exec(preludeText.replace(/^@import\s*/, ''));
     const opts: string[] = optMatch ? optMatch[1]!.split(',').map(s => s.trim()) : [];
     const builtNodes = nodeChildren(children);
+    // `@import url("x.css")` parses the path as a Url node, `@import "x.css"` as a
+    // Quoted. The url() wrapper is part of the serialized path — keep it as the
+    // prelude for CSS imports (and strip the whole `url(...)`, not just its inner
+    // quotes, when extracting a trailing media query).
+    const urlNode = builtNodes.find(n => n.type === 'Url') as unknown as Url | undefined;
     const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
     let pathNode: Quoted | undefined;
     if (quotedNode) {
@@ -1746,10 +1752,13 @@ export class LessGrammar extends CssParser {
     }
     let mediaNode: Node | undefined;
     {
-      // Remove @name, (options), quoted path, and 'as namespace' to find media query
+      // Remove @name, (options), the path (url(...) or quoted), and 'as namespace'
+      // to find a trailing media query.
       let rest = preludeText.replace(/^@-?[_a-zA-Z][-_a-zA-Z0-9]*\s*/, '');
       rest = rest.replace(/^\([^)]*\)\s*/, '');
-      rest = rest.replace(/(['"])[^'"]*\1\s*/, '');
+      rest = urlNode
+        ? rest.replace(/url\(\s*(['"])[^'"]*\1\s*\)\s*/i, '')
+        : rest.replace(/(['"])[^'"]*\1\s*/, '');
       rest = rest.replace(/\bas\s+[^\s;(]+\s*/g, '');
       rest = rest.replace(/;\s*$/, '').trim();
       if (rest) {
@@ -1761,8 +1770,9 @@ export class LessGrammar extends CssParser {
     const isCssImport = pathStr ? LessGrammar._isCssUrl(pathStr, opts) : false;
     if (isCssImport || opts.includes('css')) {
       const preludeItems: JessNode[] = [];
-      if (pathNode) {
-        preludeItems.push(pathNode as unknown as JessNode);
+      const pathPrelude = (urlNode ?? pathNode) as unknown as JessNode | undefined;
+      if (pathPrelude) {
+        preludeItems.push(pathPrelude);
       }
       // A plain (non-Less) import can carry a trailing media-query tail, same as
       // the StyleImport `postlude` option below — don't drop it here.

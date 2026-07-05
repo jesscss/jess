@@ -149,8 +149,8 @@ describe('Compiler reuse', () => {
           name: 'pre-render-visitor-test',
           postEvalVisitor: {
             declaration(node: Declaration) {
-              if (node.value.name.valueOf() === 'color') {
-                node.set('value', new Any('blue', { role: 'keyword' }));
+              if (node.name.valueOf() === 'color') {
+                node.value = new Any('blue', { role: 'keyword' });
               }
             }
           }
@@ -172,8 +172,8 @@ describe('Compiler reuse', () => {
           name: 'pre-render-visitor-test',
           preRenderVisitor: {
             declaration(node: Declaration) {
-              if (node.value.name.valueOf() === 'color') {
-                node.set('value', new Any('green', { role: 'keyword' }));
+              if (node.name.valueOf() === 'color') {
+                node.value = new Any('green', { role: 'keyword' });
               }
             }
           }
@@ -195,8 +195,8 @@ describe('Compiler reuse', () => {
           name: 'before-eval-visitor-test',
           beforeEvalVisitor: {
             varDeclaration(node: VarDeclaration) {
-              if (node.value.name.valueOf() === 'tone') {
-                node.set('value', new Any('blue', { role: 'keyword' }));
+              if (node.name.valueOf() === 'tone') {
+                node.value = new Any('blue', { role: 'keyword' });
               }
             }
           }
