@@ -321,3 +321,18 @@ Compat mode is the DEFAULT when parsing `.less`. Dialect is decided PER-FILE by 
   Deprecations stay STRONG WARNINGS even under `strict: true` (migration files legitimately keep `@import`);
   "deprecations-as-errors" would be a SEPARATE sharper knob (e.g. future-version target), not what `strict` means.
 - Still testable: the less.js corpus is pure Less 4.x (no `@use`) → compat → warnings only → matches upstream.
+
+## 2026-07-05 — triage of remaining 31 (verified, NOT the read-only agent's optimistic buckets)
+The triage agent's "OPEN-DISJOINT" bucket is mostly PARSER-DOWNSTREAM (verified by inspecting real diffs):
+- **hasFlag throws** (mixins-advanced/guards, namespacing-3) = NOT disjoint. `Expression.value` is typed `Node`, so
+  `value.hasFlag is not a function` is a CONTRACT VIOLATION — a string reached a Node slot (the parser mixin-arg gap:
+  `.m(4)`→string/Keyword flowing into the guard Expression). Guarding hasFlag would PAPER the real parser bug. Owned by
+  the mixin-args parser agent; will resolve when args parse to Nodes.
+- **color-fn fixtures** (basic/rgba/comprehensive/modern) = parser. `basic` renders `red($??(100%,0,0))` vs `255` — the
+  `$??` is the function-call `$`-sigil parser artifact, not an fns bug.
+- **css-escapes** = likely parser (throws "Value node is not valid as a statement" on the `//`-comment + `@ugly:` line).
+Genuinely-disjoint CORE-SERIALIZE (parse-clean, wrong output) → dispatchable:
+- **at-rule serialization** (at-rules, at-rules-bubbling, at-rules-declarations): `@document url-prefix ()` spurious
+  space vs `url-prefix()`; `@page`/`@font-face` off. → agent `less/at-rule-serialize`.
+- **whitespace** (multi-line value collapse) + **rulesets** (deep-combinator nesting) HELD — whitespace may be
+  parser-trivia; rulesets is HOT selector-flatten (overlap risk). Verify after parser agent lands.
